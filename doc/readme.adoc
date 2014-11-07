@@ -1,0 +1,56 @@
+
+RAFT in JGroups
+===============
+
+Goals
+-----
+. Implement the RAFT consensus protocol in JGroups
+. Provide an API to RAFT
+. Implement etcd (?) [API and REST interface]
+. ZooKeeper impl using etcd impl (?)
+
+
+Advantages of using JGroups as basis for a RAFT impl
+----------------------------------------------------
+* Transports already available: UDP, TCP
+** Contains thread pools, priority delivery (OOB), batching etc
+* Variety of discovery protocols
+* Encryption, authentication, compression
+* Fragmentation, reliability over UDP
+* Multicasting for larger clusters
+* Failure detection
+* Sync/async cluster RPC
+
+
+Design overview
+---------------
+* Raft building block over a channel
+** Communicates with RAFT protocol via events (like COUNTER or CENTRAL_LOCK)
+
+
+Design issues
+-------------
+* Separate protocols for
+** Leader election
+*** Could be omitted as JGroups already has a leader
+*** Majority partition makes progress
+** Log replication
+** Log safety
+** Client interaction
+* These protocols would communicate via events
+* Heartbeat is not needed for failure detection, but only for log replication
+  and log safety
+
+
+Misc
+----
+* Seperate GitHub project for now for RAFT protocol and building block
+** May be moved into JGroups once it is stable
+** But for now, with a separate project we can release quickly and independently
+* Separate project for etcd consuming RAFT and JGroups ?
+* Mailing list on google
+** Potential contributors from Lyon and Newcastle uni (MarkL)
+*** Julien Ponge: julien.ponge@insa-lyon.fr
+
+
+

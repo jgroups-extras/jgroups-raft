@@ -1,0 +1,166 @@
+<?xml version="1.0"?>
+
+
+<project name="jgroups-fast" default="compile" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Ant/ivy based build.xml file for jgroups-raft. Needs ant to run
+    </description>
+
+    <property name="version"          value="1.0"/>
+    <property name="root.dir"         value="${basedir}"/>
+    <property name="src.dir"          value="${root.dir}/src"/>
+    <property name="compile.dir"      value="${root.dir}/classes"/>
+    <property name="lib.dir"          value="${root.dir}/lib"/>
+    <property name="dist.dir"         value="${root.dir}/dist"/>
+    <property name="tmp.dir"          value="${root.dir}/tmp"/>
+    <property name="javadoc.dir"      value="${dist.dir}/javadoc"/>
+    <property name="conf.dir"         value="${root.dir}/conf"/>
+    <property name="bin.dir"          value="${root.dir}/bin"/>
+    <property name="javadoc.packages" value="org.taskdistribution.*"/>
+    <property name="timestamp"        value=".timestamp"/>
+    <property name="maven.executable" value="mvn"/>
+    <property name="ivy.version"      value="2.3.0" />
+
+
+    <path id="jg.classpath">
+        <pathelement location="${compile.dir}"/>
+        <pathelement location="${conf.dir}"/>
+        <fileset dir="${lib.dir}">
+            <include name="*.jar"/>
+        </fileset>
+    </path>
+
+
+
+    <target name="check-lib-exists">
+        <available file="${lib.dir}" type="dir" property="lib.dir.exists"/>
+    </target>
+
+
+    <target name="check-ivy-exists">
+        <mkdir dir="${lib.dir}"/>
+        <pathconvert property="ivy.exists" pathsep=" " setonempty="false">
+            <path>
+                <fileset dir="${lib.dir}" includes="ivy*.jar" />
+            </path>
+        </pathconvert>
+    </target>
+
+    <target name="check-jars-exist">
+        <mkdir dir="${lib.dir}"/>
+        <pathconvert property="jars.exist" pathsep=" " setonempty="false">
+            <path>
+                <fileset dir="${lib.dir}" excludes="ivy*.jar" />
+            </path>
+        </pathconvert>
+    </target>
+
+
+    <target name="get-ivy" description="Fetches ivy from a maven repo" depends="check-ivy-exists" unless="ivy.exists">
+        <get src="http://repo2.maven.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar"
+             dest="${lib.dir}" usetimestamp="true"/>
+    </target>
+
+
+    <target name="retrieve" depends="check-jars-exist,get-ivy,define-ivy-task" unless="jars.exist"
+            description="Retrieves all dependent libs defined in ivy.xml unless already present">
+        <ivy:retrieve type="jar,bundle" transitive="false"/>
+    </target>
+
+    <target name="define-ivy-task">
+        <taskdef resource="org/apache/ivy/ant/antlib.xml"
+                 uri="antlib:org.apache.ivy.ant" classpathref="jg.classpath"/>
+    </target>
+
+    <target name="prepare" depends="retrieve">
+        <property environment="env"/>
+        <mkdir dir="${compile.dir}"/>
+    </target>
+
+
+    <target name="compile" depends="prepare" description="Compiles all Java files">
+        <javac destdir="${compile.dir}"
+               source="1.6"
+               target="1.6"
+               classpathref="jg.classpath"
+               includeantruntime="false"
+               debug="on"
+               deprecation="off"
+               optimize="off"
+               listfiles="false"
+               includes="org/**">
+            <src path="${src.dir}"/>
+        </javac>
+    </target>
+
+
+    <target name="jar"
+            description="Compiles and creates JARs in ./dist"
+            depends="jgroups.jar">
+    </target>
+
+
+    <target name="jgroups.jar"
+            description="Creates the jgroups.jar (includes everything)"
+            depends="clean,compile">
+        <mkdir dir="${dist.dir}"/>
+        <xmlproperty file="${ant.file}" collapseAttributes="true"/>
+        <property name="-savemanifest" value="${conf.dir}/MANIFEST.MF"/>
+        <property name="-output" value="${conf.dir}"/>
+        <jar destfile="${dist.dir}/taskdistribution-${version}.jar"
+             basedir="${compile.dir}"
+             manifest="${conf.dir}/MANIFEST.MF"
+             includes="org/jgroups/**">
+            <fileset dir="${conf.dir}" includes="*.dtd, *.xml, jg-messages*.properties" excludes="*-service.xml"/>
+            <fileset dir="${root.dir}">
+                <include name="README*"/>
+            </fileset>
+        </jar>
+    </target>
+
+
+
+    <!-- generate java doc -->
+    <target name="javadoc"
+            depends="prepare,check-javadoc" unless="javadoc.exists"
+            description="Creates Javadoc documentation in ./dist/javadoc">
+         <mkdir dir="${javadoc.dir}"/>
+        <javadoc packagenames="${javadoc.packages}"
+                 sourcepath="${src.dir}"
+                 destdir="${javadoc.dir}"
+                 classpathref="jg.classpath"
+                 author="true"
+                 version="true"
+                 use="true"
+                 bottom="Copyright &#169; 1998-2014 Bela Ban / Red Hat. All Rights Reserved."
+                 useexternalfile="yes"
+                 doctitle="jgroups-raft">
+            <!-- The tag option for Javadoc is available in Java 1.4 or later. -->
+            <tag name="todo" description="To do:"/>
+        </javadoc>
+    </target>
+
+    <target name="check-javadoc" description="Checks whether the ./dist/javadoc dir exists">
+        <available file="${javadoc.dir}" type="dir" property="javadoc.exists"/>
+    </target>
+
+
+
+    <target name="clean"
+            description="Removes all class files and ./dist">
+        <delete dir="${compile.dir}" failonerror="false"/>
+        <delete dir="${dist.dir}" failonerror="false"/>
+        <delete dir="${tmp.dir}" failonerror="false"/>
+        <delete file="${conf.dir}/MANIFEST.MF" failonerror="false"/>
+        <delete>
+            <fileset dir="${root.dir}" defaultexcludes="no">
+                <include name="**/*~"/>
+            </fileset>
+        </delete>
+    </target>
+
+    <target name="clean-all" depends="clean" description="Also removes lib">
+        <delete dir="${lib.dir}" failonerror="false"/>
+    </target>
+
+</project>
