@@ -33,6 +33,7 @@ Design issues
 * Separate protocols for
 ** Leader election
 *** Could be omitted as JGroups already has a leader
+**** No, we cannot use this (see below under Issues) !
 *** Majority partition makes progress
 ** Log replication
 ** Log safety
@@ -51,6 +52,29 @@ Misc
 * Mailing list on google
 ** Potential contributors from Lyon and Newcastle uni (MarkL)
 *** Julien Ponge: julien.ponge@insa-lyon.fr
+
+
+Issues
+------
+* What happens with client requests when no leader is elected ?
+** Are they queued ?
+
+* Do clients block until consensus has been reached, before they get the result ?
+** For a get() this makes sense, but for a write ?
+
+* Log replication message: sent to all, or only to those which have missing log entries ?
+** Probably to all, as this also serves as heartbeat
+*** Not very efficient to send *all* missing log entries to *all* members !
+
+* We cannot use JGroups leader election (coordinators) because *a new leader may not contain
+  all of the committed log entries !*
+  ** In RAFT's leader election algorithm, only candidates will all (or the most) committed entries can become leaders
+
+
+
+
+
+
 
 
 

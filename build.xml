@@ -64,7 +64,7 @@
 
     <target name="retrieve" depends="check-jars-exist,get-ivy,define-ivy-task" unless="jars.exist"
             description="Retrieves all dependent libs defined in ivy.xml unless already present">
-        <ivy:retrieve type="jar,bundle" transitive="false"/>
+        <ivy:retrieve type="jar,bundle,source" transitive="false"/>
     </target>
 
     <target name="define-ivy-task">
