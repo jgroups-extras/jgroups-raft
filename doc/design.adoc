@@ -1,11 +1,9 @@
 
-Design
-======
+= Design
 Author: Bela Ban
 
 
-Architecture
-------------
+== Architecture
 * There are 3 protocols:
 
 ----
@@ -31,22 +29,60 @@ Architecture
 ** By default, all prepares and commits are written to stable storage, but this protocol could be replaced by a
    pure in-memory implementation
 
-CLIENT
-------
-* TBD
+== CLIENT
+* Handles commands such as `set()`, `get()` and `remove()` sent from above
+* Handles redirection to leader (?)
+** Buffers commands if no leader is present ?
 
 
-RAFT
-----
+== RAFT
 * This protocol handles leader election, heartbeating, election timeouts and log replication and safety
 ** The log reads and writes themselves are handled by `LOG`
-* The state pattern is used. We have 3 classes
+* The role pattern is used. We have 3 classes
 Follower:: Initial state. When run into the election timeout, becomes Candidate and starts an election
 Candidate:: Waits for election responses. Becomes Leader if it wins the election, or goes back to Follower if it loses
             the election
 Leader:: Starts the heartbeat. Goes back to Follower is it sees a message with a higher term. Handles all client requests
          by sending them to the followers and committing them in case of a majority response.
 
+There's a common superclass `RaftImpl` which handles all of the common state and other ancilary functions (e.g. timers).
 
-LOG
----
+=== Fields
+view:: The current view
+
+leader:: The current leader (null if none has been elected yet)
+
+majority:: The majority needed to win an election or commit a log entry. Will be set dynamically when view
+           changes are implemented (current set as a property)
+
+current_term:: The current term
+
+voted_for:: The address of the candidate this node voted for in the current term
+
+heartbeat_task:: Task which sends a heartbeat periodically. Only run in the leader.
+
+election_task:: Task which runs periodically to see if an election is needed
+
+role:: An instance of `RaftImpl`; `Follower`, `Candidate` or `Leader`
+
+
+=== RaftImpl
+==== Fields
+prot:: A reference to the RAFT protocol in which the instance is created. This way, fields of RAFT can be accessed
+
+==== Behavior
+* Runs the election task
+* Doesn't run the heartbeat task
+** Done by follower and candidate
+
+=== Follower
+
+=== Candidate
+
+
+=== Leader
+* Runs the heartbeat task
+* Doesn't run the election task
+
+
+== LOG
