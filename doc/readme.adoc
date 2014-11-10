@@ -8,6 +8,7 @@ Goals
 . Provide an API to RAFT
 . Implement etcd (?) [API and REST interface]
 . ZooKeeper impl using etcd impl (?)
+. View installation via consensus ?
 
 
 Advantages of using JGroups as basis for a RAFT impl
@@ -34,6 +35,7 @@ Design issues
 ** Leader election
 *** Could be omitted as JGroups already has a leader
 **** No, we cannot use this (see below under Issues) !
+**** But we may be able to reuse the JGroups failure detection protocols for the heartbeat
 *** Majority partition makes progress
 ** Log replication
 ** Log safety

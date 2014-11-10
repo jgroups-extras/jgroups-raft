@@ -1,3 +1,52 @@
 
 Design
 ======
+Author: Bela Ban
+
+
+Architecture
+------------
+* There are 3 protocols:
+
+----
+    ----------
+    | CLIENT |
+    ----------
+         |
+    -----------
+    |  RAFT   |
+    -----------
+         |
+    -----------
+    |   LOG    |
+    ------------
+----
+
+* `CLIENT` handles the set(), get() and remove() events from above (e.g. a building block) and passes them down to the
+  `RAFT` protocol
+* RAFT has 3 states: `follower`, `candidate` and `leader` (3 different classes, using the role pattern); commands
+  are passed to the currently active instance
+** E.g. a follower or candidate sends a redirect to a client if an operation is invoked
+* `LOG` handles the prepare and commit log
+** By default, all prepares and commits are written to stable storage, but this protocol could be replaced by a
+   pure in-memory implementation
+
+CLIENT
+------
+* TBD
+
+
+RAFT
+----
+* This protocol handles leader election, heartbeating, election timeouts and log replication and safety
+** The log reads and writes themselves are handled by `LOG`
+* The state pattern is used. We have 3 classes
+Follower:: Initial state. When run into the election timeout, becomes Candidate and starts an election
+Candidate:: Waits for election responses. Becomes Leader if it wins the election, or goes back to Follower if it loses
+            the election
+Leader:: Starts the heartbeat. Goes back to Follower is it sees a message with a higher term. Handles all client requests
+         by sending them to the followers and committing them in case of a majority response.
+
+
+LOG
+---
