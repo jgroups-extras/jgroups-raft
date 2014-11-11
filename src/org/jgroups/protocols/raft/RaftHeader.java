@@ -30,4 +30,6 @@ public abstract class RaftHeader extends Header {
     public void readFrom(DataInput in) throws Exception {
         term=Bits.readInt(in);
     }
+
+    public String toString() {return "term=" + term;}
 }
