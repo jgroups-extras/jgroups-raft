@@ -13,6 +13,7 @@ import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.TimeScheduler;
 
+import java.util.concurrent.Callable;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -75,18 +76,41 @@ public class RAFT extends Protocol {
     protected volatile Address  leader;
 
     /** The current term. Incremented when this node becomes a candidate, or set when a higher term is seen */
-    protected volatile int      current_term;
+    @ManagedAttribute(description="The current term")
+    protected int               current_term;
+
+    /** Whether a heartbeat has been received before this election timeout kicked in. If false, the follower becomes
+     * candidate and starts a new election */
+    protected volatile boolean  heartbeat_received=true;
+
+    /** Used to make state changes, e.g. set the current term if a higher term is encountered */
+    protected final Lock        lock=new ReentrantLock();
+
+
+    public Address leader()                   {return leader;}
+    public RAFT    leader(Address new_leader) {this.leader=new_leader; return this;}
+    public int     currentTerm()              {return current_term;}
+
+    /** Sets the current term if the new term is greater */
+    public RAFT    currentTerm(final int new_term)  {
+        // return withLockDo(lock, () -> {current_term=new_term; return this;}); // JDK 8
+        return withLockDo(lock,new Callable<RAFT>() {
+            public RAFT call() throws Exception {
+                if(new_term > current_term) current_term=new_term;
+                return null;}
+        });
+    }
+
+    public RAFT incrementCurrentTerm() {
+        return withLockDo(lock, new Callable<RAFT>() {
+            public RAFT call() throws Exception {current_term++; return RAFT.this;}});
+    }
 
 
     @ManagedAttribute(description="The current role")
     public String role() {
-        impl_lock.lock();
-        try {
-            return impl.getClass().toString();
-        }
-        finally {
-            impl_lock.unlock();
-        }
+        return withLockDo(impl_lock, new Callable<String>() {
+            public String call() throws Exception {return impl.getClass().toString();}});
     }
 
 
@@ -218,6 +242,39 @@ public class RAFT extends Protocol {
     protected static long computeElectionTimeout(long min,long max) {
         long diff=max - min;
         return (int)((Math.random() * 100000) % diff) + min;
+    }
+
+    /** Helper method to get rid of all the boilerplate code of lock handling.
+     * Will be replaced with lambdas when moving to JDK 8 */
+    protected static <T> T withLockDo(Lock lock, Callable<T> action) {
+        lock.lock();
+        try {
+            try {
+                return action.call();
+            }
+            catch(Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        finally {
+            lock.unlock();
+        }
+    }
+
+
+
+    protected class ElectionTask implements TimeScheduler.Task {
+
+        public long nextInterval() {
+            return computeElectionTimeout(election_min_interval, election_max_interval);
+        }
+
+        public void run() {
+            if(!heartbeat_received)
+                changeRole(Role.Candidate);
+            else
+                heartbeat_received=false;
+        }
     }
 
 

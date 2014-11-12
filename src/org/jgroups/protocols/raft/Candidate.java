@@ -11,4 +11,11 @@ public class Candidate extends RaftImpl {
     public Candidate(RAFT raft) {
         super(raft);
     }
+
+
+    public void init() {
+        super.init();
+        // raft.incrementCurrentTerm();
+        // startElection();
+    }
 }
