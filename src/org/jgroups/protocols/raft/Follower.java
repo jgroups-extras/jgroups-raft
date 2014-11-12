@@ -9,4 +9,9 @@ public class Follower extends RaftImpl {
 
     public Follower() {}
     public Follower(RAFT raft) {super(raft);}
+
+    protected void electionTimeout() {
+        super.electionTimeout();
+        raft.changeRole(RAFT.Role.Candidate);
+    }
 }

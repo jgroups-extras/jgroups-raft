@@ -17,11 +17,17 @@ public abstract class RaftImpl {
     public RaftImpl raft(RAFT r) {this.raft=r; return this;}
 
     /** Called right after instantiation */
-    public void init() {}
+    public void init() {
+        raft.startElectionTimer(); // for follower and candidate
+    }
 
     /** Called before getting destroyed (on a role change) */
     public void destroy() {}
 
+    /** Called when the election timeout elapsed */
+    protected void electionTimeout() {
+        raft.log().trace("%s: election timed out", raft.local_addr);
+    }
 
     protected void handleAppendEntriesRequest(Address sender, int term) {
 
@@ -45,5 +51,10 @@ public abstract class RaftImpl {
 
     protected void handleInstallSnapshotResponse(Address src, int term) {
 
+    }
+
+
+    protected void runElection() {
+        raft.createNewTerm();
     }
 }

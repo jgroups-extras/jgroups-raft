@@ -9,11 +9,13 @@ import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.logging.Log;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.TimeScheduler;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -71,6 +73,7 @@ public class RAFT extends Protocol {
     protected volatile View     view;
     protected Address           local_addr;
     protected TimeScheduler     timer;
+    protected Future<?>         election_task;
 
     /** The current leader (can be null) */
     protected volatile Address  leader;
@@ -78,6 +81,9 @@ public class RAFT extends Protocol {
     /** The current term. Incremented when this node becomes a candidate, or set when a higher term is seen */
     @ManagedAttribute(description="The current term")
     protected int               current_term;
+
+    /** The address of the candidate this node voted for in the current term */
+    protected Address           voted_for;
 
     /** Whether a heartbeat has been received before this election timeout kicked in. If false, the follower becomes
      * candidate and starts a new election */
@@ -101,16 +107,21 @@ public class RAFT extends Protocol {
         });
     }
 
-    public RAFT incrementCurrentTerm() {
+    public RAFT createNewTerm() {
         return withLockDo(lock, new Callable<RAFT>() {
-            public RAFT call() throws Exception {current_term++; return RAFT.this;}});
+            public RAFT call() throws Exception {
+                current_term++;
+                voted_for=null;
+                return RAFT.this;
+            }});
     }
 
+    public Log log() {return log;}
 
     @ManagedAttribute(description="The current role")
     public String role() {
-        return withLockDo(impl_lock, new Callable<String>() {
-            public String call() throws Exception {return impl.getClass().toString();}});
+        RaftImpl tmp=impl;
+        return tmp.getClass().getSimpleName();
     }
 
 
@@ -178,6 +189,25 @@ public class RAFT extends Protocol {
             up_prot.up(batch);
     }
 
+    protected void startElectionTimer() {
+        withLockDo(lock, new Callable<Void>() {
+            public Void call() throws Exception {
+                if(election_task == null || election_task.isDone())
+                    election_task=timer.scheduleWithDynamicInterval(new ElectionTask());
+                return null;
+            }
+        });
+    }
+
+    protected void stopElectionTimer() {
+        withLockDo(lock, new Callable<Void>() {
+            public Void call() throws Exception {
+                if(election_task != null) election_task.cancel(true);
+                return null;
+            }
+        });
+    }
+
     protected void handleEvent(Message msg, RaftHeader hdr) {
         impl_lock.lock();
         try {
@@ -214,29 +244,17 @@ public class RAFT extends Protocol {
     }
 
     protected void changeRole(Role new_role) {
-        RaftImpl new_impl=null;
-        switch(new_role) {
-            case Follower:
-                new_impl=new Follower(this);
-                break;
-            case Candidate:
-                new_impl=new Follower(this);
-                break;
-            case Leader:
-                new_impl=new Leader(this);
-                break;
-        }
-        impl_lock.lock();
-        try {
-            if(!impl.getClass().equals(new_impl.getClass())) {
-                impl.destroy();
-                new_impl.init();
-                impl=new_impl;
+        final RaftImpl new_impl=new_role == Role.Follower? new Follower(this) : new_role == Role.Candidate? new Candidate(this) : new Leader(this);
+        withLockDo(impl_lock, new Callable<Void>() {
+            public Void call() throws Exception {
+                if(!impl.getClass().equals(new_impl.getClass())) {
+                    impl.destroy();
+                    new_impl.init();
+                    impl=new_impl;
+                }
+                return null;
             }
-        }
-        finally {
-            impl_lock.unlock();
-        }
+        });
     }
 
     protected static long computeElectionTimeout(long min,long max) {
@@ -270,10 +288,12 @@ public class RAFT extends Protocol {
         }
 
         public void run() {
-            if(!heartbeat_received)
-                changeRole(Role.Candidate);
-            else
-                heartbeat_received=false;
+            withLockDo(impl_lock, new Callable<Void>() {
+                public Void call() throws Exception {
+                    impl.electionTimeout();
+                    return null;
+                }
+            });
         }
     }
 

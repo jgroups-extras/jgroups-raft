@@ -15,7 +15,6 @@ public class Candidate extends RaftImpl {
 
     public void init() {
         super.init();
-        // raft.incrementCurrentTerm();
-        // startElection();
+        runElection();
     }
 }
