@@ -6,8 +6,6 @@ package org.jgroups.protocols.raft;
  * @since  3.6
  */
 public class Follower extends RaftImpl {
-
-    public Follower() {}
     public Follower(RAFT raft) {super(raft);}
 
     protected void electionTimeout() {

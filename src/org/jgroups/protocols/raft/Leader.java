@@ -6,7 +6,6 @@ package org.jgroups.protocols.raft;
  * @since  3.6
  */
 public class Leader extends RaftImpl {
-    public Leader() {}
     public Leader(RAFT raft) {
         super(raft);
     }

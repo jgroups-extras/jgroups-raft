@@ -10,7 +10,6 @@ import org.jgroups.Address;
 public abstract class RaftImpl {
     protected RAFT raft; // a ref to the enclosing RAFT protocol
 
-    public RaftImpl() {}
     public RaftImpl(RAFT raft) {this.raft=raft;}
 
     public RAFT     raft()       {return raft;}

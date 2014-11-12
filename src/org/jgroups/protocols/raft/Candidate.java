@@ -6,8 +6,6 @@ package org.jgroups.protocols.raft;
  * @since  3.6
  */
 public class Candidate extends RaftImpl {
-
-    public Candidate() {}
     public Candidate(RAFT raft) {
         super(raft);
     }
