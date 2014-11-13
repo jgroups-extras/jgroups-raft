@@ -31,7 +31,8 @@ public abstract class RaftImpl {
     }
 
     protected void handleAppendEntriesRequest(Address sender, int term) {
-
+        raft.heartbeatReceived(true);
+        raft.currentTerm(term);
     }
 
     protected void handleAppendEntriesResponse(Address src, int term) {
@@ -47,8 +48,10 @@ public abstract class RaftImpl {
 
     protected void handleVoteResponse(Address src, int term) {
         if(term == raft.current_term) {
-            if(raft.incrVotes()) {
+            int num_votes;
+            if((num_votes=raft.incrVotes()) >= raft.majority) {
                 // we've got the majority: become leader
+                raft.log().trace("%s: received majority (%d) or votes -> becoming leader", raft.local_addr, num_votes);
                 raft.changeRole(RAFT.Role.Leader);
             }
         }

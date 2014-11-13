@@ -16,6 +16,7 @@ import org.jgroups.util.TimeScheduler;
 
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -50,8 +51,9 @@ public class RAFT extends Protocol {
         ClassConfigurator.add(INSTALL_SNAPSHOT_RSP, InstallSnapshotResponse.class);
     }
 
-    @Property(description="Static majority needed to achieve consensus. This means we have to start 5 servers. " +
-      "This property will be removed when dynamic cluster membership has been implemented (section 6 of the RAFT paper)", writable=false)
+    @Property(description="Static majority needed to achieve consensus. This means we have to start " +
+      "majority*2-1 servers. This property will be removed when dynamic cluster membership has been " +
+      "implemented (section 6 of the RAFT paper)", writable=false)
     protected int majority=2;
 
     @Property(description="Interval (in ms) at which a leader sends out heartbeats")
@@ -74,6 +76,7 @@ public class RAFT extends Protocol {
     protected Address           local_addr;
     protected TimeScheduler     timer;
     protected Future<?>         election_task;
+    protected Future<?>         heartbeat_task;
 
     /** The current leader (can be null) */
     protected volatile Address  leader;
@@ -145,9 +148,19 @@ public class RAFT extends Protocol {
         });
     }
 
-    public boolean incrVotes() {
+    public int incrVotes() {
+        return withLockDo(lock,new Callable<Integer>() {
+            public Integer call() throws Exception {return ++current_votes;}
+        });
+    }
+
+    public boolean heartbeatReceived(final boolean flag) {
         return withLockDo(lock,new Callable<Boolean>() {
-            public Boolean call() throws Exception {return ++current_votes >= majority;}
+            public Boolean call() throws Exception {
+                boolean retval=heartbeat_received;
+                heartbeat_received=flag;
+                return retval;
+            }
         });
     }
 
@@ -250,8 +263,28 @@ public class RAFT extends Protocol {
         });
     }
 
+    protected void startHeartbeatTimer() {
+        withLockDo(lock,new Callable<Void>() {
+            public Void call() throws Exception {
+                if(heartbeat_task == null || heartbeat_task.isDone())
+                    heartbeat_task=timer.scheduleAtFixedRate(new HeartbeatTask(), heartbeat_interval, heartbeat_interval,TimeUnit.MILLISECONDS);
+                return null;
+            }
+        });
+    }
+
+    protected void stopHeartbeatTimer() {
+        withLockDo(lock,new Callable<Void>() {
+            public Void call() throws Exception {
+                if(heartbeat_task != null)
+                    heartbeat_task.cancel(true);
+                return null;
+            }
+        });
+    }
+
     protected void handleEvent(Message msg, RaftHeader hdr) {
-        log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
+        // log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
         impl_lock.lock();
         try {
             if(hdr instanceof AppendEntriesRequest) {
@@ -327,10 +360,13 @@ public class RAFT extends Protocol {
         }
     }
 
+    protected void sendAppendEntriesReq() {
+        Message req=new Message(null).putHeader(id, new AppendEntriesRequest(currentTerm()));
+        down_prot.down(new Event(Event.MSG, req));
+    }
 
 
     protected class ElectionTask implements TimeScheduler.Task {
-
         public long nextInterval() {
             return computeElectionTimeout(election_min_interval, election_max_interval);
         }
@@ -338,10 +374,18 @@ public class RAFT extends Protocol {
         public void run() {
             withLockDo(impl_lock, new Callable<Void>() {
                 public Void call() throws Exception {
-                    impl.electionTimeout();
+                    if(!heartbeatReceived(false))
+                        impl.electionTimeout();
                     return null;
                 }
             });
+        }
+    }
+
+    protected class HeartbeatTask implements Runnable {
+
+        public void run() {
+            sendAppendEntriesReq();
         }
     }
 

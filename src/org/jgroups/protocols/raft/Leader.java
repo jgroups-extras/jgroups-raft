@@ -9,4 +9,15 @@ public class Leader extends RaftImpl {
     public Leader(RAFT raft) {
         super(raft);
     }
+
+
+    public void init() {
+        raft.stopElectionTimer();
+        raft.startHeartbeatTimer();
+    }
+
+    public void destroy() {
+        super.destroy();
+        raft.stopHeartbeatTimer();
+    }
 }
