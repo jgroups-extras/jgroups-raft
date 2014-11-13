@@ -33,26 +33,26 @@ public class RAFT extends Protocol {
     // todo: when moving to JGroups -> add to jg-magic-map.xml
     protected static final short APPEND_ENTRIES_REQ   = 2000;
     protected static final short APPEND_ENTRIES_RSP   = 2001;
-    protected static final short REQUEST_VOTE_REQ     = 2002;
-    protected static final short REQUEST_VOTE_RSP     = 2003;
+    protected static final short VOTE_REQ             = 2002;
+    protected static final short VOTE_RSP             = 2003;
     protected static final short INSTALL_SNAPSHOT_REQ = 2004;
     protected static final short INSTALL_SNAPSHOT_RSP = 2005;
 
     protected static enum Role {Follower, Candidate, Leader}
 
     static {
-        ClassConfigurator.addProtocol(RAFT_ID, RAFT.class);
+        ClassConfigurator.addProtocol(RAFT_ID,      RAFT.class);
         ClassConfigurator.add(APPEND_ENTRIES_REQ,   AppendEntriesRequest.class);
         ClassConfigurator.add(APPEND_ENTRIES_RSP,   AppendEntriesResponse.class);
-        ClassConfigurator.add(REQUEST_VOTE_REQ,     RequestVoteRequest.class);
-        ClassConfigurator.add(REQUEST_VOTE_RSP,     RequestVoteResponse.class);
+        ClassConfigurator.add(VOTE_REQ,             VoteRequest.class);
+        ClassConfigurator.add(VOTE_RSP,             VoteResponse.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_RSP, InstallSnapshotResponse.class);
     }
 
     @Property(description="Static majority needed to achieve consensus. This means we have to start 5 servers. " +
       "This property will be removed when dynamic cluster membership has been implemented (section 6 of the RAFT paper)", writable=false)
-    protected int majority=3;
+    protected int majority=2;
 
     @Property(description="Interval (in ms) at which a leader sends out heartbeats")
     protected long heartbeat_interval=30;
@@ -85,6 +85,9 @@ public class RAFT extends Protocol {
     /** The address of the candidate this node voted for in the current term */
     protected Address           voted_for;
 
+    /** Votes collected for me in the current term (if candidate) */
+    protected int               current_votes;
+
     /** Whether a heartbeat has been received before this election timeout kicked in. If false, the follower becomes
      * candidate and starts a new election */
     protected volatile boolean  heartbeat_received=true;
@@ -93,6 +96,8 @@ public class RAFT extends Protocol {
     protected final Lock        lock=new ReentrantLock();
 
 
+
+    public Log     log()                      {return log;}
     public Address leader()                   {return leader;}
     public RAFT    leader(Address new_leader) {this.leader=new_leader; return this;}
     public int     currentTerm()              {return current_term;}
@@ -107,16 +112,45 @@ public class RAFT extends Protocol {
         });
     }
 
-    public RAFT createNewTerm() {
-        return withLockDo(lock, new Callable<RAFT>() {
-            public RAFT call() throws Exception {
-                current_term++;
+    public int createNewTerm() {
+        return withLockDo(lock, new Callable<Integer>() {
+            public Integer call() throws Exception {
                 voted_for=null;
-                return RAFT.this;
+                return ++current_term;
             }});
     }
 
-    public Log log() {return log;}
+    public boolean votedFor(final Address addr) {
+        return withLockDo(lock,new Callable<Boolean>() {
+            public Boolean call() throws Exception {
+                if(addr == null) {
+                    voted_for=null;
+                    return true;
+                }
+                if(voted_for == null) {
+                    voted_for=addr;
+                    return true;
+                }
+                return voted_for.equals(addr); // a vote for the same candidate is ok
+            }
+        });
+    }
+
+    public void resetVotes() {
+        withLockDo(lock,new Callable<Void>() {
+            public Void call() throws Exception {
+                current_votes=0;
+                return null;
+            }
+        });
+    }
+
+    public boolean incrVotes() {
+        return withLockDo(lock,new Callable<Boolean>() {
+            public Boolean call() throws Exception {return ++current_votes >= majority;}
+        });
+    }
+
 
     @ManagedAttribute(description="The current role")
     public String role() {
@@ -131,7 +165,6 @@ public class RAFT extends Protocol {
             throw new Exception("election_min_interval (" + election_min_interval + ") needs to be smaller than " +
                                   "election_max_interval (" + election_max_interval + ")");
         timer=getTransport().getTimer();
-        impl.init();
     }
 
     public void destroy() {
@@ -144,6 +177,7 @@ public class RAFT extends Protocol {
 
     public void stop() {
         super.stop();
+        impl.destroy();
     }
 
 
@@ -155,6 +189,14 @@ public class RAFT extends Protocol {
             case Event.VIEW_CHANGE:
                 view=(View)evt.getArg();
                 break;
+            case Event.CONNECT:
+            case Event.CONNECT_USE_FLUSH:
+            case Event.CONNECT_WITH_STATE_TRANSFER:
+            case Event.CONNECT_WITH_STATE_TRANSFER_USE_FLUSH:
+                Object retval=down_prot.down(evt); // connect first
+                impl.init();
+                return retval;
+
         }
         return down_prot.down(evt);
     }
@@ -209,6 +251,7 @@ public class RAFT extends Protocol {
     }
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
+        log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
         impl_lock.lock();
         try {
             if(hdr instanceof AppendEntriesRequest) {
@@ -219,13 +262,13 @@ public class RAFT extends Protocol {
                 AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
                 impl.handleAppendEntriesResponse(msg.src(),rsp.term());
             }
-            else if(hdr instanceof RequestVoteRequest) {
-                RequestVoteRequest header=(RequestVoteRequest)hdr;
-                impl.handleRequestVoteRequest(msg.src(),header.term());
+            else if(hdr instanceof VoteRequest) {
+                VoteRequest header=(VoteRequest)hdr;
+                impl.handleVoteRequest(msg.src(),header.term());
             }
-            else if(hdr instanceof RequestVoteResponse) {
-                RequestVoteResponse rsp=(RequestVoteResponse)hdr;
-                impl.handleRequestVoteResponse(msg.src(),rsp.term());
+            else if(hdr instanceof VoteResponse) {
+                VoteResponse rsp=(VoteResponse)hdr;
+                impl.handleVoteResponse(msg.src(),rsp.term());
             }
             else if(hdr instanceof InstallSnapshotRequest) {
                 InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
@@ -247,10 +290,15 @@ public class RAFT extends Protocol {
         final RaftImpl new_impl=new_role == Role.Follower? new Follower(this) : new_role == Role.Candidate? new Candidate(this) : new Leader(this);
         withLockDo(impl_lock, new Callable<Void>() {
             public Void call() throws Exception {
-                if(!impl.getClass().equals(new_impl.getClass())) {
-                    impl.destroy();
+                RaftImpl old_impl=impl;
+                if(impl == null || !impl.getClass().equals(new_impl.getClass())) {
+                    if(impl != null)
+                        impl.destroy();
                     new_impl.init();
                     impl=new_impl;
+                    log.trace("%s: changed role from %s -> %s", local_addr,
+                              old_impl == null? "null" : old_impl.getClass().getSimpleName(),
+                              new_impl.getClass().getSimpleName());
                 }
                 return null;
             }

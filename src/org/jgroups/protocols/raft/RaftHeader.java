@@ -13,6 +13,7 @@ import java.io.DataOutput;
 public abstract class RaftHeader extends Header {
     protected int term;
 
+    public RaftHeader() {}
     public RaftHeader(int term) {this.term=term;}
 
     public int        term()      {return term;}
@@ -31,5 +32,5 @@ public abstract class RaftHeader extends Header {
         term=Bits.readInt(in);
     }
 
-    public String toString() {return "term=" + term;}
+    public String toString() {return getClass().getSimpleName() + ": term=" + term;}
 }

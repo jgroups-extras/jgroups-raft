@@ -1,6 +1,8 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.Event;
+import org.jgroups.Message;
 
 /**
  * Base class for the different roles a RAFT node can have (follower, candidate, leader)
@@ -36,12 +38,20 @@ public abstract class RaftImpl {
 
     }
 
-    protected void handleRequestVoteRequest(Address src, int term) {
-
+    protected void handleVoteRequest(Address src, int term) {
+        // todo: this needs to be done atomically (with lock)
+        if(term > raft.current_term && raft.votedFor(src)) {
+            sendVoteResponse(src, term); // raft.current_term);
+        }
     }
 
-    protected void handleRequestVoteResponse(Address src, int term) {
-
+    protected void handleVoteResponse(Address src, int term) {
+        if(term == raft.current_term) {
+            if(raft.incrVotes()) {
+                // we've got the majority: become leader
+                raft.changeRole(RAFT.Role.Leader);
+            }
+        }
     }
 
     protected void handleInstallSnapshotRequest(Address src, int term) {
@@ -54,6 +64,33 @@ public abstract class RaftImpl {
 
 
     protected void runElection() {
-        raft.createNewTerm();
+        int new_term=raft.createNewTerm();
+
+        raft.resetVotes();
+        raft.incrVotes(); // I received my own vote
+
+        // Vote for self - return if I already voted for someone else
+        if(!raft.votedFor(raft.local_addr))
+            return;
+
+        // Send VoteRequest message
+        sendVoteRequest(new_term);
+
+        // Responses are received asynchronously. If majority -> become leader
+    }
+
+
+    protected void sendVoteRequest(int term) {
+        VoteRequest req=new VoteRequest(term);
+        raft.log().trace("%s: sending %s", raft.local_addr, req);
+        Message vote_req=new Message(null).putHeader(raft.getId(), req);
+        raft.getDownProtocol().down(new Event(Event.MSG, vote_req));
+    }
+
+    protected void sendVoteResponse(Address dest, int term) {
+        VoteResponse rsp=new VoteResponse(term, true); // todo: send a negative response back, too
+        raft.log().trace("%s: sending %s", raft.local_addr, rsp);
+        Message vote_rsp=new Message(dest).putHeader(raft.getId(), rsp);
+        raft.getDownProtocol().down(new Event(Event.MSG, vote_rsp));
     }
 }

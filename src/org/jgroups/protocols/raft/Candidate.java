@@ -15,4 +15,9 @@ public class Candidate extends RaftImpl {
         super.init();
         runElection();
     }
+
+    protected void electionTimeout() {
+        super.electionTimeout();
+        runElection();
+    }
 }

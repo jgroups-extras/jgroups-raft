@@ -5,5 +5,6 @@ package org.jgroups.protocols.raft;
  * @since  3.6
  */
 public class InstallSnapshotRequest extends RaftHeader {
+    public InstallSnapshotRequest() {}
     public InstallSnapshotRequest(int term) {super(term);}
 }

@@ -5,6 +5,6 @@ package org.jgroups.protocols.raft;
  * @since  3.6
  */
 public class AppendEntriesRequest extends RaftHeader {
-
+    public AppendEntriesRequest() {}
     public AppendEntriesRequest(int term) {super(term);}
 }
