@@ -51,7 +51,7 @@ public abstract class RaftImpl {
             int num_votes;
             if((num_votes=raft.incrVotes()) >= raft.majority) {
                 // we've got the majority: become leader
-                raft.log().trace("%s: received majority (%d) or votes -> becoming leader", raft.local_addr, num_votes);
+                raft.log().trace("%s: received majority (%d) of votes -> becoming leader", raft.local_addr, num_votes);
                 raft.changeRole(RAFT.Role.Leader);
             }
         }

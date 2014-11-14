@@ -74,5 +74,5 @@
     <FRAG2 frag_size="60K"  />
     <RSVP resend_interval="2000" timeout="10000"/>
     <pbcast.STATE_TRANSFER />
-    <raft.RAFT/>
+    <raft.RAFT election_min_interval="1000" election_max_interval="2500" />
 </config>
