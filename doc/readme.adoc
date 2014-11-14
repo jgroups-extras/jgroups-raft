@@ -43,6 +43,12 @@ Design issues
 * These protocols would communicate via events
 * Heartbeat is not needed for failure detection, but only for log replication
   and log safety
+* Send heartbeat messages as NO_RELIABILITY ? -> Do we care about JGroups failure detection and view management ?
+** Or could we use JGroups' failure detection ?
+*** Don't use RAFT's heartbeat mechanism
+*** Start an election when there's a view change which doesn't contain the current leader
+*** JGroups coordinator != RAFT leader
+
 
 
 Misc
