@@ -4,6 +4,8 @@ import org.jgroups.Address;
 import org.jgroups.Event;
 import org.jgroups.Message;
 
+import java.util.concurrent.Callable;
+
 /**
  * Base class for the different roles a RAFT node can have (follower, candidate, leader)
  * @author Bela Ban
@@ -39,11 +41,16 @@ public abstract class RaftImpl {
 
     }
 
-    protected void handleVoteRequest(Address src, int term) {
-        // todo: this needs to be done atomically (with lock)
-        if(term > raft.current_term && raft.votedFor(src)) {
-            sendVoteResponse(src, term); // raft.current_term);
-        }
+    protected void handleVoteRequest(final Address src, final int term) {
+        RAFT.withLockDo(raft.lock,new Callable<Void>() {
+            public Void call() throws Exception {
+                if(term > raft.current_term && raft.votedFor(src)) {
+                    raft.current_term=term; // ??
+                    sendVoteResponse(src, term); // raft.current_term);
+                }
+                return null;
+            }
+        });
     }
 
     protected void handleVoteResponse(Address src, int term) {

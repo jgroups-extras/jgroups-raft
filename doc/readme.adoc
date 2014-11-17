@@ -53,7 +53,7 @@ Design issues
 Replace RAFT's heartbeat mechanism
 ----------------------------------
 * The problem is that the AppendEntries RPC is used for log shipping *and* heartbeating
-* The heartbeating part is done (ca. every 20=30 ms) even when no logs have to be shipped
+* The heartbeating part is done (ca. every 20-30 ms) even when no logs have to be shipped
 ** This is annoying as
 *** This causes unneeded traffic to all cluster nodes
 *** JGroups already does this (duplication of functionality)
@@ -63,16 +63,18 @@ Replace RAFT's heartbeat mechanism
 . Send the current term to the followers
 . Send the identity of the leader to the followers
 * This could be replaced with the following:
-. JGroups failure detection. an election is only started when the current leader is removed from the view. Note that
+. JGroups failure detection. An election is only started when the current leader is removed from the view. Note that
   JGroups coordinator != RAFT leader
 . Current term: this can be done with a multicast to all followers, or by state transfer when a new follower starts. This state transfer
   is done anyway for new followers (InstallSnapshot)
 . Identity of the leader: same as above (multicast and/or sent as part of the state to a new follower)
 
-* The advantage of this would be that we (1) separate heartbeating from log replication (RAFT does both with the
-  `AppendEntries` RPC), (2) eliminate constant traffic caused by heartbeating and (3) remove redundant functionality of
-  RAFT that's already part of JGroups. In addition, JGroups provides a number of (customizable) failure detection
-  protocols.
+* The advantage of this would be that we
+** Separate heartbeating from log replication (RAFT does both with the `AppendEntries` RPC)
+** Eliminate constant traffic caused by heartbeating and
+** Remove redundant functionality of RAFT that's already part of JGroups. In addition, JGroups provides a number of
+   (customizable) failure detection protocols.
+* Issues: look at whether merging can be done with this mechanism, too
 
 
 Misc

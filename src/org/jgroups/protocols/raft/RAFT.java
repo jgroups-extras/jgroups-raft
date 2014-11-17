@@ -70,7 +70,7 @@ public class RAFT extends Protocol {
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     @GuardedBy("impl_lock")
-    protected RaftImpl          impl=new Follower(this);
+    protected volatile RaftImpl impl=new Follower(this);
     protected final Lock        impl_lock=new ReentrantLock();
     protected volatile View     view;
     protected Address           local_addr;
