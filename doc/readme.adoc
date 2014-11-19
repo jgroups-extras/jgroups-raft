@@ -86,6 +86,7 @@ Misc
 * Mailing list on google
 ** Potential contributors from Lyon and Newcastle uni (MarkL)
 *** Julien Ponge: julien.ponge@insa-lyon.fr
+* Use of LevelDB / JDBM2 for persistence ?
 
 
 Issues
