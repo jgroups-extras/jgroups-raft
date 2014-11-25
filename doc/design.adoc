@@ -20,20 +20,16 @@ Author: Bela Ban
     -----------
     | ELECTION |
     ------------
-         |
-   -------------
-   | HEARTBEAT  |
-   -------------
 ----
 
-* Protocols are `CLIENT`, `RAFT`, `ELECTION` and `HEARTBEAT`
+* Protocols are `CLIENT`, `RAFT` and `ELECTION`
 . `CLIENT` handles the set(), get() and remove() events from above (e.g. a building block) and passes them down to the
   `RAFT` protocol. This protocol could also provide a REST interface, e.g. to handle requests from etcd
 . RAFT handles requests according to its role (follower, candidate, leader) and talks to Log and StateMachine
 ** It has references to a `Log` and a `StateMachine`
 ** E.g. a follower or candidate sends a redirect to a client if an operation is invoked
-. `ELECTION` performs leader election and passes up BECOME_<ROLE> (e.g. BECOME_LEADER) events to RAFT
-. `HEARTBEAT` does the heartbeating (only a leader does this) to keep followers from becoming candidates
+. `ELECTION` performs leader election and passes up BECOME_<ROLE> (e.g. BECOME_LEADER) events to RAFT. It also performs
+   heartbeating (only a leader does this) to keep followers from becoming candidates
 * `Log` handles the persistent log
 ** By default, all prepares and commits are written to stable storage, but this protocol could be replaced by a
    pure in-memory implementation

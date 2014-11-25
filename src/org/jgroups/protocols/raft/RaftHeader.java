@@ -8,7 +8,7 @@ import java.io.DataOutput;
 
 /**
  * @author Bela Ban
- * @since  3.6
+ * @since  0.1
  */
 public abstract class RaftHeader extends Header {
     protected int term;

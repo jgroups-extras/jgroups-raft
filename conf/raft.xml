@@ -9,6 +9,7 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="urn:org:jgroups http://www.jgroups.org/schema/jgroups.xsd">
     <UDP
+         mcast_addr="232.5.5.5"
          mcast_port="${jgroups.udp.mcast_port:45588}"
          ip_ttl="0"
          tos="8"
@@ -74,5 +75,6 @@
     <FRAG2 frag_size="60K"  />
     <RSVP resend_interval="2000" timeout="10000"/>
     <pbcast.STATE_TRANSFER />
-    <raft.RAFT election_min_interval="1000" election_max_interval="2500" />
+    <raft.ELECTION election_min_interval="1000" election_max_interval="2500"/>
+    <raft.RAFT majority="3" />
 </config>

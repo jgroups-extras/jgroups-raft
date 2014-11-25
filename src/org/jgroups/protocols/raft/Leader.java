@@ -3,7 +3,7 @@ package org.jgroups.protocols.raft;
 /**
  * Implements the behavior of a RAFT leader
  * @author Bela Ban
- * @since  3.6
+ * @since  0.1
  */
 public class Leader extends RaftImpl {
     public Leader(RAFT raft) {
@@ -12,12 +12,10 @@ public class Leader extends RaftImpl {
 
 
     public void init() {
-        raft.stopElectionTimer();
-        raft.startHeartbeatTimer();
+        super.init();
     }
 
     public void destroy() {
         super.destroy();
-        raft.stopHeartbeatTimer();
     }
 }

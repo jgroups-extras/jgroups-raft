@@ -3,7 +3,7 @@ package org.jgroups.protocols.raft;
 /**
  * Implements the behavior of a RAFT candidate
  * @author Bela Ban
- * @since  3.6
+ * @since  0.1
  */
 public class Candidate extends RaftImpl {
     public Candidate(RAFT raft) {
@@ -13,11 +13,6 @@ public class Candidate extends RaftImpl {
 
     public void init() {
         super.init();
-        runElection();
     }
 
-    protected void electionTimeout() {
-        super.electionTimeout();
-        runElection();
-    }
 }

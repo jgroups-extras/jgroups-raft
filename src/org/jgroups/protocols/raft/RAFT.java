@@ -9,14 +9,10 @@ import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.ClassConfigurator;
-import org.jgroups.logging.Log;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
-import org.jgroups.util.TimeScheduler;
 
 import java.util.concurrent.Callable;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -24,29 +20,24 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * Implementation of the RAFT consensus protocol in JGroups
  * @author Bela Ban
- * @since  3.6
+ * @since  0.1
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol {
-    // todo: when moving to JGroups -> add to jg-protocol-ids.xml
+    // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short RAFT_ID              = 1024;
 
-    // todo: when moving to JGroups -> add to jg-magic-map.xml
+    // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short APPEND_ENTRIES_REQ   = 2000;
     protected static final short APPEND_ENTRIES_RSP   = 2001;
-    protected static final short VOTE_REQ             = 2002;
-    protected static final short VOTE_RSP             = 2003;
-    protected static final short INSTALL_SNAPSHOT_REQ = 2004;
-    protected static final short INSTALL_SNAPSHOT_RSP = 2005;
+    protected static final short INSTALL_SNAPSHOT_REQ = 2002;
+    protected static final short INSTALL_SNAPSHOT_RSP = 2003;
 
-    protected static enum Role {Follower, Candidate, Leader}
 
     static {
         ClassConfigurator.addProtocol(RAFT_ID,      RAFT.class);
         ClassConfigurator.add(APPEND_ENTRIES_REQ,   AppendEntriesRequest.class);
         ClassConfigurator.add(APPEND_ENTRIES_RSP,   AppendEntriesResponse.class);
-        ClassConfigurator.add(VOTE_REQ,             VoteRequest.class);
-        ClassConfigurator.add(VOTE_RSP,             VoteResponse.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_RSP, InstallSnapshotResponse.class);
     }
@@ -56,16 +47,6 @@ public class RAFT extends Protocol {
       "implemented (section 6 of the RAFT paper)", writable=false)
     protected int majority=2;
 
-    @Property(description="Interval (in ms) at which a leader sends out heartbeats")
-    protected long heartbeat_interval=30;
-
-    @Property(description="Min election interval (ms)")
-    protected long election_min_interval=150;
-
-    @Property(description="Max election interval (ms). The actual election interval is computed as a random value in " +
-      "range [election_min_interval..election_max_interval]")
-    protected long election_max_interval=300;
-
 
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
@@ -74,9 +55,6 @@ public class RAFT extends Protocol {
     protected final Lock        impl_lock=new ReentrantLock();
     protected volatile View     view;
     protected Address           local_addr;
-    protected TimeScheduler     timer;
-    protected Future<?>         election_task;
-    protected Future<?>         heartbeat_task;
 
     /** The current leader (can be null) */
     protected volatile Address  leader;
@@ -85,22 +63,13 @@ public class RAFT extends Protocol {
     @ManagedAttribute(description="The current term")
     protected int               current_term;
 
-    /** The address of the candidate this node voted for in the current term */
-    protected Address           voted_for;
-
-    /** Votes collected for me in the current term (if candidate) */
-    protected int               current_votes;
-
-    /** Whether a heartbeat has been received before this election timeout kicked in. If false, the follower becomes
-     * candidate and starts a new election */
-    protected volatile boolean  heartbeat_received=true;
 
     /** Used to make state changes, e.g. set the current term if a higher term is encountered */
     protected final Lock        lock=new ReentrantLock();
 
+    @ManagedAttribute(description="Current leader")
+    public String getLeader() {return leader != null? leader.toString() : "none";}
 
-
-    public Log     log()                      {return log;}
     public Address leader()                   {return leader;}
     public RAFT    leader(Address new_leader) {this.leader=new_leader; return this;}
     public int     currentTerm()              {return current_term;}
@@ -115,78 +84,33 @@ public class RAFT extends Protocol {
         });
     }
 
-    public int createNewTerm() {
-        return withLockDo(lock, new Callable<Integer>() {
-            public Integer call() throws Exception {
-                voted_for=null;
-                return ++current_term;
-            }});
-    }
-
-    public boolean votedFor(final Address addr) {
-        return withLockDo(lock,new Callable<Boolean>() {
-            public Boolean call() throws Exception {
-                if(addr == null) {
-                    voted_for=null;
-                    return true;
-                }
-                if(voted_for == null) {
-                    voted_for=addr;
-                    return true;
-                }
-                return voted_for.equals(addr); // a vote for the same candidate is ok
-            }
-        });
-    }
-
-    public void resetVotes() {
-        withLockDo(lock,new Callable<Void>() {
-            public Void call() throws Exception {
-                current_votes=0;
-                return null;
-            }
-        });
-    }
-
-    public int incrVotes() {
-        return withLockDo(lock,new Callable<Integer>() {
-            public Integer call() throws Exception {return ++current_votes;}
-        });
-    }
-
-    public boolean heartbeatReceived(final boolean flag) {
-        return withLockDo(lock,new Callable<Boolean>() {
-            public Boolean call() throws Exception {
-                boolean retval=heartbeat_received;
-                heartbeat_received=flag;
-                return retval;
-            }
-        });
-    }
-
-
     @ManagedAttribute(description="The current role")
     public String role() {
         RaftImpl tmp=impl;
         return tmp.getClass().getSimpleName();
     }
 
-
-    public void init() throws Exception {
-        super.init();
-        if(election_min_interval >= election_max_interval)
-            throw new Exception("election_min_interval (" + election_min_interval + ") needs to be smaller than " +
-                                  "election_max_interval (" + election_max_interval + ")");
-        timer=getTransport().getTimer();
+    public int createNewTerm() {
+        return withLockDo(lock, new Callable<Integer>() {
+            public Integer call() throws Exception {
+                return ++current_term;
+            }});
     }
 
-    public void destroy() {
-        super.destroy();
+    public boolean updateTermAndLeader(final int term, final Address new_leader) {
+        return withLockDo(lock, new Callable<Boolean>() {
+            public Boolean call() throws Exception {
+                if(leader == null || (new_leader != null && !leader.equals(new_leader)))
+                    leader=new_leader;
+                if(term > current_term) {
+                    current_term=term;
+                    return true;
+                }
+                return false;
+            }
+        });
     }
 
-    public void start() throws Exception {
-        super.start();
-    }
 
     public void stop() {
         super.stop();
@@ -202,14 +126,6 @@ public class RAFT extends Protocol {
             case Event.VIEW_CHANGE:
                 view=(View)evt.getArg();
                 break;
-            case Event.CONNECT:
-            case Event.CONNECT_USE_FLUSH:
-            case Event.CONNECT_WITH_STATE_TRANSFER:
-            case Event.CONNECT_WITH_STATE_TRANSFER_USE_FLUSH:
-                Object retval=down_prot.down(evt); // connect first
-                impl.init();
-                return retval;
-
         }
         return down_prot.down(evt);
     }
@@ -244,44 +160,6 @@ public class RAFT extends Protocol {
             up_prot.up(batch);
     }
 
-    protected void startElectionTimer() {
-        withLockDo(lock, new Callable<Void>() {
-            public Void call() throws Exception {
-                if(election_task == null || election_task.isDone())
-                    election_task=timer.scheduleWithDynamicInterval(new ElectionTask());
-                return null;
-            }
-        });
-    }
-
-    protected void stopElectionTimer() {
-        withLockDo(lock, new Callable<Void>() {
-            public Void call() throws Exception {
-                if(election_task != null) election_task.cancel(true);
-                return null;
-            }
-        });
-    }
-
-    protected void startHeartbeatTimer() {
-        withLockDo(lock,new Callable<Void>() {
-            public Void call() throws Exception {
-                if(heartbeat_task == null || heartbeat_task.isDone())
-                    heartbeat_task=timer.scheduleAtFixedRate(new HeartbeatTask(), heartbeat_interval, heartbeat_interval,TimeUnit.MILLISECONDS);
-                return null;
-            }
-        });
-    }
-
-    protected void stopHeartbeatTimer() {
-        withLockDo(lock,new Callable<Void>() {
-            public Void call() throws Exception {
-                if(heartbeat_task != null)
-                    heartbeat_task.cancel(true);
-                return null;
-            }
-        });
-    }
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
         // log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
@@ -294,14 +172,6 @@ public class RAFT extends Protocol {
             else if(hdr instanceof AppendEntriesResponse) {
                 AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
                 impl.handleAppendEntriesResponse(msg.src(),rsp.term());
-            }
-            else if(hdr instanceof VoteRequest) {
-                VoteRequest header=(VoteRequest)hdr;
-                impl.handleVoteRequest(msg.src(),header.term());
-            }
-            else if(hdr instanceof VoteResponse) {
-                VoteResponse rsp=(VoteResponse)hdr;
-                impl.handleVoteResponse(msg.src(),rsp.term());
             }
             else if(hdr instanceof InstallSnapshotRequest) {
                 InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
@@ -338,10 +208,6 @@ public class RAFT extends Protocol {
         });
     }
 
-    protected static long computeElectionTimeout(long min,long max) {
-        long diff=max - min;
-        return (int)((Math.random() * 100000) % diff) + min;
-    }
 
     /** Helper method to get rid of all the boilerplate code of lock handling.
      * Will be replaced with lambdas when moving to JDK 8 */
@@ -357,35 +223,6 @@ public class RAFT extends Protocol {
         }
         finally {
             lock.unlock();
-        }
-    }
-
-    protected void sendAppendEntriesReq() {
-        Message req=new Message(null).putHeader(id, new AppendEntriesRequest(currentTerm()));
-        down_prot.down(new Event(Event.MSG, req));
-    }
-
-
-    protected class ElectionTask implements TimeScheduler.Task {
-        public long nextInterval() {
-            return computeElectionTimeout(election_min_interval, election_max_interval);
-        }
-
-        public void run() {
-            withLockDo(impl_lock, new Callable<Void>() {
-                public Void call() throws Exception {
-                    if(!heartbeatReceived(false))
-                        impl.electionTimeout();
-                    return null;
-                }
-            });
-        }
-    }
-
-    protected class HeartbeatTask implements Runnable {
-
-        public void run() {
-            sendAppendEntriesReq();
         }
     }
 

@@ -5,7 +5,7 @@ import java.io.DataOutput;
 
 /**
  * @author Bela Ban
- * @since  3.6
+ * @since  0.1
  */
 public class VoteResponse extends RaftHeader {
     protected boolean result;
