@@ -12,7 +12,7 @@ Author: Bela Ban
     ----------
          |
     -----------
-    |         |  --> LOG
+    |         |  --> Log
     |  RAFT   |
     |         |  --> StateMachine
     -----------
