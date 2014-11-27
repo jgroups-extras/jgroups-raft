@@ -2,7 +2,6 @@ package org.jgroups.protocols.raft;
 
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.ByteBuffer;
 
 /**
  * Interface of a state machine which stores data in memory. Committed log entries are applied to the state machine.
@@ -10,21 +9,32 @@ import java.nio.ByteBuffer;
  * @since  0.1
  */
 public interface StateMachine {
-    /** Applies a command to the state machine */
-    void set(ByteBuffer data);
+    /**
+     * Applies a command to the state machine. The contents of the byte[] buffer are interpreted by the state machine.
+     * The command could for example be a set(), remove() or clear() command.
+     * @param data The byte[] buffer
+     * @param offset The offset at which the data starts
+     * @param length The length of the data
+     */
+    void       apply(byte[] data, int offset, int length);
 
-    /** Applies multiple commands to the state machine */
-    void set(ByteBuffer[] data);
+    /**
+     * Reads the contents of the state machine from an input stream. This can be the case when an InstallSnapshot RPC
+     * is used to bootstrap a new node, or a node that's lagging far behind.<p/>
+     * The parsing depends on the concrete state machine implementation, but the idea is that the stream is a sequence
+     * of commands, each of which can be passed to {@link #apply(byte[],int,int)}.<p/>
+     * The state machine may need to block modifications until the contents have been set (unless e.g. copy-on-write
+     * is used)<p/>
+     * The state machine implementation may need to remove all contents before populating itself from the stream.
+     * @param in The input stream
+     */
+    void       readContentFrom(InputStream in);
 
-
-
-    // OR
-
-    void write(Object key, Object value); // ?
-
-    ByteBuffer get(ByteBuffer key);
-
-
-    void readContentFrom(InputStream in);
-    void writeContentTo(OutputStream out); // -> dumps state (to ByteBuffer, output stream ?)
+    /**
+     * Writes the contents of the state machine to an output stream. This is typically called on the leader to
+     * provide state to a new node, or a node that's lagging far behind.<p/>
+     * Updates to the state machine may need to be put on hold while the state is written to the output stream.
+     * @param out The output stream
+     */
+    void       writeContentTo(OutputStream out); // -> dumps state (to ByteBuffer, output stream ?)
 }
