@@ -16,7 +16,7 @@ public interface StateMachine {
      * @param offset The offset at which the data starts
      * @param length The length of the data
      */
-    void       apply(byte[] data, int offset, int length);
+    void       apply(byte[] data, int offset, int length);  // tbd: should we use NIO ByteBuffers ?
 
     /**
      * Reads the contents of the state machine from an input stream. This can be the case when an InstallSnapshot RPC

@@ -2,6 +2,7 @@ package org.jgroups.blocks.raft;
 
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.Settable;
 import org.jgroups.protocols.raft.StateMachine;
 
 import java.io.InputStream;
@@ -15,7 +16,7 @@ import java.util.Map;
  * @since  0.1
  */
 public class ReplicatedStateMachine<K,V> implements StateMachine {
-    protected RAFT raft;
+    protected Settable raft;
     protected JChannel ch;
 
     // Hashmap for the contents. Doesn't need to be reentrant, as updates will be applied sequentially
@@ -24,8 +25,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     public ReplicatedStateMachine(JChannel ch) {
         this.ch=ch;
-        raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
-        if(raft == null)
+        if((raft=RAFT.findProtocol(Settable.class,ch.getProtocolStack().getTopProtocol(),true)) == null)
             throw new IllegalStateException("RAFT protocol must be present in configuration");
     }
 

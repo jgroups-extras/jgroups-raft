@@ -23,7 +23,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * @since  0.1
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
-public class RAFT extends Protocol {
+public class RAFT extends Protocol implements Settable {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short RAFT_ID              = 1024;
 
@@ -42,12 +42,14 @@ public class RAFT extends Protocol {
         ClassConfigurator.add(INSTALL_SNAPSHOT_RSP, InstallSnapshotResponse.class);
     }
 
+
     @Property(description="Static majority needed to achieve consensus. This means we have to start " +
       "majority*2-1 servers. This property will be removed when dynamic cluster membership has been " +
       "implemented (section 6 of the RAFT paper)", writable=false)
     protected int majority=2;
 
 
+    protected StateMachine      state_machine;
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     @GuardedBy("impl_lock")
@@ -68,11 +70,13 @@ public class RAFT extends Protocol {
     protected final Lock        lock=new ReentrantLock();
 
     @ManagedAttribute(description="Current leader")
-    public String getLeader() {return leader != null? leader.toString() : "none";}
+    public String       getLeader() {return leader != null? leader.toString() : "none";}
 
-    public Address leader()                   {return leader;}
-    public RAFT    leader(Address new_leader) {this.leader=new_leader; return this;}
-    public int     currentTerm()              {return current_term;}
+    public Address      leader()                      {return leader;}
+    public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
+    public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
+    public StateMachine stateMachine()                {return state_machine;}
+    public int          currentTerm()                 {return current_term;}
 
     /** Sets the current term if the new term is greater */
     public RAFT    currentTerm(final int new_term)  {
@@ -160,6 +164,19 @@ public class RAFT extends Protocol {
             up_prot.up(batch);
     }
 
+    /**
+     * Called by a building block to apply a change to all state machines in a cluster. This starts the consensus
+     * protocol to get a majority to make this change committed.<p/>
+     * Only applicable on the leader
+     * @param buf The command
+     * @param offset The offset into the buffer
+     * @param length The length of the buffer
+     */
+    public void set(byte[] buf, int offset, int length) {
+        // Add to log, send an AppendEntries to all nodes, wait for majority, then commit to log and return to client
+        if(leader == null || (local_addr != null && !leader.equals(local_addr)))
+            throw new RuntimeException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+    }
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
         // log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
@@ -226,5 +243,15 @@ public class RAFT extends Protocol {
         }
     }
 
+
+    public static <T> T findProtocol(Class<T> clazz, final Protocol start, boolean down) {
+        Protocol prot=start;
+        while(prot != null && clazz != null) {
+            if(prot != start && clazz.isAssignableFrom(prot.getClass()))
+                return (T)prot;
+            prot=down? prot.getDownProtocol() : prot.getUpProtocol();
+        }
+        return null;
+    }
 
 }

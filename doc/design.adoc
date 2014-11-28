@@ -7,19 +7,30 @@ Author: Bela Ban
 * Below is an overview of the architecture:
 
 ----
-    ----------
-    | CLIENT |
-    ----------
-         |
-    -----------
-    |         |  --> Log
-    |  RAFT   |
-    |         |  --> StateMachine
-    -----------
-         |
-    -----------
-    | ELECTION |
-    ------------
+
+ -------------------
+ |  StateMachine   | <---
+ | implementation  |     |
+ -------------------     |
+           |             |
+           |             |
+    -------------        |
+    |  Channel  |        |
+    -------------        |
+           |             |
+      ----------         |
+      | CLIENT |         |
+      ----------         |
+           |             |
+      -----------        |
+      |         |  ------
+      |  RAFT   |
+      |         |  --> Log
+      -----------
+           |
+      -----------
+      | ELECTION |
+      ------------
 ----
 
 * Protocols are `CLIENT`, `RAFT` and `ELECTION`
