@@ -135,6 +135,7 @@ public class LevelDBLog implements Log {
 
         for (LogEntry entry : entries) {
             lastApplied++;
+            //@todo must serialize all the entry and not just the entry command bytes
             db.put(bytes(lastApplied.toString()), entry.command);
             currentTerm = entry.term;
         }
