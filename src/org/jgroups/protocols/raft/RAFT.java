@@ -189,7 +189,14 @@ public class RAFT extends Protocol implements Settable {
         // Add to log, send an AppendEntries to all nodes, wait for majority, then commit to log and return to client
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new RuntimeException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
-        // raft_log.append()
+
+        // 1. Append to the log
+
+        // 2. Multicast an AppendEntries message
+
+        // 3. Update the RPCs table with responses -> move commitIndex in the log
+
+        // 4. Periodically resend data to members whose indices are behind mine
     }
 
 

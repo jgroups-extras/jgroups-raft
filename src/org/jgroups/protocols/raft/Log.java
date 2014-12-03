@@ -66,7 +66,20 @@ public interface Log {
     // void snapshot(); // tbd when we get to InstallSnapshot
 
     /**
-     * Applies function to all elements of the log between start_index and end_index
+     * Applies function to all elements of the log between start_index and end_index. This makes ancillary methods
+     * like get(int from, int to) unnecessary: can be done like this:<p/>
+     * <pre>
+        List<LogEntry> get(int from, int to) {
+            final List<LogEntry> list=new ArrayList<LogEntry>();
+            log_impl.forEach(new Log.Function() {
+                public boolean apply(int index,int term,byte[] command,int offset,int length) {
+                    list.add(new LogEntry(term, command, offset, length));
+                    return true;
+                }
+            }, from, to);
+            return list;
+        }
+     * </pre>
      * @param function The function to be applied
      * @param start_index The start index. If smaller than first(), first() will be used
      * @param end_index The end index. If greater than commitIndex(), commitIndex() will be used
