@@ -38,11 +38,17 @@ public interface Log {
     /** Returns the current commit index. (May get removed as the RAFT paper has this as in-memory attribute) */
     int commitIndex();
 
-    /** Returns the index of the last applied append operation (May get removed as this should be in-memory) */
+    /**
+     * Sets commitIndex to a new value
+     * @param new_index The new index to set commitIndex to. May throw an exception if new_index > lastApplied()
+     * @return the log
+     */
+    Log commitIndex(int new_index);
+
+    /** Returns the index of the last applied append operation (May get removed as this should be in-memory)<p/>
+     * This value is set by {@link #append(int,int,LogEntry[])} */
     int lastApplied();
 
-    /** Returns the total number of entries */ // needed ?
-    //  int size(); // can be computed as lastApplied() - first(), or lastApplied() - commitIndex()
 
     /**
      * Appends one or more entries to the log.<p/>
@@ -57,6 +63,7 @@ public interface Log {
      */
     AppendResult append(int prev_index, int prev_term, LogEntry[] entries);
 
+    // void snapshot(); // tbd when we get to InstallSnapshot
 
     /**
      * Applies function to all elements of the log between start_index and end_index
