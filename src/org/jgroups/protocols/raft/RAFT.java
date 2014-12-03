@@ -32,7 +32,7 @@ public class RAFT extends Protocol implements Settable {
     protected static final short APPEND_ENTRIES_RSP   = 2001;
     protected static final short INSTALL_SNAPSHOT_REQ = 2002;
     protected static final short INSTALL_SNAPSHOT_RSP = 2003;
-
+    protected static final short APPEND_RESULT        = 2004;
 
     static {
         ClassConfigurator.addProtocol(RAFT_ID,      RAFT.class);
@@ -40,6 +40,7 @@ public class RAFT extends Protocol implements Settable {
         ClassConfigurator.add(APPEND_ENTRIES_RSP,   AppendEntriesResponse.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_RSP, InstallSnapshotResponse.class);
+        ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
     }
 
 

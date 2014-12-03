@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 
 
-<project name="jgroups-fast" default="compile" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+<project name="jgroups-raft" default="compile" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
     <description>
         Ant/ivy based build.xml file for jgroups-raft. Needs ant to run
     </description>
