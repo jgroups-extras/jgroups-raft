@@ -6,5 +6,6 @@
         <dependency org="org.jgroups"              name="jgroups"     rev="3.6.0.Final"/>
         <dependency org="org.apache.logging.log4j" name="log4j-api"   rev="2.0"/>
         <dependency org="org.apache.logging.log4j" name="log4j-core"  rev="2.0"/>
+        <dependency org="org.mapdb"                name="mapdb"       rev="1.0.6"/>
     </dependencies>
 </ivy-module>

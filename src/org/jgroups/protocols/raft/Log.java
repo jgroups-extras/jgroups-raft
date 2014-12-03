@@ -2,12 +2,24 @@ package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 
+import java.util.Map;
+
 /**
  * The interface for a (persistent) log.
  * @author Bela Ban
  * @since  0.1
  */
 public interface Log {
+
+    /** Called after the instance has been created
+     * @param args A hashmap of configuration information (impl-dependent) to configure itself,
+     *             e.g. <code>{"location="/tmp",file="db.dat"}</code>
+     */
+    void init(Map<String,String> args);
+
+    /** Called when the instance is destroyed */
+    void destroy();
+
     /** Returns the current term */
     int currentTerm();
 
