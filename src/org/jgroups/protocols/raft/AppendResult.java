@@ -16,13 +16,13 @@ public class AppendResult implements Streamable {
     protected boolean success;
 
     /** The index of the last appended entry if success == true. If success is false, the index of the first
-     * non-matching term. If inedex == 0, this means the follower doesn't have a log and needs to run the
+     * non-matching term. If index == 0, this means the follower doesn't have a log and needs to run the
      * InstallSnapshot protocol to fetch the initial snapshot */
     protected int     index;
 
     public AppendResult() {}
 
-    public AppendResult(boolean success,int index) {
+    public AppendResult(boolean success, int index) {
         this.success=success;
         this.index=index;
     }
