@@ -11,7 +11,9 @@ import org.jgroups.annotations.Property;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
+import org.jgroups.util.Util;
 
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -47,10 +49,20 @@ public class RAFT extends Protocol implements Settable {
     @Property(description="Static majority needed to achieve consensus. This means we have to start " +
       "majority*2-1 servers. This property will be removed when dynamic cluster membership has been " +
       "implemented (section 6 of the RAFT paper)", writable=false)
-    protected int majority=2;
+    protected int               majority=2;
 
+
+    @Property(description="The fully qualified name of the class implementing Log")
+    protected String            log_class;
+
+    @Property(description="Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()")
+    protected String            log_args;
 
     protected StateMachine      state_machine;
+
+    protected Log               log_impl;
+
+
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     @GuardedBy("impl_lock")
@@ -78,6 +90,9 @@ public class RAFT extends Protocol implements Settable {
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
     public int          currentTerm()                 {return current_term;}
+    public Log          log()                         {return log_impl;}
+    public RAFT         log(Log new_log)              {this.log_impl=new_log; return this;}
+
 
     /** Sets the current term if the new term is greater */
     public RAFT    currentTerm(final int new_term)  {
@@ -116,6 +131,17 @@ public class RAFT extends Protocol implements Settable {
         });
     }
 
+    public void init() throws Exception {
+        super.init();
+        if(log_class != null) {
+            Class<? extends Log> clazz=Util.loadClass(log_class,getClass());
+            log_impl=clazz.newInstance();
+            if(log_args != null && !log_args.isEmpty()) {
+                Map<String,String> args=Util.parseCommaDelimitedProps(log_args);
+                log_impl.init(args);
+            }
+        }
+    }
 
     public void stop() {
         super.stop();
@@ -177,7 +203,9 @@ public class RAFT extends Protocol implements Settable {
         // Add to log, send an AppendEntries to all nodes, wait for majority, then commit to log and return to client
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new RuntimeException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+        // raft_log.append()
     }
+
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
         // log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
