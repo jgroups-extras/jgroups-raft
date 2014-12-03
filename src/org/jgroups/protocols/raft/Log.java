@@ -30,7 +30,7 @@ public interface Log {
     int lastApplied();
 
     /** Returns the total number of entries */ // needed ?
-    int size();
+    //  int size(); // can be computed as lastApplied() - first(), or lastApplied() - commitIndex()
 
     /**
      * Appends one or more entries to the log.<p/>
