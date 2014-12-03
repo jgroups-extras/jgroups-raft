@@ -14,7 +14,6 @@ import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
 
 import java.util.Map;
-import java.util.concurrent.Callable;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -79,9 +78,6 @@ public class RAFT extends Protocol implements Settable {
     protected int               current_term;
 
 
-    /** Used to make state changes, e.g. set the current term if a higher term is encountered */
-    protected final Lock        lock=new ReentrantLock();
-
     @ManagedAttribute(description="Current leader")
     public String       getLeader() {return leader != null? leader.toString() : "none";}
 
@@ -95,13 +91,10 @@ public class RAFT extends Protocol implements Settable {
 
 
     /** Sets the current term if the new term is greater */
-    public RAFT    currentTerm(final int new_term)  {
-        // return withLockDo(lock, () -> {current_term=new_term; return this;}); // JDK 8
-        return withLockDo(lock,new Callable<RAFT>() {
-            public RAFT call() throws Exception {
-                if(new_term > current_term) current_term=new_term;
-                return null;}
-        });
+    public synchronized RAFT currentTerm(final int new_term)  {
+        if(new_term > current_term)
+            current_term=new_term;
+        return this;
     }
 
     @ManagedAttribute(description="The current role")
@@ -110,25 +103,18 @@ public class RAFT extends Protocol implements Settable {
         return tmp.getClass().getSimpleName();
     }
 
-    public int createNewTerm() {
-        return withLockDo(lock, new Callable<Integer>() {
-            public Integer call() throws Exception {
-                return ++current_term;
-            }});
+    public synchronized int createNewTerm() {
+        return ++current_term;
     }
 
-    public boolean updateTermAndLeader(final int term, final Address new_leader) {
-        return withLockDo(lock, new Callable<Boolean>() {
-            public Boolean call() throws Exception {
-                if(leader == null || (new_leader != null && !leader.equals(new_leader)))
-                    leader=new_leader;
-                if(term > current_term) {
-                    current_term=term;
-                    return true;
-                }
-                return false;
-            }
-        });
+    public synchronized boolean updateTermAndLeader(int term, Address new_leader) {
+        if(leader == null || (new_leader != null && !leader.equals(new_leader)))
+            leader=new_leader;
+        if(term > current_term) {
+            current_term=term;
+            return true;
+        }
+        return false;
     }
 
     public void init() throws Exception {
@@ -236,41 +222,20 @@ public class RAFT extends Protocol implements Settable {
     }
 
     protected void changeRole(Role new_role) {
-        final RaftImpl new_impl=new_role == Role.Follower? new Follower(this) : new_role == Role.Candidate? new Candidate(this) : new Leader(this);
-        withLockDo(impl_lock, new Callable<Void>() {
-            public Void call() throws Exception {
-                RaftImpl old_impl=impl;
-                if(impl == null || !impl.getClass().equals(new_impl.getClass())) {
-                    if(impl != null)
-                        impl.destroy();
-                    new_impl.init();
-                    impl=new_impl;
-                    log.trace("%s: changed role from %s -> %s", local_addr,
-                              old_impl == null? "null" : old_impl.getClass().getSimpleName(),
-                              new_impl.getClass().getSimpleName());
-                }
-                return null;
+        RaftImpl new_impl=new_role == Role.Follower? new Follower(this) : new_role == Role.Candidate? new Candidate(this) : new Leader(this);
+        RaftImpl old_impl=impl;
+        if(old_impl == null || !old_impl.getClass().equals(new_impl.getClass())) {
+            if(old_impl != null)
+                old_impl.destroy();
+            new_impl.init();
+            synchronized(this) {
+                impl=new_impl;
             }
-        });
-    }
-
-
-    /** Helper method to get rid of all the boilerplate code of lock handling.
-     * Will be replaced with lambdas when moving to JDK 8 */
-    protected static <T> T withLockDo(Lock lock, Callable<T> action) {
-        lock.lock();
-        try {
-            try {
-                return action.call();
-            }
-            catch(Exception e) {
-                throw new RuntimeException(e);
-            }
-        }
-        finally {
-            lock.unlock();
+            log.trace("%s: changed role from %s -> %s", local_addr, old_impl == null? "null" :
+              old_impl.getClass().getSimpleName(), new_impl.getClass().getSimpleName());
         }
     }
+
 
 
     public static <T> T findProtocol(Class<T> clazz, final Protocol start, boolean down) {
