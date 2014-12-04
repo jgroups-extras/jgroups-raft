@@ -14,6 +14,7 @@ import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
 
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -253,6 +254,15 @@ public class RAFT extends Protocol implements Settable {
             prot=down? prot.getDownProtocol() : prot.getUpProtocol();
         }
         return null;
+    }
+
+    /**
+     * Keeps track of next_index and match_index for each cluster member. Used to (1) compute the commit_index and
+     * (2) to resend log entries to members which haven't yet seen them.<p/>
+     * Only created on the leader
+     */
+    protected static class CommitTable {
+        protected final Map<Address,?> map=new ConcurrentHashMap<>();
     }
 
 }
