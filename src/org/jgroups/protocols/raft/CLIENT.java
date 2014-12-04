@@ -49,7 +49,7 @@ public class CLIENT extends Protocol implements Settable {
         if(view != null && !view.containsMember(leader))
             throw new RuntimeException("leader " + leader + " is not member of view " + view);
         if(local_addr != null && local_addr.equals(leader)) {
-            raft.set(buf, offset, length); // we're the current leader, just pass the operation down to RAFT
+            // raft.set(buf, offset, length); // we're the current leader, just pass the operation down to RAFT
             return;
         }
 

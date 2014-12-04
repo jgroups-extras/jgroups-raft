@@ -61,7 +61,7 @@ public interface Log {
      * @param entries One of more entries
      * @return An AppendResult
      */
-    AppendResult append(int prev_index, int prev_term, LogEntry[] entries);
+    AppendResult append(int prev_index, int prev_term, LogEntry ... entries);
 
     // void snapshot(); // tbd when we get to InstallSnapshot
 

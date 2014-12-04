@@ -10,9 +10,12 @@ import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
+import org.jgroups.util.CompletableFuture;
+import org.jgroups.util.Function;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -23,7 +26,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @since  0.1
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
-public class RAFT extends Protocol implements Settable {
+public class RAFT extends Protocol {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short RAFT_ID              = 1024;
 
@@ -51,7 +54,7 @@ public class RAFT extends Protocol implements Settable {
 
 
     @Property(description="The fully qualified name of the class implementing Log")
-    protected String            log_class;
+    protected String            log_class="org.jgroups.protocols.raft.LevelDBLog";
 
     @Property(description="Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()")
     protected String            log_args;
@@ -75,10 +78,16 @@ public class RAFT extends Protocol implements Settable {
     @ManagedAttribute(description="The current term")
     protected int               current_term;
 
+    @ManagedAttribute(description="Index of the highest log entry applied to the state machine")
+    protected int               last_applied;
+
+    @ManagedAttribute(description="Index of the highest committed log entry")
+    protected int               commit_index;
+
+
 
     @ManagedAttribute(description="Current leader")
     public String       getLeader() {return leader != null? leader.toString() : "none";}
-
     public Address      leader()                      {return leader;}
     public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
@@ -117,14 +126,19 @@ public class RAFT extends Protocol implements Settable {
 
     public void init() throws Exception {
         super.init();
-        if(log_class != null) {
-            Class<? extends Log> clazz=Util.loadClass(log_class,getClass());
-            log_impl=clazz.newInstance();
-            if(log_args != null && !log_args.isEmpty()) {
-                Map<String,String> args=Util.parseCommaDelimitedProps(log_args);
-                log_impl.init(args);
-            }
-        }
+        if(log_class == null)
+            throw new IllegalStateException("log_class has to be defined");
+        Class<? extends Log> clazz=Util.loadClass(log_class,getClass());
+        log_impl=clazz.newInstance();
+        Map<String,String> args;
+        if(log_args != null && !log_args.isEmpty())
+            args=Util.parseCommaDelimitedProps(log_args);
+        else
+            args=new HashMap<>();
+        log_impl.init(args);
+        last_applied=log_impl.lastApplied();
+        commit_index=log_impl.commitIndex();
+        log.debug("initialized last_applied=%d and commit_index=%d from log", last_applied, commit_index);
     }
 
     public void stop() {
@@ -177,24 +191,42 @@ public class RAFT extends Protocol implements Settable {
 
     /**
      * Called by a building block to apply a change to all state machines in a cluster. This starts the consensus
-     * protocol to get a majority to make this change committed.<p/>
+     * protocol to get a majority to commit this change.<p/>
      * Only applicable on the leader
      * @param buf The command
      * @param offset The offset into the buffer
      * @param length The length of the buffer
+     * @param completion_handler A function that will get called upon completion (async). Can be null
+     * @return A CompletableFuture. Can be used to wait for the result (sync). A blocking caller could call
+     *         set(), then call future.get() to block for the result.
      */
-    public void set(byte[] buf, int offset, int length) {
-        // Add to log, send an AppendEntries to all nodes, wait for majority, then commit to log and return to client
-        if(leader == null || (local_addr != null && !leader.equals(local_addr)))
-            throw new RuntimeException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+    public CompletableFuture<Boolean> set(byte[] buf, int offset, int length, Function<Boolean,Void> completion_handler) {
+        //if(leader == null || (local_addr != null && !leader.equals(local_addr)))
+          //  throw new RuntimeException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+
+        CompletableFuture<Boolean> retval=new CompletableFuture<>(completion_handler);
+
+        AppendResult result=log_impl.append(last_applied, current_term, new LogEntry(current_term,buf,offset,length));
+        if(!result.success) {
+            retval.completeExceptionally(new IllegalStateException("log could not be appended to: result=" + result));
+            return retval;
+        }
+        last_applied++; // todo: add to commit table
 
         // 1. Append to the log
 
         // 2. Multicast an AppendEntries message
 
-        // 3. Update the RPCs table with responses -> move commitIndex in the log
+        // 3. Return CompletableFuture
 
-        // 4. Periodically resend data to members whose indices are behind mine
+        // 4. [async] Update the RPCs table with responses -> move commitIndex in the log
+        // 4.1. Apply committed entries to the state machine
+
+        // 5. [async] Periodically resend data to members whose indices are behind mine
+
+
+
+        return retval;
     }
 
 
@@ -231,8 +263,8 @@ public class RAFT extends Protocol implements Settable {
             synchronized(this) {
                 impl=new_impl;
             }
-            log.trace("%s: changed role from %s -> %s", local_addr, old_impl == null? "null" :
-              old_impl.getClass().getSimpleName(), new_impl.getClass().getSimpleName());
+            log.trace("%s: changed role from %s -> %s",local_addr,old_impl == null? "null" :
+              old_impl.getClass().getSimpleName(),new_impl.getClass().getSimpleName());
         }
     }
 
