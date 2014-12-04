@@ -1,17 +1,21 @@
 package org.jgroups.protocols.raft;
 
-import java.io.Serializable;
+import org.jgroups.util.Bits;
+import org.jgroups.util.Streamable;
+import org.jgroups.util.Util;
+
+import java.io.DataInput;
+import java.io.DataOutput;
 
 /**
  * An element in a log. Captures the term and command to be applied to the state machine
  * @author Bela Ban
  * @since  0.1
  */
-public class LogEntry implements Serializable {
-
+public class LogEntry implements Streamable {
     protected int    term;     // the term of this entry
     protected byte[] command;  // the command (interpreted by the state machine)
-    protected transient int    offset;   // may get removed (always 0)
+    protected int    offset;   // may get removed (always 0)
     protected int    length;   // may get removed (always command.length)
 
     public LogEntry(int term,byte[] command,int offset,int length) {
@@ -19,6 +23,18 @@ public class LogEntry implements Serializable {
         this.command=command;
         this.offset=offset;
         this.length=length;
+    }
+
+    public void writeTo(DataOutput out) throws Exception {
+        Bits.writeInt(term, out);
+        Util.writeByteBuffer(command, offset, length, out);
+    }
+
+    public void readFrom(DataInput in) throws Exception {
+        term=Bits.readInt(in);
+        command=Util.readByteBuffer(in);
+        offset=0;
+        length=command != null? command.length : 0;
     }
 
     public String toString() {
@@ -31,4 +47,6 @@ public class LogEntry implements Serializable {
         str.append("}");
         return str.toString();
     }
+
+
 }

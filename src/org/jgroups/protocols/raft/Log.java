@@ -15,7 +15,7 @@ public interface Log {
      * @param args A hashmap of configuration information (impl-dependent) to configure itself,
      *             e.g. <code>{"location="/tmp",file="db.dat"}</code>
      */
-    void init(Map<String,String> args);
+    void init(Map<String,String> args) throws Exception;
 
     /** Called when the instance is destroyed */
     void destroy();

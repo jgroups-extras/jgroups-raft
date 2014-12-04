@@ -5,14 +5,13 @@ import org.iq80.leveldb.DBIterator;
 import org.iq80.leveldb.Logger;
 import org.iq80.leveldb.Options;
 import org.jgroups.Address;
+import org.jgroups.util.Util;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
 
 import static org.fusesource.leveldbjni.JniDBFactory.*;
-import static org.jgroups.protocols.raft.SerializationHelper.asBytes;
-import static org.jgroups.protocols.raft.SerializationHelper.asLogEntry;
 
 /**
  * Created by ugol on 03/12/14.
@@ -26,7 +25,7 @@ public class LevelDBLog implements Log {
     private Integer lastApplied = 0;
 
     @Override
-    public void init(Map<String, String> args) {
+    public void init(Map<String, String> args) throws Exception {
 
         Logger debugLogger = new Logger() {
             public void log(String message) {
@@ -52,7 +51,7 @@ public class LevelDBLog implements Log {
 
     }
 
-    private void initCommitAndTermFromLog() {
+    private void initCommitAndTermFromLog() throws Exception {
         DBIterator iterator = db.iterator();
         try {
             iterator.seekToLast();
@@ -61,7 +60,7 @@ public class LevelDBLog implements Log {
 
             //get the term from the serialized logentry
             byte[] entryBytes = iterator.peekNext().getValue();
-            LogEntry entry = asLogEntry(entryBytes);
+            LogEntry entry =(LogEntry)Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
             this.currentTerm = entry.term;
 
         } finally {
@@ -142,9 +141,14 @@ public class LevelDBLog implements Log {
         //WriteBatch batch = db.createWriteBatch();
 
         for (LogEntry entry : entries) {
-            lastApplied++;
-            db.put(bytes(lastApplied.toString()), asBytes(entry));
-            currentTerm = entry.term;
+            try {
+                db.put(bytes(lastApplied.toString()), Util.streamableToByteBuffer(entry));
+                lastApplied++;
+                currentTerm=entry.term;
+            }
+            catch(Exception ex) {
+                ex.printStackTrace(); // todo: better error handling
+            }
         }
 
         return new AppendResult(true, lastApplied);
