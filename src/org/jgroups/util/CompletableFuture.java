@@ -1,9 +1,6 @@
 package org.jgroups.util;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -20,6 +17,9 @@ public class CompletableFuture<T> implements Future<T>, Condition {
     protected final Lock       lock=new ReentrantLock();
     protected final CondVar    cond_var=new CondVar(lock);
 
+    public CompletableFuture() {
+    }
+
     public CompletableFuture(Function<T,Void> completion_handler) {
         this.completion_handler=completion_handler;
     }
@@ -31,8 +31,12 @@ public class CompletableFuture<T> implements Future<T>, Condition {
                 return false;
             done=true;
             this.value=value;
-            if(completion_handler != null)
-                completion_handler.apply(value);
+            if(completion_handler != null) {
+                try {
+                    completion_handler.apply(value);
+                }
+                catch(Throwable t) {}
+            }
             cond_var.signal(true);
             return true;
         }
@@ -48,8 +52,12 @@ public class CompletableFuture<T> implements Future<T>, Condition {
                 return false;
             done=true;
             this.exception=ex;
-            if(completion_handler != null)
-                completion_handler.apply(exception);
+            if(completion_handler != null) {
+                try {
+                    completion_handler.apply(exception);
+                }
+                catch(Throwable t) {}
+            }
             cond_var.signal(true);
             return true;
         }
@@ -72,28 +80,40 @@ public class CompletableFuture<T> implements Future<T>, Condition {
         }
     }
 
+    @Override
     public boolean isCancelled() {
         return cancelled;
     }
 
+    @Override
     public boolean isDone() {
         return done;
     }
 
+    @Override
     public T get() throws InterruptedException, ExecutionException {
-        if(exception != null)
-            throw new ExecutionException(exception);
-        return value;
+        cond_var.waitFor(this);
+        return _get();
     }
 
+    @Override
     public T get(long timeout,TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
         boolean success=cond_var.waitFor(this, timeout,unit);
         if(!success)
             throw new TimeoutException();
-        return get();
+        return _get();
     }
 
+    @Override
     public boolean isMet() {
         return done;
+    }
+
+    protected T _get() throws InterruptedException, ExecutionException {
+        if(cancelled)
+            throw new CancellationException();
+        if(exception != null)
+            throw new ExecutionException(exception);
+        return value;
     }
 }
