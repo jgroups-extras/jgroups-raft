@@ -11,6 +11,8 @@ import java.io.IOException;
 import java.util.Map;
 
 import static org.fusesource.leveldbjni.JniDBFactory.*;
+import static org.jgroups.protocols.raft.SerializationHelper.asBytes;
+import static org.jgroups.protocols.raft.SerializationHelper.asLogEntry;
 
 /**
  * Created by ugol on 03/12/14.
@@ -46,13 +48,21 @@ public class LevelDBLog implements Log {
             e.printStackTrace();
         }
 
+        initCommitAndTermFromLog();
+
+    }
+
+    private void initCommitAndTermFromLog() {
         DBIterator iterator = db.iterator();
         try {
             iterator.seekToLast();
             byte[] keyBytes = iterator.peekNext().getKey();
             commitIndex = new Integer(asString(keyBytes));
 
-            //@todo get the term from the serialized logentry
+            //get the term from the serialized logentry
+            byte[] entryBytes = iterator.peekNext().getValue();
+            LogEntry entry = asLogEntry(entryBytes);
+            this.currentTerm = entry.term;
 
         } finally {
             try {
@@ -61,8 +71,6 @@ public class LevelDBLog implements Log {
                 e.printStackTrace();
             }
         }
-
-
     }
 
     @Override
@@ -135,8 +143,7 @@ public class LevelDBLog implements Log {
 
         for (LogEntry entry : entries) {
             lastApplied++;
-            //@todo must serialize all the entry and not just the entry command bytes
-            db.put(bytes(lastApplied.toString()), entry.command);
+            db.put(bytes(lastApplied.toString()), asBytes(entry));
             currentTerm = entry.term;
         }
 

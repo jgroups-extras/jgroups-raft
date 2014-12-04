@@ -1,19 +1,17 @@
 package org.jgroups.protocols.raft;
 
-import java.io.Externalizable;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
+import java.io.Serializable;
 
 /**
  * An element in a log. Captures the term and command to be applied to the state machine
  * @author Bela Ban
  * @since  0.1
  */
-public class LogEntry implements Externalizable {
+public class LogEntry implements Serializable {
+
     protected int    term;     // the term of this entry
-    protected final byte[] command;  // the command (interpreted by the state machine)
-    protected final int    offset;   // may get removed (always 0)
+    protected byte[] command;  // the command (interpreted by the state machine)
+    protected transient int    offset;   // may get removed (always 0)
     protected int    length;   // may get removed (always command.length)
 
     public LogEntry(int term,byte[] command,int offset,int length) {
@@ -24,20 +22,13 @@ public class LogEntry implements Externalizable {
     }
 
     public String toString() {
-        return term + ": " + command.length + " bytes";
-    }
-
-    @Override
-    public void writeExternal(ObjectOutput out) throws IOException {
-        out.write(term);
-        out.write(length);
-        out.write(command);
-    }
-
-    @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        term = in.readInt();
-        length = in.readInt();
-        in.read(command, 0, length);
+        StringBuilder str = new StringBuilder();
+        str.append("Term: ").append(term).append(" Command Bytes: { ");
+        for (byte b: command) {
+            str.append(b);
+            str.append(" ");
+        }
+        str.append("}");
+        return str.toString();
     }
 }
