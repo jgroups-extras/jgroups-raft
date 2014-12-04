@@ -1,6 +1,9 @@
 package org.jgroups.util;
 
-import org.testng.*;
+import org.testng.IConfigurationListener2;
+import org.testng.ITestContext;
+import org.testng.ITestListener;
+import org.testng.ITestResult;
 
 import java.io.*;
 import java.util.*;
