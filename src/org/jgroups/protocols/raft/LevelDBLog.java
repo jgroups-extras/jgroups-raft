@@ -25,7 +25,7 @@ public class LevelDBLog implements Log {
     private Integer lastApplied = 0;
 
     @Override
-    public void init(Map<String, String> args) throws Exception {
+    public void init(String log_name, Map<String,String> args) throws Exception {
 
         Logger debugLogger = new Logger() {
             public void log(String message) {
@@ -41,7 +41,7 @@ public class LevelDBLog implements Log {
 
         try {
             //@todo get the name of the log file from node name
-            db = factory.open(new File("leveldb-name.db"), options);
+            db = factory.open(new File(log_name + ".db"), options);
         } catch (IOException e) {
             //@todo proper logging, etc
             e.printStackTrace();

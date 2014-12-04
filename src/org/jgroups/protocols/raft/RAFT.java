@@ -28,14 +28,14 @@ import java.util.concurrent.ConcurrentHashMap;
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol {
     // When moving to JGroups -> add to jg-protocol-ids.xml
-    protected static final short RAFT_ID              = 1024;
+    protected static final short  RAFT_ID              = 1024;
 
     // When moving to JGroups -> add to jg-magic-map.xml
-    protected static final short APPEND_ENTRIES_REQ   = 2000;
-    protected static final short APPEND_ENTRIES_RSP   = 2001;
-    protected static final short INSTALL_SNAPSHOT_REQ = 2002;
-    protected static final short INSTALL_SNAPSHOT_RSP = 2003;
-    protected static final short APPEND_RESULT        = 2004;
+    protected static final short  APPEND_ENTRIES_REQ   = 2000;
+    protected static final short  APPEND_ENTRIES_RSP   = 2001;
+    protected static final short  INSTALL_SNAPSHOT_REQ = 2002;
+    protected static final short  INSTALL_SNAPSHOT_RSP = 2003;
+    protected static final short  APPEND_RESULT        = 2004;
 
     static {
         ClassConfigurator.addProtocol(RAFT_ID,      RAFT.class);
@@ -54,10 +54,13 @@ public class RAFT extends Protocol {
 
 
     @Property(description="The fully qualified name of the class implementing Log")
-    protected String            log_class="org.jgroups.protocols.raft.LevelDBLog";
+    protected String            log_class="org.jgroups.protocols.raft.MapDBLog";
 
     @Property(description="Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()")
     protected String            log_args;
+
+    @Property(description="The name of the log")
+    protected String            log_name="raft.log";
 
     protected StateMachine      state_machine;
 
@@ -135,7 +138,7 @@ public class RAFT extends Protocol {
             args=Util.parseCommaDelimitedProps(log_args);
         else
             args=new HashMap<>();
-        log_impl.init(args);
+        log_impl.init(log_name, args);
         last_applied=log_impl.lastApplied();
         commit_index=log_impl.commitIndex();
         log.debug("initialized last_applied=%d and commit_index=%d from log", last_applied, commit_index);

@@ -12,10 +12,11 @@ import java.util.Map;
 public interface Log {
 
     /** Called after the instance has been created
-     * @param args A hashmap of configuration information (impl-dependent) to configure itself,
-     *             e.g. <code>{"location="/tmp",file="db.dat"}</code>
+     * @param log_name The name of the log. Implementations can create a DB or file named after this, e.g.
+     *                 /tmp/<log_name></log_name>.log
+     * @param args A hashmap of configuration information (impl-dependent) to configure itself. May be null
      */
-    void init(Map<String,String> args) throws Exception;
+    void init(String log_name, Map<String,String> args) throws Exception;
 
     /** Called when the instance is destroyed */
     void destroy();
