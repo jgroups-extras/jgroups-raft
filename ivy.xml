@@ -8,5 +8,7 @@
         <dependency org="org.apache.logging.log4j"  name="log4j-core"     rev="2.0"/>
         <dependency org="org.mapdb"                 name="mapdb"          rev="1.0.6"/>
         <dependency org="org.fusesource.leveldbjni" name="leveldbjni-all" rev="1.8"/>
+        <dependency org="org.testng"                name="testng"         rev="6.8.7"/>
+        <dependency org="com.beust"                 name="jcommander"     rev="1.5"/>
     </dependencies>
 </ivy-module>

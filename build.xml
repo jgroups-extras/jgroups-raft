@@ -21,6 +21,13 @@
     <property name="maven.executable" value="mvn"/>
     <property name="ivy.version"      value="2.3.0" />
 
+    <!-- 5 minutes per test suite timeout -->
+    <property name="unittest.timeout" value="1800000"/>
+    <property name="test.verbose" value="0"/>
+
+    <!-- Parallelization controls (disable with "-Dparallel.classes=false") -->
+    <property name="parallel.classes" value="classes"/>
+
 
     <path id="jg.classpath">
         <pathelement location="${compile.dir}"/>
@@ -30,7 +37,9 @@
         </fileset>
     </path>
 
-
+    <target name="define-testng-task">
+        <taskdef resource="testngtasks" classpathref="jg.classpath"/>
+    </target>
 
     <target name="check-lib-exists">
         <available file="${lib.dir}" type="dir" property="lib.dir.exists"/>
@@ -145,6 +154,21 @@
     </target>
 
 
+    <target name="all-tests" description="Runs all tests">
+        <sequential>
+            <antcall target="functional"/>
+        </sequential>
+    </target>
+
+
+    <target name="functional" depends="define-testng-task" description="Runs functional tests">
+        <mkdir dir="${tmp.dir}/test-results/xml/functional"/>
+        <runtest suitename="functional"
+                 groups="functional"
+                 parallel="${parallel.classes}"
+                 threadcount="5" />
+    </target>
+
 
     <target name="clean"
             description="Removes all class files and ./dist">
@@ -162,5 +186,83 @@
     <target name="clean-all" depends="clean" description="Also removes lib">
         <delete dir="${lib.dir}" failonerror="false"/>
     </target>
+
+    <target name="reports" description="Produces the test report">
+        <mkdir dir="${tmp.dir}/test-results/html"/>
+        <junitreport todir="${tmp.dir}/test-results/html">
+            <fileset dir="${tmp.dir}/test-results/xml">
+                <include name="**/*.xml"/>
+            </fileset>
+            <report format="frames"  todir="${tmp.dir}/test-results/html"/>
+        </junitreport>
+        <echo message="******************************************************************"/>
+        <echo message="The test report is ${tmp.dir}/test-results/html/index.html"/>
+        <echo message="******************************************************************"/>
+    </target>
+
+
+    <macrodef name="runtest" description="Runs a configuration-dependent test suite">
+        <attribute name="classpath"          default="jg.classpath"/>
+        <attribute name="suitename" />
+        <attribute name="groups" />  <!-- comma-separated list, e.g. udp,functional -->
+        <attribute name="excludedgroups"     default="broken"/>
+        <attribute name="parallel"           default="${parallel.classes}"/>
+        <attribute name="threadcount"        default="1"/>
+        <attribute name="outputdir"          default="${tmp.dir}/test-results/xml"/>
+        <attribute name="initial.mcast.addr" default="${jgroups.udp.mcast_addr}"/>
+        <attribute name="initial.mcast.port" default="23000"/>
+        <attribute name="initial.tcp.port"   default="23000"/>
+        <attribute name="tcp.recv.buf.size"  default="200000"/>
+        <attribute name="tcp.send.buf.size"  default="64000"/>
+        <attribute name="jvmarg1"            default="-Dnonex=1"/>
+        <attribute name="jvmarg2"            default="-Dnoney=1"/>
+        <!--<element   name="additional-args"    optional="true"/>-->
+
+        <sequential>
+            <property name="default-excludes" value=""/>
+
+            <testng classpathref="@{classpath}"
+                    suitename="@{suitename}"
+                    testname="@{suitename}"
+                    groups="@{groups}"
+                    excludedgroups="@{excludedgroups},${default-excludes}"
+                    parallel="@{parallel}"
+                    threadcount="@{threadcount}"
+                    usedefaultlisteners="false"
+                    outputdir="@{outputdir}"
+                    listeners="org.jgroups.util.JUnitXMLReporter"
+                    timeout="${unittest.timeout}"
+                    timeOut="${unittest.timeout}"
+                    verbose="0"
+                    configfailurepolicy="continue">
+
+                <classfileset dir="${compile.dir}"/>
+
+                <!--<xmlfileset dir="${testng.conf.dir}" includes="@{xml.file}"/>-->
+                <sysproperty key="INITIAL_MCAST_ADDR" value="@{initial.mcast.addr}"/>
+                <sysproperty key="INITIAL_MCAST_PORT" value="@{initial.mcast.port}"/>
+                <sysproperty key="INITIAL_TCP_PORT"   value="@{initial.tcp.port}"/>
+                <sysproperty key="tcp.recv_buf_size"  value="@{tcp.recv.buf.size}"/>
+                <sysproperty key="tcp.send_buf_size"  value="@{tcp.send.buf.size}"/>
+
+
+                <jvmarg value="-Djgroups.bind_addr=${jgroups.bind_addr}"/>
+                <jvmarg value="-Djgroups.udp.ip_ttl=0"/>
+                <jvmarg value="-Djgroups.tcpping.initial_hosts=${jgroups.tcpping.initial_hosts}"/>
+                <jvmarg value="-Djgroups.tunnel.gossip_router_hosts=${jgroups.tunnel.gossip_router_hosts}"/>
+                <jvmarg value="-Dtests.tmp.dir=${tmp.dir}"/>
+                <jvmarg value="-Dlog4j.configuration=file:${conf.dir}/log4j.properties"/>
+                <jvmarg value="-Dlog4j.configurationFile=${conf.dir}/log4j2.xml"/>
+                <jvmarg value="-Djava.net.preferIPv4Stack=${java.net.preferIPv4Stack}"/>
+                <jvmarg value="-Djava.net.preferIPv6Addresses=${java.net.preferIPv6Addresses}"/>
+                <jvmarg value="-Xms400M"/>
+                <jvmarg value="-Xmx800M"/>
+                <jvmarg value="@{jvmarg1}"/>
+                <jvmarg value="@{jvmarg2}"/>
+                <!--<additional-args/>-->
+            </testng>
+        </sequential>
+    </macrodef>
+
 
 </project>
