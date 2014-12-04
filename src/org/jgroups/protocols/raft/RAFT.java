@@ -15,8 +15,6 @@ import org.jgroups.util.Util;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
 
 /**
@@ -67,7 +65,6 @@ public class RAFT extends Protocol implements Settable {
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     @GuardedBy("impl_lock")
     protected volatile RaftImpl impl=new Follower(this);
-    protected final Lock        impl_lock=new ReentrantLock();
     protected volatile View     view;
     protected Address           local_addr;
 
@@ -203,30 +200,25 @@ public class RAFT extends Protocol implements Settable {
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
         // log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
-        impl_lock.lock();
-        try {
-            if(hdr instanceof AppendEntriesRequest) {
-                AppendEntriesRequest req=(AppendEntriesRequest)hdr;
-                impl.handleAppendEntriesRequest(msg.src(),req.term());
-            }
-            else if(hdr instanceof AppendEntriesResponse) {
-                AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
-                impl.handleAppendEntriesResponse(msg.src(),rsp.term());
-            }
-            else if(hdr instanceof InstallSnapshotRequest) {
-                InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
-                impl.handleInstallSnapshotRequest(msg.src(),req.term());
-            }
-            else if(hdr instanceof InstallSnapshotResponse) {
-                InstallSnapshotResponse rsp=(InstallSnapshotResponse)hdr;
-                impl.handleInstallSnapshotResponse(msg.src(),rsp.term());
-            }
-            else
-                log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
+
+        if(hdr instanceof AppendEntriesRequest) {
+            AppendEntriesRequest req=(AppendEntriesRequest)hdr;
+            impl.handleAppendEntriesRequest(msg.src(),req.term());
         }
-        finally {
-            impl_lock.unlock();
+        else if(hdr instanceof AppendEntriesResponse) {
+            AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
+            impl.handleAppendEntriesResponse(msg.src(),rsp.term());
         }
+        else if(hdr instanceof InstallSnapshotRequest) {
+            InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
+            impl.handleInstallSnapshotRequest(msg.src(),req.term());
+        }
+        else if(hdr instanceof InstallSnapshotResponse) {
+            InstallSnapshotResponse rsp=(InstallSnapshotResponse)hdr;
+            impl.handleInstallSnapshotResponse(msg.src(),rsp.term());
+        }
+        else
+            log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
     }
 
     protected void changeRole(Role new_role) {
