@@ -2,9 +2,10 @@ package org.jgroups.tests;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
+import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
-import org.jgroups.protocols.raft.MapDBLog;
 import org.jgroups.util.Util;
+import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -22,8 +23,8 @@ public class LogTest {
 
     @DataProvider static Object[][] logProvider() {
         return new Object[][] {
-          {new MapDBLog()} // ,
-        //  {new LevelDBLog()}
+          /*{new MapDBLog()}  ,*/
+          {new LevelDBLog()}
         };
     }
 
@@ -32,28 +33,25 @@ public class LogTest {
 
 
     @Test(dataProvider="logProvider")
-    public void testAtomicFields(Log log) throws Exception {
+    public void testFields(Log log) throws Exception {
         Address addr=Util.createRandomAddress("A");
         this.log=log;
         log.init(filename, null);
         log.currentTerm(22);
         int current_term=log.currentTerm();
-        assert current_term == 22;
+        Assert.assertEquals(current_term, 22);
 
         log.votedFor(addr);
         Address voted_for=log.votedFor();
-        assert addr.equals(voted_for);
+        Assert.assertEquals(addr, voted_for);
 
         log.destroy();
         log.init(filename, null);
         current_term=log.currentTerm();
-        assert current_term == 22;
+        Assert.assertEquals(current_term, 22);
         voted_for=log.votedFor();
-        assert addr.equals(voted_for);
+        Assert.assertEquals(addr, voted_for);
     }
-
-
-
 
 
 }

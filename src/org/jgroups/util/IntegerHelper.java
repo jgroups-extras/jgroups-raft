@@ -14,6 +14,9 @@ public class IntegerHelper {
     }
 
     public static int fromByteArrayToInt(byte[] b) {
+
+        if ((b == null) || (b.length != 4)) {return 0;}
+
         return   b[3] & 0xFF |
                 (b[2] & 0xFF) << 8 |
                 (b[1] & 0xFF) << 16 |

@@ -27,6 +27,7 @@ public class LevelDBLog implements Log {
     private Integer currentTerm = 0;
     private Integer commitIndex = 0;
     private Integer lastApplied = 0;
+    private Address votedFor;
 
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
@@ -51,7 +52,7 @@ public class LevelDBLog implements Log {
         }
 
         initCommitAndTermFromLog();
-        checkForConsistency();
+        //checkForConsistency();
 
     }
 
@@ -66,26 +67,33 @@ public class LevelDBLog implements Log {
 
     private void checkForConsistency() throws Exception {
         DBIterator iterator = db.iterator();
+
         try {
             iterator.seekToLast();
+        } catch (java.util.NoSuchElementException nse) {
+            assert (0 == commitIndex);
+            assert (0 == currentTerm);
+            iterator.close();
+            return;
+        }
+        try {
             byte[] keyBytes = iterator.peekNext().getKey();
             int commitIndexInLog = fromByteArrayToInt(keyBytes);
             assert (commitIndexInLog == commitIndex);
 
             //get the term from the serialized logentry
             byte[] entryBytes = iterator.peekNext().getValue();
-            LogEntry entry =(LogEntry)Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
+            LogEntry entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
             int currentTermInLog = entry != null ? entry.term : 0;
-            assert(currentTermInLog == currentTerm);
-
-        } finally {
+            assert (currentTermInLog == currentTerm);
+        }
+        finally {
             try {
                 iterator.close();
             } catch (IOException e) {
                 e.printStackTrace();
             }
         }
-
 
     }
 
@@ -106,17 +114,25 @@ public class LevelDBLog implements Log {
 
     @Override
     public Log currentTerm(int new_term) {
-        return null;
+        currentTerm = new_term;
+        db.put(CURRENTTERM, fromIntToByteArray(currentTerm));
+        return this;
     }
 
     @Override
     public Address votedFor() {
-        return null;
+        return votedFor;
     }
 
     @Override
     public Log votedFor(Address member) {
-        return null;
+        votedFor = member;
+        try {
+            db.put(VOTEDFOR, Util.streamableToByteBuffer(member));
+        } catch (Exception e) {
+            e.printStackTrace(); // todo: better error handling
+        }
+        return this;
     }
 
     @Override

@@ -14,6 +14,10 @@ import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
 @Test(groups= Global.FUNCTIONAL,singleThreaded=true)
 public class IntegerHelperTest {
 
+    public void testNull() {
+        Assert.assertEquals(0, fromByteArrayToInt(null));
+    }
+
     public void testZeroConversion() {
         Assert.assertEquals(0, convertToBytesAndBack(0));
     }
