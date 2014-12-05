@@ -63,9 +63,9 @@ public class LogTest {
         log.close();
         log.init(filename, null);
         current_term=log.currentTerm();
-        assert current_term == 0;
+        Assert.assertEquals(current_term, 0);
         voted_for=log.votedFor();
-        assert voted_for == null;
+        Assert.assertNull(voted_for);
     }
 
 
@@ -75,9 +75,20 @@ public class LogTest {
         byte[] buf=new byte[10];
         log.append(1, new LogEntry(5, buf));
         log.append(2, new LogEntry(5, buf));
-        assert log.lastApplied() == 2;
-        assert log.first() == 1;
-        assert log.commitIndex() == 0;
+        Assert.assertEquals(log.lastApplied(), 2);
+        Assert.assertEquals(log.first(), 1);
+        Assert.assertEquals(log.commitIndex(), 0);
     }
 
+    /*
+    public void testIterator(Log log) throws Exception {
+        this.log = log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        log.append(1, new LogEntry(5, buf));
+        log.append(2, new LogEntry(5, buf));
+        log.forEach(null);
+        Assert.assertTrue(false);
+    }
+    */
 }

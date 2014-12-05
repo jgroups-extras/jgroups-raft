@@ -24,10 +24,12 @@ public class LevelDBLog implements Log {
     private static final byte[] VOTEDFOR = "VF".getBytes();
 
     private DB db;
+
     private Integer currentTerm = 0;
+    private Address votedFor;
+
     private Integer commitIndex = 0;
     private Integer lastApplied = 0;
-    private Address votedFor;
 
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
@@ -61,6 +63,8 @@ public class LevelDBLog implements Log {
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
         lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
+        //byte[] votedForBytes = db.get(VOTEDFOR);
+        //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, votedForBytes);
 
     }
 
@@ -165,7 +169,13 @@ public class LevelDBLog implements Log {
 
     @Override
     public Log commitIndex(int new_index) {
-        return null;
+        commitIndex = new_index;
+        try {
+            db.put(COMMITINDEX, fromIntToByteArray(commitIndex));
+        } catch (Exception e) {
+            e.printStackTrace(); // todo: better error handling
+        }
+        return this;
     }
 
     @Override
