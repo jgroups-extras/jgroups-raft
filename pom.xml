@@ -207,11 +207,8 @@
                     </goals>
                     <configuration>
                        <sources>
-                          <source>tests/byteman</source>
-                          <source>tests/junit</source>
                           <source>tests/junit-functional</source>
                           <!-- tests/other and tests/perf are included in the normal sources -->
-                          <source>tests/stress</source>
                        </sources>
                     </configuration>
                  </execution>
@@ -243,7 +240,7 @@
                         </configuration>
                     </execution>
                     <!-- Run the tests via ant -->
-                    <!--execution>
+                    <execution>
                         <phase>test</phase>
                         <configuration>
                             <tasks unless="maven.test.skip">
@@ -255,7 +252,7 @@
                         <goals>
                             <goal>run</goal>
                         </goals>
-                    </execution-->
+                    </execution>
                 </executions>
             </plugin>
             <!-- Make sure we generate src jars too -->
