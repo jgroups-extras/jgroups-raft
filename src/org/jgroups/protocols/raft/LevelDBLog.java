@@ -98,13 +98,18 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void destroy() {
+    public void close() {
         try {
             db.close();
         } catch (IOException e) {
             //@todo proper logging, etc
             e.printStackTrace();
         }
+    }
+
+    @Override
+    public void delete() {
+
     }
 
     @Override
@@ -166,6 +171,11 @@ public class LevelDBLog implements Log {
     @Override
     public int lastApplied() {
         return lastApplied;
+    }
+
+    @Override
+    public void append(int index, LogEntry... entries) {
+
     }
 
     @Override

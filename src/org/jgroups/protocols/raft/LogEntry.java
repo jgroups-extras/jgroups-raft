@@ -18,6 +18,13 @@ public class LogEntry implements Streamable {
     protected int    offset;   // may get removed (always 0)
     protected int    length;   // may get removed (always command.length)
 
+
+    public LogEntry() {}
+
+    public LogEntry(int term, byte[] command) {
+        this(term, command, 0, command != null? command.length : 0);
+    }
+
     public LogEntry(int term,byte[] command,int offset,int length) {
         this.term=term;
         this.command=command;
@@ -39,12 +46,7 @@ public class LogEntry implements Streamable {
 
     public String toString() {
         StringBuilder str = new StringBuilder();
-        str.append("Term: ").append(term).append(" Command Bytes: { ");
-        for (byte b: command) {
-            str.append(b);
-            str.append(" ");
-        }
-        str.append("}");
+        str.append("term=").append(term).append(" (").append(command != null? command.length : 0).append(" bytes)");
         return str.toString();
     }
 

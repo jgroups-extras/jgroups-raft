@@ -4,6 +4,8 @@ import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.MapDBLog;
 import org.jgroups.util.Util;
 import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
@@ -23,16 +25,21 @@ public class LogTest {
 
     @DataProvider static Object[][] logProvider() {
         return new Object[][] {
-          /*{new MapDBLog()}  ,*/
+          {new MapDBLog()},
           {new LevelDBLog()}
         };
     }
 
-    @AfterMethod protected void destroy() {if(log != null) log.destroy(); log=null;}
+    @AfterMethod protected void destroy() {
+        if(log != null) {
+            log.delete();
+            log.close();
+        }
+        log=null;
+    }
 
 
 
-    @Test(dataProvider="logProvider")
     public void testFields(Log log) throws Exception {
         Address addr=Util.createRandomAddress("A");
         this.log=log;
@@ -45,13 +52,32 @@ public class LogTest {
         Address voted_for=log.votedFor();
         Assert.assertEquals(addr, voted_for);
 
-        log.destroy();
+        log.close();
         log.init(filename, null);
         current_term=log.currentTerm();
         Assert.assertEquals(current_term, 22);
         voted_for=log.votedFor();
         Assert.assertEquals(addr, voted_for);
+
+        log.delete();
+        log.close();
+        log.init(filename, null);
+        current_term=log.currentTerm();
+        assert current_term == 0;
+        voted_for=log.votedFor();
+        assert voted_for == null;
     }
 
+
+    public void testAppendOnLeader(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        log.append(1, new LogEntry(5, buf));
+        log.append(2, new LogEntry(5, buf));
+        assert log.lastApplied() == 2;
+        assert log.first() == 1;
+        assert log.commitIndex() == 0;
+    }
 
 }

@@ -18,8 +18,11 @@ public interface Log {
      */
     void init(String log_name, Map<String,String> args) throws Exception;
 
-    /** Called when the instance is destroyed */
-    void destroy();
+    /** Called when the instance is closed. Should release resource, ie. close a DB connection */
+    void close();
+
+    /** Remove the persistent store, e.g. DB table, or file */
+    void delete();
 
     /** Returns the current term */
     int currentTerm();
@@ -49,6 +52,16 @@ public interface Log {
     /** Returns the index of the last applied append operation (May get removed as this should be in-memory)<p/>
      * This value is set by {@link #append(int,int,LogEntry[])} */
     int lastApplied();
+
+    /**
+     * Append the entries starting at index. Advance last_applied by the number of entries appended.<p/>
+     * This is used by the leader when appending entries before sending AppendEntries requests to cluster members.
+     * Contrary to {@link #append(int,int,LogEntry...)}, no consistency check needs to be performed.
+     * @param index The index at which to append the entries. Should be the same as lastApplied. LastApplied needs
+     *              to be incremented by the number of entries appended
+     * @param entries The entries to append
+     */
+    void append(int index, LogEntry ... entries);
 
 
     /**

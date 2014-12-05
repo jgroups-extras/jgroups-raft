@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.util.Streamable;
 import org.jgroups.util.Util;
 import org.mapdb.Atomic;
 import org.mapdb.DB;
@@ -17,6 +18,7 @@ import java.util.Map;
  */
 public class MapDBLog implements Log {
     protected DB                  db;
+    protected String              filename;
     protected Atomic.Integer      current_term, last_applied, commit_index;
     protected Atomic.Var<Address> voted_for;
 
@@ -25,7 +27,7 @@ public class MapDBLog implements Log {
 
     public void init(String log_name, Map<String,String> args) throws Exception {
         String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
-        String filename=dir + File.separator + log_name;
+        filename=dir + File.separator + log_name;
         db=DBMaker.newFileDB(new File(filename)).closeOnJvmShutdown().make();
         current_term=db.getAtomicInteger("current_term");
         last_applied=db.getAtomicInteger("last_applied");
@@ -33,11 +35,17 @@ public class MapDBLog implements Log {
         if(db.exists("voted_for"))
             voted_for=db.getAtomicVar("voted_for");
         else
-            voted_for=db.createAtomicVar("voted_for", null, new AddressSerializer());
+            voted_for=db.createAtomicVar("voted_for", null, new StreamableSerializer<Address>(Address.class));
     }
 
-    public void destroy() {
+    public void close() {
         db.close();
+    }
+
+    @Override
+    public void delete() {
+        db.getCatalog().clear();
+        db.commit();
     }
 
     public int currentTerm() {
@@ -77,6 +85,11 @@ public class MapDBLog implements Log {
         return last_applied.get();
     }
 
+    @Override
+    public void append(int index, LogEntry... entries) {
+
+    }
+
     public AppendResult append(int prev_index, int prev_term, LogEntry ... entries) {
         return null;
     }
@@ -90,32 +103,37 @@ public class MapDBLog implements Log {
     }
 
 
-    protected static class AddressSerializer implements Serializer<Address>, Serializable {
-        private static final long serialVersionUID=3798698926453783903L;
 
-        public AddressSerializer() {}
+    protected static class StreamableSerializer<T> implements Serializer<T>, Serializable {
+        private static final long serialVersionUID=7230936820893354049L;
+        protected final Class<T>  clazz;
 
-        public void serialize(DataOutput out, Address value) throws IOException {
+        public StreamableSerializer(Class<T> clazz) {
+            this.clazz=clazz;
+            if(clazz.isAssignableFrom(Streamable.class))
+                throw new IllegalArgumentException("argument (" + clazz.getSimpleName() + ") has to be Streamable");
+        }
+
+        @Override
+        public void serialize(DataOutput out, T value) throws IOException {
             try {
-                Util.writeAddress(value, out);
+                Util.writeStreamable((Streamable)value, out);
             }
             catch(Exception ex) {
                 throw new IOException(ex);
             }
         }
 
-        public Address deserialize(DataInput in, int available) throws IOException {
+        @Override
+        public T deserialize(DataInput in, int available) throws IOException {
             try {
-                return Util.readAddress(in);
+                return (T)Util.readStreamable(clazz, in);
             }
             catch(Exception ex) {
                 throw new IOException(ex);
             }
         }
 
-        public int fixedSize() {
-            return -1;
-        }
-
+        @Override public int fixedSize() {return -1;}
     }
 }
