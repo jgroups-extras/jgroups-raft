@@ -10,6 +10,8 @@
     <property name="root.dir"         value="${basedir}"/>
     <property name="src.dir"          value="${root.dir}/src"/>
     <property name="compile.dir"      value="${root.dir}/classes"/>
+    <property name="tests.dir"             value="${root.dir}/tests"/>
+    <property name="junit-functional.dir"  value="${tests.dir}/junit-functional"/>
     <property name="lib.dir"          value="${root.dir}/lib"/>
     <property name="dist.dir"         value="${root.dir}/dist"/>
     <property name="tmp.dir"          value="${root.dir}/tmp"/>
@@ -99,6 +101,7 @@
                listfiles="false"
                includes="org/**">
             <src path="${src.dir}"/>
+            <src path="${junit-functional.dir}"/>
         </javac>
     </target>
 
@@ -154,14 +157,14 @@
     </target>
 
 
-    <target name="all-tests" description="Runs all tests">
+    <target name="all-tests" depends="compile" description="Runs all tests">
         <sequential>
             <antcall target="functional"/>
         </sequential>
     </target>
 
 
-    <target name="functional" depends="define-testng-task" description="Runs functional tests">
+    <target name="functional" depends="compile,define-testng-task" description="Runs functional tests">
         <mkdir dir="${tmp.dir}/test-results/xml/functional"/>
         <runtest suitename="functional"
                  groups="functional"

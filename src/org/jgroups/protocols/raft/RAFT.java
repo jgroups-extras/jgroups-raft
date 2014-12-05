@@ -209,7 +209,7 @@ public class RAFT extends Protocol {
 
         CompletableFuture<Boolean> retval=new CompletableFuture<>(completion_handler);
 
-        AppendResult result=log_impl.append(last_applied, current_term, new LogEntry(current_term,buf,offset,length));
+        AppendResult result=log_impl.append(last_applied, current_term, new LogEntry(current_term, buf, offset, length));
         if(!result.success) {
             retval.completeExceptionally(new IllegalStateException("log could not be appended to: result=" + result));
             return retval;
