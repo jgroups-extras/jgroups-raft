@@ -1,9 +1,6 @@
 package org.jgroups.protocols.raft;
 
-import org.iq80.leveldb.DB;
-import org.iq80.leveldb.DBIterator;
-import org.iq80.leveldb.Logger;
-import org.iq80.leveldb.Options;
+import org.iq80.leveldb.*;
 import org.jgroups.Address;
 import org.jgroups.util.Util;
 
@@ -12,12 +9,19 @@ import java.io.IOException;
 import java.util.Map;
 
 import static org.fusesource.leveldbjni.JniDBFactory.*;
+import static org.jgroups.util.IntegerHelper.fromByteArrayToInt;
+import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
 
 /**
  * Created by ugol on 03/12/14.
  */
 
 public class LevelDBLog implements Log {
+
+    private static final byte[] LASTAPPLIED = "LA".getBytes();
+    private static final byte[] CURRENTTERM = "CT".getBytes();
+    private static final byte[] COMMITINDEX = "CX".getBytes();
+    private static final byte[] VOTEDFOR = "VF".getBytes();
 
     private DB db;
     private Integer currentTerm = 0;
@@ -40,7 +44,6 @@ public class LevelDBLog implements Log {
         options.logger(debugLogger);
 
         try {
-            //@todo get the name of the log file from node name
             db = factory.open(new File(log_name + ".db"), options);
         } catch (IOException e) {
             //@todo proper logging, etc
@@ -48,20 +51,32 @@ public class LevelDBLog implements Log {
         }
 
         initCommitAndTermFromLog();
+        checkForConsistency();
 
     }
 
     private void initCommitAndTermFromLog() throws Exception {
+
+        currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
+        commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
+        lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
+
+    }
+
+
+    private void checkForConsistency() throws Exception {
         DBIterator iterator = db.iterator();
         try {
             iterator.seekToLast();
             byte[] keyBytes = iterator.peekNext().getKey();
-            commitIndex = new Integer(asString(keyBytes));
+            int commitIndexInLog = fromByteArrayToInt(keyBytes);
+            assert (commitIndexInLog == commitIndex);
 
             //get the term from the serialized logentry
             byte[] entryBytes = iterator.peekNext().getValue();
             LogEntry entry =(LogEntry)Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
-            this.currentTerm = entry.term;
+            int currentTermInLog = entry != null ? entry.term : 0;
+            assert(currentTermInLog == currentTerm);
 
         } finally {
             try {
@@ -70,6 +85,8 @@ public class LevelDBLog implements Log {
                 e.printStackTrace();
             }
         }
+
+
     }
 
     @Override
@@ -138,16 +155,26 @@ public class LevelDBLog implements Log {
     @Override
     public AppendResult append(int prev_index, int prev_term, LogEntry[] entries) {
 
-        //WriteBatch batch = db.createWriteBatch();
+        WriteBatch batch = db.createWriteBatch();
 
         for (LogEntry entry : entries) {
             try {
-                db.put(bytes(lastApplied.toString()), Util.streamableToByteBuffer(entry));
-                lastApplied++;
+                byte[] lastAppliedBytes = fromIntToByteArray(lastApplied);
+                batch.put(lastAppliedBytes, Util.streamableToByteBuffer(entry));
                 currentTerm=entry.term;
+                batch.put(LASTAPPLIED, lastAppliedBytes);
+                batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
+                lastApplied++;
+                db.write(batch);
             }
             catch(Exception ex) {
                 ex.printStackTrace(); // todo: better error handling
+            } finally {
+                try {
+                    batch.close();
+                } catch (IOException e) {
+                    e.printStackTrace(); // todo: better error handling
+                }
             }
         }
 
