@@ -1,6 +1,7 @@
 package org.jgroups.tests;
 
 import org.jgroups.Global;
+import org.testng.Assert;
 import org.testng.annotations.Test;
 
 import static org.jgroups.util.IntegerHelper.fromByteArrayToInt;
@@ -14,23 +15,23 @@ import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
 public class IntegerHelperTest {
 
     public void testZeroConversion() {
-        assert 0 == convertToBytesAndBack(0);
+        Assert.assertEquals(0, convertToBytesAndBack(0));
     }
 
     public void testPositiveConversion() {
-        assert 42 == convertToBytesAndBack(42);
+        Assert.assertEquals(42, convertToBytesAndBack(42));
     }
 
     public void testMaxConversion() {
-        assert Integer.MAX_VALUE == convertToBytesAndBack(Integer.MAX_VALUE);
+        Assert.assertEquals(Integer.MAX_VALUE, convertToBytesAndBack(Integer.MAX_VALUE));
     }
 
     public void testNegativeConversion() {
-        assert -42 == convertToBytesAndBack(-42);
+        Assert.assertEquals(-42, convertToBytesAndBack(-42));
     }
 
     public void testMinConversion() {
-        assert Integer.MIN_VALUE == convertToBytesAndBack(Integer.MIN_VALUE);
+        Assert.assertEquals(Integer.MIN_VALUE, convertToBytesAndBack(Integer.MIN_VALUE));
     }
 
 
