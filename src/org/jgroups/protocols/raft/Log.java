@@ -36,9 +36,6 @@ public interface Log {
     /** Sets the address of the member this node voted for in the current term. Only invoked once per term */
     Log votedFor(Address member);
 
-    /** Returns the index of the first entry */
-    int first();
-
     /** Returns the current commit index. (May get removed as the RAFT paper has this as in-memory attribute) */
     int commitIndex();
 
@@ -48,6 +45,9 @@ public interface Log {
      * @return the log
      */
     Log commitIndex(int new_index);
+
+    /** Returns the index of the firstApplied entry */
+    int firstApplied();
 
     /** Returns the index of the last applied append operation (May get removed as this should be in-memory)<p/>
      * This value is set by {@link #append(int,int,LogEntry[])} */
@@ -79,7 +79,6 @@ public interface Log {
     AppendResult append(int prev_index, int prev_term, LogEntry ... entries);
 
     // void snapshot(); // tbd when we get to InstallSnapshot
-
     /**
      * Applies function to all elements of the log between start_index and end_index. This makes ancillary methods
      * like get(int from, int to) unnecessary: can be done like this:<p/>
@@ -96,12 +95,12 @@ public interface Log {
         }
      * </pre>
      * @param function The function to be applied
-     * @param start_index The start index. If smaller than first(), first() will be used
+     * @param start_index The start index. If smaller than firstApplied(), firstApplied() will be used
      * @param end_index The end index. If greater than commitIndex(), commitIndex() will be used
      */
     void forEach(Function function, int start_index, int end_index);
 
-    /** Applies a function to all elements between first() and commitIndex() */
+    /** Applies a function to all elements between firstApplied() and commitIndex() */
     void forEach(Function function);
 
     interface Function {
@@ -110,7 +109,7 @@ public interface Log {
          * @param index The index of the entry
          * @param term The term of the entry
          * @param command The command buffer
-         * @param offset The offset into the comand buffer
+         * @param offset The offset into the command buffer
          * @param length The length of the command buffer
          * @return True if the iteration should continue, false if it should terminate
          */

@@ -73,7 +73,7 @@ public class MapDBLog implements Log {
         return this;
     }
 
-    public int first() {
+    public int firstApplied() {
         return 0;
     }
 

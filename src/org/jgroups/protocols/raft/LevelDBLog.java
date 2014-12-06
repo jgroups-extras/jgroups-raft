@@ -38,17 +38,10 @@ public class LevelDBLog implements Log {
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
 
-        Logger debugLogger = new Logger() {
-            public void log(String message) {
-                System.out.println(message);
-            }
-        };
+
 
         Options options = new Options();
         options.createIfMissing(true);
-
-        // to help debugging
-        //options.logger(debugLogger);
 
         //String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
         //filename=dir + File.separator + log_name;
@@ -56,70 +49,13 @@ public class LevelDBLog implements Log {
         this.dbFileName = new File(log_name);
         db = factory.open(dbFileName, options);
 
-        WriteBatch batch = db.createWriteBatch();
-        try {
-            batch.put(FIRSTAPPLIED, fromIntToByteArray(-1));
-            batch.put(LASTAPPLIED, fromIntToByteArray(0));
-            batch.put(CURRENTTERM, fromIntToByteArray(0));
-            batch.put(COMMITINDEX, fromIntToByteArray(0));
-            //batch.put(VOTEDFOR, Util.streamableToByteBuffer(Util.createRandomAddress("")));
-            db.write(batch);
-        } catch (Exception ex) {
-            ex.printStackTrace(); // todo: better error handling
-        } finally {
-            try {
-                batch.close();
-            } catch (IOException e) {
-                e.printStackTrace(); // todo: better error handling
-            }
-        }
-
-
-        initCommitAndTermFromLog();
-        //checkForConsistency();
-
-    }
-
-    private void initCommitAndTermFromLog() throws Exception {
-
-        firstApplied = fromByteArrayToInt(db.get(FIRSTAPPLIED));
-        lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
-        currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
-        commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        //byte[] votedForBytes = db.get(VOTEDFOR);
-        //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, votedForBytes);
-
-    }
-
-
-    private void checkForConsistency() throws Exception {
-        DBIterator iterator = db.iterator();
-
-        try {
-            iterator.seekToLast();
-        } catch (java.util.NoSuchElementException nse) {
-            assert (0 == commitIndex);
-            assert (0 == currentTerm);
-            iterator.close();
-            return;
-        }
-        try {
-            byte[] keyBytes = iterator.peekNext().getKey();
-            int commitIndexInLog = fromByteArrayToInt(keyBytes);
-            assert (commitIndexInLog == commitIndex);
-
-            //get the term from the serialized logentry
-            byte[] entryBytes = iterator.peekNext().getValue();
-            LogEntry entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
-            int currentTermInLog = entry != null ? entry.term : 0;
-            assert (currentTermInLog == currentTerm);
-        }
-        finally {
-            try {
-                iterator.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        if (isANewRAFTLog()) {
+            System.out.println("LOG is new, must be initialized");
+            initLog();
+        } else {
+            System.out.println("LOG is existent, must not be initialized");
+            initCommitAndTermFromLog();
+            //checkForConsistency();
         }
 
     }
@@ -143,6 +79,7 @@ public class LevelDBLog implements Log {
             e.printStackTrace();
         }
     }
+
 
     @Override
     public int currentTerm() {
@@ -173,7 +110,7 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public int first() {
+    public int firstApplied() {
 
         if (firstApplied == -1) {
             return firstApplied;
@@ -262,6 +199,9 @@ public class LevelDBLog implements Log {
     @Override
     public void forEach(Function function, int start_index, int end_index) {
 
+        start_index = Math.max(start_index, firstApplied);
+        end_index = Math.min(end_index, lastApplied);
+
         DBIterator iterator = db.iterator();
 
         for (int i=start_index; i<=end_index; i++) {
@@ -303,5 +243,74 @@ public class LevelDBLog implements Log {
         System.out.println("Current Term: " + fromByteArrayToInt(currentTermBytes));
         byte[] commitIndexBytes = db.get(COMMITINDEX);
         System.out.println("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
+        // @todo add VOTEDFOR
     }
+
+    private boolean isANewRAFTLog() {
+        return (db.get(FIRSTAPPLIED) == null);
+    }
+
+    private void initLog() {
+        WriteBatch batch = db.createWriteBatch();
+        try {
+            batch.put(FIRSTAPPLIED, fromIntToByteArray(-1));
+            batch.put(LASTAPPLIED, fromIntToByteArray(0));
+            batch.put(CURRENTTERM, fromIntToByteArray(0));
+            batch.put(COMMITINDEX, fromIntToByteArray(0));
+            //batch.put(VOTEDFOR, Util.streamableToByteBuffer(Util.createRandomAddress("")));
+            db.write(batch);
+        } catch (Exception ex) {
+            ex.printStackTrace(); // todo: better error handling
+        } finally {
+            try {
+                batch.close();
+            } catch (IOException e) {
+                e.printStackTrace(); // todo: better error handling
+            }
+        }
+    }
+
+    private void initCommitAndTermFromLog() throws Exception {
+
+        firstApplied = fromByteArrayToInt(db.get(FIRSTAPPLIED));
+        lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
+        currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
+        commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
+        //byte[] votedForBytes = db.get(VOTEDFOR);
+        //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, votedForBytes);
+
+    }
+
+    private void checkForConsistency() throws Exception {
+        DBIterator iterator = db.iterator();
+
+        try {
+            iterator.seekToLast();
+        } catch (java.util.NoSuchElementException nse) {
+            assert (0 == commitIndex);
+            assert (0 == currentTerm);
+            iterator.close();
+            return;
+        }
+        try {
+            byte[] keyBytes = iterator.peekNext().getKey();
+            int commitIndexInLog = fromByteArrayToInt(keyBytes);
+            assert (commitIndexInLog == commitIndex);
+
+            //get the term from the serialized logentry
+            byte[] entryBytes = iterator.peekNext().getValue();
+            LogEntry entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
+            int currentTermInLog = entry != null ? entry.term : 0;
+            assert (currentTermInLog == currentTerm);
+        }
+        finally {
+            try {
+                iterator.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+    }
+
 }

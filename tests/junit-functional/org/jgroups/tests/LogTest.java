@@ -11,8 +11,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNull;
+import static org.testng.Assert.*;
 
 /**
  * Tests all {@link org.jgroups.protocols.raft.Log} implementations for correctness
@@ -35,7 +34,6 @@ public class LogTest {
     @AfterMethod protected void destroy() {
         if(log != null) {
             log.delete();
-            log.close();
         }
         log=null;
     }
@@ -61,6 +59,7 @@ public class LogTest {
         voted_for=log.votedFor();
         assertEquals(addr, voted_for);
 
+        /*
         log.close();
         log.delete();
         log.init(filename, null);
@@ -68,6 +67,20 @@ public class LogTest {
         assertEquals(current_term, 0);
         voted_for=log.votedFor();
         assertNull(voted_for);
+        */
+    }
+
+    public void testNewLog(Log log) throws Exception {
+
+        this.log=log;
+        log.init(filename, null);
+
+        assertEquals(log.firstApplied(), -1);
+        assertEquals(log.lastApplied(), 0);
+        assertEquals(log.currentTerm(), 0);
+        assertEquals(log.commitIndex(), 0);
+        assertNull(log.votedFor());
+
     }
 
 
@@ -79,7 +92,7 @@ public class LogTest {
         log.append(2, false, new LogEntry(5, buf));
         assertEquals(log.lastApplied(), 2);
         assertEquals(log.commitIndex(), 0);
-        assertEquals(log.first(), 1);
+        assertEquals(log.firstApplied(), 1);
     }
 
     /*
