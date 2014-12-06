@@ -22,5 +22,5 @@ doc/tutorial/target
 conf/MANIFEST.MF
 target/
 lib/
-
-
+*.log
+*.db
