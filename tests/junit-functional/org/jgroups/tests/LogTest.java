@@ -7,10 +7,12 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.MapDBLog;
 import org.jgroups.util.Util;
-import org.testng.Assert;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNull;
 
 /**
  * Tests all {@link org.jgroups.protocols.raft.Log} implementations for correctness
@@ -46,26 +48,26 @@ public class LogTest {
         log.init(filename, null);
         log.currentTerm(22);
         int current_term=log.currentTerm();
-        Assert.assertEquals(current_term, 22);
+        assertEquals(current_term, 22);
 
         log.votedFor(addr);
         Address voted_for=log.votedFor();
-        Assert.assertEquals(addr, voted_for);
+        assertEquals(addr, voted_for);
 
         log.close();
         log.init(filename, null);
         current_term=log.currentTerm();
-        Assert.assertEquals(current_term, 22);
+        assertEquals(current_term, 22);
         voted_for=log.votedFor();
-        Assert.assertEquals(addr, voted_for);
+        assertEquals(addr, voted_for);
 
         log.delete();
         log.close();
         log.init(filename, null);
         current_term=log.currentTerm();
-        Assert.assertEquals(current_term, 0);
+        assertEquals(current_term, 0);
         voted_for=log.votedFor();
-        Assert.assertNull(voted_for);
+        assertNull(voted_for);
     }
 
 
@@ -75,9 +77,9 @@ public class LogTest {
         byte[] buf=new byte[10];
         log.append(1, false, new LogEntry(5, buf));
         log.append(2, false, new LogEntry(5, buf));
-        Assert.assertEquals(log.lastApplied(), 2);
-        Assert.assertEquals(log.commitIndex(), 0);
-        //Assert.assertEquals(log.first(), 1);
+        assertEquals(log.lastApplied(), 2);
+        assertEquals(log.commitIndex(), 0);
+        //assertEquals(log.first(), 1);
     }
 
     /*
@@ -88,7 +90,7 @@ public class LogTest {
         log.append(1, new LogEntry(5, buf));
         log.append(2, new LogEntry(5, buf));
         log.forEach(null);
-        Assert.assertTrue(false);
+        assertTrue(false);
     }
     */
 }
