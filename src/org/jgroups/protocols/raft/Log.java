@@ -59,9 +59,10 @@ public interface Log {
      * Contrary to {@link #append(int,int,LogEntry...)}, no consistency check needs to be performed.
      * @param index The index at which to append the entries. Should be the same as lastApplied. LastApplied needs
      *              to be incremented by the number of entries appended
+     * @param overwrite If there is an existing entry and overwrite is true, overwrite it. Else throw an exception
      * @param entries The entries to append
      */
-    void append(int index, LogEntry ... entries);
+    void append(int index, boolean overwrite, LogEntry... entries);
 
 
     /**

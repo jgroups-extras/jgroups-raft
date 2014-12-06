@@ -3,10 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.util.Streamable;
 import org.jgroups.util.Util;
-import org.mapdb.Atomic;
-import org.mapdb.DB;
-import org.mapdb.DBMaker;
-import org.mapdb.Serializer;
+import org.mapdb.*;
 
 import java.io.*;
 import java.util.Map;
@@ -17,10 +14,16 @@ import java.util.Map;
  * @since  0.1
  */
 public class MapDBLog implements Log {
-    protected DB                  db;
-    protected String              filename;
-    protected Atomic.Integer      current_term, last_applied, commit_index;
-    protected Atomic.Var<Address> voted_for;
+    protected DB                         db;
+    protected String                     filename;
+    protected Atomic.Integer             current_term, last_applied, commit_index;
+    protected Atomic.Var<Address>        voted_for;
+    protected BTreeMap<Integer,LogEntry> log_entries;
+    protected static final String        CURRENT_TERM  = "current_term";
+    protected static final String        LAST_APPLIED  = "last_applied";
+    protected static final String        COMMIT_INDEX  = "commit_index";
+    protected static final String        VOTED_FOR     = "voted_for";
+    protected static final String        LOG_ENTRIES   = "log_entries";
 
     public MapDBLog() {
     }
@@ -29,14 +32,16 @@ public class MapDBLog implements Log {
         String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
         filename=dir + File.separator + log_name;
         db=DBMaker.newFileDB(new File(filename)).closeOnJvmShutdown().make();
-        current_term=db.getAtomicInteger("current_term");
-        last_applied=db.getAtomicInteger("last_applied");
-        commit_index=db.getAtomicInteger("commit_index");
-        if(db.exists("voted_for"))
-            voted_for=db.getAtomicVar("voted_for");
-        else
-            voted_for=db.createAtomicVar("voted_for", null, new StreamableSerializer<Address>(Address.class));
+        current_term=db.getAtomicInteger(CURRENT_TERM);
+        last_applied=db.getAtomicInteger(LAST_APPLIED);
+        commit_index=db.getAtomicInteger(COMMIT_INDEX);
+        voted_for=db.exists(VOTED_FOR)? db.<Address>getAtomicVar(VOTED_FOR)
+          : db.createAtomicVar(VOTED_FOR, null, new StreamableSerializer<>(Address.class));
+        log_entries=db.exists(LOG_ENTRIES)? db.<Integer,LogEntry>getTreeMap(LOG_ENTRIES)
+          : db.createTreeMap(LOG_ENTRIES).valueSerializer(new StreamableSerializer<>(LogEntry.class)).<Integer,LogEntry>make();
     }
+
+
 
     public void close() {
         db.close();
@@ -86,8 +91,13 @@ public class MapDBLog implements Log {
     }
 
     @Override
-    public void append(int index, LogEntry... entries) {
-
+    public void append(int index, boolean overwrite, LogEntry... entries) {
+        if(!overwrite && log_entries.containsKey(index))
+            throw new IllegalStateException("entry at index " + index + " already exists");
+        for(LogEntry entry: entries)
+            log_entries.put(index, entry);
+        last_applied.set(index);
+        db.commit();
     }
 
     public AppendResult append(int prev_index, int prev_term, LogEntry ... entries) {
