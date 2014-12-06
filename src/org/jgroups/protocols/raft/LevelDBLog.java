@@ -1,5 +1,6 @@
 package org.jgroups.protocols.raft;
 
+import org.apache.commons.io.FileUtils;
 import org.iq80.leveldb.*;
 import org.jgroups.Address;
 import org.jgroups.util.Util;
@@ -24,10 +25,13 @@ public class LevelDBLog implements Log {
     private static final byte[] VOTEDFOR = "VF".getBytes();
 
     private DB db;
+    private File dbFileName;
+
     private Integer currentTerm = 0;
+    private Address votedFor;
+
     private Integer commitIndex = 0;
     private Integer lastApplied = 0;
-    private Address votedFor;
 
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
@@ -44,8 +48,36 @@ public class LevelDBLog implements Log {
         // to help debugging
         options.logger(debugLogger);
 
+        //String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
+        //filename=dir + File.separator + log_name;
+
+        this.dbFileName = new File(log_name);
         try {
-            db = factory.open(new File(log_name + ".db"), options);
+            db = factory.open(dbFileName, options);
+            try (DBIterator iterator = db.iterator()) {
+                iterator.seekToFirst();
+                if (!iterator.hasNext()) {
+                    WriteBatch batch = db.createWriteBatch();
+
+                    try {
+                        batch.put(LASTAPPLIED, fromIntToByteArray(0));
+                        batch.put(CURRENTTERM, fromIntToByteArray(0));
+                        batch.put(COMMITINDEX, fromIntToByteArray(0));
+                        db.write(batch);
+                    } catch (Exception ex) {
+                        ex.printStackTrace(); // todo: better error handling
+                    } finally {
+                        try {
+                            batch.close();
+                        } catch (IOException e) {
+                            e.printStackTrace(); // todo: better error handling
+                        }
+                    }
+
+                }
+            }
+
+
         } catch (IOException e) {
             //@todo proper logging, etc
             e.printStackTrace();
@@ -61,6 +93,8 @@ public class LevelDBLog implements Log {
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
         lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
+        //byte[] votedForBytes = db.get(VOTEDFOR);
+        //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, votedForBytes);
 
     }
 
@@ -109,7 +143,12 @@ public class LevelDBLog implements Log {
 
     @Override
     public void delete() {
-
+        this.close();
+        try {
+            FileUtils.deleteDirectory(dbFileName);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
@@ -145,7 +184,8 @@ public class LevelDBLog implements Log {
 
         DBIterator iterator = db.iterator();
         try {
-            iterator.seekToFirst();
+            iterator.seek(VOTEDFOR);
+            //iterator.next();
             byte[] keyBytes = iterator.peekNext().getKey();
             return new Integer(asString(keyBytes));
         } finally {
@@ -165,7 +205,13 @@ public class LevelDBLog implements Log {
 
     @Override
     public Log commitIndex(int new_index) {
-        return null;
+        commitIndex = new_index;
+        try {
+            db.put(COMMITINDEX, fromIntToByteArray(commitIndex));
+        } catch (Exception e) {
+            e.printStackTrace(); // todo: better error handling
+        }
+        return this;
     }
 
     @Override
@@ -175,12 +221,20 @@ public class LevelDBLog implements Log {
 
     @Override
     public void append(int index, boolean overwrite, LogEntry... entries) {
+        append(entries);
 
     }
 
     @Override
     public AppendResult append(int prev_index, int prev_term, LogEntry[] entries) {
 
+        // consistency check
+        append(entries);
+        return new AppendResult(true, lastApplied);
+
+    }
+
+    private void append(LogEntry[] entries) {
         WriteBatch batch = db.createWriteBatch();
 
         for (LogEntry entry : entries) {
@@ -203,9 +257,6 @@ public class LevelDBLog implements Log {
                 }
             }
         }
-
-        return new AppendResult(true, lastApplied);
-
     }
 
     @Override
