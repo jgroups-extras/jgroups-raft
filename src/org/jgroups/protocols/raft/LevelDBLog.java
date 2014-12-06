@@ -19,6 +19,7 @@ import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
 
 public class LevelDBLog implements Log {
 
+    private static final byte[] FIRSTAPPLIED = "FA".getBytes();
     private static final byte[] LASTAPPLIED = "LA".getBytes();
     private static final byte[] CURRENTTERM = "CT".getBytes();
     private static final byte[] COMMITINDEX = "CX".getBytes();
@@ -32,6 +33,7 @@ public class LevelDBLog implements Log {
 
     private Integer commitIndex = 0;
     private Integer lastApplied = 0;
+    private Integer firstApplied = -1;
 
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
@@ -46,42 +48,32 @@ public class LevelDBLog implements Log {
         options.createIfMissing(true);
 
         // to help debugging
-        options.logger(debugLogger);
+        //options.logger(debugLogger);
 
         //String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
         //filename=dir + File.separator + log_name;
 
         this.dbFileName = new File(log_name);
+        db = factory.open(dbFileName, options);
+
+        WriteBatch batch = db.createWriteBatch();
         try {
-            db = factory.open(dbFileName, options);
-            try (DBIterator iterator = db.iterator()) {
-                iterator.seekToFirst();
-                if (!iterator.hasNext()) {
-                    WriteBatch batch = db.createWriteBatch();
-
-                    try {
-                        batch.put(LASTAPPLIED, fromIntToByteArray(0));
-                        batch.put(CURRENTTERM, fromIntToByteArray(0));
-                        batch.put(COMMITINDEX, fromIntToByteArray(0));
-                        db.write(batch);
-                    } catch (Exception ex) {
-                        ex.printStackTrace(); // todo: better error handling
-                    } finally {
-                        try {
-                            batch.close();
-                        } catch (IOException e) {
-                            e.printStackTrace(); // todo: better error handling
-                        }
-                    }
-
-                }
+            batch.put(FIRSTAPPLIED, fromIntToByteArray(-1));
+            batch.put(LASTAPPLIED, fromIntToByteArray(0));
+            batch.put(CURRENTTERM, fromIntToByteArray(0));
+            batch.put(COMMITINDEX, fromIntToByteArray(0));
+            //batch.put(VOTEDFOR, Util.streamableToByteBuffer(Util.createRandomAddress("")));
+            db.write(batch);
+        } catch (Exception ex) {
+            ex.printStackTrace(); // todo: better error handling
+        } finally {
+            try {
+                batch.close();
+            } catch (IOException e) {
+                e.printStackTrace(); // todo: better error handling
             }
-
-
-        } catch (IOException e) {
-            //@todo proper logging, etc
-            e.printStackTrace();
         }
+
 
         initCommitAndTermFromLog();
         //checkForConsistency();
@@ -90,9 +82,10 @@ public class LevelDBLog implements Log {
 
     private void initCommitAndTermFromLog() throws Exception {
 
+        firstApplied = fromByteArrayToInt(db.get(FIRSTAPPLIED));
+        lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
         //byte[] votedForBytes = db.get(VOTEDFOR);
         //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, votedForBytes);
 
@@ -182,12 +175,15 @@ public class LevelDBLog implements Log {
     @Override
     public int first() {
 
+        if (firstApplied == -1) {
+            return firstApplied;
+        }
+
         DBIterator iterator = db.iterator();
         try {
-            iterator.seek(VOTEDFOR);
-            //iterator.next();
-            byte[] keyBytes = iterator.peekNext().getKey();
-            return new Integer(asString(keyBytes));
+            iterator.seek(FIRSTAPPLIED);
+            byte[] keyBytes = iterator.peekNext().getValue();
+            return fromByteArrayToInt(keyBytes);
         } finally {
             try {
                 iterator.close();
@@ -239,12 +235,16 @@ public class LevelDBLog implements Log {
 
         for (LogEntry entry : entries) {
             try {
+                lastApplied++;
+                if (firstApplied == -1) {
+                    firstApplied = lastApplied;
+                    batch.put(FIRSTAPPLIED, fromIntToByteArray(firstApplied));
+                }
                 byte[] lastAppliedBytes = fromIntToByteArray(lastApplied);
                 batch.put(lastAppliedBytes, Util.streamableToByteBuffer(entry));
                 currentTerm=entry.term;
                 batch.put(LASTAPPLIED, lastAppliedBytes);
                 batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
-                lastApplied++;
                 db.write(batch);
             }
             catch(Exception ex) {
@@ -264,21 +264,12 @@ public class LevelDBLog implements Log {
 
         DBIterator iterator = db.iterator();
 
-        int index = start_index;
-        try {
-            for(iterator.seek(bytes(Integer.toString(start_index))); iterator.hasNext() && (index < end_index); iterator.next()) {
-                index++;
-                String key = asString(iterator.peekNext().getKey());
-                String value = asString(iterator.peekNext().getValue());
-                System.out.println(key + ":" + value);
-                //function.apply(...)
-            }
-        } finally {
-            try {
-                iterator.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        for (int i=start_index; i<=end_index; i++) {
+            iterator.seek(fromIntToByteArray(i));
+            String key = asString(iterator.peekNext().getKey());
+            String value = asString(iterator.peekNext().getValue());
+            System.out.println(key + ":" + value);
+            //function.apply(...)
         }
 
     }
@@ -286,7 +277,31 @@ public class LevelDBLog implements Log {
     @Override
     public void forEach(Function function) {
 
-        this.forEach(function, 1, Integer.MAX_VALUE);
+        if (firstApplied == -1) {
+            return;
+        }
+        this.forEach(function, firstApplied, lastApplied);
 
+    }
+
+    // Useful Debug methods
+    public byte[] print(byte[] bytes) {
+        return db.get(bytes);
+    }
+
+    public void printMetadata() {
+
+        System.out.println("-----------------");
+        System.out.println("RAFT Log Metadata");
+        System.out.println("-----------------");
+
+        byte[] firstAppliedBytes = db.get(FIRSTAPPLIED);
+        System.out.println("First Applied: " + fromByteArrayToInt(firstAppliedBytes));
+        byte[] lastAppliedBytes = db.get(LASTAPPLIED);
+        System.out.println("Last Applied: " + fromByteArrayToInt(lastAppliedBytes));
+        byte[] currentTermBytes = db.get(CURRENTTERM);
+        System.out.println("Current Term: " + fromByteArrayToInt(currentTermBytes));
+        byte[] commitIndexBytes = db.get(COMMITINDEX);
+        System.out.println("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
     }
 }

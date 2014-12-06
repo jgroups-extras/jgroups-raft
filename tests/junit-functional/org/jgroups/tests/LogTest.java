@@ -61,8 +61,8 @@ public class LogTest {
         voted_for=log.votedFor();
         assertEquals(addr, voted_for);
 
-        log.delete();
         log.close();
+        log.delete();
         log.init(filename, null);
         current_term=log.currentTerm();
         assertEquals(current_term, 0);
@@ -79,7 +79,7 @@ public class LogTest {
         log.append(2, false, new LogEntry(5, buf));
         assertEquals(log.lastApplied(), 2);
         assertEquals(log.commitIndex(), 0);
-        //assertEquals(log.first(), 1);
+        assertEquals(log.first(), 1);
     }
 
     /*
