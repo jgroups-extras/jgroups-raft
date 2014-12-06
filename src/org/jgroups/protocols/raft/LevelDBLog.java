@@ -207,11 +207,12 @@ public class LevelDBLog implements Log {
 
     }
 
-    // Useful Debug methods
+    // Useful in debugging
     public byte[] print(byte[] bytes) {
         return db.get(bytes);
     }
 
+    // Useful in debugging
     public void printMetadata() {
 
         System.out.println("-----------------");
