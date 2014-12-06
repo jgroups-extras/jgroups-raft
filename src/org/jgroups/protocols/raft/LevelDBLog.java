@@ -55,8 +55,8 @@ public class LevelDBLog implements Log {
         } else {
             System.out.println("LOG is existent, must not be initialized");
             initCommitAndTermFromLog();
-            //checkForConsistency();
         }
+        checkForConsistency();
 
     }
 
@@ -111,24 +111,7 @@ public class LevelDBLog implements Log {
 
     @Override
     public int firstApplied() {
-
-        if (firstApplied == -1) {
-            return firstApplied;
-        }
-
-        DBIterator iterator = db.iterator();
-        try {
-            iterator.seek(FIRSTAPPLIED);
-            byte[] keyBytes = iterator.peekNext().getValue();
-            return fromByteArrayToInt(keyBytes);
-        } finally {
-            try {
-                iterator.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-
+        return firstApplied;
     }
 
     @Override
@@ -282,34 +265,18 @@ public class LevelDBLog implements Log {
     }
 
     private void checkForConsistency() throws Exception {
-        DBIterator iterator = db.iterator();
 
-        try {
-            iterator.seekToLast();
-        } catch (java.util.NoSuchElementException nse) {
-            assert (0 == commitIndex);
-            assert (0 == currentTerm);
-            iterator.close();
-            return;
-        }
-        try {
-            byte[] keyBytes = iterator.peekNext().getKey();
-            int commitIndexInLog = fromByteArrayToInt(keyBytes);
-            assert (commitIndexInLog == commitIndex);
+        int loggedFirstApplied = fromByteArrayToInt(db.get(FIRSTAPPLIED));
+        int loggedLastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
+        int loggedCurrentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
+        int loggedCommitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
 
-            //get the term from the serialized logentry
-            byte[] entryBytes = iterator.peekNext().getValue();
-            LogEntry entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
-            int currentTermInLog = entry != null ? entry.term : 0;
-            assert (currentTermInLog == currentTerm);
-        }
-        finally {
-            try {
-                iterator.close();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+        assert (firstApplied == loggedFirstApplied);
+        assert (lastApplied == loggedLastApplied);
+        assert (currentTerm == loggedCurrentTerm);
+        assert (commitIndex == loggedCommitIndex);
+
+        //@todo add check if last appended entry contains the correct term
 
     }
 
