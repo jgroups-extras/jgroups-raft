@@ -176,15 +176,19 @@ public class LevelDBLog implements Log {
     }
 
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
-        byte[] prev_entry_bytes = db.get(fromIntToByteArray(prev_index));
-        //@todo deserialize LogEntry from prev_entry_bytes
-        LogEntry prev_entry = null;
+        LogEntry prev_entry = getLogEntry(prev_index);
+        return prev_entry.term != prev_term;
+    }
+
+    private LogEntry getLogEntry(int index) {
+        byte[] entryBytes = db.get(fromIntToByteArray(index));
+        LogEntry entry = null;
         try {
-            prev_entry = (LogEntry) Util.objectFromByteBuffer(prev_entry_bytes);
+            if (entryBytes != null) entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        return prev_entry.term != prev_term;
+        return entry;
     }
 
     @Override
@@ -193,13 +197,9 @@ public class LevelDBLog implements Log {
         start_index = Math.max(start_index, firstApplied);
         end_index = Math.min(end_index, lastApplied);
 
-        DBIterator iterator = db.iterator();
-
         for (int i=start_index; i<=end_index; i++) {
-            iterator.seek(fromIntToByteArray(i));
-            String key = asString(iterator.peekNext().getKey());
-            String value = asString(iterator.peekNext().getValue());
-            System.out.println(key + ":" + value);
+            LogEntry entry = getLogEntry(i);
+            System.out.println(entry);
             //function.apply(...)
         }
 
@@ -221,7 +221,7 @@ public class LevelDBLog implements Log {
     }
 
     // Useful in debugging
-    public void printMetadata() {
+    public void printMetadata() throws Exception {
 
         System.out.println("-----------------");
         System.out.println("RAFT Log Metadata");
@@ -235,7 +235,8 @@ public class LevelDBLog implements Log {
         System.out.println("Current Term: " + fromByteArrayToInt(currentTermBytes));
         byte[] commitIndexBytes = db.get(COMMITINDEX);
         System.out.println("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
-        // @todo add VOTEDFOR
+        //Address votedFor = (Address)Util.streamableFromByteBuffer(Address.class, db.get(VOTEDFOR));
+        //System.out.println("Voted for: " + votedFor);
     }
 
     private void appendEntryIfAbsent(int index, LogEntry entry, WriteBatch batch) throws Exception {
@@ -298,8 +299,7 @@ public class LevelDBLog implements Log {
         lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        //byte[] votedForBytes = db.get(VOTEDFOR);
-        //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, votedForBytes);
+        //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, db.get(VOTEDFOR));
 
     }
 
@@ -315,7 +315,9 @@ public class LevelDBLog implements Log {
         assert (currentTerm == loggedCurrentTerm);
         assert (commitIndex == loggedCommitIndex);
 
-        //@todo add check if last appended entry contains the correct term
+        //check if last appended entry contains the correct term
+        LogEntry lastAppendedEntry = getLogEntry(lastApplied);
+        assert (lastAppendedEntry.term == currentTerm);
 
     }
 
