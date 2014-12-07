@@ -37,6 +37,14 @@ public class AppendResult implements Streamable {
         index=Bits.readInt(in);
     }
 
+    public boolean isSuccess() {
+        return success;
+    }
+
+    public int getIndex() {
+        return index;
+    }
+
     public String toString() {
         return success + ", index=" + index;
     }

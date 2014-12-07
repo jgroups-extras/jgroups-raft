@@ -166,7 +166,7 @@ public class LevelDBLog implements Log {
         if (checkIfPreviousEntryHasDifferentTerm(prev_index, prev_term)) {
             return new AppendResult(false, prev_index);
         }
-        append(prev_index, true, entries);
+        append(prev_index+1, true, entries);
         return new AppendResult(true, lastApplied);
 
     }
@@ -221,7 +221,7 @@ public class LevelDBLog implements Log {
 
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
         LogEntry prev_entry = getLogEntry(prev_index);
-        return prev_entry.term != prev_term;
+        return prev_entry == null || (prev_entry.term != prev_term);
     }
 
     private LogEntry getLogEntry(int index) {
@@ -312,8 +312,8 @@ public class LevelDBLog implements Log {
         assert (commitIndex == loggedCommitIndex);
 
         //check if last appended entry contains the correct term
-        LogEntry lastAppendedEntry = getLogEntry(lastApplied);
-        assert (lastAppendedEntry.term == currentTerm);
+        //LogEntry lastAppendedEntry = getLogEntry(lastApplied);
+        //assert (lastAppendedEntry.term == currentTerm);
 
     }
 
