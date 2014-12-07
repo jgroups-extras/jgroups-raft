@@ -49,10 +49,10 @@ public class LevelDBLog implements Log {
 
         if (isANewRAFTLog()) {
             System.out.println("LOG is new, must be initialized");
-            initLog();
+            initLogWithMetadata();
         } else {
             System.out.println("LOG is existent, must not be initialized");
-            initCommitAndTermFromLog();
+            readMetadataFromLog();
         }
         checkForConsistency();
 
@@ -273,7 +273,7 @@ public class LevelDBLog implements Log {
         return (db.get(FIRSTAPPLIED) == null);
     }
 
-    private void initLog() {
+    private void initLogWithMetadata() {
         WriteBatch batch = db.createWriteBatch();
         try {
             batch.put(FIRSTAPPLIED, fromIntToByteArray(-1));
@@ -293,7 +293,7 @@ public class LevelDBLog implements Log {
         }
     }
 
-    private void initCommitAndTermFromLog() throws Exception {
+    private void readMetadataFromLog() throws Exception {
 
         firstApplied = fromByteArrayToInt(db.get(FIRSTAPPLIED));
         lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
