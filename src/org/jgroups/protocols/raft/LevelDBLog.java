@@ -38,8 +38,6 @@ public class LevelDBLog implements Log {
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
 
-
-
         Options options = new Options();
         options.createIfMissing(true);
 
@@ -137,35 +135,22 @@ public class LevelDBLog implements Log {
 
     @Override
     public void append(int index, boolean overwrite, LogEntry... entries) {
-        append(entries);
-
-    }
-
-    @Override
-    public AppendResult append(int prev_index, int prev_term, LogEntry[] entries) {
-
-        // consistency check
-        append(entries);
-        return new AppendResult(true, lastApplied);
-
-    }
-
-    private void append(LogEntry[] entries) {
         WriteBatch batch = db.createWriteBatch();
 
         for (LogEntry entry : entries) {
             try {
-                lastApplied++;
-                if (firstApplied == -1) {
-                    firstApplied = lastApplied;
-                    batch.put(FIRSTAPPLIED, fromIntToByteArray(firstApplied));
+                updateFirstApplied(index, batch);
+
+                if (overwrite) {
+                    appendEntry(index, entry, batch);
+                } else {
+                    appendEntryIfAbsent(index, entry, batch);
                 }
-                byte[] lastAppliedBytes = fromIntToByteArray(lastApplied);
-                batch.put(lastAppliedBytes, Util.streamableToByteBuffer(entry));
-                currentTerm=entry.term;
-                batch.put(LASTAPPLIED, lastAppliedBytes);
-                batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
+
+                updateLastApplied(index, batch);
+                updateCurrentTerm(entry, batch);
                 db.write(batch);
+                index++;
             }
             catch(Exception ex) {
                 ex.printStackTrace(); // todo: better error handling
@@ -177,6 +162,29 @@ public class LevelDBLog implements Log {
                 }
             }
         }
+    }
+
+    @Override
+    public AppendResult append(int prev_index, int prev_term, LogEntry[] entries) {
+
+        if (checkIfPreviousEntryHasDifferentTerm(prev_index, prev_term)) {
+            return new AppendResult(false, prev_index);
+        }
+        append(prev_index, true, entries);
+        return new AppendResult(true, lastApplied);
+
+    }
+
+    private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
+        byte[] prev_entry_bytes = db.get(fromIntToByteArray(prev_index));
+        //@todo deserialize LogEntry from prev_entry_bytes
+        LogEntry prev_entry = null;
+        try {
+            prev_entry = (LogEntry) Util.objectFromByteBuffer(prev_entry_bytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return prev_entry.term != prev_term;
     }
 
     @Override
@@ -228,6 +236,36 @@ public class LevelDBLog implements Log {
         byte[] commitIndexBytes = db.get(COMMITINDEX);
         System.out.println("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
         // @todo add VOTEDFOR
+    }
+
+    private void appendEntryIfAbsent(int index, LogEntry entry, WriteBatch batch) throws Exception {
+        if (db.get(fromIntToByteArray(index))!= null) {
+            throw new IllegalStateException("Entry at index " + index + " already exists");
+        } else {
+            appendEntry(index, entry, batch);
+        }
+    }
+
+    private void appendEntry(int index, LogEntry entry, WriteBatch batch) throws Exception {
+        batch.put(fromIntToByteArray(index), Util.streamableToByteBuffer(entry));
+    }
+
+
+    private void updateCurrentTerm(LogEntry entry, WriteBatch batch) {
+        currentTerm=entry.term;
+        batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
+    }
+
+    private void updateLastApplied(int index, WriteBatch batch) {
+        lastApplied = index;
+        batch.put(LASTAPPLIED, fromIntToByteArray(lastApplied));
+    }
+
+    private void updateFirstApplied(int index, WriteBatch batch) {
+        if (firstApplied == -1) {
+            firstApplied = index;
+            batch.put(FIRSTAPPLIED, fromIntToByteArray(firstApplied));
+        }
     }
 
     private boolean isANewRAFTLog() {

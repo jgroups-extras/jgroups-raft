@@ -4,6 +4,8 @@ import org.jgroups.Address;
 import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.LogEntry;
 
+import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
+
 
 /**
  * Created by ugol on 06/12/14.
@@ -21,7 +23,9 @@ public class SimpleMainTest {
         log.append(1, false, new LogEntry(1, "UGO LANDINI 1".getBytes()));
         log.append(2, false, new LogEntry(2, "UGO LANDINI 2".getBytes()));
         log.append(3, false, new LogEntry(3, "UGO LANDINI 3".getBytes()));
-        log.forEach(null, 0, 2);
+        log.append(3, false, new LogEntry(3, "UGO LANDINI 3bis".getBytes()));
+        log.forEach(null, 0, 3);
+        byte[] b = log.print(fromIntToByteArray(4));
 
         log.printMetadata();
         log.close();
