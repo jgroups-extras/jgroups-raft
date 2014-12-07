@@ -120,11 +120,7 @@ public class LevelDBLog implements Log {
     @Override
     public Log commitIndex(int new_index) {
         commitIndex = new_index;
-        try {
-            db.put(COMMITINDEX, fromIntToByteArray(commitIndex));
-        } catch (Exception e) {
-            e.printStackTrace(); // todo: better error handling
-        }
+        db.put(COMMITINDEX, fromIntToByteArray(commitIndex));
         return this;
     }
 
@@ -175,22 +171,6 @@ public class LevelDBLog implements Log {
 
     }
 
-    private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
-        LogEntry prev_entry = getLogEntry(prev_index);
-        return prev_entry.term != prev_term;
-    }
-
-    private LogEntry getLogEntry(int index) {
-        byte[] entryBytes = db.get(fromIntToByteArray(index));
-        LogEntry entry = null;
-        try {
-            if (entryBytes != null) entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return entry;
-    }
-
     @Override
     public void forEach(Function function, int start_index, int end_index) {
 
@@ -237,6 +217,22 @@ public class LevelDBLog implements Log {
         System.out.println("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
         //Address votedFor = (Address)Util.streamableFromByteBuffer(Address.class, db.get(VOTEDFOR));
         //System.out.println("Voted for: " + votedFor);
+    }
+
+    private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
+        LogEntry prev_entry = getLogEntry(prev_index);
+        return prev_entry.term != prev_term;
+    }
+
+    private LogEntry getLogEntry(int index) {
+        byte[] entryBytes = db.get(fromIntToByteArray(index));
+        LogEntry entry = null;
+        try {
+            if (entryBytes != null) entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return entry;
     }
 
     private void appendEntryIfAbsent(int index, LogEntry entry, WriteBatch batch) throws Exception {
