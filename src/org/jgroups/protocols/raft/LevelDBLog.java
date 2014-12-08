@@ -144,7 +144,7 @@ public class LevelDBLog implements Log {
                 }
 
                 updateLastApplied(index, batch);
-                updateCurrentTerm(entry, batch);
+                updateCurrentTerm(entry.term, batch);
                 db.write(batch);
                 index++;
             }
@@ -170,7 +170,7 @@ public class LevelDBLog implements Log {
         return new AppendResult(true, lastApplied);
 
         /*
-        // @todo this, must know the previous index in which term changed too
+        // @todo wrong impl, see paper
         int index = findIndexWithTerm(prev_index, prev_term);
         if (index != prev_index) {
             return new AppendResult(false, index);
@@ -203,6 +203,30 @@ public class LevelDBLog implements Log {
             return;
         }
         this.forEach(function, firstApplied, lastApplied);
+
+    }
+
+    @Override
+    public void deleteAllEntriesStartingFrom(int start_index) throws IOException {
+
+        if ((start_index< firstApplied) || (start_index>lastApplied)) {
+            //@todo wrong index, must throw runtime exception
+            return;
+        }
+
+        try (WriteBatch batch = db.createWriteBatch()) {
+            for (int index = start_index; index <= lastApplied; index++) {
+                batch.delete(db.get(fromIntToByteArray(index)));
+            }
+            LogEntry last = getLogEntry(start_index-1);
+
+            if (last == null) {
+                updateCurrentTerm(0, batch);
+            } else {
+                updateCurrentTerm(last.term, batch);
+            }
+            updateLastApplied(start_index - 1, batch);
+        }
 
     }
 
@@ -268,8 +292,8 @@ public class LevelDBLog implements Log {
     }
 
 
-    private void updateCurrentTerm(LogEntry entry, WriteBatch batch) {
-        currentTerm=entry.term;
+    private void updateCurrentTerm(int index, WriteBatch batch) {
+        currentTerm=index;
         batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
     }
 

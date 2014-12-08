@@ -104,6 +104,11 @@ public class MapDBLog implements Log {
         return null;
     }
 
+    @Override
+    public void deleteAllEntriesStartingFrom(int start_index) throws IOException {
+        return;
+    }
+
     public void forEach(Function function,int start_index,int end_index) {
 
     }
