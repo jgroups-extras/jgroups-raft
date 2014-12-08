@@ -134,7 +134,7 @@ public class LogTest {
         log.commitIndex(9);
         AppendResult result = log.append(10, 6, new LogEntry(6, buf));
         assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), 11);
+        //assertEquals(result.getIndex(), 9);
     }
 
     public void testRAFTPaperScenarioB(Log log) throws Exception {
@@ -152,7 +152,7 @@ public class LogTest {
         log.commitIndex(4);
         AppendResult result = log.append(10, 6, new LogEntry(6, buf));
         assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), 11);
+        //assertEquals(result.getIndex(), 4);
     }
 
     public void testRAFTPaperScenarioC(Log log) throws Exception {
@@ -224,7 +224,7 @@ public class LogTest {
         log.commitIndex(7);
         AppendResult result = log.append(10, 6, new LogEntry(6, buf));
         assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), 11);
+        //assertEquals(result.getIndex(), 7);
     }
 
     public void testRAFTPaperScenarioF(Log log) throws Exception {
@@ -249,7 +249,7 @@ public class LogTest {
         log.commitIndex(11);
         AppendResult result = log.append(10, 6, new LogEntry(6, buf));
         assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), 11);
+        //assertEquals(result.getIndex(), 7);
     }
 
     /*

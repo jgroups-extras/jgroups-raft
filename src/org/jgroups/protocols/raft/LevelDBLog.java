@@ -169,6 +169,17 @@ public class LevelDBLog implements Log {
         append(prev_index+1, true, entries);
         return new AppendResult(true, lastApplied);
 
+        /*
+        // @todo this, must know the previous index in which term changed too
+        int index = findIndexWithTerm(prev_index, prev_term);
+        if (index != prev_index) {
+            return new AppendResult(false, index);
+        } else {
+            append(index+1, true, entries);
+            return new AppendResult(true, lastApplied);
+        }
+        */
+
     }
 
     @Override
@@ -222,6 +233,15 @@ public class LevelDBLog implements Log {
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
         LogEntry prev_entry = getLogEntry(prev_index);
         return prev_entry == null || (prev_entry.term != prev_term);
+    }
+
+
+    private int findIndexWithTerm(int start_index, int prev_term) {
+
+        for (LogEntry prev_entry = getLogEntry(start_index); prev_entry == null || (prev_entry.term != prev_term); prev_entry = getLogEntry(--start_index)) {
+            if (start_index == firstApplied) break;
+        }
+        return start_index;
     }
 
     private LogEntry getLogEntry(int index) {
