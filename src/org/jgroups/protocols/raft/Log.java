@@ -78,6 +78,13 @@ public interface Log {
      */
     AppendResult append(int prev_index, int prev_term, LogEntry ... entries);
 
+    /**
+     * Returns a LogEntry at index, or null if not present.
+     * @param index The index
+     * @return The LogEntry, or null if none's present at index.
+     */
+    LogEntry get(int index);
+
     // void snapshot(); // tbd when we get to InstallSnapshot
     /**
      * Applies function to all elements of the log between start_index and end_index. This makes ancillary methods

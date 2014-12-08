@@ -172,6 +172,11 @@ public class LevelDBLog implements Log {
     }
 
     @Override
+    public LogEntry get(int index) {
+        return getLogEntry(index);
+    }
+
+    @Override
     public void forEach(Function function, int start_index, int end_index) {
 
         start_index = Math.max(start_index, firstApplied);

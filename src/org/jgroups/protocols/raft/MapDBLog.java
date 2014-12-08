@@ -104,6 +104,11 @@ public class MapDBLog implements Log {
         return null;
     }
 
+    @Override
+    public LogEntry get(int index) {
+        return log_entries.get(index);
+    }
+
     public void forEach(Function function,int start_index,int end_index) {
 
     }

@@ -10,11 +10,11 @@ import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
-import org.jgroups.util.CompletableFuture;
-import org.jgroups.util.Function;
-import org.jgroups.util.MessageBatch;
-import org.jgroups.util.Util;
+import org.jgroups.util.*;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.lang.reflect.Array;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -206,26 +206,39 @@ public class RAFT extends Protocol {
     public CompletableFuture<Boolean> set(byte[] buf, int offset, int length, Function<Boolean,Void> completion_handler) {
         //if(leader == null || (local_addr != null && !leader.equals(local_addr)))
           //  throw new RuntimeException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+        if(buf == null)
+            throw new IllegalArgumentException("buffer must not be null");
 
         CompletableFuture<Boolean> retval=new CompletableFuture<>(completion_handler);
-
-        AppendResult result=log_impl.append(last_applied, current_term, new LogEntry(current_term, buf, offset, length));
-        if(!result.success) {
-            retval.completeExceptionally(new IllegalStateException("log could not be appended to: result=" + result));
-            return retval;
-        }
-        last_applied++; // todo: add to commit table
+        int prev_index=0, curr_index=0, prev_term=0, curr_term=0, commit_idx=0;
 
         // 1. Append to the log
+        synchronized(this) {
+            prev_index=last_applied;
+            curr_index=++last_applied;
+            LogEntry entry=log_impl.get(prev_index);
+            prev_term=entry != null? entry.term : 0;
+            curr_term=current_term;
+            commit_idx=commit_index;
+        }
 
-        // 2. Multicast an AppendEntries message
+        log_impl.append(curr_index, true, new LogEntry(curr_term, buf, offset, length));
 
-        // 3. Return CompletableFuture
+        // 2. Add the request to the client table, so we can return results to clients when done
 
-        // 4. [async] Update the RPCs table with responses -> move commitIndex in the log
-        // 4.1. Apply committed entries to the state machine
+        // 3. Multicast an AppendEntries message (exclude self)
+        // todo: set target set for responses (ignore responses from members not in the RAFT group)
+        Message msg=new Message(null, buf, offset, length)
+          .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, commit_idx))
+          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+        down_prot.down(new Event(Event.MSG, msg));
 
-        // 5. [async] Periodically resend data to members whose indices are behind mine
+        // 4. Return CompletableFuture
+
+        // 5. [async] Update the RPCs table with responses -> move commitIndex in the log
+        // 5.1. Apply committed entries to the state machine
+
+        // 6. [async] Periodically resend data to members whose indices are behind mine
 
 
 
@@ -283,13 +296,65 @@ public class RAFT extends Protocol {
         return null;
     }
 
+    // Replace with Util equivalent when switching to JGroups 3.6.2 or when merging this code into JGroups
+    public static <T extends Streamable> void write(T[] array, DataOutput out) throws Exception {
+        Bits.writeInt(array != null? array.length : 0, out);
+        if(array == null)
+            return;
+        for(T el: array)
+            el.writeTo(out);
+    }
+
+    // Replace with Util equivalent when switching to JGroups 3.6.2 or when merging this code into JGroups
+    public static <T extends Streamable> T[] read(Class<T> clazz, DataInput in) throws Exception {
+        int size=Bits.readInt(in);
+        if(size == 0)
+            return null;
+        T[] retval=(T[])Array.newInstance(clazz, size);
+
+        for(int i=0; i < retval.length; i++) {
+            retval[i]=clazz.newInstance();
+            retval[i].readFrom(in);
+        }
+        return retval;
+    }
+
+
     /**
-     * Keeps track of next_index and match_index for each cluster member. Used to (1) compute the commit_index and
-     * (2) to resend log entries to members which haven't yet seen them.<p/>
+     * Keeps track of next_index and match_index for each cluster member (excluding this leader).
+     * Used to (1) compute the commit_index and (2) to resend log entries to members which haven't yet seen them.<p/>
      * Only created on the leader
      */
     protected static class CommitTable {
-        protected final Map<Address,?> map=new ConcurrentHashMap<>();
+
+        protected static class Entry {
+            protected int next_index;
+            protected int match_index;
+
+            public Entry(int next_index, int match_index) {
+                this.next_index=next_index;
+                this.match_index=match_index;
+            }
+        }
+
+        protected final Map<Address,Entry> map=new ConcurrentHashMap<>();
+
+
+        protected void add(Address member) {
+
+        }
+
+        protected void remove(Address member) {
+
+        }
+
+        protected int setNextIndex(Address member, int index) {
+            return 0;
+        }
+
+        protected int setMatchIndex(Address member, int index) {
+            return 0;
+        }
     }
 
 }
