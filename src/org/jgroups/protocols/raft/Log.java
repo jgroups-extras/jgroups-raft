@@ -2,6 +2,7 @@ package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 
+import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -79,13 +80,25 @@ public interface Log {
     AppendResult append(int prev_index, int prev_term, LogEntry ... entries);
 
     /**
-     * Returns a LogEntry at index, or null if not present.
+     * Delete all entries starting from start_index.
+     * Updates current_term and last_applied accordingly
+     *
      * @param index The index
      * @return The LogEntry, or null if none's present at index.
      */
     LogEntry get(int index);
 
-    // void snapshot(); // tbd when we get to InstallSnapshot
+    /**
+     * Delete all entries starting from start_index.
+     * Updates current_term and last_applied accordingly
+     *
+     * @param start_index
+     * @throws IOException
+     */
+    void deleteAllEntriesStartingFrom(int start_index) throws IOException;
+
+
+        // void snapshot(); // tbd when we get to InstallSnapshot
     /**
      * Applies function to all elements of the log between start_index and end_index. This makes ancillary methods
      * like get(int from, int to) unnecessary: can be done like this:<p/>

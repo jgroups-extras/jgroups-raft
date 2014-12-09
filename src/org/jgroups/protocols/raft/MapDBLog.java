@@ -104,9 +104,21 @@ public class MapDBLog implements Log {
         return null;
     }
 
+    /**
+     * Delete all entries starting from start_index.
+     * Updates current_term and last_applied accordingly
+     *
+     * @param index The index
+     * @return The LogEntry, or null if none's present at index.
+     */
     @Override
     public LogEntry get(int index) {
-        return log_entries.get(index);
+        return null;
+    }
+
+    @Override
+    public void deleteAllEntriesStartingFrom(int start_index) throws IOException {
+        return;
     }
 
     public void forEach(Function function,int start_index,int end_index) {
