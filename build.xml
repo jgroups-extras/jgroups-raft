@@ -18,7 +18,7 @@
     <property name="javadoc.dir"      value="${dist.dir}/javadoc"/>
     <property name="conf.dir"         value="${root.dir}/conf"/>
     <property name="bin.dir"          value="${root.dir}/bin"/>
-    <property name="javadoc.packages" value="org.taskdistribution.*"/>
+    <property name="javadoc.packages" value="org.jgroups.*"/>
     <property name="timestamp"        value=".timestamp"/>
     <property name="maven.executable" value="mvn"/>
     <property name="ivy.version"      value="2.3.0" />
@@ -108,20 +108,19 @@
 
     <target name="jar"
             description="Compiles and creates JARs in ./dist"
-            depends="jgroups.jar">
+            depends="jgroups-raft.jar">
     </target>
 
 
-    <target name="jgroups.jar"
-            description="Creates the jgroups.jar (includes everything)"
+    <target name="jgroups-raft.jar"
+            description="Creates the jgroups-raft.jar (includes everything)"
             depends="clean,compile">
         <mkdir dir="${dist.dir}"/>
         <xmlproperty file="${ant.file}" collapseAttributes="true"/>
         <property name="-savemanifest" value="${conf.dir}/MANIFEST.MF"/>
         <property name="-output" value="${conf.dir}"/>
-        <jar destfile="${dist.dir}/taskdistribution-${version}.jar"
+        <jar destfile="${dist.dir}/jgroups-raft-${version}.jar"
              basedir="${compile.dir}"
-             manifest="${conf.dir}/MANIFEST.MF"
              includes="org/jgroups/**">
             <fileset dir="${conf.dir}" includes="*.dtd, *.xml, jg-messages*.properties" excludes="*-service.xml"/>
             <fileset dir="${root.dir}">
@@ -144,7 +143,7 @@
                  author="true"
                  version="true"
                  use="true"
-                 bottom="Copyright &#169; 1998-2014 Bela Ban / Red Hat. All Rights Reserved."
+                 bottom="Copyright &#169; 2014-2015 Red Hat. All Rights Reserved."
                  useexternalfile="yes"
                  doctitle="jgroups-raft">
             <!-- The tag option for Javadoc is available in Java 1.4 or later. -->

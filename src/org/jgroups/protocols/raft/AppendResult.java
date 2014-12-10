@@ -1,5 +1,6 @@
 package org.jgroups.protocols.raft;
 
+import org.jgroups.Global;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Streamable;
 
@@ -36,14 +37,20 @@ public class AppendResult implements Streamable {
         this.non_matching_term = non_matching_term;
     }
 
+    public int size() {
+        return Global.BYTE_SIZE + Bits.size(index) + Bits.size(non_matching_term);
+    }
+
     public void writeTo(DataOutput out) throws Exception {
         out.writeBoolean(success);
         Bits.writeInt(index, out);
+        Bits.writeInt(non_matching_term, out);
     }
 
     public void readFrom(DataInput in) throws Exception {
         success=in.readBoolean();
         index=Bits.readInt(in);
+        non_matching_term=Bits.readInt(in);
     }
 
     public boolean isSuccess() {

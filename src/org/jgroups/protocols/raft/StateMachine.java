@@ -15,8 +15,9 @@ public interface StateMachine {
      * @param data The byte[] buffer
      * @param offset The offset at which the data starts
      * @param length The length of the data
+     * @throws Exception Thrown on deserialization or other failure
      */
-    void       apply(byte[] data, int offset, int length);  // tbd: should we use NIO ByteBuffers ?
+    void       apply(byte[] data, int offset, int length) throws Exception;  // tbd: should we use NIO ByteBuffers ?
 
     /**
      * Reads the contents of the state machine from an input stream. This can be the case when an InstallSnapshot RPC

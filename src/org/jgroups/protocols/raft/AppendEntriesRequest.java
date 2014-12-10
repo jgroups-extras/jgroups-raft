@@ -47,6 +47,7 @@ public class AppendEntriesRequest extends RaftHeader {
     @Override
     public void readFrom(DataInput in) throws Exception {
         super.readFrom(in);
+        leader=Util.readAddress(in);
         prev_log_index=Bits.readInt(in);
         prev_log_term=Bits.readInt(in);
         leader_commit=Bits.readInt(in);
