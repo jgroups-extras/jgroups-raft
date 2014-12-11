@@ -12,6 +12,7 @@ import java.io.File;
 import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -22,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since  0.1
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
-public class RAFT extends Protocol {
+public class RAFT extends Protocol implements Runnable {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short  RAFT_ID              = 1024;
 
@@ -32,6 +33,12 @@ public class RAFT extends Protocol {
     protected static final short  INSTALL_SNAPSHOT_REQ = 2002;
     protected static final short  INSTALL_SNAPSHOT_RSP = 2003;
     protected static final short  APPEND_RESULT        = 2004;
+
+    protected final CommitTable.Consumer<Address,Integer,Integer,Integer> func=new CommitTable.Consumer<Address,Integer,Integer,Integer>() {
+        @Override public void apply(Address mbr, Integer match_index, Integer next_index, Integer commit_index) {
+            sendAppendEntriesMessage(mbr, match_index, next_index, commit_index);
+        }
+    };
 
     static {
         ClassConfigurator.addProtocol(RAFT_ID,      RAFT.class);
@@ -55,10 +62,19 @@ public class RAFT extends Protocol {
     @Property(description="Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()")
     protected String                  log_args;
 
-    @Property(description="The name of the log")
-    protected String                  log_name; // ="raft.log";
+    @Property(description="The name of the log. The logical name of the channel (if defined) is used by default. " +
+      "Note that logs for different processes on the same host need to be different")
+    protected String                  log_name;
+
+    @Property(description="Interval (ms) at which AppendEntries messages are resent to members which haven't received them yet")
+    protected long                    resend_interval=1000;
+
+    /** task firing every resend_interval ms to send AppendEntries msgs to mbrs which are missing them */
+    protected Future<?>               resend_task;
 
     protected StateMachine            state_machine;
+
+    protected boolean                 state_machine_loaded;
 
     protected Log                     log_impl;
 
@@ -74,8 +90,9 @@ public class RAFT extends Protocol {
     protected volatile RaftImpl       impl=new Follower(this);
     protected volatile View           view;
     protected Address                 local_addr;
+    protected TimeScheduler           timer;
 
-    /** The current leader (can be null) */
+    /** The current leader (can be null if there is currently no leader) */
     protected volatile Address        leader;
 
     /** The current term. Incremented when this node becomes a candidate, or set when a higher term is seen */
@@ -83,7 +100,7 @@ public class RAFT extends Protocol {
     protected int                     current_term;
 
     @ManagedAttribute(description="Index of the highest log entry applied to the state machine")
-    protected int                     last_applied;
+    protected int                     last_applied; // todo: needed ? why not just use logimpl.lastApplied() ?
 
     @ManagedAttribute(description="Index of the highest committed log entry")
     protected int                     commit_index;
@@ -97,16 +114,23 @@ public class RAFT extends Protocol {
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
     public int          currentTerm()                 {return current_term;}
+    public int          lastApplied()                 {return last_applied;}
+    public int          commitIndex()                 {return commit_index;}
     public Log          log()                         {return log_impl;}
     public RAFT         log(Log new_log)              {this.log_impl=new_log; return this;}
     public RAFT         addRoleListener(RoleChange c) {this.role_change_listeners.add(c); return this;}
     public RAFT         remRoleListener(RoleChange c) {this.role_change_listeners.remove(c); return this;}
+    @ManagedAttribute(description="Is the resend task running")
+    public boolean      resendTaskRunning() {return resend_task != null && !resend_task.isDone();}
 
 
     /** Sets the current term if the new term is greater */
     public synchronized RAFT currentTerm(final int new_term)  {
-        if(new_term > current_term)
+        if(new_term > current_term) {
             current_term=new_term;
+            log_impl.currentTerm(new_term);
+            // changeRole(Follower) ?
+        }
         return this;
     }
 
@@ -114,6 +138,11 @@ public class RAFT extends Protocol {
     public String role() {
         RaftImpl tmp=impl;
         return tmp.getClass().getSimpleName();
+    }
+
+    @ManagedOperation(description="Dumps the commit table")
+    public String dumpCommitTable() {
+        return commit_table != null? commit_table.toString() : "n/a";
     }
 
     @ManagedAttribute(description="Number of log entries in the log")
@@ -154,6 +183,12 @@ public class RAFT extends Protocol {
         return ++current_term;
     }
 
+    protected void createCommitTable() {
+        List<Address> mbrs=new ArrayList<>(view.getMembers());
+        mbrs.remove(local_addr);
+        commit_table=new CommitTable(mbrs, last_applied+1);
+    }
+
     public synchronized boolean updateTermAndLeader(int term, Address new_leader) {
         if(leader == null || (new_leader != null && !leader.equals(new_leader)))
             leader=new_leader;
@@ -164,9 +199,36 @@ public class RAFT extends Protocol {
         return false;
     }
 
+    /**
+     * Loads the log entries from [first .. commit_index] into the state machine
+     */
+    @ManagedOperation(description="Reads log entries up to commit_index and applies them to the state machine")
+    public synchronized void initStateMachineFromLog(boolean force) throws Exception {
+        int count=0;
+        if(state_machine != null) {
+            if(!state_machine_loaded || force) {
+                int from=log_impl.firstApplied(), to=commit_index;
+                for(int i=from; i <= to; i++) {
+                    LogEntry log_entry=log_impl.get(i);
+                    if(log_entry == null) {
+                        log.error("log entry for index %d not found in log", i);
+                        break;
+                    }
+                    state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
+                    count++;
+                }
+                state_machine_loaded=true;
+                log.debug("applied %d log entries (%d - %d) to the state machine", count, from, to);
+            }
+        }
+    }
 
-    @Override
-    public void start() throws Exception {
+    @Override public void init() throws Exception {
+        super.init();
+        timer=getTransport().getTimer();
+    }
+
+    @Override public void start() throws Exception {
         super.start();
         if(log_class == null)
             throw new IllegalStateException("log_class has to be defined");
@@ -187,10 +249,14 @@ public class RAFT extends Protocol {
         log_impl.init(log_name, args);
         last_applied=log_impl.lastApplied();
         commit_index=log_impl.commitIndex();
-        log.debug("initialized last_applied=%d and commit_index=%d from log", last_applied, commit_index);
+        current_term=log_impl.currentTerm();
+        log.debug("set last_applied=%d, commit_index=%d, current_term=%d", last_applied, commit_index, current_term);
+        initStateMachineFromLog(false);
     }
 
-    public void stop() {
+
+
+    @Override public void stop() {
         super.stop();
         impl.destroy();
     }
@@ -202,7 +268,7 @@ public class RAFT extends Protocol {
                 local_addr=(Address)evt.getArg();
                 break;
             case Event.VIEW_CHANGE:
-                view=(View)evt.getArg();
+                handleView((View)evt.getArg());
                 break;
         }
         return down_prot.down(evt);
@@ -219,7 +285,7 @@ public class RAFT extends Protocol {
                 handleEvent(msg, hdr);
                 return null;
             case Event.VIEW_CHANGE:
-                view=(View)evt.getArg();
+                handleView((View)evt.getArg());
                 break;
         }
         return up_prot.up(evt);
@@ -351,6 +417,48 @@ public class RAFT extends Protocol {
             log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
     }
 
+    /** Runs every resend_interval ms: checks if all members in the commit table have received all messages and
+     * resends AppendEntries messages to members who haven't */
+    @Override public void run() {
+        commit_table.forEach(func);
+    }
+
+    protected void sendAppendEntriesMessage(Address member, int match_index, int next_index, int commit_index) {
+        if(match_index >= last_applied && commit_index >= this.commit_index)
+            return;
+        if(match_index == 0) {
+            // send just 1 entry
+            resend(member, next_index-1);
+        }
+        else {
+            // send entries in range [match_index..next_index] (including match_index but excluding next_index)
+            if(match_index < last_applied) {
+                for(int i=match_index+1; i <= last_applied; i++)
+                    resend(member, i);
+            }
+            else {
+                // send empty AppendEntries message with commit_index
+                if(commit_index < this.commit_index) {
+                    Message msg=new Message(member)
+                      .putHeader(id, new AppendEntriesRequest(0, this.local_addr, 0, 0, this.commit_index));
+                    down_prot.down(new Event(Event.MSG, msg));
+                }
+            }
+        }
+    }
+
+    protected void resend(Address target, int index) {
+        LogEntry entry=log_impl.get(index);
+        if(entry == null)
+            return;
+        LogEntry prev=log_impl.get(index-1);
+        int prev_term=prev != null? prev.term : 0;
+
+        Message msg=new Message(target, entry.command, entry.offset, entry.length)
+          .putHeader(id, new AppendEntriesRequest(entry.term, this.local_addr, index-1, prev_term, commit_index));
+        down_prot.down(new Event(Event.MSG, msg));
+    }
+
 
     /**
      * Received a majority of votes for the entry at index. Note that indices may be received out of order, e.g. if
@@ -370,12 +478,28 @@ public class RAFT extends Protocol {
             for(int i=commit_index + 1; i <= index; i++) {
                 if(request_table.isCommitted(i)) {
                     applyCommit(i);
-                    commit_index++;
+                    commit_index=Math.max(commit_index, i);
                 }
             }
         }
         catch(Throwable t) {
             log.error("failed applying commit %d", index);
+        }
+    }
+
+    /**
+     * Tries to advance commit_index up to leader_commit, applying all uncommitted log entries to the state machine
+     * @param leader_commit The commit index of the leader
+     */
+    protected synchronized void commitLogTo(int leader_commit) {
+        try {
+            for(int i=commit_index + 1; i <= Math.min(last_applied, leader_commit); i++) {
+                applyCommit(i);
+                commit_index=Math.max(commit_index, i);
+            }
+        }
+        catch(Throwable t) {
+            log.error("failed advancing commit_index (%d) to %d: %s", commit_index, leader_commit, t);
         }
     }
 
@@ -390,12 +514,23 @@ public class RAFT extends Protocol {
         byte[] rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
 
         // Notify the client's CompletableFuture and then remove the entry in the client request table
-        if(rsp == null)
-            request_table.notifyAndRemove(index, null, 0, 0);
-        else
-            request_table.notifyAndRemove(index, rsp, 0, rsp.length);
+        if(request_table != null) {
+            if(rsp == null)
+                request_table.notifyAndRemove(index, null, 0, 0);
+            else
+                request_table.notifyAndRemove(index, rsp, 0, rsp.length);
+        }
 
         log_impl.commitIndex(index);
+    }
+
+    protected void handleView(View view) {
+        this.view=view;
+        if(commit_table != null) {
+            List<Address> mbrs=new ArrayList<>(view.getMembers());
+            mbrs.remove(local_addr);
+            commit_table.adjust(mbrs, last_applied + 1);
+        }
     }
 
     protected void changeRole(Role new_role) {
@@ -408,13 +543,50 @@ public class RAFT extends Protocol {
             synchronized(this) {
                 impl=new_impl;
             }
-            log.trace("%s: changed role from %s -> %s",local_addr,old_impl == null? "null" :
-              old_impl.getClass().getSimpleName(),new_impl.getClass().getSimpleName());
+            log.trace("%s: changed role from %s -> %s", local_addr, old_impl == null? "null" :
+              old_impl.getClass().getSimpleName(), new_impl.getClass().getSimpleName());
             notifyRoleChangeListeners(new_role);
         }
     }
 
+    /**
+     * Sends AppendEntries messages in range [from..to] to dest
+     * @param dest The target address
+     * @param from The start index
+     * @param to The end index
+     */
+   /* protected void sendAppendEntries(Address dest, int from, int to) {
+        int current_index=from;
+        LogEntry current=null, prev=null;
 
+        while(current_index <= to) {
+            prev=current != null? current : log_impl.get(current_index-1);
+            current=log_impl.get(current_index);
+            if(current == null)
+                break;
+            int prev_term=prev != null? prev.term : current_term;
+
+            Message msg=new Message(dest, current.command, current.offset, current.length)
+              .putHeader(id, new AppendEntriesRequest(current.term, this.local_addr, current_index - 1, prev_term, this.commit_index));
+            down_prot.down(new Event(Event.MSG, msg));
+
+            current_index++;
+        }
+    }*/
+
+
+
+    protected synchronized void startResendTask() {
+        if(resend_task == null || resend_task.isDone())
+            resend_task=timer.scheduleWithFixedDelay(this, resend_interval, resend_interval, TimeUnit.MILLISECONDS);
+    }
+
+    protected synchronized void stopResendTask() {
+        if(resend_task != null) {
+            resend_task.cancel(false);
+            resend_task=null;
+        }
+    }
 
     public static <T> T findProtocol(Class<T> clazz, final Protocol start, boolean down) {
         Protocol prot=start;
@@ -448,6 +620,18 @@ public class RAFT extends Protocol {
         }
         return retval;
     }
+
+  /*  protected static Buffer marshal(byte[] buf, int offset, int length) throws Exception {
+        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(length + Global.INT_SIZE);
+        Bits.writeInt(length, out);
+        out.write(buf, offset, length);
+        return out.getBuffer();
+    }
+
+    protected static Buffer marshal(int from, int to) {
+        return null;
+    }*/
+
 
     protected static String createLogName(String name) {
         boolean needs_suffix=!name.endsWith(".log");
@@ -565,33 +749,63 @@ public class RAFT extends Protocol {
      */
     protected static class CommitTable {
 
+        protected static interface Consumer<A,B,C,D> {
+            void apply(A a, B b, C c, D d);
+        }
+
         protected static class Entry {
             protected int next_index;
             protected int match_index;
+            protected int commit_index;
+            public Entry(int next_index) {this.next_index=next_index;}
 
-            public Entry(int next_index, int match_index) {
-                this.next_index=next_index;
-                this.match_index=match_index;
+            @Override public String toString() {
+                return "match-index=" + match_index + ", next-index=" + next_index + ", commit-index=" + commit_index;
             }
         }
 
         protected final Map<Address,Entry> map=new ConcurrentHashMap<>();
 
-
-        protected void add(Address member) {
-
+        protected CommitTable(List<Address> members, int next_index) {
+            adjust(members, next_index);
         }
 
-        protected void remove(Address member) {
-
+        protected void adjust(List<Address> members, int next_index) {
+            map.keySet().retainAll(members);
+            for(Address mbr: members) {
+                if(!map.containsKey(mbr))
+                    map.putIfAbsent(mbr, new Entry(next_index));
+            }
         }
 
-        protected int setNextIndex(Address member, int index) {
-            return 0;
+        protected CommitTable update(Address member, int match_index, int next_index, int commit_index) {
+            Entry entry=map.get(member);
+            if(entry == null)
+                return this;
+            entry.match_index=Math.max(match_index, entry.match_index);
+            entry.next_index=next_index;
+            entry.commit_index=Math.max(entry.commit_index, commit_index);
+            return this;
         }
 
-        protected int setMatchIndex(Address member, int index) {
-            return 0;
+
+        /** Applies a function to all elements of the commit table */
+        public void forEach(Consumer<Address,Integer,Integer,Integer> function) {
+            for(Map.Entry<Address,Entry> entry: map.entrySet()) {
+                Entry val=entry.getValue();
+                int match_index=val.match_index;
+                int next_index=val.next_index;
+                int commit_idx=val.commit_index;
+                function.apply(entry.getKey(), match_index, next_index, commit_idx);
+            }
+        }
+
+        @Override
+        public String toString() {
+            StringBuilder sb=new StringBuilder();
+            for(Map.Entry<Address,Entry> entry: map.entrySet())
+                sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+            return sb.toString();
         }
     }
 

@@ -2,7 +2,6 @@ package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 
-import java.io.IOException;
 import java.util.Map;
 
 /**
@@ -93,9 +92,8 @@ public interface Log {
      * Updates current_term and last_applied accordingly
      *
      * @param start_index
-     * @throws IOException
      */
-    void deleteAllEntriesStartingFrom(int start_index) throws IOException;
+    void deleteAllEntriesStartingFrom(int start_index);
 
 
         // void snapshot(); // tbd when we get to InstallSnapshot

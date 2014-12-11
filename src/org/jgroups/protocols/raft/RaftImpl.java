@@ -38,25 +38,97 @@ public abstract class RaftImpl {
      */
     protected void handleAppendEntriesRequest(byte[] data, int offset, int length, Address leader,
                                               int term, int prev_log_index, int prev_log_term, int leader_commit) {
+        boolean commit=true;
+        // todo: synchronize
+        // todo: if term < current_term: ignore request
         raft.currentTerm(term);
         raft.leader(leader);
-        LogEntry entry=new LogEntry(term, data, offset, length);
-        AppendResult result=raft.log_impl.append(prev_log_index, prev_log_term, entry);
+
+        if(data == null && length == 0) { // we got an empty AppendEntries message containing only leader_commit
+            handleCommitRequest(leader, leader_commit);
+            return;
+        }
+
+        AppendResult result=null;
+        LogEntry prev=raft.log_impl.get(prev_log_index);
+        if(prev == null) {
+            // will set nextIndex for this member to lastApplied() in leader
+            result=new AppendResult(false, raft.log_impl.lastApplied());
+            commit=false;
+        }
+        else {
+            // if the entry at prev_log_index has a different term than prev_term -> return false and the start index of
+            // the conflictig term
+            if(prev.term == prev_log_term) {
+                int curr_index=prev_log_index+1;
+                LogEntry existing=raft.log_impl.get(curr_index);
+                if(existing != null) {
+                    if(existing.term != term) {
+                        // delete this and all subsequent entries and overwrite with received entry
+                        raft.log_impl.deleteAllEntriesStartingFrom(curr_index);
+                        result=new AppendResult(false, curr_index);
+                        commit=false;
+                    }
+                    else { // received before and is identical
+                        result=new AppendResult(true, curr_index);
+                        commit=true;
+                    }
+                }
+                else
+                    result=new AppendResult(true, curr_index);
+
+                if(data != null && length > 0) {
+                    LogEntry entry=new LogEntry(term, data, offset, length);
+                    raft.log_impl.append(curr_index, true, entry);
+                    raft.last_applied=raft.log_impl.lastApplied(); // todo: remove RAFT.last_applied ?
+                }
+            }
+            else {
+                result=new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term));
+                commit=false;
+            }
+        }
+
+        // commit entries up to leader_commit (if possible) and apply to state machine
+        if(commit)
+            raft.commitLogTo(leader_commit);
 
         // send AppendEntries response
-        Message msg=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
-        raft.getDownProtocol().down(new Event(Event.MSG, msg));
+        if(result != null) {
+            result.commitIndex(raft.commitIndex());
+            Message msg=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
+            raft.getDownProtocol().down(new Event(Event.MSG, msg));
+        }
     }
 
     protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
-
     }
 
     protected void handleInstallSnapshotRequest(Address src, int term) {
-
     }
 
     protected void handleInstallSnapshotResponse(Address src, int term) {
+    }
 
+    /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log */
+    protected int getFirstIndexOfConflictingTerm(int start_index, int conflicting_term) {
+        Log log=raft.log_impl;
+        int first=log.firstApplied(), last=log.lastApplied();
+        int retval=Math.min(start_index, last);
+        for(int i=retval; i >= first; i--) {
+            LogEntry entry=log.get(i);
+            if(entry == null)
+                break;
+            if(entry.term != conflicting_term)
+                return i;
+        }
+        return retval;
+    }
+
+    protected void handleCommitRequest(Address sender, int leader_commit) {
+        raft.commitLogTo(leader_commit);
+        AppendResult result=new AppendResult(true, raft.lastApplied()).commitIndex(raft.commitIndex());
+        Message msg=new Message(sender).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
+        raft.getDownProtocol().down(new Event(Event.MSG, msg));
     }
 }

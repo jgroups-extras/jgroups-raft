@@ -10,7 +10,9 @@ import org.jgroups.util.Util;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
@@ -20,14 +22,16 @@ import java.util.concurrent.TimeUnit;
  * @since  0.1
  */
 public class ReplicatedStateMachine<K,V> implements StateMachine {
-    protected RAFT     raft;
-    protected JChannel ch;
-    protected long     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
+    protected RAFT                     raft;
+    protected JChannel                 ch;
+    protected long                     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
+    protected final List<Notification> listeners=new ArrayList<>();
 
     // Hashmap for the contents. Doesn't need to be reentrant, as updates will be applied sequentially
-    protected final Map<K,V> map=new HashMap<K,V>();
-    protected static final byte SET = 1;
-    protected static final byte REM = 2;
+    protected final Map<K,V>           map=new HashMap<K,V>();
+
+    protected static final byte        PUT    = 1;
+    protected static final byte        REMOVE = 2;
 
 
     public ReplicatedStateMachine(JChannel ch) {
@@ -37,35 +41,33 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         raft.stateMachine(this);
     }
 
-    public ReplicatedStateMachine timeout(long timeout) {this.repl_timeout=timeout; return this;}
-
-    public void addRoleChangeListener(RAFT.RoleChange listener) {
-        raft.addRoleListener(listener);
-    }
-
-    public void removeRoleChangeListener(RAFT.RoleChange listener) {
-        raft.remRoleListener(listener);
-    }
+    public      ReplicatedStateMachine timeout(long timeout)       {this.repl_timeout=timeout; return this;}
+    public void addRoleChangeListener(RAFT.RoleChange listener)    {raft.addRoleListener(listener);}
+    public void addNotificationListener(Notification n)            {if(n != null) listeners.add(n);}
+    public void removeNotificationListener(Notification n)         {listeners.remove(n);}
+    public void removeRoleChangeListener(RAFT.RoleChange listener) {raft.remRoleListener(listener);}
+    public int  lastApplied()                                      {return raft.lastApplied();}
+    public int  commitIndex()                                      {return raft.commitIndex();}
 
     public void dumpLog() {
         raft.logEntries(new Log.Function() {
             @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
-                StringBuilder sb=new StringBuilder().append(index).append(": ");
+                StringBuilder sb=new StringBuilder().append(index).append(" (").append(term).append("): ");
                 ByteArrayDataInputStream in=new ByteArrayDataInputStream(command, offset, length);
                 try {
                     byte type=in.readByte();
                     switch(type) {
-                        case SET:
+                        case PUT:
                             K key=(K)Util.objectFromStream(in);
                             V val=(V)Util.objectFromStream(in);
                             sb.append("put(").append(key).append(", ").append(val).append(")");
                             break;
-                        case REM:
+                        case REMOVE:
                             key=(K)Util.objectFromStream(in);
                             sb.append("remove(").append(key).append(")");
                             break;
                         default:
-                            sb.append("command " + command + " is unknown");
+                            sb.append("type " + type + " is unknown");
                     }
                 }
                 catch(Throwable t) {
@@ -77,6 +79,11 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         });
     }
 
+    public void loadFromLog() throws Exception {
+        raft.initStateMachineFromLog(false);
+    }
+
+
     /**
      * Adds a key value pair to the state machine. The data is not added directly, but sent to the RAFT leader and only
      * added to the hashmap after the change has been committed (by majority decision). The actual change will be
@@ -87,7 +94,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
      * @return Null, or the previous value associated with key (if present)
      */
     public V put(K key, V val) throws Exception {
-        return invoke(SET, key, val, false);
+        return invoke(PUT, key, val, false);
     }
 
     /**
@@ -108,7 +115,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
      * @param key The key to be removed
      */
     public V remove(K key) throws Exception {
-        return invoke(REM, key, null, true);
+        return invoke(REMOVE, key, null, true);
     }
 
 
@@ -118,14 +125,16 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(data, offset, length);
         byte command=in.readByte();
         switch(command) {
-            case SET:
+            case PUT:
                 K key=(K)Util.objectFromStream(in);
                 V val=(V)Util.objectFromStream(in);
                 V old_val=map.put(key, val);
+                notifyPut(key, val, old_val);
                 return old_val == null? null : Util.objectToByteBuffer(old_val);
-            case REM:
+            case REMOVE:
                 key=(K)Util.objectFromStream(in);
                 old_val=map.remove(key);
+                notifyRemove(key, old_val);
                 return old_val == null? null : Util.objectToByteBuffer(old_val);
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
@@ -147,7 +156,6 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         return map.toString();
     }
 
-
     protected V invoke(byte command, K key, V val, boolean ignore_return_value) throws Exception {
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(256);
         try {
@@ -163,5 +171,22 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         byte[] buf=out.buffer();
         byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
         return ignore_return_value? null: (V)Util.objectFromByteBuffer(rsp);
+    }
+
+    protected void notifyPut(K key, V val, V old_val) {
+        for(Notification<K,V> n: listeners) {
+            try {n.put(key, val, old_val);}catch(Throwable t) {}
+        }
+    }
+
+    protected void notifyRemove(K key, V old_val) {
+        for(Notification<K,V> n: listeners) {
+            try {n.remove(key, old_val);}catch(Throwable t) {}
+        }
+    }
+
+    public static interface Notification<K,V> {
+        void put(K key, V val, V old_val);
+        void remove(K key, V old_val);
     }
 }

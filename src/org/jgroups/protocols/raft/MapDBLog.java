@@ -117,7 +117,7 @@ public class MapDBLog implements Log {
     }
 
     @Override
-    public void deleteAllEntriesStartingFrom(int start_index) throws IOException {
+    public void deleteAllEntriesStartingFrom(int start_index) {
         return;
     }
 

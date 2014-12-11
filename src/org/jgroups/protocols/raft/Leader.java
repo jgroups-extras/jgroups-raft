@@ -16,28 +16,30 @@ public class Leader extends RaftImpl {
     public void init() {
         super.init();
         raft.request_table=new RAFT.RequestTable(raft.majority);
+        raft.createCommitTable();
+        raft.startResendTask();
     }
 
     public void destroy() {
         super.destroy();
+        raft.stopResendTask();
         raft.request_table=null;
+        raft.commit_table=null;
     }
 
 
     @Override
     protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
-        System.out.println("-- response from " + sender + ": " + result);
         RAFT.RequestTable reqtab=raft.request_table;
         if(reqtab == null)
             throw new IllegalStateException("request table cannot be null in leader");
         if(result.success) {
-            if(reqtab.add(result.index, sender)) {
+            raft.commit_table.update(sender, result.getIndex(), result.getIndex()+1, result.commit_index);
+            if(reqtab.add(result.index, sender))
                 raft.handleCommit(result.index);
-            }
         }
-        else {
-            // update commit_table: set nextIndex for sender to result.index
-        }
+        else
+            raft.commit_table.update(sender, 0, result.getIndex(), result.commit_index);
     }
 
 }

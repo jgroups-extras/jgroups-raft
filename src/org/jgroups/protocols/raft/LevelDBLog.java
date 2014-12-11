@@ -194,7 +194,6 @@ public class LevelDBLog implements Log {
 
         for (int i=start_index; i<=end_index; i++) {
             LogEntry entry = getLogEntry(i);
-            // System.out.println(entry);
             function.apply(i, entry.term, entry.command, entry.offset, entry.length);
         }
 
@@ -211,14 +210,15 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void deleteAllEntriesStartingFrom(int start_index) throws IOException {
+    public void deleteAllEntriesStartingFrom(int start_index) {
 
         if ((start_index< firstApplied) || (start_index>lastApplied)) {
             //@todo wrong index, must throw runtime exception
             return;
         }
-
-        try (WriteBatch batch = db.createWriteBatch()) {
+        WriteBatch batch=null;
+        try {
+            batch = db.createWriteBatch();
             for (int index = start_index; index <= lastApplied; index++) {
                 batch.delete(db.get(fromIntToByteArray(index)));
             }
@@ -230,6 +230,9 @@ public class LevelDBLog implements Log {
                 updateCurrentTerm(last.term, batch);
             }
             updateLastApplied(start_index - 1, batch);
+        }
+        finally {
+            Util.close(batch);
         }
 
     }

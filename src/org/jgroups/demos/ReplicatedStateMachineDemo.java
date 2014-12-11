@@ -25,9 +25,18 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
         if(follower)
             disableElections(ch);
         ch.setReceiver(this);
-        ch.connect("rsm");
         rsm=new ReplicatedStateMachine<>(ch);
+        ch.connect("rsm");
         rsm.addRoleChangeListener(this);
+        rsm.addNotificationListener(new ReplicatedStateMachine.Notification<String,Object>() {
+            @Override public void put(String key, Object val, Object old_val) {
+                System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
+            }
+
+            @Override public void remove(String key, Object old_val) {
+                System.out.printf("-- remove(%s) -> %s\n", key, old_val);
+            }
+        });
         loop();
         Util.close(ch);
     }
@@ -41,7 +50,8 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     protected void loop() {
         boolean looping=true;
         while(looping) {
-            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [x] exit");
+            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [x] exit " +
+                                      "(last-applied=" + rsm.lastApplied() + ", commit-index=" + rsm.commitIndex() + ")");
             switch(input) {
                 case '1':
                     put(read("key"), read("value"));
@@ -71,8 +81,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
             return;
         }
         try {
-            Object old_val=rsm.put(key, value);
-            System.out.printf("-- put(%s,%s) -> %s\n", key, value, old_val);
+            rsm.put(key, value);
         }
         catch(Throwable t) {
             System.err.println("failed setting " + key + "=" + value + ": " + t);
@@ -86,8 +95,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
 
     protected void remove(String key) {
         try {
-            Object val=rsm.remove(key);
-            System.out.printf("-- remove(%s) -> %s\n", key, val);
+            rsm.remove(key);
         }
         catch(Exception ex) {
             System.err.println("failed removing " + key + ": " + ex);
@@ -104,7 +112,9 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     }
 
     protected void dumpLog() {
+        System.out.println("\nindex (term): command\n---------------------");
         rsm.dumpLog();
+        System.out.println("");
     }
 
     @Override

@@ -21,8 +21,11 @@ public class AppendResult implements Streamable {
      * InstallSnapshot protocol to fetch the initial snapshot */
     protected int     index;
 
+    /** The commit_index of the follower */
+    protected int     commit_index;
+
     /** Ignored if success == true. If success is false, the non-matching term. */
-    protected int     non_matching_term;
+    protected int     non_matching_term; // todo: needed ?
 
     public AppendResult() {}
 
@@ -37,19 +40,23 @@ public class AppendResult implements Streamable {
         this.non_matching_term = non_matching_term;
     }
 
+    public AppendResult commitIndex(int ci) {this.commit_index=ci; return this;}
+
     public int size() {
-        return Global.BYTE_SIZE + Bits.size(index) + Bits.size(non_matching_term);
+        return Global.BYTE_SIZE + Bits.size(index) + Bits.size(commit_index) + Bits.size(non_matching_term);
     }
 
     public void writeTo(DataOutput out) throws Exception {
         out.writeBoolean(success);
         Bits.writeInt(index, out);
+        Bits.writeInt(commit_index, out);
         Bits.writeInt(non_matching_term, out);
     }
 
     public void readFrom(DataInput in) throws Exception {
         success=in.readBoolean();
         index=Bits.readInt(in);
+        commit_index=Bits.readInt(in);
         non_matching_term=Bits.readInt(in);
     }
 
@@ -66,6 +73,6 @@ public class AppendResult implements Streamable {
     }
 
     public String toString() {
-        return success + ", index=" + index;
+        return success + ", index=" + index + ", commit-index=" + commit_index;
     }
 }
