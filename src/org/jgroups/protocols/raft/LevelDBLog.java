@@ -194,8 +194,8 @@ public class LevelDBLog implements Log {
 
         for (int i=start_index; i<=end_index; i++) {
             LogEntry entry = getLogEntry(i);
-            System.out.println(entry);
-            //function.apply(...)
+            // System.out.println(entry);
+            function.apply(i, entry.term, entry.command, entry.offset, entry.length);
         }
 
     }
@@ -259,6 +259,8 @@ public class LevelDBLog implements Log {
     }
 
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
+        if(prev_index == 0) // index starts at 1
+            return false;
         LogEntry prev_entry = getLogEntry(prev_index);
         return prev_entry == null || (prev_entry.term != prev_term);
     }

@@ -56,6 +56,11 @@ public class ELECTION extends Protocol {
     @ManagedAttribute(description="Number of votes this candidate received in the current term")
     protected int               current_votes;
 
+    @ManagedAttribute(description="No election will ever be started if true; this node will always be a follower. " +
+      "Used only for testing and may get removed. Don't use !")
+    protected boolean           no_elections;
+
+
     /** Whether a heartbeat has been received before this election timeout kicked in. If false, the follower becomes
      * candidate and starts a new election */
     protected volatile boolean  heartbeat_received=true;
@@ -289,7 +294,7 @@ public class ELECTION extends Protocol {
 
 
     protected void startElectionTimer() {
-        if(election_task == null || election_task.isDone())
+        if(!no_elections && (election_task == null || election_task.isDone()))
             election_task=timer.scheduleWithDynamicInterval(new ElectionTask());
     }
 

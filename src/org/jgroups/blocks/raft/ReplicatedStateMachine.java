@@ -1,6 +1,7 @@
 package org.jgroups.blocks.raft;
 
 import org.jgroups.JChannel;
+import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.util.ByteArrayDataInputStream;
@@ -11,6 +12,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 
 /**
  * A key-value store replicating its contents with RAFT via consensus
@@ -20,6 +22,7 @@ import java.util.Map;
 public class ReplicatedStateMachine<K,V> implements StateMachine {
     protected RAFT     raft;
     protected JChannel ch;
+    protected long     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
 
     // Hashmap for the contents. Doesn't need to be reentrant, as updates will be applied sequentially
     protected final Map<K,V> map=new HashMap<K,V>();
@@ -31,6 +34,47 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         this.ch=ch;
         if((raft=RAFT.findProtocol(RAFT.class,ch.getProtocolStack().getTopProtocol(),true)) == null)
             throw new IllegalStateException("RAFT protocol must be present in configuration");
+        raft.stateMachine(this);
+    }
+
+    public ReplicatedStateMachine timeout(long timeout) {this.repl_timeout=timeout; return this;}
+
+    public void addRoleChangeListener(RAFT.RoleChange listener) {
+        raft.addRoleListener(listener);
+    }
+
+    public void removeRoleChangeListener(RAFT.RoleChange listener) {
+        raft.remRoleListener(listener);
+    }
+
+    public void dumpLog() {
+        raft.logEntries(new Log.Function() {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+                StringBuilder sb=new StringBuilder().append(index).append(": ");
+                ByteArrayDataInputStream in=new ByteArrayDataInputStream(command, offset, length);
+                try {
+                    byte type=in.readByte();
+                    switch(type) {
+                        case SET:
+                            K key=(K)Util.objectFromStream(in);
+                            V val=(V)Util.objectFromStream(in);
+                            sb.append("put(").append(key).append(", ").append(val).append(")");
+                            break;
+                        case REM:
+                            key=(K)Util.objectFromStream(in);
+                            sb.append("remove(").append(key).append(")");
+                            break;
+                        default:
+                            sb.append("command " + command + " is unknown");
+                    }
+                }
+                catch(Throwable t) {
+                    sb.append(t);
+                }
+                System.out.println(sb);
+                return true;
+            }
+        });
     }
 
     /**
@@ -63,26 +107,26 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
      *
      * @param key The key to be removed
      */
-    public void remove(K key) throws Exception {
-        invoke(REM, key, null, true);
+    public V remove(K key) throws Exception {
+        return invoke(REM, key, null, true);
     }
 
 
     ///////////////////////////////////////// StateMachine callbacks /////////////////////////////////////
 
-    @Override public void apply(byte[] data, int offset, int length) throws Exception {
+    @Override public byte[] apply(byte[] data, int offset, int length) throws Exception {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(data, offset, length);
         byte command=in.readByte();
         switch(command) {
             case SET:
                 K key=(K)Util.objectFromStream(in);
                 V val=(V)Util.objectFromStream(in);
-                map.put(key, val); // todo: synchronization ?
-                break;
+                V old_val=map.put(key, val);
+                return old_val == null? null : Util.objectToByteBuffer(old_val);
             case REM:
                 key=(K)Util.objectFromStream(in);
-                map.remove(key);
-                break;
+                old_val=map.remove(key);
+                return old_val == null? null : Util.objectToByteBuffer(old_val);
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
         }
@@ -117,7 +161,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         }
 
         byte[] buf=out.buffer();
-        byte[] rsp=raft.set(buf, 0, out.position());
+        byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
         return ignore_return_value? null: (V)Util.objectFromByteBuffer(rsp);
     }
 }

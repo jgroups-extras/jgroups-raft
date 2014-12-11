@@ -1,6 +1,8 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.Event;
+import org.jgroups.Message;
 
 /**
  * Base class for the different roles a RAFT node can have (follower, candidate, leader)
@@ -38,6 +40,12 @@ public abstract class RaftImpl {
                                               int term, int prev_log_index, int prev_log_term, int leader_commit) {
         raft.currentTerm(term);
         raft.leader(leader);
+        LogEntry entry=new LogEntry(term, data, offset, length);
+        AppendResult result=raft.log_impl.append(prev_log_index, prev_log_term, entry);
+
+        // send AppendEntries response
+        Message msg=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
+        raft.getDownProtocol().down(new Event(Event.MSG, msg));
     }
 
     protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {

@@ -1,10 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.*;
-import org.jgroups.annotations.GuardedBy;
-import org.jgroups.annotations.MBean;
-import org.jgroups.annotations.ManagedAttribute;
-import org.jgroups.annotations.Property;
+import org.jgroups.annotations.*;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.*;
@@ -13,12 +10,10 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.File;
 import java.lang.reflect.Array;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
@@ -51,50 +46,52 @@ public class RAFT extends Protocol {
     @Property(description="Static majority needed to achieve consensus. This means we have to start " +
       "majority*2-1 servers. This property will be removed when dynamic cluster membership has been " +
       "implemented (section 6 of the RAFT paper)", writable=false)
-    protected int               majority=2;
+    protected int                     majority=2;
 
 
     @Property(description="The fully qualified name of the class implementing Log")
-    protected String            log_class="org.jgroups.protocols.raft.LevelDBLog";
+    protected String                  log_class="org.jgroups.protocols.raft.LevelDBLog";
 
     @Property(description="Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()")
-    protected String            log_args;
+    protected String                  log_args;
 
     @Property(description="The name of the log")
-    protected String            log_name; // ="raft.log";
+    protected String                  log_name; // ="raft.log";
 
-    protected StateMachine      state_machine;
+    protected StateMachine            state_machine;
 
-    protected Log               log_impl;
+    protected Log                     log_impl;
 
-    protected RequestTable      request_table;
-    protected CommitTable       commit_table;
+    protected RequestTable            request_table;
+    protected CommitTable             commit_table;
+
+    protected final List<RoleChange>  role_change_listeners=new ArrayList<>();
 
 
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     @GuardedBy("impl_lock")
-    protected volatile RaftImpl impl=new Follower(this);
-    protected volatile View     view;
-    protected Address           local_addr;
+    protected volatile RaftImpl       impl=new Follower(this);
+    protected volatile View           view;
+    protected Address                 local_addr;
 
     /** The current leader (can be null) */
-    protected volatile Address  leader;
+    protected volatile Address        leader;
 
     /** The current term. Incremented when this node becomes a candidate, or set when a higher term is seen */
     @ManagedAttribute(description="The current term")
-    protected int               current_term;
+    protected int                     current_term;
 
     @ManagedAttribute(description="Index of the highest log entry applied to the state machine")
-    protected int               last_applied;
+    protected int                     last_applied;
 
     @ManagedAttribute(description="Index of the highest committed log entry")
-    protected int               commit_index;
+    protected int                     commit_index;
 
 
 
     @ManagedAttribute(description="Current leader")
-    public String       getLeader() {return leader != null? leader.toString() : "none";}
+    public String       getLeader()                   {return leader != null? leader.toString() : "none";}
     public Address      leader()                      {return leader;}
     public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
@@ -102,6 +99,8 @@ public class RAFT extends Protocol {
     public int          currentTerm()                 {return current_term;}
     public Log          log()                         {return log_impl;}
     public RAFT         log(Log new_log)              {this.log_impl=new_log; return this;}
+    public RAFT         addRoleListener(RoleChange c) {this.role_change_listeners.add(c); return this;}
+    public RAFT         remRoleListener(RoleChange c) {this.role_change_listeners.remove(c); return this;}
 
 
     /** Sets the current term if the new term is greater */
@@ -115,6 +114,40 @@ public class RAFT extends Protocol {
     public String role() {
         RaftImpl tmp=impl;
         return tmp.getClass().getSimpleName();
+    }
+
+    @ManagedAttribute(description="Number of log entries in the log")
+    public int logSize() {
+        final AtomicInteger count=new AtomicInteger(0);
+        log_impl.forEach(new Log.Function() {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+                count.incrementAndGet();
+                return true;
+            }
+        });
+        return count.intValue();
+    }
+
+    @ManagedOperation(description="Dumps the last N log entries")
+    public String dumpLog(int last_n) {
+        final StringBuilder sb=new StringBuilder();
+        int to=last_applied, from=Math.max(1, to-last_n);
+        log_impl.forEach(new Log.Function() {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+                sb.append("index=").append(index).append(", term=").append(term).append(" (").append(command.length).append(" bytes)\n");
+                return true;
+            }
+        }, from, to);
+        return sb.toString();
+    }
+
+    @ManagedOperation(description="Dumps all log entries")
+    public String dumpLog() {
+        return dumpLog(last_applied -1);
+    }
+
+    public void logEntries(Log.Function func) {
+        log_impl.forEach(func);
     }
 
     public synchronized int createNewTerm() {
@@ -131,22 +164,6 @@ public class RAFT extends Protocol {
         return false;
     }
 
-    public void init() throws Exception {
-        super.init();
-        /*if(log_class == null)
-            throw new IllegalStateException("log_class has to be defined");
-        Class<? extends Log> clazz=Util.loadClass(log_class,getClass());
-        log_impl=clazz.newInstance();
-        Map<String,String> args;
-        if(log_args != null && !log_args.isEmpty())
-            args=Util.parseCommaDelimitedProps(log_args);
-        else
-            args=new HashMap<>();
-        log_impl.init(log_name, args);
-        last_applied=log_impl.lastApplied();
-        commit_index=log_impl.commitIndex();
-        log.debug("initialized last_applied=%d and commit_index=%d from log", last_applied, commit_index);*/
-    }
 
     @Override
     public void start() throws Exception {
@@ -368,10 +385,15 @@ public class RAFT extends Protocol {
         LogEntry log_entry=log_impl.get(index);
         if(log_entry == null)
             throw new IllegalStateException("log entry for index " + index + " not found in log");
-        state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
+        if(state_machine == null)
+            throw new IllegalStateException("state machine is null");
+        byte[] rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
 
         // Notify the client's CompletableFuture and then remove the entry in the client request table
-        request_table.notifyAndRemove(index, log_entry.command, log_entry.offset, log_entry.length);
+        if(rsp == null)
+            request_table.notifyAndRemove(index, null, 0, 0);
+        else
+            request_table.notifyAndRemove(index, rsp, 0, rsp.length);
 
         log_impl.commitIndex(index);
     }
@@ -388,6 +410,7 @@ public class RAFT extends Protocol {
             }
             log.trace("%s: changed role from %s -> %s",local_addr,old_impl == null? "null" :
               old_impl.getClass().getSimpleName(),new_impl.getClass().getSimpleName());
+            notifyRoleChangeListeners(new_role);
         }
     }
 
@@ -434,6 +457,19 @@ public class RAFT extends Protocol {
             retval=dir + File.separator + name;
         }
         return needs_suffix? retval + ".log" : retval;
+    }
+
+    protected void notifyRoleChangeListeners(Role role) {
+        for(RoleChange ch: role_change_listeners) {
+            try {
+                ch.roleChanged(role);
+            }
+            catch(Throwable t) {}
+        }
+    }
+
+    public interface RoleChange {
+        void roleChanged(Role role);
     }
 
 
