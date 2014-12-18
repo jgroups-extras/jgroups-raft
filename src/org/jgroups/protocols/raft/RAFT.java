@@ -12,6 +12,7 @@ import java.io.File;
 import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -738,7 +739,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             }
         }
 
-        protected final Map<Address,Entry> map=new ConcurrentHashMap<>();
+        protected final ConcurrentMap<Address,Entry> map=new ConcurrentHashMap<>();
 
         protected CommitTable(List<Address> members, int next_index) {
             adjust(members, next_index);
