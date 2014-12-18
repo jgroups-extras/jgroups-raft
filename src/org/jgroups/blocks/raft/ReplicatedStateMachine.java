@@ -3,6 +3,7 @@ package org.jgroups.blocks.raft;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.Settable;
 import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
@@ -23,6 +24,7 @@ import java.util.concurrent.TimeUnit;
  */
 public class ReplicatedStateMachine<K,V> implements StateMachine {
     protected RAFT                     raft;
+    protected Settable                 settable;
     protected JChannel                 ch;
     protected long                     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
     protected final List<Notification> listeners=new ArrayList<>();
@@ -36,9 +38,11 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     public ReplicatedStateMachine(JChannel ch) {
         this.ch=ch;
-        if((raft=RAFT.findProtocol(RAFT.class,ch.getProtocolStack().getTopProtocol(),true)) == null)
+        if((raft=RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
             throw new IllegalStateException("RAFT protocol must be present in configuration");
         raft.stateMachine(this);
+        if((settable=RAFT.findProtocol(Settable.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
+            throw new IllegalStateException("Did not find a protocol implementing Settable");
     }
 
     public      ReplicatedStateMachine timeout(long timeout)       {this.repl_timeout=timeout; return this;}
@@ -169,7 +173,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         }
 
         byte[] buf=out.buffer();
-        byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
+        byte[] rsp=settable.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
         return ignore_return_value? null: (V)Util.objectFromByteBuffer(rsp);
     }
 

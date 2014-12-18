@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @since  0.1
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
-public class RAFT extends Protocol implements Runnable {
+public class RAFT extends Protocol implements Runnable, Settable {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short  RAFT_ID              = 1024;
 
@@ -305,7 +305,7 @@ public class RAFT extends Protocol implements Runnable {
     }
 
     /**
-     * The blocking equivalent of {@link #setAsync(byte[],int,int,org.jgroups.util.Function)}. Used to apply a change
+     * The blocking equivalent of {@link #setAsync(byte[],int,int, org.jgroups.util.Consumer)}. Used to apply a change
      * across all cluster nodes via consensus.
      * @param buf The serialized command to be applied (interpreted by the caller)
      * @param offset The offset into the buffer
@@ -347,7 +347,7 @@ public class RAFT extends Protocol implements Runnable {
      * @return A CompletableFuture. Can be used to wait for the result (sync). A blocking caller could call
      *         set(), then call future.get() to block for the result.
      */
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Function<byte[],Void> completion_handler) {
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Consumer<byte[]> completion_handler) {
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
         if(buf == null)
@@ -549,32 +549,6 @@ public class RAFT extends Protocol implements Runnable {
         }
     }
 
-    /**
-     * Sends AppendEntries messages in range [from..to] to dest
-     * @param dest The target address
-     * @param from The start index
-     * @param to The end index
-     */
-   /* protected void sendAppendEntries(Address dest, int from, int to) {
-        int current_index=from;
-        LogEntry current=null, prev=null;
-
-        while(current_index <= to) {
-            prev=current != null? current : log_impl.get(current_index-1);
-            current=log_impl.get(current_index);
-            if(current == null)
-                break;
-            int prev_term=prev != null? prev.term : current_term;
-
-            Message msg=new Message(dest, current.command, current.offset, current.length)
-              .putHeader(id, new AppendEntriesRequest(current.term, this.local_addr, current_index - 1, prev_term, this.commit_index));
-            down_prot.down(new Event(Event.MSG, msg));
-
-            current_index++;
-        }
-    }*/
-
-
 
     protected synchronized void startResendTask() {
         if(resend_task == null || resend_task.isDone())
@@ -591,7 +565,7 @@ public class RAFT extends Protocol implements Runnable {
     public static <T> T findProtocol(Class<T> clazz, final Protocol start, boolean down) {
         Protocol prot=start;
         while(prot != null && clazz != null) {
-            if(prot != start && clazz.isAssignableFrom(prot.getClass()))
+            if(clazz.isAssignableFrom(prot.getClass()))
                 return (T)prot;
             prot=down? prot.getDownProtocol() : prot.getUpProtocol();
         }

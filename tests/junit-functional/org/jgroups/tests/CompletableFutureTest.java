@@ -2,7 +2,7 @@ package org.jgroups.tests;
 
 import org.jgroups.Global;
 import org.jgroups.util.CompletableFuture;
-import org.jgroups.util.Function;
+import org.jgroups.util.Consumer;
 import org.jgroups.util.Util;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -149,21 +149,19 @@ public class CompletableFutureTest {
         }
     }
 
-    protected static class MyCompletionHandler<T> implements Function<T,Void> {
+    protected static class MyCompletionHandler<T> implements Consumer<T> {
         protected T         value;
         protected Throwable ex;
 
         public T         getValue()     {return value;}
         public Throwable getException() {return ex;}
 
-        public Void apply(T val) {
+        public void apply(T val) {
             this.value=val;
-            return null;
         }
 
-        public Void apply(Throwable t) {
+        public void apply(Throwable t) {
             ex=t;
-            return null;
         }
     }
 }

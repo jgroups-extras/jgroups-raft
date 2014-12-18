@@ -13,14 +13,14 @@ public class CompletableFuture<T> implements Future<T>, Condition {
     protected T                value;     // set in case of successful completion
     protected Throwable        exception; // set in case of failed completion
     protected boolean          done, cancelled;
-    protected Function<T,Void> completion_handler;
+    protected Consumer<T>      completion_handler;
     protected final Lock       lock=new ReentrantLock();
     protected final CondVar    cond_var=new CondVar(lock);
 
     public CompletableFuture() {
     }
 
-    public CompletableFuture(Function<T,Void> completion_handler) {
+    public CompletableFuture(Consumer<T> completion_handler) {
         this.completion_handler=completion_handler;
     }
 
