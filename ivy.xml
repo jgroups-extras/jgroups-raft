@@ -1,7 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ivy-module version="2.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-            xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd">
+            xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+            xmlns:e="http://ant.apache.org/ivy/extra">
+
     <info organisation="org.jgroups" module="jgroups-raft" revision="0.1"/>
+
+    <publications>
+        <artifact name="jgroups-raft" type="pom" />
+        <artifact name="jgroups-raft" type="jar" />
+        <artifact name="jgroups-raft" type="jar" e:classifier="sources"/>
+    </publications>
+
+
     <dependencies>
         <dependency org="org.jgroups"               name="jgroups"        rev="3.6.1.Final"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-api"      rev="2.0"/>

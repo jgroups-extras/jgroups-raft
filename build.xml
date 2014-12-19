@@ -6,7 +6,7 @@
         Ant/ivy based build.xml file for jgroups-raft. Needs ant to run
     </description>
 
-    <property name="version"          value="1.0"/>
+    <property name="version"          value="0.1"/>
     <property name="root.dir"         value="${basedir}"/>
     <property name="src.dir"          value="${root.dir}/src"/>
     <property name="compile.dir"      value="${root.dir}/classes"/>
@@ -21,7 +21,8 @@
     <property name="javadoc.packages" value="org.jgroups.*"/>
     <property name="timestamp"        value=".timestamp"/>
     <property name="maven.executable" value="mvn"/>
-    <property name="ivy.version"      value="2.3.0" />
+    <property name="ivy.version"      value="2.4.0-rc1" />
+    <property name="ivy.props"        value="ivy.properties"/>
 
     <!-- 5 minutes per test suite timeout -->
     <property name="unittest.timeout" value="1800000"/>
@@ -78,6 +79,89 @@
         <ivy:retrieve type="jar,bundle,source" transitive="false"/>
     </target>
 
+    <!-- =================================
+          target: publish
+         ================================= -->
+    <target name="publish" depends="define-ivy-task"
+            description="Publishes this project to the local ivy repo (artifacts need to be in ./dist)">
+        <property name="revision" value="${version}"/>
+
+        <!--<ivy:deliver
+                deliverpattern="${dist.dir}/ivy.xml"
+                pubrevision="${version}"
+                status="release"
+                organisation="org.jgroups"
+                module="jgroups-raft"
+                revision="${version}"
+                />-->
+
+        <!--<ivy:makepom ivyfile="${root.dir}/ivy.xml" pomfile="${dist.dir}/jgroups-raft-${version}.pom"/>-->
+
+        <copy todir="${dist.dir}">
+            <fileset dir="${root.dir}">
+                <include name="pom.xml"/>
+            </fileset>
+            <globmapper from="pom.xml" to="jgroups-raft-${version}.pom"/>
+        </copy>
+
+        <ivy:publish artifactspattern="${dist.dir}/[artifact]-[revision](-[classifier]).[ext]"
+                     publishivy="false"
+                     resolver="local-maven2"
+                     overwrite="true"
+                     forcedeliver="true"
+                     pubrevision="${revision}"
+                     status="release"
+                     organisation="org.jgroups"
+                     module="jgroups-raft"
+                     revision="${version}"
+                     haltonmissing="true"/>
+
+        <echo message="project ${ant.project.name} released with version ${revision}" />
+    </target>
+
+
+    <!-- =================================
+          target: publish-to-repo
+         ================================= -->
+    <target name="publish-to-repo" depends="define-ivy-task"
+            description="Publishes this project to the remote maven repo (artifacts need to be in ./dist)">
+        <property name="revision" value="${version}"/>
+
+        <!--<ivy:deliver
+                deliverpattern="${dist.dir}/ivy.xml"
+                pubrevision="${version}"
+                status="release"
+                organisation="org.jgroups"
+                module="jgroups-raft"
+                revision="${version}"
+                />-->
+
+        <!--<ivy:makepom ivyfile="${root.dir}/ivy.xml" pomfile="${dist.dir}/jgroups-raft-${version}.pom"/>-->
+
+        <copy todir="${dist.dir}">
+            <fileset dir="${root.dir}">
+                <include name="pom.xml"/>
+            </fileset>
+            <globmapper from="pom.xml" to="jgroups-raft-${version}.pom"/>
+        </copy>
+
+        <ivy:publish artifactspattern="${dist.dir}/[artifact]-[revision](-[classifier]).[ext]"
+                     publishivy="false"
+                     resolver="nexus"
+                     overwrite="true"
+                     forcedeliver="true"
+                     pubrevision="${revision}"
+                     status="release"
+                     organisation="org.jgroups"
+                     module="jgroups-raft"
+                     revision="${version}"
+                     haltonmissing="true"/>
+
+        <echo message="project ${ant.project.name} released with version ${revision}" />
+    </target>
+
+
+
     <target name="define-ivy-task">
         <taskdef resource="org/apache/ivy/ant/antlib.xml"
                  uri="antlib:org.apache.ivy.ant" classpathref="jg.classpath"/>
@@ -86,6 +170,7 @@
     <target name="prepare" depends="retrieve">
         <property environment="env"/>
         <mkdir dir="${compile.dir}"/>
+        <copy file="${ivy.props}.template" tofile="${ivy.props}" overwrite="false"/>
     </target>
 
 
@@ -108,7 +193,7 @@
 
     <target name="jar"
             description="Compiles and creates JARs in ./dist"
-            depends="jgroups-raft.jar">
+            depends="jgroups-raft.jar, jgroups-raft-sources.jar">
     </target>
 
 
@@ -117,8 +202,6 @@
             depends="clean,compile">
         <mkdir dir="${dist.dir}"/>
         <xmlproperty file="${ant.file}" collapseAttributes="true"/>
-        <property name="-savemanifest" value="${conf.dir}/MANIFEST.MF"/>
-        <property name="-output" value="${conf.dir}"/>
         <jar destfile="${dist.dir}/jgroups-raft-${version}.jar"
              basedir="${compile.dir}"
              includes="org/jgroups/**">
@@ -126,6 +209,15 @@
             <fileset dir="${root.dir}">
                 <include name="README*"/>
             </fileset>
+        </jar>
+    </target>
+
+    <target name="jgroups-raft-sources.jar"
+            description="Creates the jgroups-raft-sources.jar (no demos, tests)">
+        <mkdir dir="${dist.dir}"/>
+        <jar jarfile="${dist.dir}/jgroups-raft-${version}-sources.jar"
+             basedir="${src.dir}"
+             includes="org/jgroups/**">
         </jar>
     </target>
 

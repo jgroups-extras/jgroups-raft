@@ -1,14 +1,49 @@
 <ivysettings>
+    <properties file="ivy.properties"/>
     <settings defaultResolver="default"/>
-    <property name="m2-pattern" value="${user.home}/.m2/jboss-repository/[organisation]/[module]/[revision]/[module]-[revision](-[classifier]).[ext]" override="false" />
+    <credentials  host="${nexus.host}" realm="jboss-releases-repository" username="${nexus.user}" passwd="${nexus.password}"/>
+
+    <!--<property name="nexus-public"
+              value="https://repository.jboss.org/nexus/content/groups/public"/>-->
+    <property name="nexus-public"
+              value="${nexus.url}"/>
+
+    <property
+            name="m2-location"
+            value="${user.home}/.m2/jboss-repository"
+            override="false"/>
+    <property
+            name="m2-pattern"
+            value="[organisation]/[module]/[revision]/[module]-[revision](-[classifier]).[ext]"
+            override="false" />
+    <property
+            name="ivy-pattern"
+            value="[organisation]/[module]/[type]s/[module]-[revision](-[classifier]).[ext]"
+            override="false" />
+
     <resolvers>
+        <filesystem name="local-ivy" m2compatible="true">
+            <artifact pattern="${ivy.default.ivy.user.dir}/${ivy-pattern}" />
+        </filesystem>
+
+        <filesystem name="local-maven2" m2compatible="true" >
+            <artifact pattern="${m2-location}/${m2-pattern}"/>
+        </filesystem>
+
+        <filesystem name="local-ivy-publish" m2compatible="true">
+            <artifact pattern="${user.home}/.ivy2/cache/${ivy-pattern}"/>
+        </filesystem>
+
+        <ibiblio name="public" m2compatible="true"/>
+
+        <ibiblio name="nexus"  m2compatible="true" root="${nexus-public}"/>
+
         <!-- Tries to find an artifact in the local maven repo first -->
         <chain name="default">
-            <filesystem name="local-maven2" m2compatible="true" >
-                <artifact pattern="${m2-pattern}"/>
-                <ivy pattern="${m2-pattern}"/>
-            </filesystem>
-            <ibiblio name="central" m2compatible="true"/>
+            <resolver ref="local-ivy"/>
+            <resolver ref="local-maven2"/>
+            <resolver ref="public"/>
         </chain>
     </resolvers>
+
 </ivysettings>

@@ -24,3 +24,4 @@ target/
 lib/
 *.log
 *.db
+*.properties

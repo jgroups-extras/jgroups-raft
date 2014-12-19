@@ -1,0 +1,19 @@
+
+## Properties for ivysettings.xml
+
+# The location where ivy should publish the artifact to
+
+# Publis directly into the releases dir (skipping staging)
+nexus.url=https://repository.jboss.org/nexus/content/repositories/releases/
+
+# Publis to the staging dir
+#nexus.url=https://repository.jboss.org/nexus/service/local/staging/deploy/maven2
+
+# The host (for authorization)
+nexus.host=repository.jboss.org
+
+# The Nexus user
+nexus.user=user
+
+# The Nexus password
+nexus.password=password123
