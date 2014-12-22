@@ -229,10 +229,10 @@ public class RAFT extends Protocol implements Runnable, Settable {
             if(!state_machine_loaded || force) {
                 try(InputStream input=new FileInputStream(snapshot_name)) {
                     state_machine.readContentFrom(new DataInputStream(input));
-                    log.trace("Initialized state machine from %s", snapshot_name);
+                    log.debug("Initialized state machine from %s", snapshot_name);
                 }
                 catch(FileNotFoundException fne) {
-                    log.trace("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
+                    log.debug("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
                 }
 
                 int from=log_impl.firstApplied(), to=commit_index;
