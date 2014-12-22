@@ -397,7 +397,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             prev_index=last_applied;
             curr_index=++last_applied;
             LogEntry entry=log_impl.get(prev_index);
-            prev_term=entry != null? entry.term : current_term;
+            prev_term=entry != null? entry.term : 0;
             curr_term=current_term;
             commit_idx=commit_index;
         }
@@ -458,7 +458,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             return;
         if(match_index == 0) {
             // send just 1 entry
-            resend(member, next_index-1);
+            resend(member, Math.max(next_index-1, 1));
         }
         else {
             // send entries in range [match_index..next_index] (including match_index but excluding next_index)
@@ -531,6 +531,12 @@ public class RAFT extends Protocol implements Runnable, Settable {
         catch(Throwable t) {
             log.error("failed advancing commit_index (%d) to %d: %s", commit_index, leader_commit, t);
         }
+    }
+
+    protected void append(int term, int index, byte[] data, int offset, int length) {
+        LogEntry entry=new LogEntry(term, data, offset, length);
+        log_impl.append(index, true, entry);
+        last_applied=log_impl.lastApplied(); // todo: remove RAFT.last_applied ?
     }
 
     /** Applies the commit at index */

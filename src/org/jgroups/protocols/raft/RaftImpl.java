@@ -50,42 +50,45 @@ public abstract class RaftImpl {
         }
 
         AppendResult result=null;
-        LogEntry prev=raft.log_impl.get(prev_log_index);
-        if(prev == null) {
-            // will set nextIndex for this member to lastApplied() in leader
-            result=new AppendResult(false, raft.log_impl.lastApplied());
+        if(prev_log_index <= 0) { // special case: first entry
             commit=false;
+            int curr_index=Math.max(prev_log_index+1, 1);
+            result=new AppendResult(true, curr_index);
+            raft.append(term, curr_index, data, offset, length);
         }
         else {
-            // if the entry at prev_log_index has a different term than prev_term -> return false and the start index of
-            // the conflictig term
-            if(prev.term == prev_log_term) {
-                int curr_index=prev_log_index+1;
-                LogEntry existing=raft.log_impl.get(curr_index);
-                if(existing != null) {
-                    if(existing.term != term) {
-                        // delete this and all subsequent entries and overwrite with received entry
-                        raft.log_impl.deleteAllEntriesStartingFrom(curr_index);
-                        result=new AppendResult(false, curr_index);
-                        commit=false;
-                    }
-                    else { // received before and is identical
-                        result=new AppendResult(true, curr_index);
-                        commit=true;
-                    }
-                }
-                else
-                    result=new AppendResult(true, curr_index);
-
-                if(data != null && length > 0) {
-                    LogEntry entry=new LogEntry(term, data, offset, length);
-                    raft.log_impl.append(curr_index, true, entry);
-                    raft.last_applied=raft.log_impl.lastApplied(); // todo: remove RAFT.last_applied ?
-                }
+            LogEntry prev=raft.log_impl.get(prev_log_index);
+            if(prev == null) {
+                result=new AppendResult(false, raft.log_impl.lastApplied());
+                commit=false;
             }
             else {
-                result=new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term));
-                commit=false;
+                // if the entry at prev_log_index has a different term than prev_term -> return false and the start index of
+                // the conflictig term
+                if(prev.term == prev_log_term) {
+                    int curr_index=prev_log_index + 1;
+                    LogEntry existing=raft.log_impl.get(curr_index);
+                    if(existing != null) {
+                        if(existing.term != term) {
+                            // delete this and all subsequent entries and overwrite with received entry
+                            raft.log_impl.deleteAllEntriesStartingFrom(curr_index);
+                            result=new AppendResult(false, curr_index);
+                            commit=false;
+                        }
+                        else { // received before and is identical
+                            result=new AppendResult(true, curr_index);
+                            commit=true;
+                        }
+                    }
+                    else
+                        result=new AppendResult(true, curr_index);
+
+                    raft.append(term, curr_index, data, offset, length);
+                }
+                else {
+                    result=new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term));
+                    commit=false;
+                }
             }
         }
 
@@ -100,6 +103,7 @@ public abstract class RaftImpl {
             raft.getDownProtocol().down(new Event(Event.MSG, msg));
         }
     }
+
 
     protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
     }
