@@ -365,6 +365,23 @@ public class LogTest {
 
     }
 
+     public void testTruncate2(Log log) throws Exception {
+         this.log = log;
+         log.init(filename, null);
+         byte[] buf=new byte[10];
+         log.append(1, false, new LogEntry(1, buf));
+         log.append(2, false, new LogEntry(1, buf));
+         log.append(3, false, new LogEntry(1, buf));
+         log.append(4, false, new LogEntry(2, buf));
+         log.append(5, false, new LogEntry(2, buf));
+         log.truncate(4);
+
+         log.close();
+         log.init(filename, null);
+         assert log.firstApplied() == 4;
+         assert log.lastApplied() == 4;
+    }
+
 
 
     /*
