@@ -314,6 +314,18 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <plugin>
+                <groupId>org.sonatype.plugins</groupId>
+                <artifactId>nexus-staging-maven-plugin</artifactId>
+                <version>1.6.3</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <serverId>jboss-releases-repository</serverId>
+                    <nexusUrl>https://repository.jboss.org/nexus/</nexusUrl>
+                </configuration>
+            </plugin>
+
         </plugins>
         <pluginManagement>
             <plugins>
