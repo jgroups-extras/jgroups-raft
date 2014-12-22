@@ -1,7 +1,7 @@
 package org.jgroups.protocols.raft;
 
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.DataInput;
+import java.io.DataOutput;
 
 /**
  * Interface of a state machine which stores data in memory. Committed log entries are applied to the state machine.
@@ -30,7 +30,7 @@ public interface StateMachine {
      * The state machine implementation may need to remove all contents before populating itself from the stream.
      * @param in The input stream
      */
-    void       readContentFrom(InputStream in);
+    void       readContentFrom(DataInput in) throws Exception;
 
     /**
      * Writes the contents of the state machine to an output stream. This is typically called on the leader to
@@ -38,5 +38,5 @@ public interface StateMachine {
      * Updates to the state machine may need to be put on hold while the state is written to the output stream.
      * @param out The output stream
      */
-    void       writeContentTo(OutputStream out); // -> dumps state (to ByteBuffer, output stream ?)
+    void       writeContentTo(DataOutput out) throws Exception;
 }

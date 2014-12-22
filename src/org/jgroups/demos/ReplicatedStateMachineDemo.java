@@ -4,6 +4,7 @@ import org.jgroups.JChannel;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.View;
 import org.jgroups.blocks.raft.ReplicatedStateMachine;
+import org.jgroups.jmx.JmxConfigurator;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.Role;
@@ -27,17 +28,21 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
         ch.setReceiver(this);
         rsm=new ReplicatedStateMachine<>(ch);
         ch.connect("rsm");
+        Util.registerChannel(rsm.channel(), "rsm");
         rsm.addRoleChangeListener(this);
         rsm.addNotificationListener(new ReplicatedStateMachine.Notification<String,Object>() {
-            @Override public void put(String key, Object val, Object old_val) {
+            @Override
+            public void put(String key, Object val, Object old_val) {
                 System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
             }
 
-            @Override public void remove(String key, Object old_val) {
+            @Override
+            public void remove(String key, Object old_val) {
                 System.out.printf("-- remove(%s) -> %s\n", key, old_val);
             }
         });
         loop();
+        JmxConfigurator.unregisterChannel(rsm.channel(), Util.getMBeanServer(), "rsm");
         Util.close(ch);
     }
 

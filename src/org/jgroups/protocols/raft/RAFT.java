@@ -4,11 +4,10 @@ import org.jgroups.*;
 import org.jgroups.annotations.*;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
+import org.jgroups.util.Bits;
 import org.jgroups.util.*;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.File;
+import java.io.*;
 import java.lang.reflect.Array;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,6 +65,9 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @Property(description="The name of the log. The logical name of the channel (if defined) is used by default. " +
       "Note that logs for different processes on the same host need to be different")
     protected String                  log_name;
+
+    @Property(description="The name of the snapshot. By default, <log_name>.snapshot will be used")
+    protected String                  snapshot_name;
 
     @Property(description="Interval (ms) at which AppendEntries messages are resent to members which haven't received them yet")
     protected long                    resend_interval=1000;
@@ -201,13 +203,38 @@ public class RAFT extends Protocol implements Runnable, Settable {
     }
 
     /**
+     * Creates a new snapshot and truncates the log. See https://github.com/belaban/jgroups-raft/issues/7 for details
+     */
+    @ManagedOperation(description="Creates a new snapshot and truncates the log")
+    public synchronized void snapshot() throws Exception {
+        // todo: make sure all requests are blocked while dumping the snapshot
+
+        if(state_machine == null)
+            throw new IllegalStateException("state machine is null");
+        try(OutputStream output=new FileOutputStream(snapshot_name)) {
+            state_machine.writeContentTo(new DataOutputStream(output));
+        }
+        log_impl.truncate(commitIndex());
+    }
+
+
+    /**
      * Loads the log entries from [first .. commit_index] into the state machine
      */
-    @ManagedOperation(description="Reads log entries up to commit_index and applies them to the state machine")
+    @ManagedOperation(description="Reads snapshot (if present) and log entries up to " +
+      "commit_index and applies them to the state machine")
     public synchronized void initStateMachineFromLog(boolean force) throws Exception {
         int count=0;
         if(state_machine != null) {
             if(!state_machine_loaded || force) {
+                try(InputStream input=new FileInputStream(snapshot_name)) {
+                    state_machine.readContentFrom(new DataInputStream(input));
+                    log.trace("Initialized state machine from %s", snapshot_name);
+                }
+                catch(FileNotFoundException fne) {
+                    log.trace("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
+                }
+
                 int from=log_impl.firstApplied(), to=commit_index;
                 for(int i=from; i <= to; i++) {
                     LogEntry log_entry=log_impl.get(i);
@@ -245,7 +272,9 @@ public class RAFT extends Protocol implements Runnable, Settable {
             JChannel ch=stack.getChannel();
             log_name=ch != null? ch.getName() : "raft";
         }
-        log_name=createLogName(log_name);
+        snapshot_name=log_name;
+        log_name=createLogName(log_name, "log");
+        snapshot_name=createLogName(snapshot_name, "snapshot");
 
         log_impl.init(log_name, args);
         last_applied=log_impl.lastApplied();
@@ -608,14 +637,16 @@ public class RAFT extends Protocol implements Runnable, Settable {
     }*/
 
 
-    protected static String createLogName(String name) {
-        boolean needs_suffix=!name.endsWith(".log");
+    protected static String createLogName(String name, String suffix) {
+        if(!suffix.startsWith("."))
+            suffix="." + suffix;
+        boolean needs_suffix=!name.endsWith(suffix);
         String retval=name;
         if(!new File(name).isAbsolute()) {
             String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
             retval=dir + File.separator + name;
         }
-        return needs_suffix? retval + ".log" : retval;
+        return needs_suffix? retval + suffix : retval;
     }
 
     protected void notifyRoleChangeListeners(Role role) {

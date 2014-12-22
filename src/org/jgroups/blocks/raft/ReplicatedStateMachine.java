@@ -5,12 +5,13 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.Settable;
 import org.jgroups.protocols.raft.StateMachine;
+import org.jgroups.util.Bits;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.DataInput;
+import java.io.DataOutput;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -52,6 +53,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public void removeRoleChangeListener(RAFT.RoleChange listener) {raft.remRoleListener(listener);}
     public int  lastApplied()                                      {return raft.lastApplied();}
     public int  commitIndex()                                      {return raft.commitIndex();}
+    public JChannel channel()                                      {return ch;}
 
     public void dumpLog() {
         raft.logEntries(new Log.Function() {
@@ -145,12 +147,22 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         }
     }
 
-    @Override public void readContentFrom(InputStream in) {
-
+    @Override public void readContentFrom(DataInput in) throws Exception {
+        int size=Bits.readInt(in);
+        for(int i=0; i < size; i++) {
+            K key=(K)Util.objectFromStream(in);
+            V val=(V)Util.objectFromStream(in);
+            map.put(key, val);
+        }
     }
 
-    @Override public void writeContentTo(OutputStream out) {
-
+    @Override public void writeContentTo(DataOutput out) throws Exception {
+        int size=map.size();
+        Bits.writeInt(size, out);
+        for(Map.Entry<K,V> entry: map.entrySet()) {
+            Util.objectToStream(entry.getKey(), out);
+            Util.objectToStream(entry.getValue(), out);
+        }
     }
 
     ///////////////////////////////////// End of StateMachine callbacks ///////////////////////////////////

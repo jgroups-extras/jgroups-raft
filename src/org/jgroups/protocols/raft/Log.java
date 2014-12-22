@@ -88,6 +88,13 @@ public interface Log {
     LogEntry get(int index);
 
     /**
+     * Truncates the log up to (and excluding) index. All entries < index are removed. First = index.
+     * @param index
+     */
+    void truncate(int index);
+
+
+    /**
      * Delete all entries starting from start_index.
      * Updates current_term and last_applied accordingly
      *

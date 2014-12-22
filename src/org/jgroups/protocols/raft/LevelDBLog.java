@@ -210,6 +210,11 @@ public class LevelDBLog implements Log {
     }
 
     @Override
+    public void truncate(int index) {
+
+    }
+
+    @Override
     public void deleteAllEntriesStartingFrom(int start_index) {
 
         if ((start_index< firstApplied) || (start_index>lastApplied)) {

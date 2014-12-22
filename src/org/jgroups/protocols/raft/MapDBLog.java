@@ -117,6 +117,11 @@ public class MapDBLog implements Log {
     }
 
     @Override
+    public void truncate(int index) {
+
+    }
+
+    @Override
     public void deleteAllEntriesStartingFrom(int start_index) {
         return;
     }
