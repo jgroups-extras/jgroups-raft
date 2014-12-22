@@ -336,6 +336,35 @@ public class LogTest {
 
     }
 
+    public void testTruncateInTheMiddle(Log log) throws Exception {
+        // Index  01 02 03 04 05 06 07 08 09 10 11 12
+        // Leader 01 01 01 04 04 05 05 06 06 06
+
+        this.log = log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        log.append(1, false, new LogEntry(1, buf));
+        log.append(2, false, new LogEntry(1, buf));
+        log.append(3, false, new LogEntry(1, buf));
+        log.append(4, false, new LogEntry(2, buf));
+        log.append(5, false, new LogEntry(2, buf));
+        log.append(6, false, new LogEntry(2, buf));
+        log.append(7, false, new LogEntry(3, buf));
+        log.append(8, false, new LogEntry(3, buf));
+        log.append(9, false, new LogEntry(3, buf));
+        log.append(10, false, new LogEntry(3, buf));
+        log.append(11, false, new LogEntry(3, buf));
+        log.commitIndex(11);
+
+        log.truncate(7);
+
+        assertEquals(log.lastApplied(), 11);
+        assertEquals(log.currentTerm(), 3);
+        assertEquals(log.firstApplied(), 7);
+        //assertEquals(log.commitIndex(), ??);
+
+    }
+
 
 
     /*

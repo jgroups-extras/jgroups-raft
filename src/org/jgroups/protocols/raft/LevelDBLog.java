@@ -210,8 +210,32 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void truncate(int index) {
+    public void truncate(int upto_index) {
+        if ((upto_index< firstApplied) || (upto_index>lastApplied)) {
+            //@todo wrong index, must throw runtime exception
+            return;
+        }
 
+        WriteBatch batch=null;
+        try {
+            batch = db.createWriteBatch();
+            for (int index = firstApplied; index < upto_index; index++) {
+                batch.delete(db.get(fromIntToByteArray(index)));
+            }
+            LogEntry last = getLogEntry(upto_index);
+
+            if (last == null) {
+                updateCurrentTerm(0, batch);
+            } else {
+                updateCurrentTerm(last.term, batch);
+            }
+            firstApplied = upto_index;
+            batch.put(FIRSTAPPLIED, fromIntToByteArray(upto_index));
+
+        }
+        finally {
+            Util.close(batch);
+        }
     }
 
     @Override
