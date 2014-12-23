@@ -427,20 +427,22 @@ public class LogTest {
 
 
     public void testTruncateAndReopen(Log log) throws Exception {
-         this.log = log;
-         log.init(filename, null);
-         byte[] buf=new byte[10];
-         log.append(1, false, new LogEntry(1, buf));
-         log.append(2, false, new LogEntry(1, buf));
-         log.append(3, false, new LogEntry(1, buf));
-         log.append(4, false, new LogEntry(2, buf));
-         log.append(5, false, new LogEntry(2, buf));
-         log.truncate(4);
+        this.log = log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        log.append(1, false, new LogEntry(1, buf));
+        log.append(2, false, new LogEntry(1, buf));
+        log.append(3, false, new LogEntry(1, buf));
+        log.append(4, false, new LogEntry(2, buf));
+        log.append(5, false, new LogEntry(2, buf));
+        log.truncate(4);
 
-         log.close();
-         log.init(filename, null);
-         assertEquals(log.firstApplied(), 4);
-         assertEquals(log.lastApplied(),5);
+        log.close();
+        log.init(filename, null);
+        assertEquals(log.firstApplied(), 4);
+        assertEquals(log.lastApplied(),5);
+        for(int i=1; i <= 3; i++)
+            assertNull(log.get(i));
     }
 
 
