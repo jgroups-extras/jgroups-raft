@@ -220,9 +220,8 @@ public class LevelDBLog implements Log {
         try {
             batch = db.createWriteBatch();
             for (int index = firstApplied; index < upto_index; index++) {
-                batch.delete(db.get(fromIntToByteArray(index)));
+                batch.delete(fromIntToByteArray(index));
             }
-            LogEntry last = getLogEntry(upto_index);
 
             firstApplied = upto_index;
             batch.put(FIRSTAPPLIED, fromIntToByteArray(upto_index));
@@ -244,7 +243,7 @@ public class LevelDBLog implements Log {
         try {
             batch = db.createWriteBatch();
             for (int index = start_index; index <= lastApplied; index++) {
-                batch.delete(db.get(fromIntToByteArray(index)));
+                batch.delete(fromIntToByteArray(index));
             }
             LogEntry last = getLogEntry(start_index-1);
 

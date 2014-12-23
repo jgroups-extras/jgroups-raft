@@ -365,6 +365,9 @@ public class LogTest {
         assertEquals(log.firstApplied(), 6);
         //assertEquals(log.commitIndex(), ??);
 
+        for(int i=1; i <= 5; i++)
+            assertNull(log.get(i));
+
     }
 
     public void testTruncateFirst(Log log) throws Exception {
