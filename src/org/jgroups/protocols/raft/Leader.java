@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.util.RequestTable;
 
 /**
  * Implements the behavior of a RAFT leader
@@ -15,7 +16,7 @@ public class Leader extends RaftImpl {
 
     public void init() {
         super.init();
-        raft.request_table=new RAFT.RequestTable(raft.majority);
+        raft.request_table=new RequestTable(raft.majority);
         raft.createCommitTable();
         raft.startResendTask();
     }
@@ -30,9 +31,10 @@ public class Leader extends RaftImpl {
 
     @Override
     protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
-        RAFT.RequestTable reqtab=raft.request_table;
+        RequestTable reqtab=raft.request_table;
         if(reqtab == null)
             throw new IllegalStateException("request table cannot be null in leader");
+        raft.getLog().debug("%s: received AppendEntries response from %s for term %d: %s", raft.local_addr, sender, term, result);
         if(result.success) {
             raft.commit_table.update(sender, result.getIndex(), result.getIndex()+1, result.commit_index);
             if(reqtab.add(result.index, sender))

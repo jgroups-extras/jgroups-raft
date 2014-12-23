@@ -108,11 +108,11 @@ public abstract class RaftImpl {
     protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
     }
 
-    protected void handleInstallSnapshotRequest(Address src, int term) {
+    protected void handleInstallSnapshotRequest(Message msg, int term, Address leader,
+                                                int last_included_index, int last_included_term) {
+
     }
 
-    protected void handleInstallSnapshotResponse(Address src, int term) {
-    }
 
     /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log */
     protected int getFirstIndexOfConflictingTerm(int start_index, int conflicting_term) {

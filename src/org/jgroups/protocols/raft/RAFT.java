@@ -9,9 +9,12 @@ import org.jgroups.util.*;
 
 import java.io.*;
 import java.lang.reflect.Array;
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -31,21 +34,19 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected static final short  APPEND_ENTRIES_REQ   = 2000;
     protected static final short  APPEND_ENTRIES_RSP   = 2001;
     protected static final short  INSTALL_SNAPSHOT_REQ = 2002;
-    protected static final short  INSTALL_SNAPSHOT_RSP = 2003;
-    protected static final short  APPEND_RESULT        = 2004;
+    protected static final short  APPEND_RESULT        = 2003;
 
-    protected final CommitTable.Consumer<Address,Integer,Integer,Integer> func=new CommitTable.Consumer<Address,Integer,Integer,Integer>() {
-        @Override public void apply(Address mbr, Integer match_index, Integer next_index, Integer commit_index) {
-            sendAppendEntriesMessage(mbr, match_index, next_index, commit_index);
+    protected final CommitTable.Consumer<Address,CommitTable.Entry> func=new CommitTable.Consumer<Address,CommitTable.Entry>() {
+        @Override public void apply(Address mbr, CommitTable.Entry entry) {
+            sendAppendEntriesMessage(mbr, entry);
         }
     };
 
     static {
-        ClassConfigurator.addProtocol(RAFT_ID,      RAFT.class);
+        ClassConfigurator.addProtocol(RAFT_ID, RAFT.class);
         ClassConfigurator.add(APPEND_ENTRIES_REQ,   AppendEntriesRequest.class);
         ClassConfigurator.add(APPEND_ENTRIES_RSP,   AppendEntriesResponse.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
-        ClassConfigurator.add(INSTALL_SNAPSHOT_RSP, InstallSnapshotResponse.class);
         ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
     }
 
@@ -108,12 +109,16 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @ManagedAttribute(description="Index of the highest committed log entry")
     protected int                     commit_index;
 
+    @ManagedAttribute(description="Is a snapshot in progress")
+    protected boolean                 snapshotting;
+
 
 
     @ManagedAttribute(description="Current leader")
     public String       getLeader()                   {return leader != null? leader.toString() : "none";}
     public Address      leader()                      {return leader;}
     public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
+    public org.jgroups.logging.Log getLog()           {return this.log;}
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
     public int          currentTerm()                 {return current_term;}
@@ -209,13 +214,19 @@ public class RAFT extends Protocol implements Runnable, Settable {
     public synchronized void snapshot() throws Exception {
         // todo: make sure all requests are blocked while dumping the snapshot
 
-        if(state_machine == null)
-            throw new IllegalStateException("state machine is null");
-        try(OutputStream output=new FileOutputStream(snapshot_name)) {
-            state_machine.writeContentTo(new DataOutputStream(output));
+        if(snapshotting) {
+            log.error("%s: cannot create snapshot; snapshot is being created by another thread");
+            return;
         }
-        log_impl.truncate(commitIndex());
+        try {
+            snapshotting=true;
+            _snapshot();
+        }
+        finally {
+            snapshotting=false;
+        }
     }
+
 
 
     /**
@@ -242,8 +253,10 @@ public class RAFT extends Protocol implements Runnable, Settable {
                         log.error("log entry for index %d not found in log", i);
                         break;
                     }
-                    state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
-                    count++;
+                    if(log_entry.command != null) {
+                        state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
+                        count++;
+                    }
                 }
                 state_machine_loaded=true;
                 log.debug("applied %d log entries (%d - %d) to the state machine", count, from, to);
@@ -437,11 +450,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         }
         else if(hdr instanceof InstallSnapshotRequest) {
             InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
-            impl.handleInstallSnapshotRequest(msg.src(),req.term());
-        }
-        else if(hdr instanceof InstallSnapshotResponse) {
-            InstallSnapshotResponse rsp=(InstallSnapshotResponse)hdr;
-            impl.handleInstallSnapshotResponse(msg.src(),rsp.term());
+            impl.handleInstallSnapshotRequest(msg, req.term(), req.leader, req.last_included_index, req.last_included_term);
         }
         else
             log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
@@ -453,12 +462,28 @@ public class RAFT extends Protocol implements Runnable, Settable {
         commit_table.forEach(func);
     }
 
-    protected void sendAppendEntriesMessage(Address member, int match_index, int next_index, int commit_index) {
-        if(match_index >= last_applied && commit_index >= this.commit_index)
+    protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
+        int match_index=entry.matchIndex(), next_index=entry.nextIndex(), commit_idx=entry.commitIndex();
+
+        if(match_index >= last_applied && commit_idx >= this.commit_index)
             return;
+
+        if(next_index < last_applied) {
+            if(entry.snapshotInProgress(true)) {
+                // todo: run in separate thread
+                try {
+                    sendSnapshotTo(member); // will reset snapshot_in_progress
+                }
+                catch(Exception ex) {
+                    log.error("sending of snapshot failed", ex);
+                }
+                return;
+            }
+        }
+
         if(match_index == 0) {
             // send just 1 entry
-            resend(member, Math.max(next_index-1, 1));
+            resend(member, Math.max(next_index, 1));
         }
         else {
             // send entries in range [match_index..next_index] (including match_index but excluding next_index)
@@ -468,7 +493,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             }
             else {
                 // send empty AppendEntries message with commit_index
-                if(commit_index < this.commit_index) {
+                if(commit_idx < this.commit_index) {
                     Message msg=new Message(member)
                       .putHeader(id, new AppendEntriesRequest(0, this.local_addr, 0, 0, this.commit_index));
                     down_prot.down(new Event(Event.MSG, msg));
@@ -479,16 +504,54 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
     protected void resend(Address target, int index) {
         LogEntry entry=log_impl.get(index);
-        if(entry == null)
-            return;
         LogEntry prev=log_impl.get(index-1);
         int prev_term=prev != null? prev.term : 0;
 
-        Message msg=new Message(target, entry.command, entry.offset, entry.length)
-          .putHeader(id, new AppendEntriesRequest(entry.term, this.local_addr, index-1, prev_term, commit_index));
+        Message msg=new Message(target);
+        if(entry != null)
+            msg.setBuffer(entry.command, entry.offset, entry.length);
+
+        msg.putHeader(id, new AppendEntriesRequest(entry != null? entry.term : 0, this.local_addr, index - 1, prev_term, commit_index));
+
         down_prot.down(new Event(Event.MSG, msg));
     }
 
+    protected void _snapshot() throws Exception {
+        if(state_machine == null)
+            throw new IllegalStateException("state machine is null");
+        try (OutputStream output=new FileOutputStream(snapshot_name)) {
+            state_machine.writeContentTo(new DataOutputStream(output));
+        }
+        log_impl.truncate(commitIndex());
+    }
+
+    protected boolean snapshotExists() {
+        File file=new File(snapshot_name);
+        return file.exists();
+    }
+
+    protected synchronized void sendSnapshotTo(Address dest) throws Exception {
+        try {
+            if(snapshotting)
+                return;
+            snapshotting=true;
+
+            LogEntry last_committed_entry=log_impl.get(commitIndex());
+            int last_index=commit_index, last_term=last_committed_entry.term;
+            _snapshot();
+
+            // todo: use streaming approach (STATE$StateOutputStream, BlockingInputStream from JGroups)
+            byte[] data=Files.readAllBytes(Paths.get(snapshot_name));
+            Message msg=new Message(dest, data)
+              .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
+            down_prot.down(new Event(Event.MSG, msg));
+
+        }
+        finally {
+            snapshotting=false;
+            commit_table.snapshotInProgress(dest, false);
+        }
+    }
 
     /**
      * Received a majority of votes for the entry at index. Note that indices may be received out of order, e.g. if
@@ -668,157 +731,5 @@ public class RAFT extends Protocol implements Runnable, Settable {
         void roleChanged(Role role);
     }
 
-
-    /**
-     * Keeps track of AppendRequest messages and responses. Each AppendEntry request is keyed by the index at which
-     * it was inserted at the leader. The values (RequestEntry) contain the responses from followers. When a response
-     * is added, and the majority has been reached, add() retuns true and the key/value pair will be removed.
-     * (subsequent responses will be ignored). On a majority, the commitIndex is advanced.
-     * <p/>
-     * Only created on leader
-     */
-    protected static class RequestTable {
-        protected static class Entry {
-            // the future has been returned to the caller, and needs to be notified when we've reached a majority
-            protected final CompletableFuture<byte[]> client_future;
-            protected final Set<Address>              votes=new HashSet<>(); // todo: replace with bitset
-            protected boolean                         committed;
-
-            public Entry(CompletableFuture<byte[]> client_future, Address vote) {
-                this.client_future=client_future;
-                votes.add(vote);
-            }
-
-            protected boolean add(Address vote, int majority) {
-                boolean reached_majority=votes.add(vote) && votes.size() >= majority;
-                return reached_majority && !committed && (committed=true);
-            }
-
-            @Override
-            public String toString() {
-                return "committed=" + committed + ", votes=" + votes;
-            }
-        }
-
-        // protected final View view; // majority computed as view.size()/2+1
-        protected final int                majority;
-
-        // maps an index to a set of (response) senders
-        protected final Map<Integer,Entry> requests=new HashMap<>();
-
-        public RequestTable(int majority) {
-            this.majority=majority;
-        }
-
-        /** Whether or not the entry at index is committed */
-        public synchronized boolean isCommitted(int index) {
-            Entry entry=requests.get(index);
-            return entry != null && entry.committed;
-        }
-
-        protected synchronized void create(int index, Address vote, CompletableFuture<byte[]> future) {
-            Entry entry=new Entry(future, vote);
-            requests.put(index, entry);
-        }
-
-        /**
-         * Adds a response to the response set. If the majority has been reached, returns true
-         * @return True if a majority has been reached, false otherwise. Note that this is done <em>exactly once</em>
-         */
-        protected synchronized boolean add(int index, Address sender) {
-            Entry entry=requests.get(index);
-            return entry != null && entry.add(sender, majority);
-        }
-
-        /** Notifies the CompletableFuture and then removes the entry for index */
-        protected synchronized void notifyAndRemove(int index, byte[] response, int offset, int length) {
-            Entry entry=requests.get(index);
-            if(entry != null) {
-                byte[] value=response;
-                if(response != null && offset > 0) {
-                    value=new byte[length];
-                    System.arraycopy(response, offset, value, 0, length);
-                }
-                entry.client_future.complete(value);
-                requests.remove(index);
-            }
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder sb=new StringBuilder();
-            for(Map.Entry<Integer,Entry> entry: requests.entrySet())
-                sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-            return sb.toString();
-        }
-    }
-
-
-    /**
-     * Keeps track of next_index and match_index for each cluster member (excluding this leader).
-     * Used to (1) compute the commit_index and (2) to resend log entries to members which haven't yet seen them.<p/>
-     * Only created on the leader
-     */
-    protected static class CommitTable {
-
-        protected static interface Consumer<A,B,C,D> {
-            void apply(A a, B b, C c, D d);
-        }
-
-        protected static class Entry {
-            protected int next_index;
-            protected int match_index;
-            protected int commit_index;
-            public Entry(int next_index) {this.next_index=next_index;}
-
-            @Override public String toString() {
-                return "match-index=" + match_index + ", next-index=" + next_index + ", commit-index=" + commit_index;
-            }
-        }
-
-        protected final ConcurrentMap<Address,Entry> map=new ConcurrentHashMap<>();
-
-        protected CommitTable(List<Address> members, int next_index) {
-            adjust(members, next_index);
-        }
-
-        protected void adjust(List<Address> members, int next_index) {
-            map.keySet().retainAll(members);
-            for(Address mbr: members) {
-                if(!map.containsKey(mbr))
-                    map.putIfAbsent(mbr, new Entry(next_index));
-            }
-        }
-
-        protected CommitTable update(Address member, int match_index, int next_index, int commit_index) {
-            Entry entry=map.get(member);
-            if(entry == null)
-                return this;
-            entry.match_index=Math.max(match_index, entry.match_index);
-            entry.next_index=next_index;
-            entry.commit_index=Math.max(entry.commit_index, commit_index);
-            return this;
-        }
-
-
-        /** Applies a function to all elements of the commit table */
-        public void forEach(Consumer<Address,Integer,Integer,Integer> function) {
-            for(Map.Entry<Address,Entry> entry: map.entrySet()) {
-                Entry val=entry.getValue();
-                int match_index=val.match_index;
-                int next_index=val.next_index;
-                int commit_idx=val.commit_index;
-                function.apply(entry.getKey(), match_index, next_index, commit_idx);
-            }
-        }
-
-        @Override
-        public String toString() {
-            StringBuilder sb=new StringBuilder();
-            for(Map.Entry<Address,Entry> entry: map.entrySet())
-                sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-            return sb.toString();
-        }
-    }
 
 }

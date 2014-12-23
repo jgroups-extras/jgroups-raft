@@ -38,6 +38,14 @@ public class RaftHeaderTest {
         _testSize(rsp, AppendEntriesResponse.class);
     }
 
+    public void testInstallSnapshotHeader() throws Exception {
+        InstallSnapshotRequest hdr=new InstallSnapshotRequest(5);
+        _testSize(hdr, InstallSnapshotRequest.class);
+
+        hdr=new InstallSnapshotRequest(5, Util.createRandomAddress("A"), 5, 4);
+        _testSize(hdr, InstallSnapshotRequest.class);
+    }
+
     public static void testRedirectHeader() throws Exception {
         CLIENT.RedirectHeader hdr=new CLIENT.RedirectHeader();
         _testSize(hdr, CLIENT.RedirectHeader.class);

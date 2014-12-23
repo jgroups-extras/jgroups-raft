@@ -60,6 +60,11 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         raft.logEntries(new Log.Function() {
             @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
                 StringBuilder sb=new StringBuilder().append(index).append(" (").append(term).append("): ");
+                if(command == null) {
+                    sb.append("<null>");
+                    System.out.println(sb);
+                    return true;
+                }
                 ByteArrayDataInputStream in=new ByteArrayDataInputStream(command, offset, length);
                 try {
                     byte type=in.readByte();
@@ -106,8 +111,8 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     /**
      * Returns the value for a given key. Currently, the hashmap is accessed directly to return the value, possibly
-     * returning stale data. In the next version, we'll look into returning a value based on consensus.
-     *
+     * returning stale data. In the next version, we'll look into returning a value based on consensus, or returning
+     * the value from the leader (configurable).
      * @param key The key
      * @return The value associated with key (might be stale)
      */
