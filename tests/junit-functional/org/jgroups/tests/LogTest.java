@@ -274,6 +274,7 @@ public class LogTest {
 
         log.deleteAllEntriesStartingFrom(6);
 
+        assertEquals(log.firstApplied(), 1);
         assertEquals(log.lastApplied(), 5);
         assertEquals(log.currentTerm(), 2);
         //assertEquals(log.commitIndex(), ??);
@@ -302,6 +303,7 @@ public class LogTest {
 
         log.deleteAllEntriesStartingFrom(1);
 
+        assertEquals(log.firstApplied(), 1);
         assertEquals(log.lastApplied(), 0);
         assertEquals(log.currentTerm(), 0);
         //assertEquals(log.commitIndex(), ??);
@@ -356,16 +358,75 @@ public class LogTest {
         log.append(11, false, new LogEntry(3, buf));
         log.commitIndex(11);
 
-        log.truncate(7);
+        log.truncate(6);
 
         assertEquals(log.lastApplied(), 11);
         assertEquals(log.currentTerm(), 3);
-        assertEquals(log.firstApplied(), 7);
+        assertEquals(log.firstApplied(), 6);
         //assertEquals(log.commitIndex(), ??);
 
     }
 
-     public void testTruncate2(Log log) throws Exception {
+    public void testTruncateFirst(Log log) throws Exception {
+        // Index  01 02 03 04 05 06 07 08 09 10 11 12
+        // Leader 01 01 01 04 04 05 05 06 06 06
+
+        this.log = log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        log.append(1, false, new LogEntry(1, buf));
+        log.append(2, false, new LogEntry(1, buf));
+        log.append(3, false, new LogEntry(1, buf));
+        log.append(4, false, new LogEntry(2, buf));
+        log.append(5, false, new LogEntry(2, buf));
+        log.append(6, false, new LogEntry(2, buf));
+        log.append(7, false, new LogEntry(3, buf));
+        log.append(8, false, new LogEntry(3, buf));
+        log.append(9, false, new LogEntry(3, buf));
+        log.append(10, false, new LogEntry(3, buf));
+        log.append(11, false, new LogEntry(3, buf));
+        log.commitIndex(11);
+
+        log.truncate(1);
+
+        assertEquals(log.lastApplied(), 11);
+        assertEquals(log.currentTerm(), 3);
+        assertEquals(log.firstApplied(), 1);
+        //assertEquals(log.commitIndex(), ??);
+
+    }
+
+    public void testTruncateLast(Log log) throws Exception {
+        // Index  01 02 03 04 05 06 07 08 09 10 11 12
+        // Leader 01 01 01 04 04 05 05 06 06 06
+
+        this.log = log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        log.append(1, false, new LogEntry(1, buf));
+        log.append(2, false, new LogEntry(1, buf));
+        log.append(3, false, new LogEntry(1, buf));
+        log.append(4, false, new LogEntry(2, buf));
+        log.append(5, false, new LogEntry(2, buf));
+        log.append(6, false, new LogEntry(2, buf));
+        log.append(7, false, new LogEntry(3, buf));
+        log.append(8, false, new LogEntry(3, buf));
+        log.append(9, false, new LogEntry(3, buf));
+        log.append(10, false, new LogEntry(3, buf));
+        log.append(11, false, new LogEntry(3, buf));
+        log.commitIndex(11);
+
+        log.truncate(11);
+
+        assertEquals(log.lastApplied(), 11);
+        assertEquals(log.currentTerm(), 3);
+        assertEquals(log.firstApplied(), 11);
+        //assertEquals(log.commitIndex(), ??);
+
+    }
+
+
+    public void testTruncateAndReopen(Log log) throws Exception {
          this.log = log;
          log.init(filename, null);
          byte[] buf=new byte[10];
@@ -378,8 +439,8 @@ public class LogTest {
 
          log.close();
          log.init(filename, null);
-         assert log.firstApplied() == 4;
-         assert log.lastApplied() == 4;
+         assertEquals(log.firstApplied(), 4);
+         assertEquals(log.lastApplied(),5);
     }
 
 

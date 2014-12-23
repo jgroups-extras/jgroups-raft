@@ -224,14 +224,9 @@ public class LevelDBLog implements Log {
             }
             LogEntry last = getLogEntry(upto_index);
 
-            if (last == null) {
-                updateCurrentTerm(0, batch);
-            } else {
-                updateCurrentTerm(last.term, batch);
-            }
             firstApplied = upto_index;
             batch.put(FIRSTAPPLIED, fromIntToByteArray(upto_index));
-
+            db.write(batch);
         }
         finally {
             Util.close(batch);
@@ -259,6 +254,7 @@ public class LevelDBLog implements Log {
                 updateCurrentTerm(last.term, batch);
             }
             updateLastApplied(start_index - 1, batch);
+            db.write(batch);
         }
         finally {
             Util.close(batch);
