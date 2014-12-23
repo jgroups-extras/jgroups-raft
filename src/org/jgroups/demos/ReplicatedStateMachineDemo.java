@@ -55,7 +55,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     protected void loop() {
         boolean looping=true;
         while(looping) {
-            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [x] exit " +
+            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [6] snapshot [x] exit " +
                                       "(last-applied=" + rsm.lastApplied() + ", commit-index=" + rsm.commitIndex() + ")");
             switch(input) {
                 case '1':
@@ -72,6 +72,14 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
                     break;
                 case '5':
                     dumpLog();
+                    break;
+                case '6':
+                    try {
+                        rsm.snapshot();
+                    }
+                    catch(Exception e) {
+                        e.printStackTrace();
+                    }
                     break;
                 case 'x':
                     looping=false;

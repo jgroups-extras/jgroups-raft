@@ -54,6 +54,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public int  lastApplied()                                      {return raft.lastApplied();}
     public int  commitIndex()                                      {return raft.commitIndex();}
     public JChannel channel()                                      {return ch;}
+    public void snapshot() throws Exception                        {if(raft != null) raft.snapshot();}
 
     public void dumpLog() {
         raft.logEntries(new Log.Function() {

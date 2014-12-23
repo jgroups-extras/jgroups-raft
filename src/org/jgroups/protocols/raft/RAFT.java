@@ -235,7 +235,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
                     log.debug("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
                 }
 
-                int from=log_impl.firstApplied(), to=commit_index;
+                int from=log_impl.firstApplied()+1, to=commit_index;
                 for(int i=from; i <= to; i++) {
                     LogEntry log_entry=log_impl.get(i);
                     if(log_entry == null) {
