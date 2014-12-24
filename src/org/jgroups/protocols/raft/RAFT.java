@@ -73,6 +73,9 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @Property(description="Interval (ms) at which AppendEntries messages are resent to members which haven't received them yet")
     protected long                    resend_interval=1000;
 
+    @Property(description="Max number of bytes a log can have until a snapshot is created")
+    protected int                     max_log_size=1_000_000;
+
     /** task firing every resend_interval ms to send AppendEntries msgs to mbrs which are missing them */
     protected Future<?>               resend_task;
 
@@ -111,6 +114,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
     @ManagedAttribute(description="Is a snapshot in progress")
     protected boolean                 snapshotting;
+
+    protected int                     log_size_bytes; // keeps counts of the bytes added to the log
 
 
 
@@ -159,6 +164,19 @@ public class RAFT extends Protocol implements Runnable, Settable {
         log_impl.forEach(new Log.Function() {
             @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
                 count.incrementAndGet();
+                return true;
+            }
+        });
+        return count.intValue();
+    }
+
+
+    @ManagedAttribute(description="Number of bytes in the log")
+    public int logSizeInBytes() {
+        final AtomicInteger count=new AtomicInteger(0);
+        log_impl.forEach(new Log.Function() {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+                count.addAndGet(length);
                 return true;
             }
         });
@@ -295,6 +313,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         current_term=log_impl.currentTerm();
         log.debug("set last_applied=%d, commit_index=%d, current_term=%d", last_applied, commit_index, current_term);
         initStateMachineFromLog(false);
+        log_size_bytes=logSizeInBytes();
     }
 
 
@@ -417,6 +436,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
         log_impl.append(curr_index, true, new LogEntry(curr_term, buf, offset, length));
 
+
         // 2. Add the request to the client table, so we can return results to clients when done
         reqtab.create(curr_index, local_addr, retval);
 
@@ -425,6 +445,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
           .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, commit_idx))
           .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         down_prot.down(new Event(Event.MSG, msg));
+
+        snapshotIfNeeded(length);
 
         // 4. Return CompletableFuture
         return retval;
@@ -600,7 +622,24 @@ public class RAFT extends Protocol implements Runnable, Settable {
         LogEntry entry=new LogEntry(term, data, offset, length);
         log_impl.append(index, true, entry);
         last_applied=log_impl.lastApplied(); // todo: remove RAFT.last_applied ?
+        snapshotIfNeeded(length);
     }
+
+    protected void snapshotIfNeeded(int bytes_added) {
+        log_size_bytes+=bytes_added;
+        if(log_size_bytes >= max_log_size) {
+            try {
+                this.log.debug("%s: current log size is %d, exceeding max_log_size of %d: creating snapshot",
+                               local_addr, log_size_bytes, max_log_size);
+                snapshot();
+                log_size_bytes=logSizeInBytes();
+            }
+            catch(Exception ex) {
+                log.error("%s: failed snapshotting log: %s", local_addr, ex);
+            }
+        }
+    }
+
 
     /** Applies the commit at index */
     protected void applyCommit(int index) throws Exception {

@@ -34,7 +34,7 @@ public class Leader extends RaftImpl {
         RequestTable reqtab=raft.request_table;
         if(reqtab == null)
             throw new IllegalStateException("request table cannot be null in leader");
-        raft.getLog().debug("%s: received AppendEntries response from %s for term %d: %s", raft.local_addr, sender, term, result);
+        raft.getLog().trace("%s: received AppendEntries response from %s for term %d: %s", raft.local_addr, sender, term, result);
         if(result.success) {
             raft.commit_table.update(sender, result.getIndex(), result.getIndex()+1, result.commit_index);
             if(reqtab.add(result.index, sender))

@@ -55,13 +55,14 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public int  commitIndex()                                      {return raft.commitIndex();}
     public JChannel channel()                                      {return ch;}
     public void snapshot() throws Exception                        {if(raft != null) raft.snapshot();}
+    public int  logSize()                                          {return raft != null? raft.logSizeInBytes() : 0;}
 
     public void dumpLog() {
         raft.logEntries(new Log.Function() {
             @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
                 StringBuilder sb=new StringBuilder().append(index).append(" (").append(term).append("): ");
                 if(command == null) {
-                    sb.append("<null>");
+                    sb.append("<marker record>");
                     System.out.println(sb);
                     return true;
                 }
