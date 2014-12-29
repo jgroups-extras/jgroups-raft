@@ -56,7 +56,6 @@ public class LogTest {
         voted_for=log.votedFor();
         assertEquals(addr, voted_for);
 
-        /*
         log.close();
         log.delete();
         log.init(filename, null);
@@ -64,7 +63,7 @@ public class LogTest {
         assertEquals(current_term, 0);
         voted_for=log.votedFor();
         assertNull(voted_for);
-        */
+
     }
 
     public void testNewLog(Log log) throws Exception {
@@ -94,6 +93,35 @@ public class LogTest {
         assertEquals(log.currentTerm(), 0);
         assertEquals(log.commitIndex(), 0);
         assertNull(log.votedFor());
+    }
+
+    public void testMetadataInAReopenedLog(Log log) throws Exception {
+
+        this.log=log;
+        log.init(filename, null);
+
+        byte[] buf=new byte[10];
+        log.append(1, false, new LogEntry(1, buf));
+        log.append(2, false, new LogEntry(1, buf));
+        log.append(3, false, new LogEntry(1, buf));
+        log.append(4, false, new LogEntry(4, buf));
+        log.append(5, false, new LogEntry(4, buf));
+        log.append(6, false, new LogEntry(5, buf));
+        log.append(7, false, new LogEntry(5, buf));
+        log.append(8, false, new LogEntry(6, buf));
+        log.append(9, false, new LogEntry(6, buf));
+        log.append(10, false, new LogEntry(6, buf));
+        log.commitIndex(10);
+        log.votedFor(Util.createRandomAddress("A"));
+
+        log.close();
+        log.init(filename, null);
+
+        assertEquals(log.firstApplied(), 1);
+        assertEquals(log.lastApplied(), 10);
+        assertEquals(log.currentTerm(), 6);
+        assertEquals(log.commitIndex(), 10);
+        assertEquals(log.votedFor().toString(), Util.createRandomAddress("A").toString());
     }
 
     public void testAppendOnLeader(Log log) throws Exception {

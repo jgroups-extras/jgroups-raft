@@ -29,7 +29,7 @@ public class LevelDBLog implements Log {
     private File dbFileName;
 
     private Integer currentTerm = 0;
-    private Address votedFor;
+    private Address votedFor = null;
 
     private Integer commitIndex = 0;
     private Integer lastApplied = 0;
@@ -62,6 +62,11 @@ public class LevelDBLog implements Log {
     public void close() {
         try {
             if (db!= null) db.close();
+            currentTerm = 0;
+            votedFor = null;
+            commitIndex = 0;
+            lastApplied = 0;
+            firstApplied = -1;
         } catch (IOException e) {
             //@todo proper logging, etc
             e.printStackTrace();
@@ -281,8 +286,8 @@ public class LevelDBLog implements Log {
         System.out.println("Current Term: " + fromByteArrayToInt(currentTermBytes));
         byte[] commitIndexBytes = db.get(COMMITINDEX);
         System.out.println("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
-        //Address votedFor = (Address)Util.streamableFromByteBuffer(Address.class, db.get(VOTEDFOR));
-        //System.out.println("Voted for: " + votedFor);
+        Address votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
+        System.out.println("Voted for: " + votedFor);
     }
 
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
@@ -353,7 +358,6 @@ public class LevelDBLog implements Log {
             batch.put(LASTAPPLIED, fromIntToByteArray(0));
             batch.put(CURRENTTERM, fromIntToByteArray(0));
             batch.put(COMMITINDEX, fromIntToByteArray(0));
-            batch.put(VOTEDFOR, Util.objectToByteBuffer(Util.createRandomAddress("")));
             db.write(batch);
         } catch (Exception ex) {
             ex.printStackTrace(); // todo: better error handling
@@ -382,11 +386,15 @@ public class LevelDBLog implements Log {
         int loggedLastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
         int loggedCurrentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         int loggedCommitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
+        Address loggedVotedForAddress = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
 
         assert (firstApplied == loggedFirstApplied);
         assert (lastApplied == loggedLastApplied);
         assert (currentTerm == loggedCurrentTerm);
         assert (commitIndex == loggedCommitIndex);
+        if (votedFor != null) {
+            assert (votedFor.equals(loggedVotedForAddress));
+        }
 
         LogEntry lastAppendedEntry = getLogEntry(lastApplied);
         assert (lastAppendedEntry==null || lastAppendedEntry.term == currentTerm);
