@@ -61,7 +61,7 @@ public class LevelDBLog implements Log {
     @Override
     public void close() {
         try {
-            db.close();
+            if (db!= null) db.close();
         } catch (IOException e) {
             //@todo proper logging, etc
             e.printStackTrace();
@@ -100,7 +100,7 @@ public class LevelDBLog implements Log {
     public Log votedFor(Address member) {
         votedFor = member;
         try {
-            db.put(VOTEDFOR, Util.streamableToByteBuffer(member));
+            db.put(VOTEDFOR, Util.objectToByteBuffer(member));
         } catch (Exception e) {
             e.printStackTrace(); // todo: better error handling
         }
@@ -353,7 +353,7 @@ public class LevelDBLog implements Log {
             batch.put(LASTAPPLIED, fromIntToByteArray(0));
             batch.put(CURRENTTERM, fromIntToByteArray(0));
             batch.put(COMMITINDEX, fromIntToByteArray(0));
-            //batch.put(VOTEDFOR, Util.streamableToByteBuffer(Util.createRandomAddress("")));
+            batch.put(VOTEDFOR, Util.objectToByteBuffer(Util.createRandomAddress("")));
             db.write(batch);
         } catch (Exception ex) {
             ex.printStackTrace(); // todo: better error handling
@@ -372,7 +372,7 @@ public class LevelDBLog implements Log {
         lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        //votedFor = (Address)Util.streamableFromByteBuffer(Address.class, db.get(VOTEDFOR));
+        votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
 
     }
 
@@ -388,9 +388,8 @@ public class LevelDBLog implements Log {
         assert (currentTerm == loggedCurrentTerm);
         assert (commitIndex == loggedCommitIndex);
 
-        //check if last appended entry contains the correct term
-        //LogEntry lastAppendedEntry = getLogEntry(lastApplied);
-        //assert (lastAppendedEntry.term == currentTerm);
+        LogEntry lastAppendedEntry = getLogEntry(lastApplied);
+        assert (lastAppendedEntry==null || lastAppendedEntry.term == currentTerm);
 
     }
 

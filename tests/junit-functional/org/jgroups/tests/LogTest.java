@@ -80,6 +80,22 @@ public class LogTest {
 
     }
 
+    public void testNewLogAfterDelete(Log log) throws Exception {
+
+        this.log=log;
+        log.init(filename, null);
+
+        log.close();
+        log.delete();
+        log.init(filename, null);
+
+        assertEquals(log.firstApplied(), -1);
+        assertEquals(log.lastApplied(), 0);
+        assertEquals(log.currentTerm(), 0);
+        assertEquals(log.commitIndex(), 0);
+        assertNull(log.votedFor());
+    }
+
     public void testAppendOnLeader(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
@@ -89,6 +105,8 @@ public class LogTest {
         assertEquals(log.lastApplied(), 2);
         assertEquals(log.commitIndex(), 0);
         assertEquals(log.firstApplied(), 1);
+        assertEquals(log.currentTerm(), 5);
+
     }
 
     public void testRAFTPaperAppendOnLeader(Log log) throws Exception {
@@ -253,8 +271,6 @@ public class LogTest {
     }
 
     public void testDeleteEntriesInTheMiddle(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
 
         this.log = log;
         log.init(filename, null);
@@ -279,11 +295,14 @@ public class LogTest {
         assertEquals(log.currentTerm(), 2);
         //assertEquals(log.commitIndex(), ??);
 
+        for(int i=1; i <= 5; i++)
+            assertNotNull(log.get(i));
+        for(int i=6; i <= 11; i++)
+            assertNull(log.get(i));
+
     }
 
     public void testDeleteEntriesFromFirst(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
 
         this.log = log;
         log.init(filename, null);
@@ -308,11 +327,12 @@ public class LogTest {
         assertEquals(log.currentTerm(), 0);
         //assertEquals(log.commitIndex(), ??);
 
+        for(int i=1; i <= 11; i++)
+            assertNull(log.get(i));
+
     }
 
     public void testDeleteEntriesFromLast(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
 
         this.log = log;
         log.init(filename, null);
@@ -336,11 +356,13 @@ public class LogTest {
         assertEquals(log.currentTerm(), 3);
         //assertEquals(log.commitIndex(), ??);
 
+        for(int i=1; i <= 10; i++)
+            assertNotNull(log.get(i));
+        assertNull((log.get(11)));
+
     }
 
     public void testTruncateInTheMiddle(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
 
         this.log = log;
         log.init(filename, null);
@@ -363,16 +385,16 @@ public class LogTest {
         assertEquals(log.lastApplied(), 11);
         assertEquals(log.currentTerm(), 3);
         assertEquals(log.firstApplied(), 6);
-        //assertEquals(log.commitIndex(), ??);
+        assertEquals(log.commitIndex(), 11);
 
         for(int i=1; i <= 5; i++)
             assertNull(log.get(i));
+        for(int i=6; i <= 11; i++)
+            assertNotNull(log.get(i));
 
     }
 
     public void testTruncateFirst(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
 
         this.log = log;
         log.init(filename, null);
@@ -396,12 +418,11 @@ public class LogTest {
         assertEquals(log.currentTerm(), 3);
         assertEquals(log.firstApplied(), 1);
         //assertEquals(log.commitIndex(), ??);
+        assertNotNull(log.get(1));
 
     }
 
     public void testTruncateLast(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
 
         this.log = log;
         log.init(filename, null);
@@ -424,12 +445,16 @@ public class LogTest {
         assertEquals(log.lastApplied(), 11);
         assertEquals(log.currentTerm(), 3);
         assertEquals(log.firstApplied(), 11);
-        //assertEquals(log.commitIndex(), ??);
+        assertEquals(log.commitIndex(), 11);
+        for(int i=1; i <= 10; i++)
+            assertNull(log.get(i));
+        assertNotNull(log.get(11));
 
     }
 
 
     public void testTruncateAndReopen(Log log) throws Exception {
+
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
@@ -446,9 +471,9 @@ public class LogTest {
         assertEquals(log.lastApplied(),5);
         for(int i=1; i <= 3; i++)
             assertNull(log.get(i));
+        for(int i=4; i <= 5; i++)
+            assertNotNull(log.get(i));
     }
-
-
 
     /*
     public void testIterator(Log log) throws Exception {
