@@ -15,9 +15,9 @@ import static org.jgroups.util.IntegerHelper.fromByteArrayToInt;
 import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
 
 /**
- * Created by ugol on 03/12/14.
+ * Implementation of ${link #Log}
+ * @author Ugo Landini
  */
-
 public class LevelDBLog implements Log {
 
     protected final org.jgroups.logging.Log log= LogFactory.getLog(this.getClass());
@@ -49,25 +49,22 @@ public class LevelDBLog implements Log {
 
         this.dbFileName = new File(log_name);
         db = factory.open(dbFileName, options);
-        log.info("LOG " + db + " is open");
+        log.debug("LOG %d is open", db);
 
         if (isANewRAFTLog()) {
-            log.info("LOG " + dbFileName + " is new, must be initialized");
+            log.debug("LOG %s is new, must be initialized", dbFileName);
             initLogWithMetadata();
         } else {
-            log.info("LOG " + dbFileName + " is existent, must not be initialized");
+            log.debug("LOG %s is existent, must not be initialized", dbFileName);
             readMetadataFromLog();
         }
-
-        if (log.isDebugEnabled()) log.debug("Checking for consistency");
         checkForConsistency();
-
     }
 
     @Override
     public void close() {
         try {
-            if (log.isDebugEnabled()) log.debug("Closing DB: " + db);
+            log.debug("Closing DB: %s", db);
 
             if (db!= null) db.close();
             currentTerm = 0;
@@ -85,7 +82,7 @@ public class LevelDBLog implements Log {
     public void delete() {
         this.close();
         try {
-            if (log.isDebugEnabled()) log.debug("Deleting DB directory: " + dbFileName);
+            log.debug("Deleting DB directory: %s", dbFileName);
 
             FileUtils.deleteDirectory(dbFileName);
         } catch (IOException e) {
@@ -102,7 +99,7 @@ public class LevelDBLog implements Log {
     @Override
     public Log currentTerm(int new_term) {
         currentTerm = new_term;
-        if (log.isDebugEnabled()) log.debug("Updating current term: " + currentTerm);
+        log.trace("Updating current term: %d", currentTerm);
         db.put(CURRENTTERM, fromIntToByteArray(currentTerm));
         return this;
     }
@@ -116,7 +113,7 @@ public class LevelDBLog implements Log {
     public Log votedFor(Address member) {
         votedFor = member;
         try {
-            if (log.isDebugEnabled()) log.debug("Updating Voted for: " + votedFor);
+            log.debug("Updating Voted for: %s", votedFor);
             db.put(VOTEDFOR, Util.objectToByteBuffer(member));
         } catch (Exception e) {
             e.printStackTrace(); // todo: better error handling
@@ -137,7 +134,7 @@ public class LevelDBLog implements Log {
     @Override
     public Log commitIndex(int new_index) {
         commitIndex = new_index;
-        if (log.isDebugEnabled()) log.debug("Updating commit index: " + commitIndex);
+        log.trace("Updating commit index: %d", commitIndex);
         db.put(COMMITINDEX, fromIntToByteArray(commitIndex));
         return this;
     }
@@ -151,7 +148,7 @@ public class LevelDBLog implements Log {
     public void append(int index, boolean overwrite, LogEntry... entries) {
         WriteBatch batch = db.createWriteBatch();
 
-        if (log.isDebugEnabled()) log.debug("Appending " + entries.length + " entries");
+        log.trace("Appending %d entries", entries.length);
         for (LogEntry entry : entries) {
             try {
                 updateFirstApplied(index, batch);
@@ -165,7 +162,7 @@ public class LevelDBLog implements Log {
                 updateLastApplied(index, batch);
                 updateCurrentTerm(entry.term, batch);
 
-                if (log.isDebugEnabled()) log.debug("Flushing batch to DB: " + batch);
+                log.trace("Flushing batch to DB: %s", batch);
                 db.write(batch);
                 index++;
             }
@@ -173,7 +170,7 @@ public class LevelDBLog implements Log {
                 ex.printStackTrace(); // todo: better error handling
             } finally {
                 try {
-                    if (log.isDebugEnabled()) log.debug("Closing batch: " + batch);
+                    log.trace("Closing batch: %s", batch);
                     batch.close();
                 } catch (IOException e) {
                     e.printStackTrace(); // todo: better error handling
@@ -309,7 +306,7 @@ public class LevelDBLog implements Log {
 
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
 
-        if (log.isDebugEnabled()) log.debug("Checking term (" + prev_term + ") of previous entry (" + prev_index + ")");
+        log.trace("Checking term (%d) of previous entry (%d)", prev_term, prev_index);
         if(prev_index == 0) // index starts at 1
             return false;
         LogEntry prev_entry = getLogEntry(prev_index);
@@ -329,18 +326,18 @@ public class LevelDBLog implements Log {
         byte[] entryBytes = db.get(fromIntToByteArray(index));
         LogEntry entry = null;
         try {
-            if (log.isDebugEnabled()) log.debug("Getting Entry @ index: " + index);
+            log.trace("Getting Entry @ index: %d", index);
             if (entryBytes != null) entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        if (log.isDebugEnabled()) log.debug("Returning Entry " + entry);
+        log.trace("Returning Entry %s", entry);
         return entry;
     }
 
     private void appendEntryIfAbsent(int index, LogEntry entry, WriteBatch batch) throws Exception {
         if (db.get(fromIntToByteArray(index))!= null) {
-            if (log.isDebugEnabled()) log.debug("Entry " + index + ": " + entry + " can't be appended, index already present");
+            log.trace("Entry %d: %s can't be appended, index already present", index, entry);
             throw new IllegalStateException("Entry at index " + index + " already exists");
         } else {
             appendEntry(index, entry, batch);
@@ -348,39 +345,38 @@ public class LevelDBLog implements Log {
     }
 
     private void appendEntry(int index, LogEntry entry, WriteBatch batch) throws Exception {
-        if (log.isDebugEnabled()) log.debug("Appending entry " + index + ": " + entry);
+        log.trace("Appending entry %d: %s", index, entry);
         batch.put(fromIntToByteArray(index), Util.streamableToByteBuffer(entry));
     }
 
 
     private void updateCurrentTerm(int index, WriteBatch batch) {
         currentTerm=index;
-        if (log.isDebugEnabled()) log.debug("Updating currentTerm: " + index);
+        log.trace("Updating currentTerm: %d", index);
         batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
     }
 
     private void updateLastApplied(int index, WriteBatch batch) {
         lastApplied = index;
-        if (log.isDebugEnabled()) log.debug("Updating lastApplied: " + index);
+        log.trace("Updating lastApplied: %d", index);
         batch.put(LASTAPPLIED, fromIntToByteArray(lastApplied));
     }
 
     private void updateFirstApplied(int index, WriteBatch batch) {
         if (firstApplied == -1) {
             firstApplied = index;
-            if (log.isDebugEnabled()) log.debug("Updating firstApplied: " + index);
+            log.trace("Updating firstApplied: %d", index);
             batch.put(FIRSTAPPLIED, fromIntToByteArray(firstApplied));
         }
     }
 
     private boolean isANewRAFTLog() {
-        if (log.isDebugEnabled()) log.debug("Check if log is new");
         return (db.get(FIRSTAPPLIED) == null);
     }
 
     private void initLogWithMetadata() {
 
-        if (log.isDebugEnabled()) log.debug("Initializing log with empty Metadata");
+        log.debug("Initializing log with empty Metadata");
         WriteBatch batch = db.createWriteBatch();
         try {
             batch.put(FIRSTAPPLIED, fromIntToByteArray(-1));
@@ -400,40 +396,31 @@ public class LevelDBLog implements Log {
     }
 
     private void readMetadataFromLog() throws Exception {
-
         firstApplied = fromByteArrayToInt(db.get(FIRSTAPPLIED));
-        if (log.isDebugEnabled()) log.debug("FirstApplied: " + firstApplied);
-
         lastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
-        if (log.isDebugEnabled()) log.debug("LastApplied: " + lastApplied);
-
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
-        if (log.isDebugEnabled()) log.debug("CurrentTerm: " + currentTerm);
-
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        if (log.isDebugEnabled()) log.debug("CommitIndex: " + commitIndex);
-
         votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
-        if (log.isDebugEnabled()) log.debug("VotedFor: " + votedFor);
-
+        log.debug("read metedata from log: firstApplied=%d, lastApplied=%d, currentTerm=%d, commitIndex=%d, votedFor=%s",
+                  firstApplied, lastApplied, currentTerm, commitIndex, votedFor);
     }
 
     private void checkForConsistency() throws Exception {
 
         int loggedFirstApplied = fromByteArrayToInt(db.get(FIRSTAPPLIED));
-        if (log.isDebugEnabled()) log.debug("FirstApplied in DB is: " + loggedFirstApplied);
+        log.trace("FirstApplied in DB is: %d", loggedFirstApplied);
 
         int loggedLastApplied = fromByteArrayToInt(db.get(LASTAPPLIED));
-        if (log.isDebugEnabled()) log.debug("LastApplied in DB is: " + loggedLastApplied);
+        log.trace("LastApplied in DB is: %d", loggedLastApplied);
 
         int loggedCurrentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
-        if (log.isDebugEnabled()) log.debug("CurrentTerm in DB is: " + loggedCurrentTerm);
+        log.trace("CurrentTerm in DB is: %d", loggedCurrentTerm);
 
         int loggedCommitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        if (log.isDebugEnabled()) log.debug("CommitIndex in DB is: " + loggedCommitIndex);
+        log.trace("CommitIndex in DB is: %d", loggedCommitIndex);
 
         Address loggedVotedForAddress = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
-        if (log.isDebugEnabled()) log.debug("VotedFor in DB is: " + loggedVotedForAddress);
+        log.trace("VotedFor in DB is: %s", loggedVotedForAddress);
 
         assert (firstApplied == loggedFirstApplied);
         assert (lastApplied == loggedLastApplied);
@@ -444,9 +431,9 @@ public class LevelDBLog implements Log {
         }
 
         LogEntry lastAppendedEntry = getLogEntry(lastApplied);
-        if (log.isDebugEnabled()) log.debug("Last appended entry: " + lastAppendedEntry);
+        log.trace("Last appended entry: %s", lastAppendedEntry);
         assert (lastAppendedEntry==null || lastAppendedEntry.term == currentTerm);
-        log.info("End of consistency check");
+        log.debug("End of consistency check");
 
     }
 
