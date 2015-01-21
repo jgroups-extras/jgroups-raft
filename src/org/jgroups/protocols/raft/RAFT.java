@@ -118,6 +118,20 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected int                     log_size_bytes; // keeps counts of the bytes added to the log
 
 
+    public int          majority()                    {return majority;}
+    public RAFT         majority(int val)             {majority=val; return this;}
+    public String       logClass()                    {return log_class;}
+    public RAFT         logClass(String clazz)        {log_class=clazz; return this;}
+    public String       logArgs()                     {return log_args;}
+    public RAFT         logArgs(String args)          {log_args=args; return this;}
+    public String       logName()                     {return log_name;}
+    public RAFT         logName(String name)          {log_name=name; return this;}
+    public String       snapshotName()                {return snapshot_name;}
+    public RAFT         snapshotName(String name)     {snapshot_name=name; return this;}
+    public long         resendInterval()              {return resend_interval;}
+    public RAFT         resendInterval(long val)      {resend_interval=val; return this;}
+    public int          maxLogSize()                  {return max_log_size;}
+    public RAFT         maxLogSize(int val)           {max_log_size=val; return this;}
 
     @ManagedAttribute(description="Current leader")
     public String       getLeader()                   {return leader != null? leader.toString() : "none";}

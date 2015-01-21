@@ -72,6 +72,16 @@ public class ELECTION extends Protocol {
     protected Future<?>         heartbeat_task;
     protected Role              role=Role.Follower;
 
+    public long     heartbeatInterval()            {return heartbeat_interval;}
+    public ELECTION heartbeatInterval(long val)    {heartbeat_interval=val; return this;}
+    public long     electionMinInterval()          {return election_min_interval;}
+    public ELECTION electionMinInterval(long val)  {election_min_interval=val; return this;}
+    public long     electionMaxInterval()          {return election_max_interval;}
+    public ELECTION electionMaxInterval(long val)  {election_max_interval=val; return this;}
+    public boolean  noElections()                  {return no_elections;}
+    public ELECTION noElections(boolean flag)      {no_elections=flag; return this;}
+
+
     @ManagedAttribute(description="The current role")
     public String role() {return role.toString();}
 

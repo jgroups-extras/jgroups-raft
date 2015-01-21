@@ -49,7 +49,7 @@ public class LevelDBLog implements Log {
 
         this.dbFileName = new File(log_name);
         db = factory.open(dbFileName, options);
-        log.debug("LOG %d is open", db);
+        log.debug("LOG %s is open", db);
 
         if (isANewRAFTLog()) {
             log.debug("LOG %s is new, must be initialized", dbFileName);

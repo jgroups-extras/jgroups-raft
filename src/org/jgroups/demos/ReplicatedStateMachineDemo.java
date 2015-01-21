@@ -49,7 +49,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     protected static void disableElections(JChannel ch) {
         ELECTION election=(ELECTION)ch.getProtocolStack().findProtocol(ELECTION.class);
         if(election != null)
-            election.setValue("no_elections", true);
+            election.noElections(true);
     }
 
     protected void loop() {
