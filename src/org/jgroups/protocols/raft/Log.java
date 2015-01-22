@@ -5,7 +5,7 @@ import org.jgroups.Address;
 import java.util.Map;
 
 /**
- * The interface for a (persistent) log.
+ * The interface for a persistent log. See doc/design/Log.txt for details.
  * @author Bela Ban
  * @since  0.1
  */
@@ -75,7 +75,9 @@ public interface Log {
      * @param prev_term The term of the entry at the previous index
      * @param entries One of more entries
      * @return An AppendResult
+     * @deprecated This logic is handled by the RAFT protocol, not the log. Wil be removed soon
      */
+    @Deprecated
     AppendResult append(int prev_index, int prev_term, LogEntry ... entries);
 
     /**
@@ -89,13 +91,13 @@ public interface Log {
 
     /**
      * Truncates the log up to (and excluding) index. All entries < index are removed. First = index.
-     * @param index
+     * @param index If greater than commit_index, commit_index will be used instead
      */
     void truncate(int index);
 
 
     /**
-     * Delete all entries starting from start_index.
+     * Delete all entries starting from start_index (including the entry at start_index).
      * Updates current_term and last_applied accordingly
      *
      * @param start_index
@@ -103,29 +105,15 @@ public interface Log {
     void deleteAllEntriesStartingFrom(int start_index);
 
 
-        // void snapshot(); // tbd when we get to InstallSnapshot
     /**
-     * Applies function to all elements of the log between start_index and end_index. This makes ancillary methods
-     * like get(int from, int to) unnecessary: can be done like this:<p/>
-     * <pre>
-        List<LogEntry> get(int from, int to) {
-            final List<LogEntry> list=new ArrayList<LogEntry>();
-            log_impl.forEach(new Log.Function() {
-                public boolean apply(int index,int term,byte[] command,int offset,int length) {
-                    list.add(new LogEntry(term, command, offset, length));
-                    return true;
-                }
-            }, from, to);
-            return list;
-        }
-     * </pre>
+     * Applies function to all elements of the log in range [max(start_index,first_applied) .. min(last_applied,end_index)].
      * @param function The function to be applied
-     * @param start_index The start index. If smaller than firstApplied(), firstApplied() will be used
-     * @param end_index The end index. If greater than commitIndex(), commitIndex() will be used
+     * @param start_index The start index. If smaller than first_applied, first_applied will be used
+     * @param end_index The end index. If greater than last_applied, last_applied will be used
      */
     void forEach(Function function, int start_index, int end_index);
 
-    /** Applies a function to all elements between firstApplied() and commitIndex() */
+    /** Applies a function to all elements in range [first_applied .. last_applied] */
     void forEach(Function function);
 
     interface Function {

@@ -117,7 +117,7 @@ public abstract class RaftImpl {
     /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log */
     protected int getFirstIndexOfConflictingTerm(int start_index, int conflicting_term) {
         Log log=raft.log_impl;
-        int first=log.firstApplied(), last=log.lastApplied();
+        int first=Math.max(1, log.firstApplied()), last=log.lastApplied();
         int retval=Math.min(start_index, last);
         for(int i=retval; i >= first; i--) {
             LogEntry entry=log.get(i);

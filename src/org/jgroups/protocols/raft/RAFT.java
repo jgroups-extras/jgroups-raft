@@ -267,18 +267,19 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @ManagedOperation(description="Reads snapshot (if present) and log entries up to " +
       "commit_index and applies them to the state machine")
     public synchronized void initStateMachineFromLog(boolean force) throws Exception {
-        int count=0;
         if(state_machine != null) {
             if(!state_machine_loaded || force) {
+                int snapshot_offset=0;
                 try(InputStream input=new FileInputStream(snapshot_name)) {
                     state_machine.readContentFrom(new DataInputStream(input));
+                    snapshot_offset=1;
                     log.debug("Initialized state machine from %s", snapshot_name);
                 }
                 catch(FileNotFoundException fne) {
                     log.debug("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
                 }
 
-                int from=log_impl.firstApplied()+1, to=commit_index;
+                int from=Math.max(1, log_impl.firstApplied()+snapshot_offset), to=commit_index, count=0;
                 for(int i=from; i <= to; i++) {
                     LogEntry log_entry=log_impl.get(i);
                     if(log_entry == null) {
@@ -291,7 +292,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
                     }
                 }
                 state_machine_loaded=true;
-                log.debug("applied %d log entries (%d - %d) to the state machine", count, from, to);
+                if(count > 0)
+                    log.debug("applied %d log entries (%d - %d) to the state machine", count, from, to);
             }
         }
     }

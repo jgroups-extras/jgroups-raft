@@ -2,11 +2,16 @@ package org.jgroups.tests;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.InMemoryLog;
+import org.jgroups.protocols.raft.LevelDBLog;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.testng.Assert.*;
 
@@ -24,17 +29,17 @@ public class LogTest {
     @DataProvider static Object[][] logProvider() {
         return new Object[][] {
           /*{new MapDBLog()},*/
-          {new LevelDBLog()}
+          {new LevelDBLog()},
+          {new InMemoryLog()}
         };
     }
 
     @AfterMethod protected void destroy() {
         if(log != null) {
             log.delete();
+            log=null;
         }
-        log=null;
     }
-
 
 
     public void testFields(Log log) throws Exception {
@@ -63,64 +68,39 @@ public class LogTest {
         assertEquals(current_term, 0);
         voted_for=log.votedFor();
         assertNull(voted_for);
-
     }
 
-    public void testNewLog(Log log) throws Exception {
 
+    public void testNewLog(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
-
-        assertEquals(log.firstApplied(), -1);
-        assertEquals(log.lastApplied(), 0);
-        assertEquals(log.currentTerm(), 0);
-        assertEquals(log.commitIndex(), 0);
+        assertIndices(0, 0, 0, 0);
         assertNull(log.votedFor());
-
     }
 
     public void testNewLogAfterDelete(Log log) throws Exception {
-
         this.log=log;
         log.init(filename, null);
-
+        append(log, 1, false, new byte[10], 5,5,5);
+        log.commitIndex(2);
+        assertIndices(0, 3, 2, 5);
         log.close();
         log.delete();
         log.init(filename, null);
-
-        assertEquals(log.firstApplied(), -1);
-        assertEquals(log.lastApplied(), 0);
-        assertEquals(log.currentTerm(), 0);
-        assertEquals(log.commitIndex(), 0);
+        assertIndices(0,0,0,0);
         assertNull(log.votedFor());
     }
 
     public void testMetadataInAReopenedLog(Log log) throws Exception {
-
         this.log=log;
         log.init(filename, null);
-
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(4, buf));
-        log.append(5, false, new LogEntry(4, buf));
-        log.append(6, false, new LogEntry(5, buf));
-        log.append(7, false, new LogEntry(5, buf));
-        log.append(8, false, new LogEntry(6, buf));
-        log.append(9, false, new LogEntry(6, buf));
-        log.append(10, false, new LogEntry(6, buf));
+        append(log, 1, false, buf, 1,1,1, 4,4, 5,5, 6,6,6);
         log.commitIndex(10);
         log.votedFor(Util.createRandomAddress("A"));
-
         log.close();
         log.init(filename, null);
-
-        assertEquals(log.firstApplied(), 1);
-        assertEquals(log.lastApplied(), 10);
-        assertEquals(log.currentTerm(), 6);
-        assertEquals(log.commitIndex(), 10);
+        assertIndices(0, 10, 10, 6);
         assertEquals(log.votedFor().toString(), Util.createRandomAddress("A").toString());
     }
 
@@ -130,198 +110,33 @@ public class LogTest {
         byte[] buf=new byte[10];
         log.append(1, false, new LogEntry(5, buf));
         log.append(2, false, new LogEntry(5, buf));
-        assertEquals(log.lastApplied(), 2);
-        assertEquals(log.commitIndex(), 0);
-        assertEquals(log.firstApplied(), 1);
-        assertEquals(log.currentTerm(), 5);
-
+        assertIndices(0, 2, 0, 5);
     }
 
-    public void testRAFTPaperAppendOnLeader(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
-
-        this.log = log;
+    public void testAppendMultipleEntries(Log log) throws Exception {
+        this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(4, buf));
-        log.append(5, false, new LogEntry(4, buf));
-        log.append(6, false, new LogEntry(5, buf));
-        log.append(7, false, new LogEntry(5, buf));
-        log.append(8, false, new LogEntry(6, buf));
-        log.append(9, false, new LogEntry(6, buf));
-        log.append(10, false, new LogEntry(6, buf));
-        log.commitIndex(10);
-        AppendResult result = log.append(10, 6, new LogEntry(6, buf));
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
-    }
+        LogEntry[] entries={new LogEntry(1, buf), new LogEntry(1, buf), new LogEntry(3, buf)};
+        log.append(1, false, entries);
+        assertIndices(0,3,0,3);
 
-    public void testRAFTPaperScenarioA(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
-        // Flwr A 01 01 01 04 04 05 05 06 06
-
-        this.log = log;
-        log.init(filename, null);
-        byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(4, buf));
-        log.append(5, false, new LogEntry(4, buf));
-        log.append(6, false, new LogEntry(5, buf));
-        log.append(7, false, new LogEntry(5, buf));
-        log.append(8, false, new LogEntry(6, buf));
-        log.append(9, false, new LogEntry(6, buf));
-        log.commitIndex(9);
-        AppendResult result = log.append(10, 6, new LogEntry(6, buf));
-        assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), 9, 6);
-    }
-
-    public void testRAFTPaperScenarioB(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
-        // Flwr A 01 01 01 04
-
-        this.log = log;
-        log.init(filename, null);
-        byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(4, buf));
-        log.commitIndex(4);
-        AppendResult result = log.append(10, 6, new LogEntry(6, buf));
-        assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), -1, 6);
-    }
-
-    public void testRAFTPaperScenarioC(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
-        // Flwr A 01 01 01 04 04 05 05 06 06 06 06
-
-        this.log = log;
-        log.init(filename, null);
-        byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(4, buf));
-        log.append(5, false, new LogEntry(4, buf));
-        log.append(6, false, new LogEntry(5, buf));
-        log.append(7, false, new LogEntry(5, buf));
-        log.append(8, false, new LogEntry(6, buf));
-        log.append(9, false, new LogEntry(6, buf));
-        log.append(10, false, new LogEntry(6, buf));
-        log.append(11, false, new LogEntry(6, buf));
-        log.commitIndex(11);
-        AppendResult result = log.append(10, 6, new LogEntry(6, buf));
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
-    }
-
-    public void testRAFTPaperScenarioD(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
-        // Flwr A 01 01 01 04 04 05 05 06 06 06 07 07
-
-        this.log = log;
-        log.init(filename, null);
-        byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(4, buf));
-        log.append(5, false, new LogEntry(4, buf));
-        log.append(6, false, new LogEntry(5, buf));
-        log.append(7, false, new LogEntry(5, buf));
-        log.append(8, false, new LogEntry(6, buf));
-        log.append(9, false, new LogEntry(6, buf));
-        log.append(10, false, new LogEntry(6, buf));
-        log.append(11, false, new LogEntry(7, buf));
-        log.append(12, false, new LogEntry(7, buf));
-        log.commitIndex(12);
-        AppendResult result = log.append(10, 6, new LogEntry(6, buf));
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
-    }
-
-    public void testRAFTPaperScenarioE(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
-        // Flwr A 01 01 01 04 04 04 04
-
-        this.log = log;
-        log.init(filename, null);
-        byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(4, buf));
-        log.append(5, false, new LogEntry(4, buf));
-        log.append(6, false, new LogEntry(4, buf));
-        log.append(7, false, new LogEntry(4, buf));
-        log.commitIndex(7);
-        AppendResult result = log.append(10, 6, new LogEntry(6, buf));
-        assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), -1, 6);
-    }
-
-    public void testRAFTPaperScenarioF(Log log) throws Exception {
-        // Index  01 02 03 04 05 06 07 08 09 10 11 12
-        // Leader 01 01 01 04 04 05 05 06 06 06
-        // Flwr A 01 01 01 02 02 02 03 03 03 03 03
-
-        this.log = log;
-        log.init(filename, null);
-        byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.append(6, false, new LogEntry(2, buf));
-        log.append(7, false, new LogEntry(3, buf));
-        log.append(8, false, new LogEntry(3, buf));
-        log.append(9, false, new LogEntry(3, buf));
-        log.append(10, false, new LogEntry(3, buf));
-        log.append(11, false, new LogEntry(3, buf));
-        log.commitIndex(11);
-        AppendResult result = log.append(10, 6, new LogEntry(6, buf));
-        assertFalse(result.isSuccess());
-        //assertEquals(result.getIndex(), -1, 6);
+        entries=new LogEntry[30];
+        for(int i=0; i < entries.length; i++)
+            entries[i]=new LogEntry(Math.max(3,i/2), buf);
+        log.append(4, false, entries);
+        assertIndices(0, 33, 0, 29/2);
     }
 
     public void testDeleteEntriesInTheMiddle(Log log) throws Exception {
-
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.append(6, false, new LogEntry(2, buf));
-        log.append(7, false, new LogEntry(3, buf));
-        log.append(8, false, new LogEntry(3, buf));
-        log.append(9, false, new LogEntry(3, buf));
-        log.append(10, false, new LogEntry(3, buf));
-        log.append(11, false, new LogEntry(3, buf));
+        append(log, 1, false, buf, 1,1,1, 2,2,2, 3,3,3,3,3);
         log.commitIndex(11);
 
         log.deleteAllEntriesStartingFrom(6);
-
-        assertEquals(log.firstApplied(), 1);
-        assertEquals(log.lastApplied(), 5);
-        assertEquals(log.currentTerm(), 2);
-        //assertEquals(log.commitIndex(), ??);
+        assertIndices(0,5,5,2);
 
         for(int i=1; i <= 5; i++)
             assertNotNull(log.get(i));
@@ -331,187 +146,158 @@ public class LogTest {
     }
 
     public void testDeleteEntriesFromFirst(Log log) throws Exception {
-
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.append(6, false, new LogEntry(2, buf));
-        log.append(7, false, new LogEntry(3, buf));
-        log.append(8, false, new LogEntry(3, buf));
-        log.append(9, false, new LogEntry(3, buf));
-        log.append(10, false, new LogEntry(3, buf));
-        log.append(11, false, new LogEntry(3, buf));
+        append(log, 1, false, buf, 1,1,1, 2,2,2, 3,3,3,3,3);
         log.commitIndex(11);
 
         log.deleteAllEntriesStartingFrom(1);
-
-        assertEquals(log.firstApplied(), 1);
-        assertEquals(log.lastApplied(), 0);
-        assertEquals(log.currentTerm(), 0);
-        //assertEquals(log.commitIndex(), ??);
-
+        assertIndices(0,0,0,0);
         for(int i=1; i <= 11; i++)
             assertNull(log.get(i));
-
     }
 
     public void testDeleteEntriesFromLast(Log log) throws Exception {
-
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.append(6, false, new LogEntry(2, buf));
-        log.append(7, false, new LogEntry(3, buf));
-        log.append(8, false, new LogEntry(3, buf));
-        log.append(9, false, new LogEntry(3, buf));
-        log.append(10, false, new LogEntry(3, buf));
-        log.append(11, false, new LogEntry(3, buf));
+        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(11);
 
         log.deleteAllEntriesStartingFrom(11);
-
-        assertEquals(log.lastApplied(), 10);
-        assertEquals(log.currentTerm(), 3);
-        //assertEquals(log.commitIndex(), ??);
-
+        assertIndices(0, 10, 10, 3);
         for(int i=1; i <= 10; i++)
             assertNotNull(log.get(i));
         assertNull((log.get(11)));
-
     }
 
     public void testTruncateInTheMiddle(Log log) throws Exception {
-
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.append(6, false, new LogEntry(2, buf));
-        log.append(7, false, new LogEntry(3, buf));
-        log.append(8, false, new LogEntry(3, buf));
-        log.append(9, false, new LogEntry(3, buf));
-        log.append(10, false, new LogEntry(3, buf));
-        log.append(11, false, new LogEntry(3, buf));
+        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(11);
 
         log.truncate(6);
-
-        assertEquals(log.lastApplied(), 11);
-        assertEquals(log.currentTerm(), 3);
-        assertEquals(log.firstApplied(), 6);
-        assertEquals(log.commitIndex(), 11);
-
+        assertIndices(6, 11, 11, 3);
         for(int i=1; i <= 5; i++)
             assertNull(log.get(i));
         for(int i=6; i <= 11; i++)
             assertNotNull(log.get(i));
-
     }
 
     public void testTruncateFirst(Log log) throws Exception {
-
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.append(6, false, new LogEntry(2, buf));
-        log.append(7, false, new LogEntry(3, buf));
-        log.append(8, false, new LogEntry(3, buf));
-        log.append(9, false, new LogEntry(3, buf));
-        log.append(10, false, new LogEntry(3, buf));
-        log.append(11, false, new LogEntry(3, buf));
+        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(11);
 
         log.truncate(1);
-
-        assertEquals(log.lastApplied(), 11);
-        assertEquals(log.currentTerm(), 3);
-        assertEquals(log.firstApplied(), 1);
-        //assertEquals(log.commitIndex(), ??);
+        assertIndices(1, 11, 11, 3);
         assertNotNull(log.get(1));
-
     }
 
     public void testTruncateLast(Log log) throws Exception {
-
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.append(6, false, new LogEntry(2, buf));
-        log.append(7, false, new LogEntry(3, buf));
-        log.append(8, false, new LogEntry(3, buf));
-        log.append(9, false, new LogEntry(3, buf));
-        log.append(10, false, new LogEntry(3, buf));
-        log.append(11, false, new LogEntry(3, buf));
+        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(11);
 
         log.truncate(11);
-
-        assertEquals(log.lastApplied(), 11);
-        assertEquals(log.currentTerm(), 3);
-        assertEquals(log.firstApplied(), 11);
-        assertEquals(log.commitIndex(), 11);
+        assertIndices(11, 11, 11, 3);
         for(int i=1; i <= 10; i++)
             assertNull(log.get(i));
         assertNotNull(log.get(11));
-
     }
 
 
     public void testTruncateAndReopen(Log log) throws Exception {
-
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(1, buf));
-        log.append(2, false, new LogEntry(1, buf));
-        log.append(3, false, new LogEntry(1, buf));
-        log.append(4, false, new LogEntry(2, buf));
-        log.append(5, false, new LogEntry(2, buf));
-        log.truncate(4);
+        append(log, 1, false, buf, 1, 1, 1, 2, 2);
+        log.commitIndex(5);
 
+        log.truncate(4);
         log.close();
         log.init(filename, null);
         assertEquals(log.firstApplied(), 4);
-        assertEquals(log.lastApplied(),5);
+        assertEquals(log.lastApplied(), 5);
         for(int i=1; i <= 3; i++)
             assertNull(log.get(i));
         for(int i=4; i <= 5; i++)
             assertNotNull(log.get(i));
     }
 
-    /*
-    public void testIterator(Log log) throws Exception {
-        this.log = log;
+
+    public void testTruncateTwice(Log log) throws Exception {
+        this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, new LogEntry(5, buf));
-        log.append(2, new LogEntry(5, buf));
-        log.forEach(null);
-        assertTrue(false);
+        for(int i=1; i <= 10; i++)
+            log.append(i, false, new LogEntry(5, buf));
+        log.commitIndex(6);
+        log.truncate(4);
+        assertEquals(log.commitIndex(), 6);
+        assertEquals(log.firstApplied(), 4);
+
+        log.commitIndex(10);
+        log.truncate(8);
+        assertEquals(log.commitIndex(), 10);
+        assertEquals(log.firstApplied(), 8);
     }
-    */
+
+
+    public void testForEach(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        for(int i=1; i <= 10; i++)
+            log.append(i, false, new LogEntry(5, buf));
+        log.commitIndex(8);
+
+        final AtomicInteger cnt=new AtomicInteger(0);
+        Log.Function func=new Log.Function() {
+            @Override
+            public boolean apply(int index, int term, byte[] command, int offset, int length) {
+                cnt.incrementAndGet();
+                return true;
+            }
+        };
+
+        log.forEach(func);
+        assert cnt.get() == 10;
+
+        cnt.set(0);
+        log.truncate(8);
+
+        append(log, 11, false, buf, 6,6,6, 7,7,7, 8,8,8,8);
+        log.forEach(func);
+        assert cnt.get() == 13;
+
+        cnt.set(0);
+        log.forEach(func, 0, 25);
+        assert cnt.get() == 13;
+    }
+
+
+
+    protected void append(final Log log, int start_index, boolean overwrite, final byte[] buf, int ... terms) {
+        int index=start_index;
+        for(int term: terms) {
+            log.append(index, overwrite, new LogEntry(term, buf));
+            index++;
+        }
+    }
+
+    protected void assertIndices(int first_applied, int last_applied, int commit_index, int current_term) {
+        assertEquals(log.firstApplied(), first_applied);
+        assertEquals(log.lastApplied(),  last_applied);
+        assertEquals(log.commitIndex(),  commit_index);
+        assertEquals(log.currentTerm(),  current_term);
+    }
+
 }

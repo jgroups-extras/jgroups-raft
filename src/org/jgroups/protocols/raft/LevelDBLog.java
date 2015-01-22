@@ -36,7 +36,7 @@ public class LevelDBLog implements Log {
 
     private Integer commitIndex = 0;
     private Integer lastApplied = 0;
-    private Integer firstApplied = -1;
+    private Integer firstApplied = 0;
 
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
@@ -71,7 +71,7 @@ public class LevelDBLog implements Log {
             votedFor = null;
             commitIndex = 0;
             lastApplied = 0;
-            firstApplied = -1;
+            firstApplied = 0;
         } catch (IOException e) {
             //@todo proper logging, etc
             e.printStackTrace();
@@ -149,13 +149,12 @@ public class LevelDBLog implements Log {
         WriteBatch batch = db.createWriteBatch();
 
         log.trace("Appending %d entries", entries.length);
-        for (LogEntry entry : entries) {
-            try {
-                updateFirstApplied(index, batch);
-
-                if (overwrite) {
+        try {
+            for(LogEntry entry : entries) {
+                if(overwrite) {
                     appendEntry(index, entry, batch);
-                } else {
+                }
+                else {
                     appendEntryIfAbsent(index, entry, batch);
                 }
 
@@ -166,16 +165,13 @@ public class LevelDBLog implements Log {
                 db.write(batch);
                 index++;
             }
-            catch(Exception ex) {
-                ex.printStackTrace(); // todo: better error handling
-            } finally {
-                try {
-                    log.trace("Closing batch: %s", batch);
-                    batch.close();
-                } catch (IOException e) {
-                    e.printStackTrace(); // todo: better error handling
-                }
-            }
+        }
+        catch(Exception ex) {
+            ex.printStackTrace(); // todo: better error handling
+        }
+        finally {
+            log.trace("Closing batch: %s", batch);
+            Util.close(batch);
         }
     }
 
@@ -207,25 +203,20 @@ public class LevelDBLog implements Log {
 
     @Override
     public void forEach(Function function, int start_index, int end_index) {
-
-        start_index = Math.max(start_index, firstApplied);
+        start_index = Math.max(start_index, Math.max(firstApplied,1));
         end_index = Math.min(end_index, lastApplied);
 
         for (int i=start_index; i<=end_index; i++) {
             LogEntry entry = getLogEntry(i);
-            function.apply(i, entry.term, entry.command, entry.offset, entry.length);
+            if(!function.apply(i, entry.term, entry.command, entry.offset, entry.length))
+                break;
         }
 
     }
 
     @Override
     public void forEach(Function function) {
-
-        if (firstApplied == -1) {
-            return;
-        }
-        this.forEach(function, firstApplied, lastApplied);
-
+        this.forEach(function, Math.max(1, firstApplied), lastApplied);
     }
 
     @Override
@@ -272,6 +263,8 @@ public class LevelDBLog implements Log {
                 updateCurrentTerm(last.term, batch);
             }
             updateLastApplied(start_index - 1, batch);
+            if(commitIndex > lastApplied)
+                commitIndex(lastApplied);
             db.write(batch);
         }
         finally {
@@ -302,6 +295,14 @@ public class LevelDBLog implements Log {
         log.info("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
         Address votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
         log.info("Voted for: " + votedFor);
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb=new StringBuilder();
+        sb.append("firstApplied=").append(firstApplied).append(", lastApplied=").append(lastApplied)
+          .append(", commitIndex=").append(commitIndex).append(", currentTerm=").append(currentTerm);
+        return sb.toString();
     }
 
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
@@ -362,13 +363,13 @@ public class LevelDBLog implements Log {
         batch.put(LASTAPPLIED, fromIntToByteArray(lastApplied));
     }
 
-    private void updateFirstApplied(int index, WriteBatch batch) {
-        if (firstApplied == -1) {
+  /*  private void updateFirstApplied(int index, WriteBatch batch) {
+        if (firstApplied == 0) {
             firstApplied = index;
             log.trace("Updating firstApplied: %d", index);
             batch.put(FIRSTAPPLIED, fromIntToByteArray(firstApplied));
         }
-    }
+    }*/
 
     private boolean isANewRAFTLog() {
         return (db.get(FIRSTAPPLIED) == null);
@@ -379,7 +380,7 @@ public class LevelDBLog implements Log {
         log.debug("Initializing log with empty Metadata");
         WriteBatch batch = db.createWriteBatch();
         try {
-            batch.put(FIRSTAPPLIED, fromIntToByteArray(-1));
+            batch.put(FIRSTAPPLIED, fromIntToByteArray(0));
             batch.put(LASTAPPLIED, fromIntToByteArray(0));
             batch.put(CURRENTTERM, fromIntToByteArray(0));
             batch.put(COMMITINDEX, fromIntToByteArray(0));
