@@ -19,14 +19,14 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     protected JChannel ch;
     protected ReplicatedStateMachine<String,Object> rsm;
 
-    protected void start(String props, String name, boolean follower) throws Exception {
+    protected void start(String props, String name, boolean follower, long timeout) throws Exception {
         ch=new JChannel(props);
         if(name != null)
             ch.name(name);
         if(follower)
             disableElections(ch);
         ch.setReceiver(this);
-        rsm=new ReplicatedStateMachine<>(ch);
+        rsm=new ReplicatedStateMachine<>(ch).timeout(timeout);
         ch.connect("rsm");
         Util.registerChannel(rsm.channel(), "rsm");
         rsm.addRoleChangeListener(this);
@@ -71,7 +71,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
                     remove(read("key"));
                     break;
                 case '4':
-                    System.out.println(rsm);
+                    System.out.println(rsm + "\n");
                     break;
                 case '5':
                     dumpLog();
@@ -156,6 +156,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
         String props="raft.xml";
         String name=null;
         boolean follower=false;
+        long timeout=3000;
 
         for(int i=0; i < args.length; i++) {
             if(args[i].equals("-props")) {
@@ -170,10 +171,14 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
                 follower=true;
                 continue;
             }
-            System.out.println("ReplicatedStateMachine [-props <config>] [-name <name>] [-follower]");
+            if(args[i].equals("-timeout")) {
+                timeout=Long.parseLong(args[++i]);
+                continue;
+            }
+            System.out.println("ReplicatedStateMachine [-props <config>] [-name <name>] [-follower] [-timeout timeout]");
             return;
         }
-        new ReplicatedStateMachineDemo().start(props, name, follower);
+        new ReplicatedStateMachineDemo().start(props, name, follower, timeout);
     }
 
 

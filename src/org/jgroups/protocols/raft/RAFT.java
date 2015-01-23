@@ -107,7 +107,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected int                     current_term;
 
     @ManagedAttribute(description="Index of the highest log entry applied to the state machine")
-    protected int                     last_applied; // todo: needed ? why not just use logimpl.lastApplied() ?
+    protected int                     last_applied;
 
     @ManagedAttribute(description="Index of the highest committed log entry")
     protected int                     commit_index;
@@ -152,13 +152,15 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
 
     /** Sets the current term if the new term is greater */
-    public synchronized RAFT currentTerm(final int new_term)  {
+    public synchronized boolean currentTerm(final int new_term)  {
+        if(new_term < current_term)
+            return false;
         if(new_term > current_term) {
             current_term=new_term;
             log_impl.currentTerm(new_term);
             // changeRole(Follower) ?
         }
-        return this;
+        return true;
     }
 
     @ManagedAttribute(description="The current role")
@@ -252,7 +254,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         }
         try {
             snapshotting=true;
-            _snapshot();
+            doSnapshot();
         }
         finally {
             snapshotting=false;
@@ -273,17 +275,17 @@ public class RAFT extends Protocol implements Runnable, Settable {
                 try(InputStream input=new FileInputStream(snapshot_name)) {
                     state_machine.readContentFrom(new DataInputStream(input));
                     snapshot_offset=1;
-                    log.debug("Initialized state machine from %s", snapshot_name);
+                    log.debug("%s: initialized state machine from snapshot %s", local_addr, snapshot_name);
                 }
                 catch(FileNotFoundException fne) {
-                    log.debug("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
+                    // log.debug("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
                 }
 
                 int from=Math.max(1, log_impl.firstApplied()+snapshot_offset), to=commit_index, count=0;
                 for(int i=from; i <= to; i++) {
                     LogEntry log_entry=log_impl.get(i);
                     if(log_entry == null) {
-                        log.error("log entry for index %d not found in log", i);
+                        log.error("%s: log entry for index %d not found in log", local_addr, i);
                         break;
                     }
                     if(log_entry.command != null) {
@@ -293,7 +295,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
                 }
                 state_machine_loaded=true;
                 if(count > 0)
-                    log.debug("applied %d log entries (%d - %d) to the state machine", count, from, to);
+                    log.debug("%s: applied %d entries from the log (%d - %d) to the state machine", local_addr, count, from, to);
             }
         }
     }
@@ -327,7 +329,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         last_applied=log_impl.lastApplied();
         commit_index=log_impl.commitIndex();
         current_term=log_impl.currentTerm();
-        log.debug("set last_applied=%d, commit_index=%d, current_term=%d", last_applied, commit_index, current_term);
+        log.trace("set last_applied=%d, commit_index=%d, current_term=%d", last_applied, commit_index, current_term);
         initStateMachineFromLog(false);
         log_size_bytes=logSizeInBytes();
     }
@@ -458,7 +460,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
         // 3. Multicast an AppendEntries message (exclude self)
         Message msg=new Message(null, buf, offset, length)
-          .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, commit_idx))
+          .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx))
           .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         down_prot.down(new Event(Event.MSG, msg));
 
@@ -476,11 +478,10 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
-        // log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest req=(AppendEntriesRequest)hdr;
-            impl.handleAppendEntriesRequest(msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
-                                            req.term(), req.prev_log_index, req.prev_log_term, req.leader_commit);
+            impl.handleAppendEntriesRequest(req.term(), msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
+                                            req.prev_log_index, req.prev_log_term, req.entry_term, req.leader_commit);
         }
         else if(hdr instanceof AppendEntriesResponse) {
             AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
@@ -494,67 +495,66 @@ public class RAFT extends Protocol implements Runnable, Settable {
             log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
     }
 
-    /** Runs every resend_interval ms: checks if all members in the commit table have received all messages and
-     * resends AppendEntries messages to members who haven't */
+    /**
+     * Runs (on the leader) every resend_interval ms: checks if all members in the commit table have received
+     * all messages and resends AppendEntries messages to members who haven't. <p/>
+     * For each member a next-index and match-index is maintained: next-index is the index of the next message to send to
+     * that member (initialized to last-applied) and match-index is the index of the highest message known to have
+     * been received by the member.<p/>
+     * Messages are resent to a given member long as that member's match-index is smaller than its next-index. When
+     * match_index == next_index, message resending for that member is stopped. When a new message is appended to the
+     * leader's log, next-index for all members is incremented and resending starts again.
+     */
     @Override public void run() {
         commit_table.forEach(func);
     }
 
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
         int match_index=entry.matchIndex(), next_index=entry.nextIndex(), commit_idx=entry.commitIndex();
-
-        if(match_index >= last_applied && commit_idx >= this.commit_index)
-            return;
-
-        if(next_index < last_applied) {
+        if(next_index < log().firstApplied()) {
             if(entry.snapshotInProgress(true)) {
-                // todo: run in separate thread
                 try {
-                    sendSnapshotTo(member); // will reset snapshot_in_progress
+                    sendSnapshotTo(member); // will reset snapshot_in_progress // todo: run in separate thread
                 }
-                catch(Exception ex) {
-                    log.error("sending of snapshot failed", ex);
+                catch(Exception e) {
+                    log.error("%s: failed sending snapshot to %s: next_index=%d, first_applied=%d",
+                              local_addr, member, next_index, log().firstApplied());
                 }
-                return;
             }
+            return;
         }
 
-        if(match_index == 0) {
-            // send just 1 entry
-            resend(member, Math.max(next_index, 1));
+        if(this.last_applied >= next_index) {
+            int to=entry.sendSingleMessage()? next_index : last_applied;
+            for(int i=next_index; i <= to; i++) {  // i=match_index+1 ?
+                if(log.isTraceEnabled())
+                    log.trace("%s: resending %d to %s\n", local_addr, i, member);
+                resend(member, i);
+            }
+            return;
         }
-        else {
-            // send entries in range [match_index..next_index] (including match_index but excluding next_index)
-            if(match_index < last_applied) {
-                for(int i=match_index+1; i <= last_applied; i++)
-                    resend(member, i);
-            }
-            else {
-                // send empty AppendEntries message with commit_index
-                if(commit_idx < this.commit_index) {
-                    Message msg=new Message(member)
-                      .putHeader(id, new AppendEntriesRequest(0, this.local_addr, 0, 0, this.commit_index));
-                    down_prot.down(new Event(Event.MSG, msg));
-                }
-            }
+
+        if(this.commit_index > commit_idx) {
+            Message msg=new Message(member).putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, 0, 0, 0, this.commit_index));
+            down_prot.down(new Event(Event.MSG, msg));
         }
     }
+
 
     protected void resend(Address target, int index) {
         LogEntry entry=log_impl.get(index);
+        if(entry == null) {
+            log.error("%s: resending of %d failed; entry not found", local_addr, index);
+            return;
+        }
         LogEntry prev=log_impl.get(index-1);
         int prev_term=prev != null? prev.term : 0;
-
-        Message msg=new Message(target);
-        if(entry != null)
-            msg.setBuffer(entry.command, entry.offset, entry.length);
-
-        msg.putHeader(id, new AppendEntriesRequest(entry != null? entry.term : 0, this.local_addr, index - 1, prev_term, commit_index));
-
+        Message msg=new Message(target).setBuffer(entry.command, entry.offset, entry.length)
+          .putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, index - 1, prev_term, entry.term, commit_index));
         down_prot.down(new Event(Event.MSG, msg));
     }
 
-    protected void _snapshot() throws Exception {
+    protected void doSnapshot() throws Exception {
         if(state_machine == null)
             throw new IllegalStateException("state machine is null");
         try (OutputStream output=new FileOutputStream(snapshot_name)) {
@@ -568,6 +568,11 @@ public class RAFT extends Protocol implements Runnable, Settable {
         return file.exists();
     }
 
+    public boolean deleteSnapshot() {
+        File file=new File(snapshot_name);
+        return file.delete();
+    }
+
     protected synchronized void sendSnapshotTo(Address dest) throws Exception {
         try {
             if(snapshotting)
@@ -576,10 +581,11 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
             LogEntry last_committed_entry=log_impl.get(commitIndex());
             int last_index=commit_index, last_term=last_committed_entry.term;
-            _snapshot();
+            doSnapshot();
 
             // todo: use streaming approach (STATE$StateOutputStream, BlockingInputStream from JGroups)
             byte[] data=Files.readAllBytes(Paths.get(snapshot_name));
+            log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.length), dest);
             Message msg=new Message(dest, data)
               .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
             down_prot.down(new Event(Event.MSG, msg));

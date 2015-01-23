@@ -92,6 +92,11 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         });
     }
 
+    @Override
+    public boolean equals(Object obj) {
+        return map.equals(((ReplicatedStateMachine)obj).map);
+    }
+
     public void loadFromLog() throws Exception {
         raft.initStateMachineFromLog(false);
     }
@@ -130,6 +135,9 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public V remove(K key) throws Exception {
         return invoke(REMOVE, key, null, true);
     }
+
+    /** Returns the number of elements in the RSM */
+    public int size() {return map.size();}
 
 
     ///////////////////////////////////////// StateMachine callbacks /////////////////////////////////////

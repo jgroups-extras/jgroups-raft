@@ -65,7 +65,7 @@ public class CLIENT extends Protocol implements Settable {
         if(local_addr != null && local_addr.equals(leader))
             return raft.setAsync(buf, offset, length, completion_handler);
 
-        // add a unique ID to the request table, so we can correlate the respoonse to the request
+        // add a unique ID to the request table, so we can correlate the response to the request
         int req_id=request_ids.getAndIncrement();
         CompletableFuture<byte[]> future=new CompletableFuture<>(completion_handler);
         synchronized(requests) {

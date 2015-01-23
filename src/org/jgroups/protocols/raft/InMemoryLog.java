@@ -78,9 +78,9 @@ public class InMemoryLog implements Log {
 
     @Override
     public synchronized Log commitIndex(int new_index) {
-        if(new_index > last_applied)
-            throw new IllegalStateException("commit_index (" + commit_index + ") cannot be set to " + new_index +
-                                              " as last_applied is " + last_applied);
+        //if(new_index > last_applied)
+          //  throw new IllegalStateException("commit_index (" + commit_index + ") cannot be set to " + new_index +
+            //                                  " as last_applied is " + last_applied);
         commit_index=new_index; return this;
     }
 

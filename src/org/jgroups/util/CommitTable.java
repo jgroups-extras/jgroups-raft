@@ -21,19 +21,32 @@ public class CommitTable {
     }
 
     public static class Entry {
+        // the next index to send; initialized to last_applied +1
         protected int     next_index;
+
+        // the index of the highest entry known to be replicated to the member
         protected int     match_index;
+
+        // the commit index of the given member
         protected int     commit_index;
+
+        // set when a snapshot is being installed
         protected boolean snapshot_in_progress;
+
+        // set to true when next_index was decremented, so we only send a single entry on the next resend interval;
+        // set to false when we receive an AppendEntries(true) response
+        protected boolean send_single_msg;
 
         public Entry(int next_index) {this.next_index=next_index;}
 
-        public int nextIndex()              {return next_index;}
-        public Entry nextIndex(int idx)     {next_index=idx; return this;}
-        public int matchIndex()             {return match_index;}
-        public Entry matchIndex(int idx)    {this.match_index=idx; return this;}
-        public int commitIndex()            {return commit_index;}
-        public Entry commitIndex(int idx)   {this.commit_index=idx; return this;}
+        public int     nextIndex()                     {return next_index;}
+        public Entry   nextIndex(int idx)              {next_index=idx; return this;}
+        public int     matchIndex()                    {return match_index;}
+        public Entry   matchIndex(int idx)             {this.match_index=idx; return this;}
+        public int     commitIndex()                   {return commit_index;}
+        public Entry   commitIndex(int idx)            {this.commit_index=idx; return this;}
+        public boolean sendSingleMessage()             {return send_single_msg;}
+        public Entry   sendSingleMessage(boolean flag) {this.send_single_msg=flag; return this;}
 
         public boolean snapshotInProgress(boolean flag) {
             if(snapshot_in_progress == flag)
@@ -46,7 +59,9 @@ public class CommitTable {
             StringBuilder sb=new StringBuilder().append("match-index=").append(match_index);
             sb.append(", next-index=").append(next_index).append(", commit-index=").append(commit_index);
             if(snapshot_in_progress)
-                sb.append(" (snapshot in progress)");
+                sb.append(" [snapshotting]");
+            if(send_single_msg)
+                sb.append(" [send-single-msg]");
             return sb.toString();
         }
     }
@@ -65,13 +80,14 @@ public class CommitTable {
         }
     }
 
-    public CommitTable update(Address member, int match_index, int next_index, int commit_index) {
+    public CommitTable update(Address member, int match_index, int next_index, int commit_index, boolean single_resend) {
         Entry entry=map.get(member);
         if(entry == null)
             return this;
         entry.match_index=Math.max(match_index, entry.match_index);
         entry.next_index=next_index;
         entry.commit_index=Math.max(entry.commit_index, commit_index);
+        entry.send_single_msg=single_resend;
         return this;
     }
 

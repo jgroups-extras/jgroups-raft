@@ -1,8 +1,10 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.Event;
 import org.jgroups.Message;
 import org.jgroups.util.ByteArrayDataInputStream;
+import org.jgroups.util.Util;
 
 /**
  * Implements the behavior of a RAFT follower
@@ -31,19 +33,24 @@ public class Follower extends RaftImpl {
             ByteArrayDataInputStream in=new ByteArrayDataInputStream(msg.getRawBuffer(), msg.getOffset(), msg.getLength());
             sm.readContentFrom(in);
 
-            // todo: delete and re-init log ?
-
+            raft.doSnapshot();
 
             // insert a dummy entry
             Log log=raft.log();
             log.append(last_included_index, true, new LogEntry(last_included_term, null));
+            raft.current_term=last_included_term; // ??
             raft.last_applied=last_included_index;
             log.commitIndex(last_included_index);
             raft.commit_index=last_included_index;
-
-
-            // todo: set commit_index, last_applied, first_applied
             log.truncate(last_included_index);
+
+            raft.getLog().debug("%s: applied snapshot (%s) from %s; last_applied=%d, commit_index=%d",
+                                raft.local_addr, Util.printBytes(msg.getLength()), msg.src(), raft.lastApplied(), raft.commitIndex());
+
+            // send an ApendEntries(true) message with index=last_applied_index
+            AppendResult result=new AppendResult(true, last_included_index).commitIndex(raft.commitIndex());
+            Message ack=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
+            raft.getDownProtocol().down(new Event(Event.MSG, ack));
         }
         catch(Exception ex) {
             raft.getLog().error("%s: failed applying snapshot from %s: %s", raft.local_addr, sender, ex);

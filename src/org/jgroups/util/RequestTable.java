@@ -11,8 +11,8 @@ import java.util.Set;
 /**
  * Keeps track of AppendRequest messages and responses. Each AppendEntry request is keyed by the index at which
  * it was inserted at the leader. The values (RequestEntry) contain the responses from followers. When a response
- * is added, and the majority has been reached, add() retuns true and the key/value pair will be removed.
- * (subsequent responses will be ignored). On a majority, the commitIndex is advanced.
+ * is added, and the majority has been reached, add() returns true and the key/value pair will be removed.
+ * (subsequent responses will be ignored). On a majority, the commit index is advanced.
  * <p/>
  * Only created on leader
  * @author Bela Ban
