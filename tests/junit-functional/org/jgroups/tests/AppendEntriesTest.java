@@ -10,7 +10,6 @@ import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
-import java.util.Arrays;
 import java.util.concurrent.TimeoutException;
 
 /**
@@ -27,14 +26,7 @@ public class AppendEntriesTest {
 
     @AfterMethod
     protected void destroy() {
-        for(JChannel ch: Arrays.asList(c,b,a)) {
-            if(ch == null)
-                continue;
-            RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
-            raft.log().delete(); // remove log files after the run
-            raft.deleteSnapshot();
-        }
-        Util.close(c,b,a);
+        close(true, true, c,b,a);
     }
 
 
@@ -98,7 +90,7 @@ public class AppendEntriesTest {
         assertSame(as, bs, cs);
 
         // Now C leaves
-        Util.close(c);
+        close(true, true, c);
 
         // A and B commit entries 3-5
         for(int i=3; i <= 5; i++)
@@ -122,7 +114,7 @@ public class AppendEntriesTest {
      */
     public void testInstallSnapshotInC() throws Exception {
         init(true);
-        Util.close(c);
+        close(true, true, c);
         for(int i=1; i <= 5; i++)
             as.put(i,i);
         assertSame(as, bs);
@@ -147,8 +139,21 @@ public class AppendEntriesTest {
     protected JChannel create(String name, boolean follower) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
         RAFT raft=new RAFT().majority(MAJORITY).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
+        // RAFT raft=new RAFT().majority(MAJORITY).logName(name);
         CLIENT client=new CLIENT();
         return new JChannel(Util.getTestStack(election, raft, client)).name(name);
+    }
+
+
+    protected void close(boolean remove_log, boolean remove_snapshot, JChannel ... channels) {
+        for(JChannel ch: channels) {
+            RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+            if(remove_log)
+                raft.log().delete(); // remove log files after the run
+            if(remove_snapshot)
+                raft.deleteSnapshot();
+            Util.close(ch);
+        }
     }
 
     protected void init(boolean verbose) throws Exception {
