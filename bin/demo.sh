@@ -8,7 +8,8 @@
 #BIND_ADDR=site_local
 
 ################# CHANGE THIS ##############################
-BIND_ADDR=match-address:192.168.1.*
+#BIND_ADDR=match-address:192.168.1.*
+BIND_ADDR=127.0.0.1
 ############################################################
 
 MCAST_ADDR=232.5.5.5
