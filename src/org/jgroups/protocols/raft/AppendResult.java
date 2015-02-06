@@ -40,6 +40,12 @@ public class AppendResult implements Streamable {
         this.non_matching_term = non_matching_term;
     }
 
+    public boolean success()         {return success;}
+    public int     index()           {return index;}
+    public int     commitIndex()     {return commit_index;}
+    public int     nonMatchingTerm() {return non_matching_term;}
+
+
     public AppendResult commitIndex(int ci) {this.commit_index=ci; return this;}
 
     public int size() {

@@ -36,46 +36,40 @@ public abstract class RaftImpl {
      * @param prev_log_term The term of the previous log entry
      * @param entry_term The term of the entry
      * @param leader_commit The leader's commit_index
+     * @return AppendResult A result (true or false), or null if the request was ignored (e.g. due to lower term)
      */
-    protected void handleAppendEntriesRequest(int term,byte[] data, int offset, int length, Address leader,
+    protected AppendResult handleAppendEntriesRequest(int term, byte[] data, int offset, int length, Address leader,
                                               int prev_log_index, int prev_log_term, int entry_term, int leader_commit) {
         // todo: synchronize
         if(!raft.currentTerm(term)) {
             raft.getLog().warn("%s: dropped AppendEntries request from %s with term %d: my term is %s",
                                raft.local_addr, leader, term, raft.currentTerm());
-            return; // ignore request if req.term < current_term
+            return null; // ignore request if req.term < current_term
         }
         raft.leader(leader);
 
         if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit
             handleCommitRequest(leader, leader_commit);
-            return;
+            return null;
         }
 
         LogEntry prev=raft.log_impl.get(prev_log_index);
         int curr_index=prev_log_index+1;
 
-        if(prev == null && prev_log_index > 0) { // didn't find entry
-            commitAndSendAppendEntriesResponse(0, leader, new AppendResult(false, raft.lastApplied()));
-            return;
-        }
+        if(prev == null && prev_log_index > 0) // didn't find entry
+            return new AppendResult(false, raft.lastApplied());
 
         // if the term at prev_log_index != prev_term -> return false and the start index of the conflicting term
         if(prev_log_index == 0 || prev.term == prev_log_term) {
             LogEntry existing=raft.log_impl.get(curr_index);
             if(existing != null && existing.term != entry_term) {
                 // delete this and all subsequent entries and overwrite with received entry
-                raft.log_impl.deleteAllEntriesStartingFrom(curr_index);
+                raft.deleteAllLogEntriesStartingFrom(curr_index);
             }
-            raft.append(entry_term, curr_index, data, offset, length);
-            commitAndSendAppendEntriesResponse(leader_commit, leader, new AppendResult(true, curr_index));
+            raft.append(entry_term, curr_index, data, offset, length).commitLogTo(leader_commit);
+            return new AppendResult(true, curr_index).commitIndex(raft.commitIndex());
         }
-        else {
-            if(prev != null)
-                commitAndSendAppendEntriesResponse(0, leader, new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term)));
-            else
-                commitAndSendAppendEntriesResponse(leader_commit, leader, new AppendResult(true, curr_index));
-        }
+        return new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term), prev.term);
     }
 
 
@@ -95,10 +89,9 @@ public abstract class RaftImpl {
         int retval=Math.min(start_index, last);
         for(int i=retval; i >= first; i--) {
             LogEntry entry=log.get(i);
-            if(entry == null)
+            if(entry == null || entry.term != conflicting_term)
                 break;
-            if(entry.term != conflicting_term)
-                return i;
+            retval=i;
         }
         return retval;
     }
@@ -110,11 +103,4 @@ public abstract class RaftImpl {
         raft.getDownProtocol().down(new Event(Event.MSG, msg));
     }
 
-    protected void commitAndSendAppendEntriesResponse(int commit_index, Address leader, AppendResult result) {
-        if(commit_index > 0)
-            raft.commitLogTo(commit_index);
-        result.commitIndex(raft.commitIndex());
-        Message msg=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
-        raft.getDownProtocol().down(new Event(Event.MSG, msg));
-    }
 }

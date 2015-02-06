@@ -480,8 +480,13 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected void handleEvent(Message msg, RaftHeader hdr) {
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest req=(AppendEntriesRequest)hdr;
-            impl.handleAppendEntriesRequest(req.term(), msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
-                                            req.prev_log_index, req.prev_log_term, req.entry_term, req.leader_commit);
+            AppendResult result=impl.handleAppendEntriesRequest(req.term(), msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
+                                                                req.prev_log_index, req.prev_log_term, req.entry_term, req.leader_commit);
+            if(result != null) {
+                result.commitIndex(commit_index);
+                Message rsp=new Message(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
+                down_prot.down(new Event(Event.MSG, rsp));
+            }
         }
         else if(hdr instanceof AppendEntriesResponse) {
             AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
@@ -628,7 +633,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
      * Tries to advance commit_index up to leader_commit, applying all uncommitted log entries to the state machine
      * @param leader_commit The commit index of the leader
      */
-    protected synchronized void commitLogTo(int leader_commit) {
+    protected synchronized RAFT commitLogTo(int leader_commit) {
         try {
             for(int i=commit_index + 1; i <= Math.min(last_applied, leader_commit); i++) {
                 applyCommit(i);
@@ -638,14 +643,23 @@ public class RAFT extends Protocol implements Runnable, Settable {
         catch(Throwable t) {
             log.error("failed advancing commit_index (%d) to %d: %s", commit_index, leader_commit, t);
         }
+        return this;
     }
 
-    protected void append(int term, int index, byte[] data, int offset, int length) {
+    protected RAFT append(int term, int index, byte[] data, int offset, int length) {
         LogEntry entry=new LogEntry(term, data, offset, length);
         log_impl.append(index, true, entry);
         last_applied=log_impl.lastApplied(); // todo: remove RAFT.last_applied ?
         snapshotIfNeeded(length);
+        return this;
     }
+
+    protected void deleteAllLogEntriesStartingFrom(int index) {
+        log_impl.deleteAllEntriesStartingFrom(index);
+        last_applied=log_impl.lastApplied();
+        commit_index=log_impl.commitIndex();
+    }
+
 
     protected void snapshotIfNeeded(int bytes_added) {
         log_size_bytes+=bytes_added;

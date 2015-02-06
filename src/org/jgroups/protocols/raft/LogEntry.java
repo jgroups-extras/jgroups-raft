@@ -32,6 +32,11 @@ public class LogEntry implements Streamable {
         this.length=length;
     }
 
+    public int    term()    {return term;}
+    public byte[] command() {return command;}
+    public int    offset()  {return offset;}
+    public int    length()  {return length;}
+
     public void writeTo(DataOutput out) throws Exception {
         Bits.writeInt(term, out);
         Util.writeByteBuffer(command, offset, length, out);
