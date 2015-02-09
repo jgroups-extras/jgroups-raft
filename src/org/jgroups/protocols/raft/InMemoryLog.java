@@ -101,9 +101,9 @@ public class InMemoryLog implements Log {
             int idx=index-first_applied;
             if(!overwrite && this.entries[idx] != null)
                 throw new IllegalStateException("Index " + index + " already contains a log entry: " + this.entries[idx]);
-            index++;
             this.entries[idx]=entry;
-            last_applied++;
+            last_applied=Math.max(last_applied, index);
+            index++;
             if(entry.term > current_term)
                 current_term=entry.term;
         }
