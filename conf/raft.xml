@@ -9,7 +9,7 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="urn:org:jgroups http://www.jgroups.org/schema/jgroups.xsd">
     <UDP
-         mcast_addr="232.5.5.5"
+         mcast_addr="228.5.5.5"
          mcast_port="${jgroups.udp.mcast_port:45588}"
          ip_ttl="0"
          tos="8"

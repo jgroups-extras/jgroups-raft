@@ -214,6 +214,7 @@ public class ELECTION extends Protocol {
         switch(role) {
             case Follower:
                 changeRole(Role.Candidate);
+                raft.createNewTerm(); // create a new term *only* when becoming candidate !
                 startElection();
                 break;
             case Candidate:
@@ -268,10 +269,10 @@ public class ELECTION extends Protocol {
     }
 
     protected void startElection() {
-        int new_term=0;
+        // int new_term=0;
 
         synchronized(this) {
-            new_term=raft.createNewTerm();
+            // new_term=raft.createNewTerm();
             voted_for=null;
             current_votes=0;
             // Vote for self - return if I already voted for someone else
@@ -280,7 +281,7 @@ public class ELECTION extends Protocol {
             current_votes++; // vote for myself
         }
 
-        sendVoteRequest(new_term); // send VoteRequest message
+        sendVoteRequest(raft.currentTerm()); // send VoteRequest message
 
         // Responses are received asynchronously. If majority -> become leader
     }
