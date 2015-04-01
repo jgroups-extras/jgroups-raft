@@ -41,11 +41,6 @@ public abstract class RaftImpl {
     protected AppendResult handleAppendEntriesRequest(int term, byte[] data, int offset, int length, Address leader,
                                               int prev_log_index, int prev_log_term, int entry_term, int leader_commit) {
         // todo: synchronize
-        if(!raft.currentTerm(term)) {
-            raft.getLog().warn("%s: dropped AppendEntries request from %s with term %d: my term is %s",
-                               raft.local_addr, leader, term, raft.currentTerm());
-            return null; // ignore request if req.term < current_term
-        }
         raft.leader(leader);
 
         if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit

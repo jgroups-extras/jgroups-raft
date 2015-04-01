@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 public class RaftHeaderTest {
 
     public void testVoteRequestHeader() throws Exception {
-        VoteRequest hdr=new VoteRequest(22);
+        VoteRequest hdr=new VoteRequest(22, 3, 7);
         _testSize(hdr, VoteRequest.class);
     }
 

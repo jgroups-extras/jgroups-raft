@@ -150,17 +150,22 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @ManagedAttribute(description="Is the resend task running")
     public boolean      resendTaskRunning() {return resend_task != null && !resend_task.isDone();}
 
-
-    /** Sets the current term if the new term is greater */
-    public synchronized boolean currentTerm(final int new_term)  {
+    /**
+     * Sets current_term if new_term is bigger
+     * @param new_term The new term
+     * @return -1 if new_term is smaller, 0 if equal and 1 if new_term is bigger
+     */
+    public synchronized int currentTerm(final int new_term)  {
         if(new_term < current_term)
-            return false;
+            return -1;
         if(new_term > current_term) {
+            log.trace("%s: changed term from %d -> %d", local_addr, current_term, new_term);
             current_term=new_term;
             log_impl.currentTerm(new_term);
-            // changeRole(Follower) ?
+            changeRole(Role.Follower);
+            return 1;
         }
-        return true;
+        return 0;
     }
 
     @ManagedAttribute(description="The current role")
@@ -478,6 +483,12 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
+        // if hdr.term < current_term -> drop message
+        // if hdr.term > current_term -> set current_term and become Follower, accept message
+        // if hdr.term == current_term -> accept message
+        if(currentTerm(hdr.term) < 0)
+            return;
+
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest req=(AppendEntriesRequest)hdr;
             AppendResult result=impl.handleAppendEntriesRequest(req.term(), msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
