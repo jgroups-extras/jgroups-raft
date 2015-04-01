@@ -36,7 +36,7 @@ public class AppendEntriesTest {
                                               //int prev_log_index, int prev_log_term, int entry_term, int leader_commit)
 
         try {
-            handleAppendEntriesRequest=RaftImpl.class.getDeclaredMethod("handleAppendEntriesRequest", int.class,
+            handleAppendEntriesRequest=RaftImpl.class.getDeclaredMethod("handleAppendEntriesRequest",
                                                                         byte[].class, int.class, int.class, Address.class,
                                                                         int.class, int.class, int.class, int.class);
             handleAppendEntriesRequest.setAccessible(true);
@@ -298,7 +298,7 @@ public class AppendEntriesTest {
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 4);
         assertFalse(result.isSuccess());
         assertEquals(result.getIndex(), 4);
-        assertLogIndices(log, 4, 4, 6);
+        assertLogIndices(log, 4, 4, 4);
     }
 
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
@@ -351,7 +351,7 @@ public class AppendEntriesTest {
         append(impl, 11, 6, new LogEntry(7, buf), leader, 1);
         append(impl, 12, 7, new LogEntry(7, buf), leader, 12);
 
-        AppendResult result=append(impl, 7, buf, leader, 10, 6, 8, 12);
+        AppendResult result=append(impl, buf, leader, 10, 6, 8, 12);
         assertTrue(result.isSuccess());
         assertEquals(result.getIndex(), 11);
         assertLogIndices(log, 11, 11, 8);
@@ -373,11 +373,6 @@ public class AppendEntriesTest {
         append(impl,  5, 4, new LogEntry(4, buf), leader, 1);
         append(impl,  6, 4, new LogEntry(4, buf), leader, 1);
         append(impl,  7, 4, new LogEntry(4, buf), leader, 7);
-
-        // todo: this still fails because the log sets the current term to 7 no matter what: it should not do that
-        // todo: because the entry was not added, but an existing entry was *replaced*. Only RAFT itself should set
-        // todo: current_term to 7
-
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 7);
         assertFalse(result.isSuccess());
         assertEquals(result.getIndex(), 7);
@@ -408,13 +403,14 @@ public class AppendEntriesTest {
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
         assertFalse(result.isSuccess());
         assertEquals(result.getIndex(), 7);
-        assertLogIndices(log, 11, 11, 6);
+        assertLogIndices(log, 11, 11, 3);
     }
 
 
     protected JChannel create(String name, boolean follower) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
         RAFT raft=new RAFT().majority(MAJORITY).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
+        // RAFT raft=new RAFT().majority(MAJORITY).logClass("org.jgroups.protocols.raft.LevelDBLog").logName(name);
         CLIENT client=new CLIENT();
         return new JChannel(Util.getTestStack(election, raft, client)).name(name);
     }
@@ -537,12 +533,12 @@ public class AppendEntriesTest {
     }
 
     protected AppendResult append(RaftImpl impl, int index, int prev_term, LogEntry entry, Address leader, int leader_commit) throws Exception {
-        return append(impl, entry.term(), entry.command(), leader, Math.max(0, index-1), prev_term, entry.term(), leader_commit);
+        return append(impl, entry.command(), leader, Math.max(0, index-1), prev_term, entry.term(), leader_commit);
     }
 
-    protected AppendResult append(RaftImpl impl, int term, byte[] data, Address leader,
+    protected AppendResult append(RaftImpl impl, byte[] data, Address leader,
                                   int prev_log_index, int prev_log_term, int entry_term, int leader_commit) throws Exception {
-        return (AppendResult)handleAppendEntriesRequest.invoke(impl, term, data, 0, data.length, leader,
+        return (AppendResult)handleAppendEntriesRequest.invoke(impl, data, 0, data.length, leader,
                                                                prev_log_index, prev_log_term, entry_term, leader_commit);
     }
 

@@ -491,7 +491,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest req=(AppendEntriesRequest)hdr;
-            AppendResult result=impl.handleAppendEntriesRequest(req.term(), msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
+            AppendResult result=impl.handleAppendEntriesRequest(msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
                                                                 req.prev_log_index, req.prev_log_term, req.entry_term, req.leader_commit);
             if(result != null) {
                 result.commitIndex(commit_index);
