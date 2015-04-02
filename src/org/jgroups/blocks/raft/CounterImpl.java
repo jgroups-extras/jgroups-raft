@@ -29,12 +29,22 @@ public class CounterImpl implements Counter {
 
     @Override
     public void set(long new_value) {
-        counter_service.set(name, new_value);
+        try {
+            counter_service.set(name, new_value);
+        }
+        catch(Exception ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     @Override
     public boolean compareAndSet(long expect, long update) {
-        return counter_service.compareAndSet(name, expect, update);
+        try {
+            return counter_service.compareAndSet(name, expect, update);
+        }
+        catch(Exception ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     @Override
@@ -59,7 +69,12 @@ public class CounterImpl implements Counter {
 
     @Override
     public long addAndGet(long delta) {
-        return counter_service.addAndGet(name, delta);
+        try {
+            return counter_service.addAndGet(name, delta);
+        }
+        catch(Exception ex) {
+            throw new RuntimeException(ex);
+        }
     }
 
     @Override

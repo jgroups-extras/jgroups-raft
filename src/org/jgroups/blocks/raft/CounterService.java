@@ -26,7 +26,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     /** If true, reads can return the local counter value directly. Else, reads have to go through the leader */
     protected boolean  allow_dirty_reads=true;
 
-    // the counters, keyed by name
+    // keys: counter names, values: counter values
     protected final Map<String,Long> counters=new HashMap<>();
 
     protected static enum Command {create, delete, get, set, compareAndSet, incrementAndGet, decrementAndGet, addAndGet}
@@ -64,9 +64,14 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * @return The counter implementation
      */
     public Counter getOrCreateCounter(String name, long initial_value) throws Exception {
-        Object retval=invoke(Command.create, name, false, initial_value);
-        if(retval instanceof Long)
-            counters.put(name, (Long)retval);
+        Object existing_value=invoke(Command.get, name, false);
+        if(existing_value != null)
+            counters.put(name, (Long)existing_value);
+        else {
+            Object retval=invoke(Command.create, name, false, initial_value);
+            if(retval instanceof Long)
+                counters.put(name, (Long)retval);
+        }
         return new CounterImpl(name, this);
     }
 
@@ -91,29 +96,31 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
     public long get(String name) throws Exception {
         Object retval=invoke(Command.get, name, false);
-        return (Long)retval;
+        return (long)retval;
     }
 
-    public void set(String name, long new_value) {
-
+    public void set(String name, long new_value) throws Exception {
+        invoke(Command.set, name, true, new_value);
     }
 
-    public boolean compareAndSet(String name, long expect, long update) {
-        return false;
+    public boolean compareAndSet(String name, long expect, long update) throws Exception {
+        Object retval=invoke(Command.compareAndSet, name, false, expect, update);
+        return (boolean)retval;
     }
 
     public long incrementAndGet(String name) throws Exception {
         Object retval=invoke(Command.incrementAndGet, name, false);
-        return (Long)retval;
+        return (long)retval;
     }
 
     public long decrementAndGet(String name) throws Exception {
         Object retval=invoke(Command.decrementAndGet, name, false);
-        return (Long)retval;
+        return (long)retval;
     }
 
-    public long addAndGet(String name, long delta) {
-        return 0;
+    public long addAndGet(String name, long delta) throws Exception {
+        Object retval=invoke(Command.addAndGet, name, false, delta);
+        return (long)retval;
     }
 
 
@@ -134,30 +141,53 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             case get:
                 return Util.objectToByteBuffer(_get(name));
             case set:
+                v1=Bits.readLong(in);
+                _set(name, v1);
                 break;
             case compareAndSet:
-                break;
+                v1=Bits.readLong(in);
+                v2=Bits.readLong(in);
+                boolean success=_cas(name, v1, v2);
+                return Util.objectToByteBuffer(success);
             case incrementAndGet:
-                retval=_incr(name);
+                retval=_add(name, +1L);
                 return Util.objectToByteBuffer(retval);
             case decrementAndGet:
-                break;
+                retval=_add(name, -1L);
+                return Util.objectToByteBuffer(retval);
             case addAndGet:
-                break;
+                v1=Bits.readLong(in);
+                retval=_add(name, v1);
+                return Util.objectToByteBuffer(retval);
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
         }
-        return Util.objectToByteBuffer(null); // todo: remove when all branches have been implemented
+        return Util.objectToByteBuffer(null);
+    }
+
+
+    @Override
+    public void writeContentTo(DataOutput out) throws Exception {
+        synchronized(counters) {
+            int size=counters.size();
+            out.writeInt(size);
+            for(Map.Entry<String,Long> entry: counters.entrySet()) {
+                AsciiString name=new AsciiString(entry.getKey());
+                Long value=entry.getValue();
+                Bits.writeAsciiString(name, out);
+                Bits.writeLong(value, out);
+            }
+        }
     }
 
     @Override
     public void readContentFrom(DataInput in) throws Exception {
-
-    }
-
-    @Override
-    public void writeContentTo(DataOutput out) throws Exception {
-
+        int size=in.readInt();
+        for(int i=0; i < size; i++) {
+            AsciiString name=Bits.readAsciiString(in);
+            Long value=Bits.readLong(in);
+            counters.put(name.toString(), value);
+        }
     }
 
     public void dumpLog() {
@@ -238,10 +268,6 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         return sb.toString();
     }
 
-    protected long _get(String name) {
-        return counters.get(name);
-    }
-
     protected long _create(String name, long initial_value) {
         synchronized(counters) {
             Long val=counters.get(name);
@@ -252,18 +278,47 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         }
     }
 
-    protected long _incr(String name) {
-        synchronized(counters) {
-            long val=counters.get(name);
-            counters.put(name, ++val);
-            return val;
-        }
-    }
-
     protected void _delete(String name) {
         synchronized(counters) {
             counters.remove(name);
         }
     }
+
+
+    protected long _get(String name) {
+        synchronized(counters) {
+            return counters.get(name);
+        }
+    }
+
+    protected void _set(String name, long new_val) {
+        synchronized(counters) {
+            counters.put(name, new_val);
+        }
+    }
+
+    protected boolean _cas(String name, long expected, long value) {
+        synchronized(counters) {
+            Long existing_value=counters.get(name);
+            if(existing_value == null) return false;
+            if(existing_value == expected) {
+                counters.put(name, value);
+                return true;
+            }
+            return false;
+        }
+    }
+
+    protected long _add(String name, long delta) {
+        synchronized(counters) {
+            Long val=counters.get(name);
+            if(val == null)
+                val=(long)0;
+            counters.put(name, val+delta);
+            return val;
+        }
+    }
+
+
 
 }
