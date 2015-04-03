@@ -636,7 +636,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             }
         }
         catch(Throwable t) {
-            log.error("failed applying commit %d", index);
+            log.error("failed applying commit %d: %s", index, t);
         }
     }
 

@@ -139,7 +139,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                 _delete(name);
                 break;
             case get:
-                return Util.objectToByteBuffer(_get(name));
+                retval=_get(name);
+                return Util.objectToByteBuffer(retval);
             case set:
                 v1=Bits.readLong(in);
                 _set(name, v1);
@@ -287,7 +288,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
     protected long _get(String name) {
         synchronized(counters) {
-            return counters.get(name);
+            Long retval=counters.get(name);
+            return retval != null? (long)retval : 0;
         }
     }
 
