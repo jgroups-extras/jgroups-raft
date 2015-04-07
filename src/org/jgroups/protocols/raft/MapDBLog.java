@@ -100,10 +100,6 @@ public class MapDBLog implements Log {
         db.commit();
     }
 
-    public AppendResult append(int prev_index, int prev_term, LogEntry ... entries) {
-        return null;
-    }
-
     /**
      * Delete all entries starting from start_index.
      * Updates current_term and last_applied accordingly

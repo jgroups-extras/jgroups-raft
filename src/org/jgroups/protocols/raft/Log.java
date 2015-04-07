@@ -66,21 +66,6 @@ public interface Log {
 
 
     /**
-     * Appends one or more entries to the log.<p/>
-     * If the entry at prev_index doesn't match prev_term (<code>log[prev_index].term != prev_term</code>),
-     * an AppendResult of false (including the first index of the non-matching term) is returned.
-     * Else an AppendResult with the last index written is returned.<p/>
-     * If there are entries at prev_index+1, they will get overwritten.
-     * @param prev_index The previous index
-     * @param prev_term The term of the entry at the previous index
-     * @param entries One of more entries
-     * @return An AppendResult
-     * @deprecated This logic is handled by the RAFT protocol, not the log. Wil be removed soon
-     */
-    @Deprecated
-    AppendResult append(int prev_index, int prev_term, LogEntry ... entries);
-
-    /**
      * Delete all entries starting from start_index.
      * Updates current_term and last_applied accordingly
      *

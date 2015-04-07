@@ -109,10 +109,6 @@ public class InMemoryLog implements Log {
         }
     }
 
-    @Override
-    public AppendResult append(int prev_index, int prev_term, LogEntry... entries) {
-        throw new UnsupportedOperationException();
-    }
 
     @Override
     public synchronized LogEntry get(int index) {

@@ -176,27 +176,6 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public AppendResult append(int prev_index, int prev_term, LogEntry[] entries) {
-
-        if (checkIfPreviousEntryHasDifferentTerm(prev_index, prev_term)) {
-            return new AppendResult(false, prev_index);
-        }
-        append(prev_index+1, true, entries);
-        return new AppendResult(true, lastApplied);
-
-        /*
-        // @todo wrong impl, see paper
-        int index = findIndexWithTerm(prev_index, prev_term);
-        if (index != prev_index) {
-            return new AppendResult(false, index);
-        } else {
-            append(index+1, true, entries);
-            return new AppendResult(true, lastApplied);
-        }
-        */
-    }
-
-    @Override
     public LogEntry get(int index) {
         return getLogEntry(index);
     }
