@@ -49,13 +49,13 @@ public class LevelDBLog implements Log {
 
         this.dbFileName = new File(log_name);
         db = factory.open(dbFileName, options);
-        log.debug("LOG %s is open", db);
+        log.trace("opened %s", db);
 
         if (isANewRAFTLog()) {
-            log.debug("LOG %s is new, must be initialized", dbFileName);
+            log.trace("log %s is new, must be initialized", dbFileName);
             initLogWithMetadata();
         } else {
-            log.debug("LOG %s is existent, must not be initialized", dbFileName);
+            log.trace("log %s exists, does not have to be initialized", dbFileName);
             readMetadataFromLog();
         }
         checkForConsistency();
@@ -64,7 +64,7 @@ public class LevelDBLog implements Log {
     @Override
     public void close() {
         try {
-            log.debug("Closing DB: %s", db);
+            log.trace("closing DB: %s", db);
 
             if (db!= null) db.close();
             currentTerm = 0;
@@ -82,8 +82,7 @@ public class LevelDBLog implements Log {
     public void delete() {
         this.close();
         try {
-            log.debug("Deleting DB directory: %s", dbFileName);
-
+            log.trace("deleting DB directory: %s", dbFileName);
             FileUtils.deleteDirectory(dbFileName);
         } catch (IOException e) {
             e.printStackTrace();
@@ -187,7 +186,7 @@ public class LevelDBLog implements Log {
 
         for (int i=start_index; i<=end_index; i++) {
             LogEntry entry = getLogEntry(i);
-            if(!function.apply(i, entry.term, entry.command, entry.offset, entry.length))
+            if(!function.apply(i, entry.term, entry.command, entry.offset, entry.length, entry.internal))
                 break;
         }
 
@@ -306,12 +305,10 @@ public class LevelDBLog implements Log {
         byte[] entryBytes = db.get(fromIntToByteArray(index));
         LogEntry entry = null;
         try {
-            log.trace("Getting Entry @ index: %d", index);
             if (entryBytes != null) entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
         } catch (Exception e) {
             e.printStackTrace();
         }
-        log.trace("Returning Entry %s", entry);
         return entry;
     }
 
@@ -381,7 +378,7 @@ public class LevelDBLog implements Log {
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
         votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
-        log.debug("read metedata from log: firstApplied=%d, lastApplied=%d, currentTerm=%d, commitIndex=%d, votedFor=%s",
+        log.debug("read metadata from log: firstApplied=%d, lastApplied=%d, currentTerm=%d, commitIndex=%d, votedFor=%s",
                   firstApplied, lastApplied, currentTerm, commitIndex, votedFor);
     }
 
@@ -411,9 +408,7 @@ public class LevelDBLog implements Log {
         }
 
         LogEntry lastAppendedEntry = getLogEntry(lastApplied);
-        log.trace("Last appended entry: %s", lastAppendedEntry);
         assert (lastAppendedEntry==null || lastAppendedEntry.term == currentTerm);
-        log.debug("End of consistency check");
 
     }
 

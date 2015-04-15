@@ -262,7 +262,7 @@ public class LogTest {
         final AtomicInteger cnt=new AtomicInteger(0);
         Log.Function func=new Log.Function() {
             @Override
-            public boolean apply(int index, int term, byte[] command, int offset, int length) {
+            public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
                 cnt.incrementAndGet();
                 return true;
             }

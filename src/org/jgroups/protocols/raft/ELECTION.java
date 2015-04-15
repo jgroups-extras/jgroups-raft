@@ -210,18 +210,13 @@ public class ELECTION extends Protocol {
     }
 
     protected synchronized void handleVoteResponse(int term) {
-        switch(role) {
-            case Follower:
-            case Candidate:
-                if(term == raft.current_term) {
-                    if(++current_votes >= raft.majority) {
-                        // we've got the majority: become leader
-                        log.trace("%s: collected %d votes (majority=%d) in term %d -> becoming leader",
-                                  local_addr, current_votes, raft.majority, term);
-                        changeRole(Role.Leader);
-                    }
-                }
-                break;
+        if(role == Role.Candidate && term == raft.current_term) {
+            if(++current_votes >= raft.majority) {
+                // we've got the majority: become leader
+                log.trace("%s: collected %d votes (majority=%d) in term %d -> becoming leader",
+                          local_addr, current_votes, raft.majority, term);
+                changeRole(Role.Leader);
+            }
         }
     }
 

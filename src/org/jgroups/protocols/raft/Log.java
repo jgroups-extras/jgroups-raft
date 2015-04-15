@@ -109,8 +109,9 @@ public interface Log {
          * @param command The command buffer
          * @param offset The offset into the command buffer
          * @param length The length of the command buffer
+         * @param internal If true, the command is internal and should not be applied to the state machine
          * @return True if the iteration should continue, false if it should terminate
          */
-        boolean apply(int index, int term, byte[] command, int offset, int length);
+        boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal);
     }
 }

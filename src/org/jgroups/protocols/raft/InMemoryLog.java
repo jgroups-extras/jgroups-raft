@@ -153,7 +153,7 @@ public class InMemoryLog implements Log {
         int start=Math.max(1, start_index)-first_applied, end=end_index-first_applied;
         for(int i=start; i <= end; i++) {
             LogEntry entry=entries[i];
-            if(!function.apply(start_index, entry.term, entry.command, entry.offset, entry.length))
+            if(!function.apply(start_index, entry.term, entry.command, entry.offset, entry.length, entry.internal))
                 break;
             start_index++;
         }

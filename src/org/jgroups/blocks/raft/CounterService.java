@@ -64,7 +64,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * @return The counter implementation
      */
     public Counter getOrCreateCounter(String name, long initial_value) throws Exception {
-        Object existing_value=invoke(Command.get, name, false);
+        Object existing_value=allow_dirty_reads? _get(name) : invoke(Command.get, name, false);
         if(existing_value != null)
             counters.put(name, (Long)existing_value);
         else {
@@ -95,7 +95,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
 
     public long get(String name) throws Exception {
-        Object retval=invoke(Command.get, name, false);
+        Object retval=allow_dirty_reads? _get(name) : invoke(Command.get, name, false);
         return (long)retval;
     }
 
@@ -193,10 +193,21 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
     public void dumpLog() {
         raft.logEntries(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
                 StringBuilder sb=new StringBuilder().append(index).append(" (").append(term).append("): ");
                 if(command == null) {
                     sb.append("<marker record>");
+                    System.out.println(sb);
+                    return true;
+                }
+                if(internal) {
+                    try {
+                        InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, command, offset, length);
+                        sb.append("[internal] ").append(cmd);
+                    }
+                    catch(Exception ex) {
+                        sb.append("[failure reading internal cmd] ").append(ex);
+                    }
                     System.out.println(sb);
                     return true;
                 }
@@ -317,7 +328,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             if(val == null)
                 val=(long)0;
             counters.put(name, val+delta);
-            return val;
+            return val+delta;
         }
     }
 

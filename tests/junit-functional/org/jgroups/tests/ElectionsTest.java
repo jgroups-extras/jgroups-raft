@@ -11,6 +11,7 @@
 
  import java.lang.reflect.Method;
  import java.util.ArrayList;
+ import java.util.Arrays;
  import java.util.List;
 
  /**
@@ -20,11 +21,11 @@
   */
  @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
  public class ElectionsTest {
-     protected JChannel             a,b,c;
-     protected static final String  CLUSTER="ElectionsTest";
-     protected static final int     MAJORITY=2;
-     protected static final Method  startElectionTimer;
-     protected static final byte[]  BUF={};
+     protected JChannel                  a,b,c;
+     protected static final String       CLUSTER="ElectionsTest";
+     protected static final List<String> members=Arrays.asList("A", "B", "C");
+     protected static final Method       startElectionTimer;
+     protected static final byte[]       BUF={};
 
      static {
          try {
@@ -71,7 +72,7 @@
 
      protected JChannel create(String name) throws Exception {
          ELECTION election=new ELECTION().noElections(true);
-         RAFT raft=new RAFT().majority(MAJORITY).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
+         RAFT raft=new RAFT().members(members).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
          CLIENT client=new CLIENT();
          return new JChannel(Util.getTestStack(election, raft, client)).name(name);
      }

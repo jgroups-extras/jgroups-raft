@@ -1,21 +1,23 @@
  package org.jgroups.tests;
 
-import org.jgroups.Address;
-import org.jgroups.Global;
-import org.jgroups.JChannel;
-import org.jgroups.blocks.raft.ReplicatedStateMachine;
-import org.jgroups.protocols.raft.*;
-import org.jgroups.util.Util;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.Test;
+ import org.jgroups.Address;
+ import org.jgroups.Global;
+ import org.jgroups.JChannel;
+ import org.jgroups.blocks.raft.ReplicatedStateMachine;
+ import org.jgroups.protocols.raft.*;
+ import org.jgroups.util.Util;
+ import org.testng.annotations.AfterMethod;
+ import org.testng.annotations.Test;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.concurrent.TimeoutException;
+ import java.io.DataInput;
+ import java.io.DataOutput;
+ import java.lang.reflect.Field;
+ import java.lang.reflect.Method;
+ import java.util.Arrays;
+ import java.util.List;
+ import java.util.concurrent.TimeoutException;
 
-import static org.testng.Assert.*;
+ import static org.testng.Assert.*;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc
@@ -26,9 +28,9 @@ import static org.testng.Assert.*;
 public class AppendEntriesTest {
     protected JChannel                                a,  b,  c;  // A is always the leader
     protected ReplicatedStateMachine<Integer,Integer> as, bs, cs;
-    protected static final Method handleAppendEntriesRequest;
-    protected static final String CLUSTER="AppendEntriesTest";
-    protected static final int    MAJORITY=2;
+    protected static final Method                     handleAppendEntriesRequest;
+    protected static final String                     CLUSTER="AppendEntriesTest";
+    protected static final List<String>               members=Arrays.asList("A", "B", "C");
 
     static {
 
@@ -409,7 +411,7 @@ public class AppendEntriesTest {
 
     protected JChannel create(String name, boolean follower) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
-        RAFT raft=new RAFT().majority(MAJORITY).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
+        RAFT raft=new RAFT().members(members).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
         // RAFT raft=new RAFT().majority(MAJORITY).logClass("org.jgroups.protocols.raft.LevelDBLog").logName(name);
         CLIENT client=new CLIENT();
         return new JChannel(Util.getTestStack(election, raft, client)).name(name);

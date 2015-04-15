@@ -2,6 +2,7 @@ package org.jgroups.util;
 
 
 import org.jgroups.Address;
+import org.jgroups.protocols.raft.RAFT;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -22,7 +23,7 @@ public class RequestTable {
     protected static class Entry {
         // the future has been returned to the caller, and needs to be notified when we've reached a majority
         protected final CompletableFuture<byte[]> client_future;
-        protected final Set<Address> votes=new HashSet<>(); // todo: replace with bitset
+        protected final Set<Address>              votes=new HashSet<>(); // todo: replace with bitset
         protected boolean                         committed;
 
         public Entry(CompletableFuture<byte[]> client_future, Address vote) {
@@ -41,14 +42,12 @@ public class RequestTable {
         }
     }
 
-    // protected final View view; // majority computed as view.size()/2+1
-    protected final int                majority;
-
     // maps an index to a set of (response) senders
     protected final Map<Integer,Entry> requests=new HashMap<>();
+    protected final RAFT               raft; // to call raft.majority()
 
-    public RequestTable(int majority) {
-        this.majority=majority;
+    public RequestTable(RAFT raft) {
+        this.raft=raft;
     }
 
     /** Whether or not the entry at index is committed */
@@ -68,7 +67,7 @@ public class RequestTable {
      */
     public synchronized boolean add(int index, Address sender) {
         Entry entry=requests.get(index);
-        return entry != null && entry.add(sender, majority);
+        return entry != null && entry.add(sender, raft.majority());
     }
 
     /** Notifies the CompletableFuture and then removes the entry for index */

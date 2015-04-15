@@ -27,14 +27,14 @@ public class CounterServiceDemo {
         loop(repl_timeout, allow_dirty_reads);
     }
 
-    public void start(JChannel ch) throws Exception {
-       /* this.ch=ch;
+    public void start(JChannel ch, long repl_timeout, boolean allow_dirty_reads) throws Exception {
+       this.ch=ch;
         ch.setReceiver(new ReceiverAdapter() {
             public void viewAccepted(View view) {
                 System.out.println("-- view: " + view);
             }
         });
-        loop();*/
+        loop(repl_timeout, allow_dirty_reads);
     }
 
 
@@ -56,7 +56,7 @@ public class CounterServiceDemo {
                                         ", commit-index=" + counter_service.commitIndex() +
                                         ", log size=" + Util.printBytes(logSize()) + "\n");
 
-                if(counter == null)
+                if(counter == null && key != 'x')
                     counter=counter_service.getOrCreateCounter("mycounter", 1);
 
                 switch(key) {

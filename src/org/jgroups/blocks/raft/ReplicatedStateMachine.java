@@ -1,14 +1,8 @@
 package org.jgroups.blocks.raft;
 
 import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.Log;
-import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.Settable;
-import org.jgroups.protocols.raft.StateMachine;
-import org.jgroups.util.Bits;
-import org.jgroups.util.ByteArrayDataInputStream;
-import org.jgroups.util.ByteArrayDataOutputStream;
-import org.jgroups.util.Util;
+import org.jgroups.protocols.raft.*;
+import org.jgroups.util.*;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -59,10 +53,21 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     public void dumpLog() {
         raft.logEntries(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
                 StringBuilder sb=new StringBuilder().append(index).append(" (").append(term).append("): ");
                 if(command == null) {
                     sb.append("<marker record>");
+                    System.out.println(sb);
+                    return true;
+                }
+                if(internal) {
+                    try {
+                        InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, command, offset, length);
+                        sb.append("[internal] ").append(cmd).append("\n");
+                    }
+                    catch(Exception ex) {
+                        sb.append("[failure reading internal cmd] ").append(ex).append("\n");
+                    }
                     System.out.println(sb);
                     return true;
                 }

@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.*;
 import org.jgroups.annotations.*;
 import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
 import org.jgroups.util.*;
@@ -11,17 +12,15 @@ import java.io.*;
 import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
 /**
- * Implementation of the RAFT consensus protocol in JGroups
+ * Implementation of the <a href="https://github.com/ongardie/dissertation">RAFT consensus protocol</a> in JGroups<p/>
+ * [1] https://github.com/ongardie/dissertation
  * @author Bela Ban
  * @since  0.1
  */
@@ -33,8 +32,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short  APPEND_ENTRIES_REQ   = 2000;
     protected static final short  APPEND_ENTRIES_RSP   = 2001;
-    protected static final short  INSTALL_SNAPSHOT_REQ = 2002;
-    protected static final short  APPEND_RESULT        = 2003;
+    protected static final short  APPEND_RESULT        = 2002;
+    protected static final short  INSTALL_SNAPSHOT_REQ = 2003;
 
     protected final CommitTable.Consumer<Address,CommitTable.Entry> func=new CommitTable.Consumer<Address,CommitTable.Entry>() {
         @Override public void apply(Address mbr, CommitTable.Entry entry) {
@@ -50,11 +49,14 @@ public class RAFT extends Protocol implements Runnable, Settable {
         ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
     }
 
+    /** The set of members defining the Raft cluster */
+    protected final List<String>      members=new ArrayList<>();
 
-    @Property(description="Static majority needed to achieve consensus. This means we have to start " +
-      "majority*2-1 servers. This property will be removed when dynamic cluster membership has been " +
-      "implemented (section 6 of the RAFT paper)", writable=false)
-    protected int                     majority=2;
+    @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)", writable=false)
+    protected int                     majority=-1;
+
+    @ManagedAttribute(description="If true, we can change 'members' at runtime")
+    protected boolean                 dynamic_view_changes=true;
 
 
     @Property(description="The fully qualified name of the class implementing Log")
@@ -90,7 +92,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
     protected final List<RoleChange>  role_change_listeners=new ArrayList<>();
 
-
+    // Set to true during an addServer()/removeServer() op until the change has been committed
+    protected volatile boolean        members_being_changed;
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     @GuardedBy("impl_lock")
@@ -118,8 +121,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected int                     log_size_bytes; // keeps counts of the bytes added to the log
 
 
-    public int          majority()                    {return majority;}
-    public RAFT         majority(int val)             {majority=val; return this;}
+    public int          majority()                    {synchronized(members) {return majority;}}
     public String       logClass()                    {return log_class;}
     public RAFT         logClass(String clazz)        {log_class=clazz; return this;}
     public String       logArgs()                     {return log_args;}
@@ -149,6 +151,28 @@ public class RAFT extends Protocol implements Runnable, Settable {
     public RAFT         remRoleListener(RoleChange c) {this.role_change_listeners.remove(c); return this;}
     @ManagedAttribute(description="Is the resend task running")
     public boolean      resendTaskRunning() {return resend_task != null && !resend_task.isDone();}
+
+    @Property(description="List of members (logical names); majority is computed from it")
+    public void setMembers(String list) {
+        synchronized(members) {
+            this.members.clear();
+            this.members.addAll(new HashSet<>(Util.parseCommaDelimitedStrings(list)));
+            majority=members.size() / 2 +1;
+        }
+    }
+
+    public RAFT members(List<String> list) {
+        synchronized(members) {
+            this.members.clear();
+            this.members.addAll(new HashSet<>(list));
+            majority=members.size() / 2 +1;
+        }
+        return this;
+    }
+
+    @Property
+    public List<String> members() {return members;}
+
 
     /**
      * Sets current_term if new_term is bigger
@@ -183,7 +207,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     public int logSize() {
         final AtomicInteger count=new AtomicInteger(0);
         log_impl.forEach(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
                 count.incrementAndGet();
                 return true;
             }
@@ -196,7 +220,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     public int logSizeInBytes() {
         final AtomicInteger count=new AtomicInteger(0);
         log_impl.forEach(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
                 count.addAndGet(length);
                 return true;
             }
@@ -209,7 +233,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         final StringBuilder sb=new StringBuilder();
         int to=last_applied, from=Math.max(1, to-last_n);
         log_impl.forEach(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length) {
+            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
                 sb.append("index=").append(index).append(", term=").append(term).append(" (").append(command.length).append(" bytes)\n");
                 return true;
             }
@@ -246,13 +270,41 @@ public class RAFT extends Protocol implements Runnable, Settable {
         return false;
     }
 
+    @ManagedOperation(description="Adds a new server to members. Prevents duplicates")
+    public void addServer(String name) throws Exception {
+        changeMembers(name, InternalCommand.Type.addServer);
+    }
+
+    @ManagedOperation(description="Removes a new server from members")
+    public void removeServer(String name) throws Exception {
+        changeMembers(name, InternalCommand.Type.removeServer);
+    }
+
+    void _addServer(String name) {
+        if(name == null) return;
+        synchronized(members) {
+            if(!members.contains(name)) {
+                members.add(name);
+                majority=members.size() / 2 +1;
+            }
+        }
+    }
+
+    void _removeServer(String name) {
+        if(name == null) return;
+        synchronized(members) {
+            if(members.remove(name))
+                majority=members.size() / 2 +1;
+        }
+    }
+
+
     /**
      * Creates a new snapshot and truncates the log. See https://github.com/belaban/jgroups-raft/issues/7 for details
      */
     @ManagedOperation(description="Creates a new snapshot and truncates the log")
     public synchronized void snapshot() throws Exception {
         // todo: make sure all requests are blocked while dumping the snapshot
-
         if(snapshotting) {
             log.error("%s: cannot create snapshot; snapshot is being created by another thread");
             return;
@@ -294,8 +346,12 @@ public class RAFT extends Protocol implements Runnable, Settable {
                         break;
                     }
                     if(log_entry.command != null) {
-                        state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
-                        count++;
+                        if(log_entry.internal)
+                            executeInternalCommand(null, log_entry.command, log_entry.offset, log_entry.length);
+                        else {
+                            state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
+                            count++;
+                        }
                     }
                 }
                 state_machine_loaded=true;
@@ -308,6 +364,19 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @Override public void init() throws Exception {
         super.init();
         timer=getTransport().getTimer();
+        // we can only add/remove 1 member at a time (section 4.1 of [1])
+        if(dynamic_view_changes)
+            disableViewBundling();
+        synchronized(members) {
+            Set<String> tmp=new HashSet<>(members);
+            if(tmp.size() != members.size()) {
+                log.error("members (%s) contains duplicates; removing them and setting members to %s", members, tmp);
+                members.clear();
+                members.addAll(tmp);
+            }
+
+            majority=members.size() / 2 + 1;
+        }
     }
 
     @Override public void start() throws Exception {
@@ -326,6 +395,10 @@ public class RAFT extends Protocol implements Runnable, Settable {
             JChannel ch=stack.getChannel();
             log_name=ch != null? ch.getName() : "raft";
         }
+
+        if(!members.contains(log_name))
+            throw new IllegalStateException(String.format("member name %s is not listed in members %s", log_name, this.members));
+
         snapshot_name=log_name;
         log_name=createLogName(log_name, "log");
         snapshot_name=createLogName(snapshot_name, "snapshot");
@@ -433,6 +506,11 @@ public class RAFT extends Protocol implements Runnable, Settable {
      *         set(), then call future.get() to block for the result.
      */
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Consumer<byte[]> completion_handler) {
+        return setAsync(buf, offset, length, completion_handler, null);
+    }
+
+    protected CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Consumer<byte[]> completion_handler,
+                                                 InternalCommand cmd) {
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
         if(buf == null)
@@ -457,15 +535,17 @@ public class RAFT extends Protocol implements Runnable, Settable {
             commit_idx=commit_index;
         }
 
-        log_impl.append(curr_index, true, new LogEntry(curr_term, buf, offset, length));
+        log_impl.append(curr_index, true, new LogEntry(curr_term, buf, offset, length, cmd != null));
 
+        if(cmd != null)
+            executeInternalCommand(cmd, null, 0, 0);
 
         // 2. Add the request to the client table, so we can return results to clients when done
         reqtab.create(curr_index, local_addr, retval);
 
         // 3. Multicast an AppendEntries message (exclude self)
         Message msg=new Message(null, buf, offset, length)
-          .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx))
+          .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
           .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         down_prot.down(new Event(Event.MSG, msg));
 
@@ -473,13 +553,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
         // 4. Return CompletableFuture
         return retval;
-
-        // 5. [async] Update the RPCs table with responses -> move commitIndex in the log
-        // 5.1. Apply committed entries to the state machine
-        // 5.2. Return results to the clients
-
-        // 6. [async] Periodically resend data to members whose indices are behind mine
     }
+
 
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
@@ -492,7 +567,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest req=(AppendEntriesRequest)hdr;
             AppendResult result=impl.handleAppendEntriesRequest(msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
-                                                                req.prev_log_index, req.prev_log_term, req.entry_term, req.leader_commit);
+                                                                req.prev_log_index, req.prev_log_term, req.entry_term,
+                                                                req.leader_commit, req.internal);
             if(result != null) {
                 result.commitIndex(commit_index);
                 Message rsp=new Message(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
@@ -526,7 +602,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     }
 
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
-        int match_index=entry.matchIndex(), next_index=entry.nextIndex(), commit_idx=entry.commitIndex();
+        int next_index=entry.nextIndex(), commit_idx=entry.commitIndex();
         if(next_index < log().firstApplied()) {
             if(entry.snapshotInProgress(true)) {
                 try {
@@ -550,8 +626,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
             return;
         }
 
-        if(this.commit_index > commit_idx) {
-            Message msg=new Message(member).putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, 0, 0, 0, this.commit_index));
+        if(this.commit_index > commit_idx) { // send an empty AppendEntries message as commit message
+            Message msg=new Message(member).putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, 0, 0, 0, this.commit_index, false));
             down_prot.down(new Event(Event.MSG, msg));
         }
     }
@@ -566,7 +642,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         LogEntry prev=log_impl.get(index-1);
         int prev_term=prev != null? prev.term : 0;
         Message msg=new Message(target).setBuffer(entry.command, entry.offset, entry.length)
-          .putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, index - 1, prev_term, entry.term, commit_index));
+          .putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, index - 1, prev_term, entry.term, commit_index, entry.internal));
         down_prot.down(new Event(Event.MSG, msg));
     }
 
@@ -657,8 +733,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
         return this;
     }
 
-    protected RAFT append(int term, int index, byte[] data, int offset, int length) {
-        LogEntry entry=new LogEntry(term, data, offset, length);
+    protected RAFT append(int term, int index, byte[] data, int offset, int length, boolean internal) {
+        LogEntry entry=new LogEntry(term, data, offset, length, internal);
         log_impl.append(index, true, entry);
         last_applied=log_impl.lastApplied(); // todo: remove RAFT.last_applied ?
         snapshotIfNeeded(length);
@@ -696,7 +772,21 @@ public class RAFT extends Protocol implements Runnable, Settable {
             throw new IllegalStateException("log entry for index " + index + " not found in log");
         if(state_machine == null)
             throw new IllegalStateException("state machine is null");
-        byte[] rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
+        byte[] rsp=null;
+        if(log_entry.internal) {
+            InternalCommand cmd;
+            try {
+                cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
+                                                                   log_entry.offset, log_entry.length);
+                if(cmd.type() == InternalCommand.Type.addServer || cmd.type() == InternalCommand.Type.removeServer)
+                    members_being_changed=false; // new addServer()/removeServer() operations can now be started
+            }
+            catch(Throwable t) {
+                log.error("%s: failed unmarshalling internal command: %s", local_addr, t);
+            }
+        }
+        else
+            rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
 
         // Notify the client's CompletableFuture and then remove the entry in the client request table
         if(request_table != null) {
@@ -734,6 +824,50 @@ public class RAFT extends Protocol implements Runnable, Settable {
         }
     }
 
+    protected void disableViewBundling() {
+        GMS gms=(GMS)stack.findProtocol(GMS.class);
+        if(gms.isViewBundling()) {
+            log.trace("disabled view bundling to provide dynamic view changes");
+            gms.setViewBundling(false);
+        }
+    }
+
+
+
+    protected void changeMembers(String name, InternalCommand.Type type) throws Exception {
+        if(!dynamic_view_changes)
+            throw new Exception("dynamic view changes are not allowed; set dynamic_view_changes to true to enable it");
+        if(leader == null || (local_addr != null && !leader.equals(local_addr)))
+            throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+
+        if(members_being_changed)
+            throw new IllegalStateException(type + " cannot be invoked as previous operation which changes members has not yet been committed");
+        members_being_changed=true;
+
+        InternalCommand cmd=new InternalCommand(type, name);
+        byte[] buf=Util.streamableToByteBuffer(cmd);
+        setAsync(buf, 0, buf.length, null, cmd);
+    }
+
+    /** If cmd is not null, execute it. Else parse buf into InternalCommand then call cmd.execute() */
+    protected void executeInternalCommand(InternalCommand cmd, byte[] buf, int offset, int length) {
+        if(cmd == null) {
+            try {
+                cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, buf, offset, length);
+            }
+            catch(Exception ex) {
+                log.error("%s: failed unmarshalling internal command: %s", local_addr, ex);
+                return;
+            }
+        }
+
+        try {
+            cmd.execute(this);
+        }
+        catch(Exception ex) {
+            log.error("%s: failed executing internal command %s: %s", local_addr, cmd, ex);
+        }
+    }
 
     protected synchronized void startResendTask() {
         if(resend_task == null || resend_task.isDone())

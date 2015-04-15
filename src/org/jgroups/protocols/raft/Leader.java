@@ -16,7 +16,7 @@ public class Leader extends RaftImpl {
 
     public void init() {
         super.init();
-        raft.request_table=new RequestTable(raft.majority);
+        raft.request_table=new RequestTable(raft);
         raft.createCommitTable();
         raft.startResendTask();
     }
