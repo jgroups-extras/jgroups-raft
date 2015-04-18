@@ -40,7 +40,7 @@ public class AppendEntriesTest {
         try {
             handleAppendEntriesRequest=RaftImpl.class.getDeclaredMethod("handleAppendEntriesRequest",
                                                                         byte[].class, int.class, int.class, Address.class,
-                                                                        int.class, int.class, int.class, int.class);
+                                                                        int.class, int.class, int.class, int.class, boolean.class);
             handleAppendEntriesRequest.setAccessible(true);
         }
         catch(NoSuchMethodException e) {
@@ -541,7 +541,7 @@ public class AppendEntriesTest {
     protected AppendResult append(RaftImpl impl, byte[] data, Address leader,
                                   int prev_log_index, int prev_log_term, int entry_term, int leader_commit) throws Exception {
         return (AppendResult)handleAppendEntriesRequest.invoke(impl, data, 0, data.length, leader,
-                                                               prev_log_index, prev_log_term, entry_term, leader_commit);
+                                                               prev_log_index, prev_log_term, entry_term, leader_commit, false);
     }
 
 
