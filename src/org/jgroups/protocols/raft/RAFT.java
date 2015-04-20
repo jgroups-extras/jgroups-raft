@@ -841,7 +841,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
 
         if(members_being_changed)
-            throw new IllegalStateException(type + " cannot be invoked as previous operation which changes members has not yet been committed");
+            throw new IllegalStateException(type + "(" + name + ") cannot be invoked as previous operation has not yet been committed");
         members_being_changed=true;
 
         InternalCommand cmd=new InternalCommand(type, name);
