@@ -38,7 +38,6 @@ public class Follower extends RaftImpl {
             // insert a dummy entry
             Log log=raft.log();
             log.append(last_included_index, true, new LogEntry(last_included_term, null));
-            raft.current_term=last_included_term; // ??
             raft.last_applied=last_included_index;
             log.commitIndex(last_included_index);
             raft.commit_index=last_included_index;

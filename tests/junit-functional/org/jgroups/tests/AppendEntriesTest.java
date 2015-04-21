@@ -172,8 +172,8 @@ public class AppendEntriesTest {
 
 
     /**
-     * Leader A and follower B commit 5 entries. Then C comes up and should get the 5 committed entries as well,
-     * as a snapshot
+     * Leader A and follower B commit 5 entries, then snapshot A. Then C comes up and should get the 5 committed entries
+     * as well, as a snapshot
      */
     public void testInstallSnapshotInC() throws Exception {
         init(true);

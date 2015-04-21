@@ -101,7 +101,8 @@ public class CommitTable {
     public void forEach(Consumer<Address,Entry> function) {
         for(Map.Entry<Address,Entry> entry: map.entrySet()) {
             Entry val=entry.getValue();
-            function.apply(entry.getKey(), val);
+            if(!val.snapshot_in_progress)
+                function.apply(entry.getKey(), val);
         }
     }
 
