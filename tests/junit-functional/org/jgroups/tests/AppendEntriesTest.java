@@ -33,10 +33,6 @@ public class AppendEntriesTest {
     protected static final List<String>               members=Arrays.asList("A", "B", "C");
 
     static {
-
-        // handleAppendEntriesRequest(int term, byte[] data, int offset, int length, Address leader,
-                                              //int prev_log_index, int prev_log_term, int entry_term, int leader_commit)
-
         try {
             handleAppendEntriesRequest=RaftImpl.class.getDeclaredMethod("handleAppendEntriesRequest",
                                                                         byte[].class, int.class, int.class, Address.class,
@@ -89,7 +85,7 @@ public class AppendEntriesTest {
      */
     public void testNonCommitWithoutMajority() throws Exception {
         init(true);
-        Util.close(b,c);
+        close(true, true, b, c);
         as.timeout(500);
 
         for(int i=1; i <= 3; i++) {
@@ -122,7 +118,8 @@ public class AppendEntriesTest {
             as.put(i,i);
         assertSame(as, bs);
 
-        // Now start C again
+        // Now start C again: entries 1-5 will have to get resent to C as its log was deleted above (otherwise only 3-5
+        // would have to be resent)
         c=create("C", true);  // follower
         cs=new ReplicatedStateMachine<>(c);
         c.connect(CLUSTER);
@@ -130,6 +127,47 @@ public class AppendEntriesTest {
 
         // Now C should also have the same entries (1-5) as A and B
         assertSame(as, bs, cs);
+    }
+
+    /**
+     * Leader A adds the first entry to its log but cannot commit it because it doesn't have a majority. Then B joins,
+     * and it should get the first entry and finally the first entry should be committed on both A and B as they now
+     * have a majority.
+     */
+    public void testCatchingUpFirstEntry() throws Exception {
+        // Create {A,B,C}, A is the leader, then close B and C (A is still the leader)
+        init(false);
+        close(true, true, b,c);
+
+        // Add the first entry, this will time out as there's no majority
+        as.timeout(500);
+        try {
+            as.put(1, 1);
+            assert false : "should have gotten a TimeoutException";
+        }
+        catch(TimeoutException ex) {
+            System.out.println("The first put() timed out as expected as there's no majority to commit it");
+        }
+
+        RAFT raft=(RAFT)a.getProtocolStack().findProtocol(RAFT.class);
+        System.out.printf("A: last-applied=%d, commit-index=%d\n", raft.lastApplied(), raft.commitIndex());
+        assert raft.lastApplied() == 1;
+        assert raft.commitIndex() == 0;
+
+        // Now start B. This should get the first put() replicated and committed from A to B
+        b=create("B", true);
+        bs=new ReplicatedStateMachine<>(b);
+        b.connect(CLUSTER);
+        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a,b);
+
+        assertCommitIndex(10000, 500, raft.lastApplied(), a,b);
+        for(JChannel ch: Arrays.asList(a,b)) {
+            raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+            System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
+            assert raft.lastApplied() == 1;
+            assert raft.commitIndex() == 1;
+        }
+        assertSame(as, bs);
     }
 
 
@@ -411,10 +449,9 @@ public class AppendEntriesTest {
 
     protected JChannel create(String name, boolean follower) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
-        RAFT raft=new RAFT().members(members).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
-        // RAFT raft=new RAFT().majority(MAJORITY).logClass("org.jgroups.protocols.raft.LevelDBLog").logName(name);
-        CLIENT client=new CLIENT();
-        return new JChannel(Util.getTestStack(election, raft, client)).name(name);
+        RAFT raft=new RAFT().members(members)
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
+        return new JChannel(Util.getTestStack(election, raft, new CLIENT())).name(name);
     }
 
 
@@ -443,7 +480,7 @@ public class AppendEntriesTest {
         a.connect(CLUSTER);
         Util.waitUntilAllChannelsHaveSameSize(10000, 500, a,b,c);
 
-        for(int i=0; i < 10; i++) {
+        for(int i=0; i < 20; i++) {
             if(isLeader(a) && !isLeader(b) && !isLeader(c))
                 break;
             Util.sleep(500);
@@ -500,12 +537,7 @@ public class AppendEntriesTest {
     }
 
     protected void assertSame(ReplicatedStateMachine<Integer,Integer> ... rsms) {
-        if(rsms == null || rsms.length == 0)
-            rsms=new ReplicatedStateMachine[]{as, bs, cs};
-        if(rsms.length < 2)
-            return;
         ReplicatedStateMachine<Integer,Integer> first=rsms[0];
-
         for(int i=0; i < 10; i++) {
             boolean same=true;
             for(int j=1; j < rsms.length; j++) {
@@ -524,7 +556,8 @@ public class AppendEntriesTest {
 
         for(int j=1; j < rsms.length; j++) {
             ReplicatedStateMachine<Integer,Integer> rsm=rsms[j];
-            assert rsm.equals(first);
+            assert rsm.equals(first) : String.format("commit-table of A: %s",
+                                                     ((RAFT)a.getProtocolStack().findProtocol(RAFT.class)).dumpCommitTable());
         }
     }
 
@@ -532,6 +565,31 @@ public class AppendEntriesTest {
         assertEquals(log.lastApplied(), last_applied);
         assertEquals(log.commitIndex(), commit_index);
         assertEquals(log.currentTerm(), term);
+    }
+
+    protected void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
+        long target_time=System.currentTimeMillis() + timeout;
+        while(System.currentTimeMillis() <= target_time) {
+            boolean all_ok=true;
+            for(JChannel ch: channels) {
+                RAFT raft=raft(ch);
+                if(expected_commit != raft.commitIndex())
+                    all_ok=false;
+            }
+            if(all_ok)
+                break;
+            Util.sleep(interval);
+        }
+        for(JChannel ch: channels) {
+            RAFT raft=raft(ch);
+            System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
+            assert raft.commitIndex() == expected_commit : String.format("%s: last-applied=%d, commit-index=%d",
+                                                                         ch.getAddress(), raft.lastApplied(), raft.commitIndex());
+        }
+    }
+
+    protected static RAFT raft(JChannel ch) {
+        return (RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
     protected AppendResult append(RaftImpl impl, int index, int prev_term, LogEntry entry, Address leader, int leader_commit) throws Exception {

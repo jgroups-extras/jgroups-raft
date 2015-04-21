@@ -23,7 +23,7 @@ import static org.testng.Assert.*;
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true,dataProvider="logProvider")
 public class LogTest {
     protected Log log;
-    protected static final String filename="raft.log";
+    protected static final String filename="LogTest.log";
 
 
     @DataProvider static Object[][] logProvider() {

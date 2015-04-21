@@ -391,12 +391,11 @@ public class RAFT extends Protocol implements Runnable, Settable {
         else
             args=new HashMap<>();
 
-        if(log_name == null) {
-            JChannel ch=stack.getChannel();
-            log_name=ch != null? ch.getName() : "raft";
-        }
+        String logical_name=stack.getChannel().getName();
+        if(log_name == null)
+            log_name=logical_name;
 
-        if(!members.contains(log_name))
+        if(!members.contains(logical_name))
             throw new IllegalStateException(String.format("member name %s is not listed in members %s", log_name, this.members));
 
         snapshot_name=log_name;
@@ -602,7 +601,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     }
 
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
-        int next_index=entry.nextIndex(), commit_idx=entry.commitIndex();
+        int next_index=entry.nextIndex(), commit_idx=entry.commitIndex(), match_index=entry.matchIndex();
         if(next_index < log().firstApplied()) {
             if(entry.snapshotInProgress(true)) {
                 try {
@@ -618,10 +617,19 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
         if(this.last_applied >= next_index) {
             int to=entry.sendSingleMessage()? next_index : last_applied;
-            for(int i=next_index; i <= to; i++) {  // i=match_index+1 ?
+            for(int i=Math.max(next_index,1); i <= to; i++) {  // i=match_index+1 ?
                 if(log.isTraceEnabled())
                     log.trace("%s: resending %d to %s\n", local_addr, i, member);
                 resend(member, i);
+            }
+            return;
+        }
+
+        if(this.last_applied > match_index) {
+            int index=this.last_applied;
+            if(index > 0) {
+                log.trace("%s: resending %d to %s\n", local_addr, index, member);
+                resend(member, index);
             }
             return;
         }
@@ -685,7 +693,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
         }
         finally {
             snapshotting=false;
-            commit_table.snapshotInProgress(dest, false);
+            if(commit_table != null)
+                commit_table.snapshotInProgress(dest, false);
         }
     }
 
@@ -728,7 +737,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             }
         }
         catch(Throwable t) {
-            log.error("failed advancing commit_index (%d) to %d: %s", commit_index, leader_commit, t);
+            log.error(local_addr + ": failed advancing commit_index (%d) to %d: %s", commit_index, leader_commit, t);
         }
         return this;
     }
@@ -769,9 +778,9 @@ public class RAFT extends Protocol implements Runnable, Settable {
         // Apply the modifications to the state machine
         LogEntry log_entry=log_impl.get(index);
         if(log_entry == null)
-            throw new IllegalStateException("log entry for index " + index + " not found in log");
+            throw new IllegalStateException(local_addr + ": log entry for index " + index + " not found in log");
         if(state_machine == null)
-            throw new IllegalStateException("state machine is null");
+            throw new IllegalStateException(local_addr + ": state machine is null");
         byte[] rsp=null;
         if(log_entry.internal) {
             InternalCommand cmd;

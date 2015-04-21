@@ -72,7 +72,8 @@
 
      protected JChannel create(String name) throws Exception {
          ELECTION election=new ELECTION().noElections(true);
-         RAFT raft=new RAFT().members(members).logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
+         RAFT raft=new RAFT().members(members)
+           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
          CLIENT client=new CLIENT();
          return new JChannel(Util.getTestStack(election, raft, client)).name(name);
      }

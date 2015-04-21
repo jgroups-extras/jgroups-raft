@@ -27,12 +27,13 @@ public class DynamicMembershipTest {
     protected JChannel[]                channels;
     protected RAFT[]                    rafts;
     protected Address                   leader;
+    protected static final String       CLUSTER=DynamicMembershipTest.class.getSimpleName();
     protected static final List<String> mbrs  = Arrays.asList("A", "B", "C");
     protected static final List<String> mbrs2 = Arrays.asList("A", "B", "C", "D");
     protected static final List<String> mbrs3 = Arrays.asList("A", "B", "C", "D", "E");
 
     @AfterMethod protected void destroy() {
-        Util.close(channels);
+        close(true, true, channels);
     }
 
 
@@ -47,7 +48,7 @@ public class DynamicMembershipTest {
             System.out.println("received exception as expected: " + e.toString());
         }
         finally {
-            Util.close(non_member);
+            close(true, true, non_member);
         }
     }
 
@@ -108,13 +109,13 @@ public class DynamicMembershipTest {
         // close all non-leaders
         for(JChannel ch: channels)
             if(!ch.getAddress().equals(leader))
-                Util.close(ch);
+                close(true, true, ch);
 
         RAFT raft=raft(leader);
         // try to add D. The leader will actually add this to the log, but won't be able to commit it, so the second
         // addServer() below will fail
         raft.addServer("D");
-        assertMembers(5000, 500, mbrs2, 3);
+        assertMembers(5000, 500, mbrs2, 3, channels);
 
         // This will fail as the first addServer(D) has not yet been committed
         try {
@@ -135,14 +136,14 @@ public class DynamicMembershipTest {
         Util.waitUntilAllChannelsHaveSameSize(10000, 500, channels);
 
         // Now wait (and assert) for RAFT.members to be {A,B,C,D}
-        assertMembers(10000, 500, mbrs2, 3);
+        assertMembers(10000, 500, mbrs2, 3, channels);
 
         // wait until everyone has committed the addServer(D) operation
-        assertCommitIndex(10000, 500, raft(leader).lastApplied(), channels);
+        assertCommitIndex(20000, 500, raft(leader).lastApplied(), channels);
 
         // Now addServer(E) should work
         raft.addServer("E");
-        assertMembers(10000, 500, mbrs3, 3);
+        assertMembers(10000, 500, mbrs3, 3, channels);
     }
 
     protected void init(String ... nodes) throws Exception {
@@ -156,9 +157,9 @@ public class DynamicMembershipTest {
 
     protected JChannel create(String name) throws Exception {
         RAFT raft=new RAFT().members(mbrs).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name);
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new CLIENT())).name(name);
-        ch.connect("DynamicMembershipTest");
+        ch.connect(CLUSTER);
         return ch;
     }
 
@@ -166,7 +167,7 @@ public class DynamicMembershipTest {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             for(JChannel ch : channels) {
-                if(raft(ch).leader() != null)
+                if(ch.isConnected() && raft(ch).leader() != null)
                     return raft(ch).leader();
             }
             Util.sleep(interval);
@@ -184,6 +185,8 @@ public class DynamicMembershipTest {
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;
             for(JChannel ch: channels) {
+                if(!ch.isConnected())
+                    continue;
                 RAFT raft=raft(ch);
                 if(!new HashSet<>(raft.members()).equals(new HashSet<>(members)))
                     all_ok=false;
@@ -193,10 +196,15 @@ public class DynamicMembershipTest {
             Util.sleep(interval);
         }
         for(JChannel ch: channels) {
+            if(!ch.isConnected())
+                continue;
             RAFT raft=raft(ch);
             System.out.printf("%s: members=%s, majority=%d\n", ch.getAddress(), raft.members(), raft.majority());
-            assert new HashSet<>(raft.members()).equals(new HashSet<>(members)) &&  raft.majority() == expected_majority
-              : ch.getName() + ": expected=" + expected_majority + ", actual=" + raft.majority();
+            assert new HashSet<>(raft.members()).equals(new HashSet<>(members))
+              : String.format("expected members=%s, actual members=%s", members, raft.members());
+
+            assert raft.majority() == expected_majority
+              : ch.getName() + ": expected majority=" + expected_majority + ", actual=" + raft.majority();
         }
     }
 
@@ -236,6 +244,19 @@ public class DynamicMembershipTest {
 
     protected static RAFT raft(JChannel ch) {
         return (RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+    }
+
+    protected void close(boolean remove_log, boolean remove_snapshot, JChannel ... channels) {
+        for(JChannel ch: channels) {
+            if(ch == null)
+                continue;
+            RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+            if(remove_log)
+                raft.log().delete(); // remove log files after the run
+            if(remove_snapshot)
+                raft.deleteSnapshot();
+            Util.close(ch);
+        }
     }
 
     protected static class DummyStateMachine implements StateMachine {

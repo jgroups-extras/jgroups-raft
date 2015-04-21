@@ -85,7 +85,7 @@ public class CommitTable {
         if(entry == null)
             return this;
         entry.match_index=Math.max(match_index, entry.match_index);
-        entry.next_index=next_index;
+        entry.next_index=Math.max(1, next_index);
         entry.commit_index=Math.max(entry.commit_index, commit_index);
         entry.send_single_msg=single_resend;
         return this;
