@@ -1,0 +1,59 @@
+
+Election based on JGroups views
+===============================
+
+Author: Bela Ban
+
+
+Motivation
+----------
+The current impl of jgroups-raft ignores the functionality (failure detection, view changes) JGroups offers and
+implements leader election more or less as described in [1].
+
+By rewriting that part to reuse JGroups functionality, the following advantages can be had:
+* Code reduction, reuse of proven code
+* Many failure detection protocols are available
+* Ability to customize failure detection
+* No constant traffic by heartbeats; a leader establishes itself once and then remains leader until a new view starts a
+  new leader election
+* No elections unless triggered by view changes -> this reduces competing elections (but doesn't eliminate them)
+* Simple implementation of dynamic membership changes (ch. 4 in [1]); no need to append special configuration entries
+  to the log
+
+
+In a nutshell
+-------------
+* Leader election is started only on view changes, depending on the view
+* Once a leader is established, there won't be any elections or heartbeats until a new view is installed
+* New members get the term, leader's address (leaderId) and majority via a message from the current leader
+* New members don't take part in voting until the leader has sent them the above message. This makes it easy to
+  dynamically change the majority when adding members
+
+
+Implementation
+--------------
+
+State
+-----
+- ELECTION.active: when false, drop vote requests
+- ELECTION.majority: votes needed for majority (initially set via XML). Dynamically set thereafter
+
+
+On reception of view change V
+-----------------------------
+
+
+
+On reception of heartbeat HB
+----------------------------
+- Set term to HB.term
+- Set leader to GB.leader
+- Set majority to HB.majority
+- If not active -> set active to true
+
+
+
+
+
+
+[1] https://github.com/ongardie/dissertation
