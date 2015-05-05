@@ -4,6 +4,7 @@ import org.jgroups.*;
 import org.jgroups.annotations.*;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.pbcast.GMS;
+import org.jgroups.stack.AddressGenerator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
 import org.jgroups.util.*;
@@ -27,6 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol implements Runnable, Settable {
     // When moving to JGroups -> add to jg-protocol-ids.xml
+    protected static final byte[] raft_id_key          = Util.stringToBytes("raft-id");
     protected static final short  RAFT_ID              = 1024;
 
     // When moving to JGroups -> add to jg-magic-map.xml
@@ -48,6 +50,10 @@ public class RAFT extends Protocol implements Runnable, Settable {
         ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
         ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
     }
+
+    @Property(description="The identifier of this node. Needs to be unique and an element of members. Must not be null",
+              writable=false)
+    protected String                  raft_id;
 
     /** The set of members defining the Raft cluster */
     protected final List<String>      members=new ArrayList<>();
@@ -87,7 +93,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
     protected Log                     log_impl;
 
-    protected RequestTable            request_table;
+    protected RequestTable<String>    request_table;
     protected CommitTable             commit_table;
 
     protected final List<RoleChange>  role_change_listeners=new ArrayList<>();
@@ -121,6 +127,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected int                     log_size_bytes; // keeps counts of the bytes added to the log
 
 
+    public String       raftId()                      {return raft_id;}
+    public RAFT         raftId(String id)             {this.raft_id=id; return this;}
     public int          majority()                    {synchronized(members) {return majority;}}
     public String       logClass()                    {return log_class;}
     public RAFT         logClass(String clazz)        {log_class=clazz; return this;}
@@ -364,6 +372,9 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @Override public void init() throws Exception {
         super.init();
         timer=getTransport().getTimer();
+        if(raft_id == null)
+            throw new IllegalStateException("raft_id must not be null");
+
         // we can only add/remove 1 member at a time (section 4.1 of [1])
         if(dynamic_view_changes)
             disableViewBundling();
@@ -377,12 +388,24 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
             majority=members.size() / 2 + 1;
         }
+
+        // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
+        final JChannel ch=stack.getChannel();
+        ch.addAddressGenerator(new AddressGenerator() {
+            public Address generateAddress() {
+                return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
+            }
+        });
     }
 
     @Override public void start() throws Exception {
         super.start();
         if(log_class == null)
             throw new IllegalStateException("log_class has to be defined");
+
+        if(!(local_addr instanceof ExtendedUUID))
+            throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
+
         Class<? extends Log> clazz=Util.loadClass(log_class,getClass());
         log_impl=clazz.newInstance();
         Map<String,String> args;
@@ -391,13 +414,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
         else
             args=new HashMap<>();
 
-        String logical_name=stack.getChannel().getName();
         if(log_name == null)
-            log_name=logical_name;
-
-        if(!members.contains(logical_name))
-            throw new IllegalStateException(String.format("member name %s is not listed in members %s", log_name, this.members));
-
+            log_name=raft_id;
         snapshot_name=log_name;
         log_name=createLogName(log_name, "log");
         snapshot_name=createLogName(snapshot_name, "snapshot");
@@ -409,6 +427,9 @@ public class RAFT extends Protocol implements Runnable, Settable {
         log.trace("set last_applied=%d, commit_index=%d, current_term=%d", last_applied, commit_index, current_term);
         initStateMachineFromLog(false);
         log_size_bytes=logSizeInBytes();
+
+        if(!members.contains(raft_id))
+            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
     }
 
 
@@ -518,7 +539,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         CompletableFuture<byte[]> retval=new CompletableFuture<>(completion_handler);
         int prev_index=0, curr_index=0, prev_term=0, curr_term=0, commit_idx=0;
 
-        RequestTable reqtab=request_table;
+        RequestTable<String> reqtab=request_table;
         if(reqtab == null) {
             retval.completeExceptionally(new IllegalStateException("request table was null on " + impl.getClass().getSimpleName()));
             return retval;
@@ -540,7 +561,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
             executeInternalCommand(cmd, null, 0, 0);
 
         // 2. Add the request to the client table, so we can return results to clients when done
-        reqtab.create(curr_index, local_addr, retval);
+        reqtab.create(curr_index, raft_id, retval);
 
         // 3. Multicast an AppendEntries message (exclude self)
         Message msg=new Message(null, buf, offset, length)
@@ -809,12 +830,17 @@ public class RAFT extends Protocol implements Runnable, Settable {
     }
 
     protected void handleView(View view) {
+        boolean check_view=this.view != null && this.view.size() < view.size();
         this.view=view;
         if(commit_table != null) {
             List<Address> mbrs=new ArrayList<>(view.getMembers());
             mbrs.remove(local_addr);
             commit_table.adjust(mbrs, last_applied + 1);
         }
+
+        // if we're the leader, check if the view contains no duplicate raft-ids
+        if(check_view && duplicatesInView(view))
+            log.error("view contains duplicate raft-ids: %s", view);
     }
 
     protected void changeRole(Role new_role) {
@@ -954,6 +980,29 @@ public class RAFT extends Protocol implements Runnable, Settable {
             }
             catch(Throwable t) {}
         }
+    }
+
+    /**
+     * Checks if a given view contains duplicate raft-ids. Uses key raft-id in ExtendedUUID to compare
+     * @param view
+     * @return
+     */
+    protected boolean duplicatesInView(View view) {
+        Set<String> mbrs=new HashSet<>();
+        for(Address addr : view) {
+            if(!(addr instanceof ExtendedUUID))
+                log.warn("address %s is not an ExtendedUUID but a %s", addr, addr.getClass().getSimpleName());
+            else {
+                ExtendedUUID uuid=(ExtendedUUID)addr;
+                byte[] val=uuid.get(raft_id_key);
+                String m=val != null? Util.bytesToString(val) : null;
+                if(m == null)
+                    log.error("address %s doesn't have a raft-id", addr);
+                else if(!mbrs.add(m))
+                    return true;
+            }
+        }
+        return false;
     }
 
     public interface RoleChange {

@@ -1,9 +1,6 @@
 package org.jgroups.util;
 
 
-import org.jgroups.Address;
-import org.jgroups.protocols.raft.RAFT;
-
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -19,19 +16,19 @@ import java.util.Set;
  * @author Bela Ban
  * @since 0.1
  */
-public class RequestTable {
-    protected static class Entry {
+public class RequestTable<T> {
+    protected static class Entry<T> {
         // the future has been returned to the caller, and needs to be notified when we've reached a majority
         protected final CompletableFuture<byte[]> client_future;
-        protected final Set<Address>              votes=new HashSet<>(); // todo: replace with bitset
+        protected final Set<T>                    votes=new HashSet<>();
         protected boolean                         committed;
 
-        public Entry(CompletableFuture<byte[]> client_future, Address vote) {
+        public Entry(CompletableFuture<byte[]> client_future, T vote) {
             this.client_future=client_future;
             votes.add(vote);
         }
 
-        protected boolean add(Address vote, int majority) {
+        protected boolean add(T vote, int majority) {
             boolean reached_majority=votes.add(vote) && votes.size() >= majority;
             return reached_majority && !committed && (committed=true);
         }
@@ -43,12 +40,10 @@ public class RequestTable {
     }
 
     // maps an index to a set of (response) senders
-    protected final Map<Integer,Entry> requests=new HashMap<>();
-    protected final RAFT               raft; // to call raft.majority()
+    protected final Map<Integer,Entry<T>> requests=new HashMap<>();
 
-    public RequestTable(RAFT raft) {
-        this.raft=raft;
-    }
+
+
 
     /** Whether or not the entry at index is committed */
     public synchronized boolean isCommitted(int index) {
@@ -56,8 +51,8 @@ public class RequestTable {
         return entry != null && entry.committed;
     }
 
-    public synchronized void create(int index, Address vote, CompletableFuture<byte[]> future) {
-        Entry entry=new Entry(future, vote);
+    public synchronized void create(int index, T vote, CompletableFuture<byte[]> future) {
+        Entry<T> entry=new Entry<>(future, vote);
         requests.put(index, entry);
     }
 
@@ -65,9 +60,9 @@ public class RequestTable {
      * Adds a response to the response set. If the majority has been reached, returns true
      * @return True if a majority has been reached, false otherwise. Note that this is done <em>exactly once</em>
      */
-    public synchronized boolean add(int index, Address sender) {
-        Entry entry=requests.get(index);
-        return entry != null && entry.add(sender, raft.majority());
+    public synchronized boolean add(int index, T sender, int majority) {
+        Entry<T> entry=requests.get(index);
+        return entry != null && entry.add(sender, majority);
     }
 
     /** Notifies the CompletableFuture and then removes the entry for index */
@@ -87,7 +82,7 @@ public class RequestTable {
     @Override
     public String toString() {
         StringBuilder sb=new StringBuilder();
-        for(Map.Entry<Integer,Entry> entry: requests.entrySet())
+        for(Map.Entry<Integer,Entry<T>> entry: requests.entrySet())
             sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
         return sb.toString();
     }

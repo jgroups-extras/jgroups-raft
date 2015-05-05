@@ -23,6 +23,8 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
         ch=new JChannel(props);
         if(name != null)
             ch.name(name);
+        RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+        raft.raftId(name);
         if(follower)
             disableElections(ch);
         ch.setReceiver(this);

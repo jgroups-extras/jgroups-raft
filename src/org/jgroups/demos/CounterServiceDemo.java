@@ -16,14 +16,15 @@ public class CounterServiceDemo {
     protected JChannel ch;
     protected CounterService counter_service;
 
-    void start(String props, String channel_name, long repl_timeout, boolean allow_dirty_reads) throws Exception {
-        ch=new JChannel(props);
-        ch.setName(channel_name);
+    void start(String props, String name, long repl_timeout, boolean allow_dirty_reads) throws Exception {
+        ch=new JChannel(props).name(name);
         ch.setReceiver(new ReceiverAdapter() {
             public void viewAccepted(View view) {
                 System.out.println("-- view: " + view);
             }
         });
+        RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+        raft.raftId(name);
         loop(repl_timeout, allow_dirty_reads);
     }
 
