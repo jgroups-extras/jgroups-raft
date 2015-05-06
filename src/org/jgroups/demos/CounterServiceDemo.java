@@ -25,7 +25,13 @@ public class CounterServiceDemo {
         });
         RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
         raft.raftId(name);
-        loop(repl_timeout, allow_dirty_reads);
+        try {
+            ch.connect("cntrs");
+            loop(repl_timeout, allow_dirty_reads);
+        }
+        finally {
+            Util.close(ch);
+        }
     }
 
     public void start(JChannel ch, long repl_timeout, boolean allow_dirty_reads) throws Exception {
@@ -42,7 +48,6 @@ public class CounterServiceDemo {
     void loop(long repl_timeout, boolean allow_dirty_reads) throws Exception {
         counter_service=new CounterService(ch);
         counter_service.replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
-        ch.connect("cntrs");
 
         Counter counter=null;
         boolean looping=true;
@@ -121,7 +126,6 @@ public class CounterServiceDemo {
                 System.err.println(t.toString());
             }
         }
-        Util.close(ch);
     }
 
     protected void dumpLog() {

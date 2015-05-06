@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.*;
+import org.jgroups.annotations.MBean;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.*;
@@ -19,6 +20,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Bela Ban
  * @since  0.1
  */
+@MBean(description="Redirects requests to current leader")
 public class CLIENT extends Protocol implements Settable {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short CLIENT_ID      = 1026;
