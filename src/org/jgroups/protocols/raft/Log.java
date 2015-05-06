@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 
 import java.util.Map;
+import java.util.function.ObjIntConsumer;
 
 /**
  * The interface for a persistent log. See doc/design/Log.txt for details.
@@ -50,13 +51,13 @@ public interface Log {
     int firstApplied();
 
     /** Returns the index of the last applied append operation (May get removed as this should be in-memory)<p/>
-     * This value is set by {@link #append(int,int,LogEntry[])} */
+     * This value is set by {@link #append(int,boolean,LogEntry...)} */
     int lastApplied();
 
     /**
      * Append the entries starting at index. Advance last_applied by the number of entries appended.<p/>
      * This is used by the leader when appending entries before sending AppendEntries requests to cluster members.
-     * Contrary to {@link #append(int,int,LogEntry...)}, no consistency check needs to be performed.
+     * Contrary to {@link #append(int,boolean,LogEntry...)}, no consistency check needs to be performed.
      * @param index The index at which to append the entries. Should be the same as lastApplied. LastApplied needs
      *              to be incremented by the number of entries appended
      * @param overwrite If there is an existing entry and overwrite is true, overwrite it. Else throw an exception
@@ -96,22 +97,8 @@ public interface Log {
      * @param start_index The start index. If smaller than first_applied, first_applied will be used
      * @param end_index The end index. If greater than last_applied, last_applied will be used
      */
-    void forEach(Function function, int start_index, int end_index);
+    void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index);
 
     /** Applies a function to all elements in range [first_applied .. last_applied] */
-    void forEach(Function function);
-
-    interface Function {
-        /**
-         * The function to be applied to log entries in {@link #forEach(org.jgroups.protocols.raft.Log.Function)}
-         * @param index The index of the entry
-         * @param term The term of the entry
-         * @param command The command buffer
-         * @param offset The offset into the command buffer
-         * @param length The length of the command buffer
-         * @param internal If true, the command is internal and should not be applied to the state machine
-         * @return True if the iteration should continue, false if it should terminate
-         */
-        boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal);
-    }
+    void forEach(ObjIntConsumer<LogEntry> function);
 }

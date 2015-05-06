@@ -4,14 +4,18 @@ import org.jgroups.*;
 import org.jgroups.annotations.MBean;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
-import org.jgroups.util.*;
+import org.jgroups.util.Bits;
+import org.jgroups.util.MessageBatch;
+import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 /**
  * Protocol that redirects RAFT commands from clients to the actual RAFT leader. E.g. if a client issues a set(), but
@@ -45,18 +49,18 @@ public class CLIENT extends Protocol implements Settable {
 
     @Override
     public byte[] set(byte[] buf, int offset, int length) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length, null);
+        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
         return future.get();
     }
 
     @Override
     public byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length, null);
+        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
         return future.get(timeout, unit);
     }
 
     @Override
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Consumer<byte[]> completion_handler) {
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) {
         Address leader=raft.leader();
         if(leader == null)
             throw new RuntimeException("there is currently no leader to forward set() request to");
@@ -65,11 +69,11 @@ public class CLIENT extends Protocol implements Settable {
 
         // we are the current leader: pass the call to the RAFT protocol
         if(local_addr != null && local_addr.equals(leader))
-            return raft.setAsync(buf, offset, length, completion_handler);
+            return raft.setAsync(buf, offset, length);
 
         // add a unique ID to the request table, so we can correlate the response to the request
         int req_id=request_ids.getAndIncrement();
-        CompletableFuture<byte[]> future=new CompletableFuture<>(completion_handler);
+        CompletableFuture<byte[]> future=new CompletableFuture<>();
         synchronized(requests) {
             requests.put(req_id, future);
         }
@@ -135,7 +139,8 @@ public class CLIENT extends Protocol implements Settable {
         switch(hdr.type) {
             case RedirectHeader.REQ:
                 log.trace("%s: received redirected request %d from %s", local_addr, hdr.corr_id,  sender);
-                raft.setAsync(msg.getRawBuffer(), msg.getOffset(), msg.getLength(), new ResponseHandler(sender, hdr.corr_id));
+                raft.setAsync(msg.getRawBuffer(), msg.getOffset(), msg.getLength())
+                  .whenComplete(new ResponseHandler(sender, hdr.corr_id));
                 break;
             case RedirectHeader.RSP:
                 CompletableFuture<byte[]> future=null;
@@ -164,7 +169,7 @@ public class CLIENT extends Protocol implements Settable {
     }
 
 
-    protected class ResponseHandler implements Consumer<byte[]> {
+    protected class ResponseHandler implements BiConsumer<byte[],Throwable> {
         protected final Address dest;
         protected final int     corr_id;
 
@@ -173,12 +178,20 @@ public class CLIENT extends Protocol implements Settable {
             this.corr_id=corr_id;
         }
 
-        @Override public void apply(byte[] arg) {
+        @Override
+        public void accept(byte[] buf, Throwable ex) {
+            if(ex != null)
+                apply(ex);
+            else
+                apply(buf);
+        }
+
+        protected void apply(byte[] arg) {
             Message msg=new Message(dest, arg).putHeader(id, new RedirectHeader(RedirectHeader.RSP, corr_id, false));
             down_prot.down(new Event(Event.MSG, msg));
         }
 
-        @Override public void apply(Throwable t) {
+        protected void apply(Throwable t) {
             try {
                 byte[] buf=Util.objectToByteBuffer(t);
                 Message msg=new Message(dest, buf).putHeader(id, new RedirectHeader(RedirectHeader.RSP, corr_id, true));

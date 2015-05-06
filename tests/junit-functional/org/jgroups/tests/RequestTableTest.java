@@ -1,10 +1,10 @@
 package org.jgroups.tests;
 
 import org.jgroups.Global;
-import org.jgroups.util.CompletableFuture;
-import org.jgroups.util.Consumer;
 import org.jgroups.util.RequestTable;
 import org.testng.annotations.Test;
+
+import java.util.concurrent.CompletableFuture;
 
 /**
  * @author Bela Ban
@@ -12,10 +12,7 @@ import org.testng.annotations.Test;
  */
 @Test(groups=Global.FUNCTIONAL)
 public class RequestTableTest {
-    protected static final CompletableFuture<byte[]> future=new CompletableFuture<>(new Consumer<byte[]>() {
-        public void apply(byte[] arg) {}
-        public void apply(Throwable t) {}
-    });
+    protected static final CompletableFuture<byte[]> future=new CompletableFuture<>();
 
     public void testSimple() {
         RequestTable<String> table=new RequestTable<>();

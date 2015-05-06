@@ -39,10 +39,11 @@ public class LogEntry implements Streamable {
         this.internal=internal;
     }
 
-    public int    term()    {return term;}
-    public byte[] command() {return command;}
-    public int    offset()  {return offset;}
-    public int    length()  {return length;}
+    public int     term()     {return term;}
+    public byte[]  command()  {return command;}
+    public int     offset()   {return offset;}
+    public int     length()   {return length;}
+    public boolean internal() {return internal;}
 
     public void writeTo(DataOutput out) throws Exception {
         Bits.writeInt(term, out);

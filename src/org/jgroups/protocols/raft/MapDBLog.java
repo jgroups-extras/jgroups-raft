@@ -7,6 +7,7 @@ import org.mapdb.*;
 
 import java.io.*;
 import java.util.Map;
+import java.util.function.ObjIntConsumer;
 
 /**
  * Implementation of {@link org.jgroups.protocols.raft.Log} with MapDB (http://www.mapdb.org)
@@ -122,11 +123,11 @@ public class MapDBLog implements Log {
         return;
     }
 
-    public void forEach(Function function,int start_index,int end_index) {
+    public void forEach(ObjIntConsumer<LogEntry> function,int start_index,int end_index) {
 
     }
 
-    public void forEach(Function function) {
+    public void forEach(ObjIntConsumer<LogEntry> function) {
 
     }
 

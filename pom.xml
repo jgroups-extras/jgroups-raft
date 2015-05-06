@@ -82,7 +82,7 @@
         <dependency>
             <groupId>org.jgroups</groupId>
             <artifactId>jgroups</artifactId>
-            <version>3.6.0.Final</version>
+            <version>3.6.3.Final</version>
         </dependency>
         <dependency>
             <groupId>org.fusesource.leveldbjni</groupId>
@@ -154,8 +154,8 @@
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>1.7</source>
-                    <target>1.7</target>
+                    <source>1.8</source>
+                    <target>1.8</target>
                     <excludes>
                         <exclude>org/jgroups/util/JUnitXMLReporter.java</exclude>
                         <!--<exclude>org/jgroups/demos/**</exclude>-->
@@ -178,7 +178,7 @@
                     <rules>
                         <requireJavaVersion>
                             <!-- require JDK 1.7 to run the build -->
-                            <version>[1.7,)</version>
+                            <version>[1.8,)</version>
                         </requireJavaVersion>
                         <requireMavenVersion>
                             <version>3.0.4</version>

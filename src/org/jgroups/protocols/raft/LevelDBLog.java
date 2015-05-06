@@ -9,6 +9,7 @@ import org.jgroups.util.Util;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.function.ObjIntConsumer;
 
 import static org.fusesource.leveldbjni.JniDBFactory.*;
 import static org.jgroups.util.IntegerHelper.fromByteArrayToInt;
@@ -180,20 +181,18 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void forEach(Function function, int start_index, int end_index) {
+    public void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
         start_index = Math.max(start_index, Math.max(firstApplied,1));
         end_index = Math.min(end_index, lastApplied);
 
         for (int i=start_index; i<=end_index; i++) {
             LogEntry entry = getLogEntry(i);
-            if(!function.apply(i, entry.term, entry.command, entry.offset, entry.length, entry.internal))
-                break;
+            function.accept(entry, i);
         }
-
     }
 
     @Override
-    public void forEach(Function function) {
+    public void forEach(ObjIntConsumer<LogEntry> function) {
         this.forEach(function, Math.max(1, firstApplied), lastApplied);
     }
 

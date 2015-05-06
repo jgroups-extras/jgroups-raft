@@ -1,8 +1,7 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.util.CompletableFuture;
-import org.jgroups.util.Consumer;
 
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -12,5 +11,5 @@ import java.util.concurrent.TimeUnit;
 public interface Settable {
     byte[] set(byte[] buf, int offset, int length) throws Exception;
     byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception;
-    CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Consumer<byte[]> completion_handler);
+    CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length);
 }

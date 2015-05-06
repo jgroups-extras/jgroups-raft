@@ -1,16 +1,12 @@
 package org.jgroups.tests;
 
 import org.jgroups.Global;
-import org.jgroups.util.CompletableFuture;
-import org.jgroups.util.Consumer;
 import org.jgroups.util.Util;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.concurrent.CancellationException;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.*;
+import java.util.function.BiConsumer;
 
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class CompletableFutureTest {
@@ -68,8 +64,8 @@ public class CompletableFutureTest {
     }
 
     public void testCancel() throws Exception {
-        Canceller c=new Canceller(future, 500);
-        c.start();
+        new Thread(() -> {Util.sleep(500); future.cancel(true);}).start();
+
         try {
             future.get();
             assert false : "should have thrown a CancellationException";
@@ -82,7 +78,8 @@ public class CompletableFutureTest {
 
     public void testCompletionHandler() {
         MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
-        future=new CompletableFuture<>(handler);
+        future=new CompletableFuture<>();
+        future.whenComplete(handler);
         new Completer<>(future, 5, null, 500).start();
 
         for(int i=0; i < 20; i++) {
@@ -97,7 +94,8 @@ public class CompletableFutureTest {
 
     public void testCompletionHandlerWithException() {
         MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
-        future=new CompletableFuture<>(handler);
+        future=new CompletableFuture<>();
+        future.whenComplete(handler);
         new Completer<>(future, 0, new NullPointerException("booom"), 500).start();
 
         for(int i=0; i < 20; i++) {
@@ -134,34 +132,18 @@ public class CompletableFutureTest {
     }
 
 
-    protected static class Canceller extends Thread {
-        protected final CompletableFuture<?> future;
-        protected final long                 sleep;
-
-        public Canceller(CompletableFuture<?> future, long sleep) {
-            this.future=future;
-            this.sleep=sleep;
-        }
-
-        public void run() {
-            Util.sleep(sleep);
-            future.cancel(true);
-        }
-    }
-
-    protected static class MyCompletionHandler<T> implements Consumer<T> {
+    protected static class MyCompletionHandler<T> implements BiConsumer<T, Throwable> {
         protected T         value;
         protected Throwable ex;
 
         public T         getValue()     {return value;}
         public Throwable getException() {return ex;}
 
-        public void apply(T val) {
-            this.value=val;
-        }
-
-        public void apply(Throwable t) {
-            ex=t;
+        public void accept(T t, Throwable ex) {
+            if(t != null)
+                value=t;
+            if(ex != null)
+                this.ex=ex;
         }
     }
 }

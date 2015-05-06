@@ -52,48 +52,46 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public int  logSize()                                          {return raft != null? raft.logSizeInBytes() : 0;}
 
     public void dumpLog() {
-        raft.logEntries(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
-                StringBuilder sb=new StringBuilder().append(index).append(" (").append(term).append("): ");
-                if(command == null) {
-                    sb.append("<marker record>");
-                    System.out.println(sb);
-                    return true;
-                }
-                if(internal) {
-                    try {
-                        InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, command, offset, length);
-                        sb.append("[internal] ").append(cmd).append("\n");
-                    }
-                    catch(Exception ex) {
-                        sb.append("[failure reading internal cmd] ").append(ex).append("\n");
-                    }
-                    System.out.println(sb);
-                    return true;
-                }
-                ByteArrayDataInputStream in=new ByteArrayDataInputStream(command, offset, length);
+        raft.logEntries((entry,index) -> {
+            StringBuilder sb=new StringBuilder().append(index).append(" (").append(entry.term()).append("): ");
+            if(entry.command() == null) {
+                sb.append("<marker record>");
+                System.out.println(sb);
+                return;
+            }
+            if(entry.internal()) {
                 try {
-                    byte type=in.readByte();
-                    switch(type) {
-                        case PUT:
-                            K key=(K)Util.objectFromStream(in);
-                            V val=(V)Util.objectFromStream(in);
-                            sb.append("put(").append(key).append(", ").append(val).append(")");
-                            break;
-                        case REMOVE:
-                            key=(K)Util.objectFromStream(in);
-                            sb.append("remove(").append(key).append(")");
-                            break;
-                        default:
-                            sb.append("type " + type + " is unknown");
-                    }
+                    InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class,
+                                                                                       entry.command(), entry.offset(), entry.length());
+                    sb.append("[internal] ").append(cmd).append("\n");
                 }
-                catch(Throwable t) {
-                    sb.append(t);
+                catch(Exception ex) {
+                    sb.append("[failure reading internal cmd] ").append(ex).append("\n");
                 }
                 System.out.println(sb);
-                return true;
+                return;
             }
+            ByteArrayDataInputStream in=new ByteArrayDataInputStream(entry.command(), entry.offset(), entry.length());
+            try {
+                byte type=in.readByte();
+                switch(type) {
+                    case PUT:
+                        K key=(K)Util.objectFromStream(in);
+                        V val=(V)Util.objectFromStream(in);
+                        sb.append("put(").append(key).append(", ").append(val).append(")");
+                        break;
+                    case REMOVE:
+                        key=(K)Util.objectFromStream(in);
+                        sb.append("remove(").append(key).append(")");
+                        break;
+                    default:
+                        sb.append("type " + type + " is unknown");
+                }
+            }
+            catch(Throwable t) {
+                sb.append(t);
+            }
+            System.out.println(sb);
         });
     }
 

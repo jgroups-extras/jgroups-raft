@@ -4,7 +4,6 @@ import org.jgroups.*;
 import org.jgroups.annotations.*;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.pbcast.GMS;
-import org.jgroups.stack.AddressGenerator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
 import org.jgroups.util.*;
@@ -14,9 +13,11 @@ import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.ObjIntConsumer;
 
 
 /**
@@ -36,12 +37,6 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected static final short  APPEND_ENTRIES_RSP   = 2001;
     protected static final short  APPEND_RESULT        = 2002;
     protected static final short  INSTALL_SNAPSHOT_REQ = 2003;
-
-    protected final CommitTable.Consumer<Address,CommitTable.Entry> func=new CommitTable.Consumer<Address,CommitTable.Entry>() {
-        @Override public void apply(Address mbr, CommitTable.Entry entry) {
-            sendAppendEntriesMessage(mbr, entry);
-        }
-    };
 
     static {
         ClassConfigurator.addProtocol(RAFT_ID, RAFT.class);
@@ -214,12 +209,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @ManagedAttribute(description="Number of log entries in the log")
     public int logSize() {
         final AtomicInteger count=new AtomicInteger(0);
-        log_impl.forEach(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
-                count.incrementAndGet();
-                return true;
-            }
-        });
+        log_impl.forEach((entry,index) -> count.incrementAndGet());
         return count.intValue();
     }
 
@@ -227,12 +217,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     @ManagedAttribute(description="Number of bytes in the log")
     public int logSizeInBytes() {
         final AtomicInteger count=new AtomicInteger(0);
-        log_impl.forEach(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
-                count.addAndGet(length);
-                return true;
-            }
-        });
+        log_impl.forEach((entry,index) -> count.addAndGet(entry.length()));
         return count.intValue();
     }
 
@@ -240,12 +225,10 @@ public class RAFT extends Protocol implements Runnable, Settable {
     public String dumpLog(int last_n) {
         final StringBuilder sb=new StringBuilder();
         int to=last_applied, from=Math.max(1, to-last_n);
-        log_impl.forEach(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
-                sb.append("index=").append(index).append(", term=").append(term).append(" (").append(command.length).append(" bytes)\n");
-                return true;
-            }
-        }, from, to);
+        log_impl.forEach((entry,index) ->
+                           sb.append("index=").append(index).append(", term=").append(entry.term()).append(" (")
+                             .append(entry.command().length).append(" bytes)\n"),
+                         from, to);
         return sb.toString();
     }
 
@@ -254,7 +237,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
         return dumpLog(last_applied -1);
     }
 
-    public void logEntries(Log.Function func) {
+    public void logEntries(ObjIntConsumer<LogEntry> func) {
         log_impl.forEach(func);
     }
 
@@ -391,11 +374,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         final JChannel ch=stack.getChannel();
-        ch.addAddressGenerator(new AddressGenerator() {
-            public Address generateAddress() {
-                return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
-            }
-        });
+        ch.addAddressGenerator(() -> ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id)));
     }
 
     @Override public void start() throws Exception {
@@ -520,23 +499,20 @@ public class RAFT extends Protocol implements Runnable, Settable {
      * @param buf The command
      * @param offset The offset into the buffer
      * @param length The length of the buffer
-     * @param completion_handler A function that will get called with the serialized result (may be null)
-     *                           upon completion (async). Can be null.
      * @return A CompletableFuture. Can be used to wait for the result (sync). A blocking caller could call
      *         set(), then call future.get() to block for the result.
      */
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Consumer<byte[]> completion_handler) {
-        return setAsync(buf, offset, length, completion_handler, null);
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) {
+        return setAsync(buf, offset, length, null);
     }
 
-    protected CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Consumer<byte[]> completion_handler,
-                                                 InternalCommand cmd) {
+    protected CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, InternalCommand cmd) {
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
         if(buf == null)
             throw new IllegalArgumentException("buffer must not be null");
 
-        CompletableFuture<byte[]> retval=new CompletableFuture<>(completion_handler);
+        CompletableFuture<byte[]> retval=new CompletableFuture<>();
         int prev_index=0, curr_index=0, prev_term=0, curr_term=0, commit_idx=0;
 
         RequestTable<String> reqtab=request_table;
@@ -618,7 +594,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
      * leader's log, next-index for all members is incremented and resending starts again.
      */
     @Override public void run() {
-        commit_table.forEach(func);
+        commit_table.forEach(this::sendAppendEntriesMessage);
     }
 
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
@@ -881,7 +857,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
         InternalCommand cmd=new InternalCommand(type, name);
         byte[] buf=Util.streamableToByteBuffer(cmd);
-        setAsync(buf, 0, buf.length, null, cmd);
+        setAsync(buf, 0, buf.length, cmd);
     }
 
     /** If cmd is not null, execute it. Else parse buf into InternalCommand then call cmd.execute() */
@@ -948,17 +924,6 @@ public class RAFT extends Protocol implements Runnable, Settable {
         }
         return retval;
     }
-
-  /*  protected static Buffer marshal(byte[] buf, int offset, int length) throws Exception {
-        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(length + Global.INT_SIZE);
-        Bits.writeInt(length, out);
-        out.write(buf, offset, length);
-        return out.getBuffer();
-    }
-
-    protected static Buffer marshal(int from, int to) {
-        return null;
-    }*/
 
 
     protected static String createLogName(String name, String suffix) {

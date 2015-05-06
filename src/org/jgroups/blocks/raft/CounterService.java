@@ -192,54 +192,52 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     public void dumpLog() {
-        raft.logEntries(new Log.Function() {
-            @Override public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
-                StringBuilder sb=new StringBuilder().append(index).append(" (").append(term).append("): ");
-                if(command == null) {
-                    sb.append("<marker record>");
-                    System.out.println(sb);
-                    return true;
-                }
-                if(internal) {
-                    try {
-                        InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, command, offset, length);
-                        sb.append("[internal] ").append(cmd);
-                    }
-                    catch(Exception ex) {
-                        sb.append("[failure reading internal cmd] ").append(ex);
-                    }
-                    System.out.println(sb);
-                    return true;
-                }
-                ByteArrayDataInputStream in=new ByteArrayDataInputStream(command, offset, length);
+        raft.logEntries((entry,index) -> {
+            StringBuilder sb=new StringBuilder().append(index).append(" (").append(entry.term()).append("): ");
+            if(entry.command() == null) {
+                sb.append("<marker record>");
+                System.out.println(sb);
+                return;
+            }
+            if(entry.internal()) {
                 try {
-                    Command cmd=Command.values()[in.readByte()];
-                    String name=Bits.readAsciiString(in).toString();
-                    switch(cmd) {
-                        case create:
-                        case set:
-                        case addAndGet:
-                            sb.append(print(cmd, name, 1, in));
-                            break;
-                        case delete:
-                        case get:
-                        case incrementAndGet:
-                        case decrementAndGet:
-                            sb.append(print(cmd, name, 0, in));
-                            break;
-                        case compareAndSet:
-                            sb.append(print(cmd, name, 2, in));
-                            break;
-                        default:
-                            throw new IllegalArgumentException("command " + cmd + " is unknown");
-                    }
+                    InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class,
+                                                                                       entry.command(), entry.offset(), entry.length());
+                    sb.append("[internal] ").append(cmd);
                 }
-                catch(Throwable t) {
-                    sb.append(t);
+                catch(Exception ex) {
+                    sb.append("[failure reading internal cmd] ").append(ex);
                 }
                 System.out.println(sb);
-                return true;
+                return;
             }
+            ByteArrayDataInputStream in=new ByteArrayDataInputStream(entry.command(), entry.offset(), entry.length());
+            try {
+                Command cmd=Command.values()[in.readByte()];
+                String name=Bits.readAsciiString(in).toString();
+                switch(cmd) {
+                    case create:
+                    case set:
+                    case addAndGet:
+                        sb.append(print(cmd, name, 1, in));
+                        break;
+                    case delete:
+                    case get:
+                    case incrementAndGet:
+                    case decrementAndGet:
+                        sb.append(print(cmd, name, 0, in));
+                        break;
+                    case compareAndSet:
+                        sb.append(print(cmd, name, 2, in));
+                        break;
+                    default:
+                        throw new IllegalArgumentException("command " + cmd + " is unknown");
+                }
+            }
+            catch(Throwable t) {
+                sb.append(t);
+            }
+            System.out.println(sb);
         });
     }
 

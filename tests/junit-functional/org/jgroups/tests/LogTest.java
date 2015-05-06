@@ -260,26 +260,18 @@ public class LogTest {
         log.commitIndex(8);
 
         final AtomicInteger cnt=new AtomicInteger(0);
-        Log.Function func=new Log.Function() {
-            @Override
-            public boolean apply(int index, int term, byte[] command, int offset, int length, boolean internal) {
-                cnt.incrementAndGet();
-                return true;
-            }
-        };
-
-        log.forEach(func);
+        log.forEach((entry,index) -> cnt.incrementAndGet());
         assert cnt.get() == 10;
 
         cnt.set(0);
         log.truncate(8);
 
         append(log, 11, false, buf, 6,6,6, 7,7,7, 8,8,8,8);
-        log.forEach(func);
+        log.forEach((entry,index) -> cnt.incrementAndGet());
         assert cnt.get() == 13;
 
         cnt.set(0);
-        log.forEach(func, 0, 25);
+        log.forEach((entry,index) -> cnt.incrementAndGet(), 0, 25);
         assert cnt.get() == 13;
     }
 

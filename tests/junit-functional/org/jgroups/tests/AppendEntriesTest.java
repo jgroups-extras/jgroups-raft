@@ -59,7 +59,14 @@ public class AppendEntriesTest {
         bs.remove(5);
         cs.put(11, 11);
         cs.remove(1);
-        as.put(1,1);
+        as.put(1, 1);
+        assertSame(as, bs, cs);
+    }
+
+
+    public void testRedirect() throws Exception {
+        init(true);
+        cs.put(5, 5);
         assertSame(as, bs, cs);
     }
 

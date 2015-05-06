@@ -23,7 +23,7 @@
     <property name="javadoc.packages" value="org.jgroups.*"/>
     <property name="timestamp"        value=".timestamp"/>
     <property name="maven.executable" value="mvn"/>
-    <property name="ivy.version"      value="2.4.0-rc1" />
+    <property name="ivy.version"      value="2.4.0" />
     <property name="ivy.props"        value="ivy.properties"/>
 
     <!-- 5 minutes per test suite timeout -->
@@ -178,8 +178,8 @@
 
     <target name="compile" depends="prepare" description="Compiles all Java files">
         <javac destdir="${compile.dir}"
-               source="1.7"
-               target="1.7"
+               source="1.8"
+               target="1.8"
                classpathref="jg.classpath"
                includeantruntime="false"
                debug="on"
