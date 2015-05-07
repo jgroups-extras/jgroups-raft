@@ -5,7 +5,7 @@
     <artifactId>jgroups-raft</artifactId>
     <packaging>bundle</packaging>
     <name>JGroups-raft</name>
-    <version>0.1</version>
+    <version>0.2</version>
     <url>http://www.jgroups.org</url>
     <description>
         JGroups RAFT implementation

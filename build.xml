@@ -8,7 +8,7 @@
         Ant/ivy based build.xml file for jgroups-raft. Needs ant to run
     </description>
 
-    <property name="version"          value="0.1"/>
+    <property name="version"          value="0.2"/>
     <property name="root.dir"         value="${basedir}"/>
     <property name="src.dir"          value="${root.dir}/src"/>
     <property name="compile.dir"      value="${root.dir}/classes"/>
