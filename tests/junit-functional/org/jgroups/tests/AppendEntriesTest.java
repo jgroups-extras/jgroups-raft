@@ -15,6 +15,7 @@
  import java.lang.reflect.Method;
  import java.util.Arrays;
  import java.util.List;
+ import java.util.concurrent.TimeUnit;
  import java.util.concurrent.TimeoutException;
 
  import static org.testng.Assert.*;
@@ -144,7 +145,7 @@ public class AppendEntriesTest {
     public void testCatchingUpFirstEntry() throws Exception {
         // Create {A,B,C}, A is the leader, then close B and C (A is still the leader)
         init(false);
-        close(true, true, b,c);
+        close(true, true, b, c);
 
         // Add the first entry, this will time out as there's no majority
         as.timeout(500);
@@ -165,9 +166,9 @@ public class AppendEntriesTest {
         b=create("B", true);
         bs=new ReplicatedStateMachine<>(b);
         b.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a,b);
+        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b);
 
-        assertCommitIndex(10000, 500, raft.lastApplied(), a,b);
+        assertCommitIndex(10000, 500, raft.lastApplied(), raft.lastApplied(), a, b);
         for(JChannel ch: Arrays.asList(a,b)) {
             raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
             System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
@@ -175,6 +176,49 @@ public class AppendEntriesTest {
             assert raft.commitIndex() == 1;
         }
         assertSame(as, bs);
+    }
+
+    /**
+     * Tests https://github.com/belaban/jgroups-raft/issues/30-31: correct commit_index after leader restart, and
+     * populating request table in RAFT on leader change
+     */
+    public void testLeaderRestart() throws Exception {
+        a=create("A", false);
+        raft(a).stateMachine(new DummyStateMachine());
+        b=create("B", true);
+        raft(b).stateMachine(new DummyStateMachine());
+        a.connect(CLUSTER);
+        b.connect(CLUSTER);
+        // A and B now have a majority and A is leader
+        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b);
+
+        assertLeader(a, 10000, 500);
+        assert !raft(b).isLeader();
+        System.out.println("--> disconnecting B");
+        b.disconnect(); // stop B; it was only needed to make A the leader
+
+        // Now try to make a change on A. It will appen it to its log but fail to commit as it doesn't have a majority
+        try {
+            raft(a).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
+            assert false : "set() should have thrown a timeout as we cannot commit the change";
+        }
+        catch(TimeoutException ex) {
+            System.out.printf("got exception as expected: %s\n", ex);
+        }
+
+        // A now has last_applied=1 and commit_index=0:
+        assertCommitIndex(10000, 500, 0, 1, a);
+
+        // Now start B again, this gives us a majority and entry #1 should be able to be committed
+        System.out.println("--> restarting B");
+        b=create("B", true);
+        raft(b).stateMachine(new DummyStateMachine());
+        b.connect(CLUSTER);
+        // A and B now have a majority and A is leader
+        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b);
+
+        // A and B should now have last_applied=1 and commit_index=1
+        assertCommitIndex(10000, 500, 1, 1, a,b);
     }
 
 
@@ -196,7 +240,7 @@ public class AppendEntriesTest {
         c=create("C", true);  // follower
         cs=new ReplicatedStateMachine<>(c);
         c.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a,b,c);
+        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b, c);
 
         assertSame(as, bs, cs);
     }
@@ -504,7 +548,7 @@ public class AppendEntriesTest {
 
     protected void initB() throws Exception {
         b=create("B", true); // follower
-        getImpl(b).raft().stateMachine(new DummyStateMachine());
+        raft(b).stateMachine(new DummyStateMachine());
         b.connect(CLUSTER);
     }
 
@@ -517,6 +561,17 @@ public class AppendEntriesTest {
         RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
         Field impl=Util.getField(RAFT.class, "impl");
         return (RaftImpl)Util.getField(impl, raft);
+    }
+
+    protected void assertLeader(JChannel ch, long timeout, long interval) {
+        RAFT raft=raft(ch);
+        long stop_time=System.currentTimeMillis() + timeout;
+        while(System.currentTimeMillis() < stop_time) {
+            if(raft.isLeader())
+                break;
+            Util.sleep(interval);
+        }
+        assert raft.isLeader();
     }
 
     protected void assertPresent(int key, int value, ReplicatedStateMachine<Integer,Integer> ... rsms) {
@@ -574,13 +629,13 @@ public class AppendEntriesTest {
         assertEquals(log.currentTerm(), term);
     }
 
-    protected void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
+    protected void assertCommitIndex(long timeout, long interval, int expected_commit, int expected_applied, JChannel... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;
             for(JChannel ch: channels) {
                 RAFT raft=raft(ch);
-                if(expected_commit != raft.commitIndex())
+                if(expected_commit != raft.commitIndex() || expected_applied != raft.lastApplied())
                     all_ok=false;
             }
             if(all_ok)
@@ -590,8 +645,8 @@ public class AppendEntriesTest {
         for(JChannel ch: channels) {
             RAFT raft=raft(ch);
             System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
-            assert raft.commitIndex() == expected_commit : String.format("%s: last-applied=%d, commit-index=%d",
-                                                                         ch.getAddress(), raft.lastApplied(), raft.commitIndex());
+            assert raft.commitIndex() == expected_commit && raft.lastApplied() == expected_applied
+              : String.format("%s: last-applied=%d, commit-index=%d", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
         }
     }
 

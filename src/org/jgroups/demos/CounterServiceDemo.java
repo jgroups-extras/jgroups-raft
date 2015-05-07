@@ -5,6 +5,7 @@ import org.jgroups.ReceiverAdapter;
 import org.jgroups.View;
 import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.blocks.raft.CounterService;
+import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.util.Util;
 
@@ -13,57 +14,44 @@ import org.jgroups.util.Util;
  * should be modified to accept different CounterService implementations.
  */
 public class CounterServiceDemo {
-    protected JChannel ch;
+    protected JChannel       ch;
     protected CounterService counter_service;
 
-    void start(String props, String name, long repl_timeout, boolean allow_dirty_reads) throws Exception {
+    void start(String props, String name, long repl_timeout, boolean allow_dirty_reads, boolean follower) throws Exception {
         ch=new JChannel(props).name(name);
+        counter_service=new CounterService(ch).replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
+        if(follower)
+            disableElections(ch);
         ch.setReceiver(new ReceiverAdapter() {
             public void viewAccepted(View view) {
                 System.out.println("-- view: " + view);
             }
         });
+
         RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
         raft.raftId(name);
         try {
             ch.connect("cntrs");
-            loop(repl_timeout, allow_dirty_reads);
+            loop();
         }
         finally {
             Util.close(ch);
         }
     }
 
-    public void start(JChannel ch, long repl_timeout, boolean allow_dirty_reads) throws Exception {
-       this.ch=ch;
-        ch.setReceiver(new ReceiverAdapter() {
-            public void viewAccepted(View view) {
-                System.out.println("-- view: " + view);
-            }
-        });
-        loop(repl_timeout, allow_dirty_reads);
-    }
 
 
-    void loop(long repl_timeout, boolean allow_dirty_reads) throws Exception {
-        counter_service=new CounterService(ch);
-        counter_service.replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
-
-        Counter counter=null;
+    protected void loop() throws Exception {
+        Counter counter=counter_service.getOrCreateCounter("counter", 1);
         boolean looping=true;
         while(looping) {
             try {
-                int key=Util.keyPress("[1] Increment [2] Decrement [3] Compare and set\n" +
-                                        "[4] Create counter [5] Delete counter\n" +
-                                        "[6] Print counters [7] Dump log\n" +
-                                        "[8] Snapshot [9] Increment 1M times [x] Exit\n" +
+                int key=Util.keyPress("[1] Increment [2] Decrement [3] Compare and set [4] Dump log\n" +
+                                        "[8] Snapshot [9] Increment N times [x] Exit\n" +
                                         "first-applied=" + firstApplied() +
                                         ", last-applied=" + counter_service.lastApplied() +
                                         ", commit-index=" + counter_service.commitIndex() +
                                         ", log size=" + Util.printBytes(logSize()) + "\n");
-
-                if(counter == null && key != 'x')
-                    counter=counter_service.getOrCreateCounter("mycounter", 1);
 
                 switch(key) {
                     case '1':
@@ -86,18 +74,6 @@ public class CounterServiceDemo {
                         }
                         break;
                     case '4':
-                        String counter_name=Util.readStringFromStdin("counter name: ");
-                        counter=counter_service.getOrCreateCounter(counter_name, 1);
-                        break;
-                    case '5':
-                        counter_name=Util.readStringFromStdin("counter name: ");
-                        counter_service.deleteCounter(counter_name);
-                        counter=null;
-                        break;
-                    case '6':
-                        System.out.println("Counters (current=" + counter.getName() + "):\n\n" + counter_service.printCounters());
-                        break;
-                    case '7':
                         dumpLog();
                         break;
                     case '8':
@@ -119,6 +95,9 @@ public class CounterServiceDemo {
                         break;
                     case 'x':
                         looping=false;
+                        break;
+                    case '\n':
+                        System.out.println(counter.getName() + ": " + counter.get() + "\n");
                         break;
                 }
             }
@@ -143,6 +122,12 @@ public class CounterServiceDemo {
         return counter_service.logSize();
     }
 
+    protected static void disableElections(JChannel ch) {
+        ELECTION election=(ELECTION)ch.getProtocolStack().findProtocol(ELECTION.class);
+        if(election != null)
+            election.noElections(true);
+    }
+
 
 
     public static void main(final String[] args) throws Exception {
@@ -150,6 +135,7 @@ public class CounterServiceDemo {
         String name=null;
         long repl_timeout=5000;
         boolean allow_dirty_reads=true;
+        boolean follower=false;
         for(int i=0; i < args.length; i++) {
             if(args[i].equals("-props")) {
                 properties=args[++i];
@@ -167,18 +153,22 @@ public class CounterServiceDemo {
                 allow_dirty_reads=Boolean.parseBoolean(args[++i]);
                 continue;
             }
+            if(args[i].equals("-follower")) {
+                follower=true;
+                continue;
+            }
             help();
             return;
         }
 
 
-        new CounterServiceDemo().start(properties, name, repl_timeout, allow_dirty_reads);
+        new CounterServiceDemo().start(properties, name, repl_timeout, allow_dirty_reads, follower);
 
     }
 
     private static void help() {
         System.out.println("CounterServiceDemo [-props props] [-name name] " +
-                             "[-repl_timeout timeout] [-allow_dirty_reads true|false]");
+                             "[-repl_timeout timeout] [-follower] [-allow_dirty_reads true|false]");
     }
 
 

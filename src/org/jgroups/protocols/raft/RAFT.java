@@ -122,6 +122,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected int                     log_size_bytes; // keeps counts of the bytes added to the log
 
 
+    public Address      address()                     {return local_addr;}
     public String       raftId()                      {return raft_id;}
     public RAFT         raftId(String id)             {this.raft_id=id; return this;}
     public int          majority()                    {synchronized(members) {return majority;}}
@@ -142,6 +143,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     public String       getLeader()                   {return leader != null? leader.toString() : "none";}
     public Address      leader()                      {return leader;}
     public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
+    public boolean      isLeader()                    {return leader != null && leader.equals(local_addr);}
     public org.jgroups.logging.Log getLog()           {return this.log;}
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
@@ -243,6 +245,13 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
     public synchronized int createNewTerm() {
         return ++current_term;
+    }
+
+    protected synchronized void createRequestTable() {
+        request_table=new RequestTable<>();
+        // Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31)
+        for(int i=this.commit_index+1; i <= this.last_applied; i++)
+            request_table.create(i, raft_id, null);
     }
 
     protected void createCommitTable() {
@@ -462,7 +471,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     }
 
     /**
-     * The blocking equivalent of {@link #setAsync(byte[],int,int, org.jgroups.util.Consumer)}. Used to apply a change
+     * The blocking equivalent of {@link #setAsync(byte[],int,int)}. Used to apply a change
      * across all cluster nodes via consensus.
      * @param buf The serialized command to be applied (interpreted by the caller)
      * @param offset The offset into the buffer
@@ -634,6 +643,12 @@ public class RAFT extends Protocol implements Runnable, Settable {
         if(this.commit_index > commit_idx) { // send an empty AppendEntries message as commit message
             Message msg=new Message(member).putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, 0, 0, 0, this.commit_index, false));
             down_prot.down(new Event(Event.MSG, msg));
+            return;
+        }
+
+        if(this.commit_index < this.last_applied) { // fixes https://github.com/belaban/jgroups-raft/issues/30
+            for(int i=this.commit_index+1; i <= this.last_applied; i++)
+                resend(member, i);
         }
     }
 

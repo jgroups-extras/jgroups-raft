@@ -16,19 +16,18 @@ import org.jgroups.util.Util;
  * @since  0.1
  */
 public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.RoleChange {
-    protected JChannel ch;
+    protected JChannel                              ch;
     protected ReplicatedStateMachine<String,Object> rsm;
 
     protected void start(String props, String name, boolean follower, long timeout) throws Exception {
-        ch=new JChannel(props);
-        if(name != null)
-            ch.name(name);
+        ch=new JChannel(props).name(name);
+        rsm=new ReplicatedStateMachine<>(ch).timeout(timeout);
         RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
         raft.raftId(name);
         if(follower)
             disableElections(ch);
         ch.setReceiver(this);
-        rsm=new ReplicatedStateMachine<>(ch).timeout(timeout);
+
         try {
             ch.connect("rsm");
             Util.registerChannel(rsm.channel(), "rsm");
