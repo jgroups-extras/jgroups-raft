@@ -1,12 +1,11 @@
 
-
-Reliable group communication with JGroups
-=========================================
+jgroups-raft
+============
 :author: Bela Ban <belaban@yahoo.com>
 :toc2:
 :toclevels: 3
 :icons:
-:homepage: http://www.jgroups.org
+:homepage: http://belaban.github.io/jgroups-raft
 :source-highlighter: pygments
 :iconsdir: ./images/icons
 
