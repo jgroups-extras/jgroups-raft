@@ -21,6 +21,7 @@
     <property name="tmp.dir"               value="${root.dir}/tmp"/>
     <property name="doc.dir"               value="${root.dir}/doc"/>
     <property name="manual.dir"            value="${doc.dir}/manual"/>
+    <property name="protocols.adoc"        value="${manual.dir}/protocols.adoc"/>
     <property name="javadoc.dir"           value="${dist.dir}/javadoc"/>
     <property name="conf.dir"              value="${root.dir}/conf"/>
     <property name="bin.dir"               value="${root.dir}/bin"/>
@@ -237,7 +238,7 @@
     </target>
 
     <target name="manual" description="Generates the manual (AsciiDoc --> HTML)"
-            depends="check-manual,prepare" unless="manual.up-to-date">
+            depends="check-manual,compile" unless="manual.up-to-date">
         <echo message="Building manual from asciidoc ..."/>
 
         <copy todir="${manual.dir}/">
@@ -246,6 +247,7 @@
             </fileset>
         </copy>
 
+        <prot-properties-to-doc protocols-file="${protocols.adoc}"/>
         <run-asciidoc dir="${manual.dir}" input="manual.adoc"/>
 
         <copy todir="${manual.dir}/build/images">
@@ -402,6 +404,23 @@
                 <jvmarg value="@{jvmarg2}"/>
                 <!--<additional-args/>-->
             </testng>
+        </sequential>
+    </macrodef>
+
+    <macrodef name="prot-properties-to-doc">
+        <attribute name="protocols-file"    default="${protocols.adoc}"/>
+        <sequential>
+            <echo message="Replacing variables in @{protocols-file}"/>
+
+            <java classname="org.jgroups.util.PropsToAsciidoc" classpathref="jg.classpath" fork="true">
+                <arg value="@{protocols-file}"/>
+                <!--jvmarg value="-Dcom.sun.management.jmxremote"/-->
+                <!--permissions>
+                    <grant class="javax.management.MBeanTrustPermission" name="*" actions=""/>
+                    <grant class="java.io.FilePermission" name="${manual.dir}/-" actions="read,write"/>
+                    <grant class="java.security.AllPermission"/>
+                </permissions-->
+            </java>
         </sequential>
     </macrodef>
 

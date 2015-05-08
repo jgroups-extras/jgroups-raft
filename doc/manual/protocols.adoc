@@ -1,0 +1,40 @@
+[[protlist]]
+
+== List of Protocols
+
+This chapter describes the most frequently used protocols, and their configuration.
+    
+
+Meanwhile, we recommend that users should copy one of the predefined configurations (shipped with jgroups-raft), e.g.
++raft.xml+, and make only minimal changes to it.
+
+
+
+
+
+[[NO_DUPES]]
+=== NO_DUPES
+
+
+
+${NO_DUPES}
+
+
+        
+
+[[CLIENT]]
+=== CLIENT
+
+${CLIENT}
+
+
+[[ELECTION]]
+=== ELECTION
+
+${ELECTION}
+
+
+[[RAFT]]
+=== RAFT
+
+${RAFT}
