@@ -8,23 +8,28 @@
         Ant/ivy based build.xml file for jgroups-raft. Needs ant to run
     </description>
 
-    <property name="version"          value="0.2"/>
-    <property name="root.dir"         value="${basedir}"/>
-    <property name="src.dir"          value="${root.dir}/src"/>
-    <property name="compile.dir"      value="${root.dir}/classes"/>
+    <property name="version"               value="0.2"/>
+    <property name="build.properties.file" value="build.properties"/>
+    <property file="${build.properties.file}"/>
+    <property name="root.dir"              value="${basedir}"/>
+    <property name="src.dir"               value="${root.dir}/src"/>
+    <property name="compile.dir"           value="${root.dir}/classes"/>
     <property name="tests.dir"             value="${root.dir}/tests"/>
     <property name="junit-functional.dir"  value="${tests.dir}/junit-functional"/>
-    <property name="lib.dir"          value="${root.dir}/lib"/>
-    <property name="dist.dir"         value="${root.dir}/dist"/>
-    <property name="tmp.dir"          value="${root.dir}/tmp"/>
-    <property name="javadoc.dir"      value="${dist.dir}/javadoc"/>
-    <property name="conf.dir"         value="${root.dir}/conf"/>
-    <property name="bin.dir"          value="${root.dir}/bin"/>
-    <property name="javadoc.packages" value="org.jgroups.*"/>
-    <property name="timestamp"        value=".timestamp"/>
-    <property name="maven.executable" value="mvn"/>
-    <property name="ivy.version"      value="2.4.0" />
-    <property name="ivy.props"        value="ivy.properties"/>
+    <property name="lib.dir"               value="${root.dir}/lib"/>
+    <property name="dist.dir"              value="${root.dir}/dist"/>
+    <property name="tmp.dir"               value="${root.dir}/tmp"/>
+    <property name="doc.dir"               value="${root.dir}/doc"/>
+    <property name="manual.dir"            value="${doc.dir}/manual"/>
+    <property name="javadoc.dir"           value="${dist.dir}/javadoc"/>
+    <property name="conf.dir"              value="${root.dir}/conf"/>
+    <property name="bin.dir"               value="${root.dir}/bin"/>
+    <property name="javadoc.packages"      value="org.jgroups.*"/>
+    <property name="timestamp"             value=".timestamp"/>
+    <property name="maven.executable"      value="mvn"/>
+    <property name="ivy.version"           value="2.4.0" />
+    <property name="ivy.props"             value="ivy.properties"/>
+    <property name="asciidoc.executable"   value="asciidoctor"/>
 
     <!-- 5 minutes per test suite timeout -->
     <property name="unittest.timeout" value="1800000"/>
@@ -173,6 +178,7 @@
         <property environment="env"/>
         <mkdir dir="${compile.dir}"/>
         <copy file="${ivy.props}.template" tofile="${ivy.props}" overwrite="false"/>
+        <copy file="${build.properties.file}.template" tofile="${build.properties.file}" overwrite="false"/>
     </target>
 
 
@@ -223,6 +229,38 @@
         </jar>
     </target>
 
+    <target name="check-manual">
+        <uptodate property="manual.up-to-date" targetfile="${manual.dir}/build/${timestamp}">
+            <srcfiles dir="${manual.dir}/" includes="**/*"/>
+        </uptodate>
+        <echo message="manual.up-to-date=${manual.up-to-date}"/>
+    </target>
+
+    <target name="manual" description="Generates the manual (AsciiDoc --> HTML)"
+            depends="check-manual,prepare" unless="manual.up-to-date">
+        <echo message="Building manual from asciidoc ..."/>
+
+        <copy todir="${manual.dir}/">
+            <fileset dir="${doc.dir}/stylesheets">
+                <include name="*.css"/>
+            </fileset>
+        </copy>
+
+        <run-asciidoc dir="${manual.dir}" input="manual.adoc"/>
+
+        <copy todir="${manual.dir}/build/images">
+            <fileset dir="${manual.dir}/images">
+                <include name="**/*"/>
+            </fileset>
+        </copy>
+        <copy todir="${manual.dir}/build">
+            <fileset dir="${doc.dir}/stylesheets">
+                <include name="*.css"/>
+            </fileset>
+        </copy>
+
+        <touch file="${manual.dir}/build/${timestamp}"/>
+    </target>
 
 
     <!-- generate java doc -->
@@ -275,6 +313,13 @@
         <delete>
             <fileset dir="${root.dir}" defaultexcludes="no">
                 <include name="**/*~"/>
+            </fileset>
+        </delete>
+        <delete dir="${manual.dir}/build"/>
+        <delete>
+            <fileset dir="${manual.dir}" defaultexcludes="no">
+                <include name="*.adoc.tmp"/>
+                <include name="*.css"/>
             </fileset>
         </delete>
     </target>
@@ -357,6 +402,18 @@
                 <jvmarg value="@{jvmarg2}"/>
                 <!--<additional-args/>-->
             </testng>
+        </sequential>
+    </macrodef>
+
+    <macrodef name="run-asciidoc">
+        <attribute name="dir"/>
+        <attribute name="input"/>
+        <sequential>
+            <mkdir dir="@{dir}/build"/>
+            <echo message="Generating index.html in @{dir}/build"/>
+            <exec executable="${asciidoc.executable}" dir="@{dir}">
+                <arg line="-n -a source-highlighter=highlightjs -a stylesheet=${asciidoctor-style} -a icons -o @{dir}/build/index.html @{input}"/>
+            </exec>
         </sequential>
     </macrodef>
 
