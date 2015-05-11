@@ -1,8 +1,9 @@
-package org.jgroups.util;
+package org.jgroups.raft.util;
 
 import org.jgroups.annotations.Property;
 import org.jgroups.annotations.Unsupported;
 import org.jgroups.stack.Protocol;
+import org.jgroups.util.Util;
 
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.transform.TransformerException;
@@ -40,7 +41,7 @@ public class PropsToAsciidoc {
             copy(new FileReader(new File(prot_file)), new FileWriter(f));
             String s = fileToString(f);
 
-            Set<Class<Protocol>> classes = Util.findClassesAssignableFrom("org.jgroups.protocols.raft",Protocol.class);
+            Set<Class<Protocol>> classes = Util.findClassesAssignableFrom("org.jgroups.protocols.raft", Protocol.class);
             // classes.addAll(Util.findClassesAssignableFrom("org.jgroups.protocols.pbcast",Protocol.class));
             Properties props = new Properties();
             for (Class<Protocol> clazz : classes)

@@ -1,7 +1,7 @@
 package org.jgroups.tests;
 
 import org.jgroups.Global;
-import org.jgroups.util.RequestTable;
+import org.jgroups.raft.util.RequestTable;
 import org.testng.annotations.Test;
 
 import java.util.concurrent.CompletableFuture;

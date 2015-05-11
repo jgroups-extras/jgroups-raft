@@ -1,8 +1,9 @@
-package org.jgroups.blocks.raft;
+package org.jgroups.raft.blocks;
 
 import org.jgroups.Channel;
 import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.raft.RaftHandle;
 import org.jgroups.util.*;
 
 import java.io.DataInput;
@@ -18,10 +19,9 @@ import java.util.concurrent.TimeUnit;
  * @since  0.2
  */
 public class CounterService implements StateMachine, RAFT.RoleChange {
-    protected Channel  ch;
-    protected RAFT     raft;
-    protected Settable settable; // usually CLIENT (at the top of the stack)
-    protected long     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
+    protected Channel    ch;
+    protected RaftHandle raft;
+    protected long       repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
 
     /** If true, reads can return the local counter value directly. Else, reads have to go through the leader */
     protected boolean  allow_dirty_reads=true;
@@ -29,7 +29,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     // keys: counter names, values: counter values
     protected final Map<String,Long> counters=new HashMap<>();
 
-    protected static enum Command {create, delete, get, set, compareAndSet, incrementAndGet, decrementAndGet, addAndGet}
+    protected enum Command {create, delete, get, set, compareAndSet, incrementAndGet, decrementAndGet, addAndGet}
 
 
     public CounterService(Channel ch) {
@@ -38,11 +38,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
     public void setChannel(Channel ch) {
         this.ch=ch;
-        if((raft=RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
-            throw new IllegalStateException("RAFT protocol must be present in configuration");
-        raft.stateMachine(this);
-        if((settable=RAFT.findProtocol(Settable.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
-            throw new IllegalStateException("Did not find a protocol implementing Settable");
+        this.raft=new RaftHandle(this.ch, this);
         raft.addRoleListener(this);
     }
 
@@ -55,6 +51,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public int            commitIndex()                 {return raft.commitIndex();}
     public void           snapshot() throws Exception   {raft.snapshot();}
     public int            logSize()                     {return raft.logSizeInBytes();}
+    public String         raftId()                      {return raft.raftId();}
+    public CounterService raftId(String id)             {raft.raftId(id); return this;}
 
     /**
      * Returns an existing counter, or creates a new one if none exists
@@ -192,7 +190,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     public void dumpLog() {
-        raft.logEntries((entry,index) -> {
+        raft.logEntries((entry, index) -> {
             StringBuilder sb=new StringBuilder().append(index).append(" (").append(entry.term()).append("): ");
             if(entry.command() == null) {
                 sb.append("<marker record>");
@@ -259,7 +257,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         }
 
         byte[] buf=out.buffer();
-        byte[] rsp=settable.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
+        byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
         return ignore_return_value? null: Util.objectFromByteBuffer(rsp);
     }
 

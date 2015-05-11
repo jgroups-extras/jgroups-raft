@@ -12,8 +12,8 @@ import java.util.Map;
 import java.util.function.ObjIntConsumer;
 
 import static org.fusesource.leveldbjni.JniDBFactory.*;
-import static org.jgroups.util.IntegerHelper.fromByteArrayToInt;
-import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
+import static org.jgroups.raft.util.IntegerHelper.fromByteArrayToInt;
+import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
 
 /**
  * Implementation of ${link #Log}

@@ -1,4 +1,4 @@
-package org.jgroups.util;
+package org.jgroups.raft.util;
 
 import org.jgroups.Address;
 

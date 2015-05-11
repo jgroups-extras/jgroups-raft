@@ -3,7 +3,7 @@
  import org.jgroups.Address;
  import org.jgroups.Global;
  import org.jgroups.JChannel;
- import org.jgroups.blocks.raft.ReplicatedStateMachine;
+ import org.jgroups.raft.blocks.ReplicatedStateMachine;
  import org.jgroups.protocols.raft.*;
  import org.jgroups.util.Util;
  import org.testng.annotations.AfterMethod;

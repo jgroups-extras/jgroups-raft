@@ -1,5 +1,6 @@
-package org.jgroups.util;
+package org.jgroups.raft.util;
 
+import org.jgroups.util.*;
 import org.testng.IConfigurationListener2;
 import org.testng.ITestContext;
 import org.testng.ITestListener;
@@ -628,7 +629,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
 
         public void writeTo(DataOutput out) throws Exception {
             out.writeInt(status);
-            Bits.writeString(classname,out);
+            Bits.writeString(classname, out);
             Bits.writeString(name,out);
             out.writeLong(start_time);
             out.writeLong(stop_time);

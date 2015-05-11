@@ -1,10 +1,10 @@
-package org.jgroups.demos;
+package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.View;
 import org.jgroups.blocks.atomic.Counter;
-import org.jgroups.blocks.raft.CounterService;
+import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.util.Util;
@@ -19,7 +19,7 @@ public class CounterServiceDemo {
 
     void start(String props, String name, long repl_timeout, boolean allow_dirty_reads, boolean follower) throws Exception {
         ch=new JChannel(props).name(name);
-        counter_service=new CounterService(ch).replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
+        counter_service=new CounterService(ch).raftId(name).replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
         if(follower)
             disableElections(ch);
         ch.setReceiver(new ReceiverAdapter() {
@@ -28,8 +28,6 @@ public class CounterServiceDemo {
             }
         });
 
-        RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
-        raft.raftId(name);
         try {
             ch.connect("cntrs");
             loop();

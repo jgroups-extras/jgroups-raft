@@ -1,9 +1,9 @@
-package org.jgroups.demos;
+package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
 import org.jgroups.ReceiverAdapter;
 import org.jgroups.View;
-import org.jgroups.blocks.raft.ReplicatedStateMachine;
+import org.jgroups.raft.blocks.ReplicatedStateMachine;
 import org.jgroups.jmx.JmxConfigurator;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
@@ -11,7 +11,7 @@ import org.jgroups.protocols.raft.Role;
 import org.jgroups.util.Util;
 
 /**
- * Demos {@link org.jgroups.blocks.raft.ReplicatedStateMachine}
+ * Demos {@link ReplicatedStateMachine}
  * @author Bela Ban
  * @since  0.1
  */
@@ -21,9 +21,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
 
     protected void start(String props, String name, boolean follower, long timeout) throws Exception {
         ch=new JChannel(props).name(name);
-        rsm=new ReplicatedStateMachine<>(ch).timeout(timeout);
-        RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
-        raft.raftId(name);
+        rsm=new ReplicatedStateMachine<>(ch).raftId(name).timeout(timeout);
         if(follower)
             disableElections(ch);
         ch.setReceiver(this);

@@ -4,6 +4,8 @@ import org.jgroups.*;
 import org.jgroups.annotations.*;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.pbcast.GMS;
+import org.jgroups.raft.util.CommitTable;
+import org.jgroups.raft.util.RequestTable;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
 import org.jgroups.util.*;
@@ -88,8 +90,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
     protected Log                     log_impl;
 
-    protected RequestTable<String>    request_table;
-    protected CommitTable             commit_table;
+    protected RequestTable<String> request_table;
+    protected CommitTable commit_table;
 
     protected final List<RoleChange>  role_change_listeners=new ArrayList<>();
 
@@ -757,7 +759,7 @@ public class RAFT extends Protocol implements Runnable, Settable {
     protected RAFT append(int term, int index, byte[] data, int offset, int length, boolean internal) {
         LogEntry entry=new LogEntry(term, data, offset, length, internal);
         log_impl.append(index, true, entry);
-        last_applied=log_impl.lastApplied(); // todo: remove RAFT.last_applied ?
+        last_applied=log_impl.lastApplied();
         snapshotIfNeeded(length);
         return this;
     }

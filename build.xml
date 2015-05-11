@@ -373,7 +373,7 @@
                     threadcount="@{threadcount}"
                     usedefaultlisteners="false"
                     outputdir="@{outputdir}"
-                    listeners="org.jgroups.util.JUnitXMLReporter"
+                    listeners="org.jgroups.raft.util.JUnitXMLReporter"
                     timeout="${unittest.timeout}"
                     timeOut="${unittest.timeout}"
                     verbose="0"
@@ -412,7 +412,7 @@
         <sequential>
             <echo message="Replacing variables in @{protocols-file}"/>
 
-            <java classname="org.jgroups.util.PropsToAsciidoc" classpathref="jg.classpath" fork="true">
+            <java classname="org.jgroups.raft.util.PropsToAsciidoc" classpathref="jg.classpath" fork="true">
                 <arg value="@{protocols-file}"/>
                 <!--jvmarg value="-Dcom.sun.management.jmxremote"/-->
                 <!--permissions>

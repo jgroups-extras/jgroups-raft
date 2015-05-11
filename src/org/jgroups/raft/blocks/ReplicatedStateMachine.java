@@ -1,8 +1,14 @@
-package org.jgroups.blocks.raft;
+package org.jgroups.raft.blocks;
 
 import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.*;
-import org.jgroups.util.*;
+import org.jgroups.protocols.raft.InternalCommand;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.StateMachine;
+import org.jgroups.raft.RaftHandle;
+import org.jgroups.util.Bits;
+import org.jgroups.util.ByteArrayDataInputStream;
+import org.jgroups.util.ByteArrayDataOutputStream;
+import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -18,14 +24,13 @@ import java.util.concurrent.TimeUnit;
  * @since  0.1
  */
 public class ReplicatedStateMachine<K,V> implements StateMachine {
-    protected RAFT                     raft;
-    protected Settable                 settable;
     protected JChannel                 ch;
+    protected RaftHandle               raft;
     protected long                     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
     protected final List<Notification> listeners=new ArrayList<>();
 
     // Hashmap for the contents. Doesn't need to be reentrant, as updates will be applied sequentially
-    protected final Map<K,V>           map=new HashMap<K,V>();
+    protected final Map<K,V>           map=new HashMap<>();
 
     protected static final byte        PUT    = 1;
     protected static final byte        REMOVE = 2;
@@ -33,26 +38,24 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     public ReplicatedStateMachine(JChannel ch) {
         this.ch=ch;
-        if((raft=RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
-            throw new IllegalStateException("RAFT protocol must be present in configuration");
-        raft.stateMachine(this);
-        if((settable=RAFT.findProtocol(Settable.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
-            throw new IllegalStateException("Did not find a protocol implementing Settable");
+        this.raft=new RaftHandle(this.ch, this);
     }
 
     public      ReplicatedStateMachine timeout(long timeout)       {this.repl_timeout=timeout; return this;}
     public void addRoleChangeListener(RAFT.RoleChange listener)    {raft.addRoleListener(listener);}
     public void addNotificationListener(Notification n)            {if(n != null) listeners.add(n);}
     public void removeNotificationListener(Notification n)         {listeners.remove(n);}
-    public void removeRoleChangeListener(RAFT.RoleChange listener) {raft.remRoleListener(listener);}
+    public void removeRoleChangeListener(RAFT.RoleChange listener) {raft.removeRoleListener(listener);}
     public int  lastApplied()                                      {return raft.lastApplied();}
     public int  commitIndex()                                      {return raft.commitIndex();}
     public JChannel channel()                                      {return ch;}
     public void snapshot() throws Exception                        {if(raft != null) raft.snapshot();}
     public int  logSize()                                          {return raft != null? raft.logSizeInBytes() : 0;}
+    public String raftId()                                         {return raft.raftId();}
+    public ReplicatedStateMachine<K,V> raftId(String id)           {raft.raftId(id); return this;}
 
     public void dumpLog() {
-        raft.logEntries((entry,index) -> {
+        raft.logEntries((entry, index) -> {
             StringBuilder sb=new StringBuilder().append(index).append(" (").append(entry.term()).append("): ");
             if(entry.command() == null) {
                 sb.append("<marker record>");
@@ -100,9 +103,9 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         return map.equals(((ReplicatedStateMachine)obj).map);
     }
 
-    public void loadFromLog() throws Exception {
-        raft.initStateMachineFromLog(false);
-    }
+    /*public void loadFromLog() throws Exception {
+        raftie.initStateMachineFromLog(false);
+    }*/
 
 
     /**
@@ -203,7 +206,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         }
 
         byte[] buf=out.buffer();
-        byte[] rsp=settable.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
+        byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
         return ignore_return_value? null: (V)Util.objectFromByteBuffer(rsp);
     }
 
@@ -219,7 +222,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         }
     }
 
-    public static interface Notification<K,V> {
+    public interface Notification<K,V> {
         void put(K key, V val, V old_val);
         void remove(K key, V old_val);
     }

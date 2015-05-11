@@ -3,5 +3,5 @@
 #!/bin/bash
 
 
-`dirname $0`/run.sh org.jgroups.demos.ReplicatedStateMachineDemo -props raft.xml  $*
+`dirname $0`/run.sh org.jgroups.raft.demos.ReplicatedStateMachineDemo -props raft.xml  $*
 

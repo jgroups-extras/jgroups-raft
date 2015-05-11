@@ -1,4 +1,4 @@
-package org.jgroups.util;
+package org.jgroups.raft.util;
 
 /**
  * Created by ugol on 05/12/14.
