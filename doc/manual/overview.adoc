@@ -49,6 +49,22 @@ The feature set of jgroups-raft includes
 
 === Architecture
 
+The architecture of jgroups-raft is shown below.
+
 [[ArchitectureFig]]
 .The architecture of jgroups-raft
 image::images/Architecture.png["Architecture of jgroups-raft,align=left,valign=top,width="60%"]
+
+The components that make up jgroups-raft are
+
+* A JGroups protocol stack with jgroups-raft specific protocols added:
+** `NO_DUPES`: makes sure that a jgroups-raft node does not appear in a view more than once
+** `ELECTION`: handles leader election
+** `RAFT`: implements the Raft algorithm, ie. appending entries to the log, committing them, syncing new members etc
+** `CLIENT`: handles client requests and redirects requests to the leader
+* `Channel`: this is a regular JGroups `JChannel` or `ForkChannel`
+* `RaftHandle`: the main class for users of jgroups-raft to interact with
+* `StateMachine`: an implementation of `StateMachine`. This is typically a replicated state machine. jgroups-raft
+   ships with a number of building blocks implementing `StateMachine` such as `CounterService` or `ReplicatedStateMachine`.
+
+The components are discussed later.
