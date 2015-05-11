@@ -48,3 +48,7 @@ The feature set of jgroups-raft includes
 
 
 === Architecture
+
+[[ArchitectureFig]]
+.The architecture of jgroups-raft
+image::images/Architecture.png["Architecture of jgroups-raft,align=left,valign=top,width="60%"]

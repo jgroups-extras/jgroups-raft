@@ -26,6 +26,11 @@ public class RaftHandle implements Settable {
     protected RAFT         raft;
     protected Settable     settable; // usually CLIENT (at the top of the stack)
 
+    /**
+     * Creates a RaftHandle instance.
+     * @param ch The channel over which to create the RaftHandle. Must be non-null, but doesn't yet need to be connected
+     * @param sm An implementation of {@link StateMachine}. Can be null, ie. if it is set later via {@link #stateMachine(StateMachine)}.
+     */
     public RaftHandle(Channel ch, StateMachine sm) {
         if((this.ch=ch) == null)
             throw new IllegalStateException("channel must not be null");
