@@ -164,7 +164,54 @@ public static void main(String[] args) throws Exception {
 
 
 
+=== Configuration
 
+The configuration of a member is either done declaratively via an XML config file or programmatically. Refer to the
+JGroups documentation for details.
+
+A sample XML configuration file is shown below (edited for brevity):
+
+[source,xml]
+----
+<config xmlns="urn:org:jgroups"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="urn:org:jgroups http://www.jgroups.org/schema/jgroups.xsd">
+    <UDP
+         mcast_addr="228.5.5.5"
+         mcast_port="${jgroups.udp.mcast_port:45588}"/>
+    <PING />
+    <MERGE3 />
+    <FD_SOCK/>
+    <FD_ALL/>
+    <VERIFY_SUSPECT timeout="1500"  />
+    <pbcast.NAKACK2 xmit_interval="500"
+                    discard_delivered_msgs="true"/>
+    <UNICAST3 xmit_interval="500"
+              max_msg_batch_size="500"/>
+    <pbcast.STABLE desired_avg_gossip="50000"
+                   max_bytes="4M"/>
+    <raft.NO_DUPES/>                                                         // <1>
+    <pbcast.GMS print_local_addr="true" join_timeout="2000"
+                view_bundling="true"/>
+    <UFC max_credits="2M" min_threshold="0.4"/>
+    <MFC max_credits="2M" min_threshold="0.4"/>
+    <FRAG2 frag_size="60K"  />
+    <raft.ELECTION election_min_interval="100" election_max_interval="500"/> // <2>
+    <raft.RAFT members="A,B,C,D" raft_id="${raft_id:undefined}"/>            // <3>
+    <raft.CLIENT/>                                                           // <4>
+</config>
+----
+<1> `NO_DUPES`: checks that joining a new member doesn't lead to duplicate `raft_id` s in the membership. Rejects the
+     JOIN if it would. Must be placed somewhere _below_ `GMS`
+<2> `ELECTION`: this protocol implements leader election, as defined in Raft. It is independent from `RAFT` and could
+     (and may, in the future) be replaced with a different election protocol. Attributes `election_min_interval` and
+     `election_max_interval` define the range in which jgroups-raft picks a random election timeout.
+<3> `RAFT`: the main protocol implementing log appending and committing, handling state machine updates, snapshotting etc.
+     Attribute `members` defines the (fixed) membership (may still be redfined by `addServer`/`removeServer` log entries
+     when initializing a member from the persistent log. Attribute `raft_id` defines the ID of the current member (needs
+     to be an element of `members`, as discussed earlier).
+
+This is a regular JGroups XML configuration, except that jgroups-raft added 4 additional protocols.
 
 
 
@@ -172,5 +219,31 @@ public static void main(String[] args) throws Exception {
 [[DynamicMembership]]
 === Adding and removing members
 
-tba
+TBD: discuss scripts provided to add/remove servers
+
+The `RAFT` protocol provides methods `addServer(String raft_id)` and `removeServer(String raft_id)` to add and remove
+servers from the static membership (defined by `RAFT.members`). Only one server at a time can be added and removed.
+
+Both methods are exposed via JMX, so `jconsole` or `probe.sh` can be used. To use probe.sh:
+
+----
+probe.sh op=RAFT.addServer["D"]
+----
+
+This will call `addServer("D")` in all cluster members. Non-leaders will ignore the request and log a warning message;
+the leader is the only member which processes the request.
+
+The steps to add a member are as follows (say we have `RAFT.members="A,B,C"` and want o add "D"):
+
+* The current majority (out of {"A", "B", "C"}) is 2
+* To add "D", we need agreement from the current membership. This means that at least 2 members have to be running. If
+  not, calling `addServer("D")` will fail
+* Once `A` (the leader) processed `addServer("D")`, everybody's `RAFT.members` is "A","B","C","D"
+* At this point, the XML configuration files should be updated so that `RAFT.members="A,B,C,D"`
+* If not, members will read the correct membership when getting initialized by their logs
+* A new member `D` can now be started (its XML config needs to have the correct `members` attribute !)
+
+
+
+
 
