@@ -210,6 +210,7 @@ A sample XML configuration file is shown below (edited for brevity):
      Attribute `members` defines the (fixed) membership (may still be redfined by `addServer`/`removeServer` log entries
      when initializing a member from the persistent log. Attribute `raft_id` defines the ID of the current member (needs
      to be an element of `members`, as discussed earlier).
+<4> `CLIENT` is used to redirect requests to the current Raft leader, or to throw an exception if no member is leader
 
 This is a regular JGroups XML configuration, except that jgroups-raft added 4 additional protocols.
 
