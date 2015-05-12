@@ -78,12 +78,14 @@ CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length); // <3>
 <3> Asynchronous change; this method returns immediately with a `CompletableFuture` which can be used to retrieve the
     result later, or to provide some code that's executed as soon as the result is available (e.g. `whenComplete()`).
 
-The contents of the request and response buffers is application specific. For example, if we implemented a replicated
-hash map, then a request could for example be a `put(key,value)`. The put would have to be serialized into the buffer,
-as well as the key and the value. When committing the change, every state machine needs to de-serialize the buffer into
-a `put(key,value)` and apply it to its state (see <<ImplementingStateMachine>>). If there is a return value to the `put()`
-call, e.g. the previous value associated with `key`, then it will be serialized into a buffer and returned as result of
-one of the `setX()` calls.
+The contents of the request and response buffers is application specific.
+
+For example, if we implemented a replicated hash map, then a request could for example be a `put(key,value)`. The `put()`
+would have to be serialized into the buffer, as well as the key and the value.
+
+When committing the change, every state machine needs to de-serialize the buffer into a `put(key,value)` and apply it to
+its state (see <<ImplementingStateMachine>>). If there is a return value to the `put()` call, e.g. the previous value
+associated with `key`, then it will be serialized into a buffer and returned as result of one of the `setX()` calls.
 
 
 
@@ -91,9 +93,76 @@ one of the `setX()` calls.
 [[ImplementingStateMachine]]
 ==== Implementing a StateMachine
 
+`StateMachine` is an interface and is defined as follows:
+
+[source,java]
+----
+public interface StateMachine {
+    byte[] apply(byte[] data, int offset, int length) throws Exception;  // <1>
+    void   readContentFrom(DataInput in) throws Exception;               // <2>
+    void   writeContentTo(DataOutput out) throws Exception;              // <3>
+}
+----
+<1> This method is called whenever a log entry is _committed_. The buffer's contents are application specific (e.g this
+    could be a serialized `put(key,value)` as discussed above. If there is a return value of applying the change to the
+    state machine, it needs to be serialized so that it can be returned to the caller (e.g. a client).
+<2> This method is called when `RAFT` needs to initialize a state machine from a _snapshot_ (a dump of a state
+    machine's contents to an external stream (e.g. a file)). The `writeContentTo()` method below wrote the contents
+    to a file before, in an application specific format, and this method now needs to read the contents back into the
+    state machine.
+<3> This method is the opposite of `readContentFrom()` and writes the contents of this state machine to a stream
+    (e.g. a file).
+
+
+[[Snapshots]]
+==== Snapshotting and state transfer
+
+All cluster members maintain a persistent log and append all changes as log entries to the end of the log. To prevent
+logs from growing indefinitely, a _snapshot_ of the state machine can be made and the log truncated. This is done
+(programatically) with method `snapshot()`, or declaratively (see below).
+
+This method calls `StateMachine.writeContentTo()` to dump the state of the state machine into a snapshot file and then
+truncates the log. New members who don't have a log yet are initialized by sending them the snapshot first. After that,
+they will catch up via the regular Raft mechanism.
+
+Logs can be snapshot automatically by setting `RAFT.max_log_size` to the max number of bytes that a log is allowed to
+grow to until a snapshot is taken.
 
 
 ==== Miscellaneous methods
+
+Other methods in `RaftHandle` include:
+
+leader():: Returns the address of the current Raft leader, or null if there is no leader (e.g. in case there was no
+           majority to elect a leader)
+isLeader():: Whether or not the current member is the leader
+addRoleListener(RAFT.RoleChange listener):: Allows to register a  `RoleChange` listener which is notified when the current
+             member changes its role (`Leader`, `Follower`, `Candidate`)
+currentTerm():: Returns the current term (see Raft for details)
+lastApplied():: Returns the index of the last log entry that was appended to the log
+commitIndex():: Returns the index of the last log entry that was committed
+raft():: Returns a reference to the `RAFT` protocol in the current member's stack. Provided for experts who need to
+         access `RAFT` directly.
+
+raftId(String id):: Used to set the `raft_id` programmatically (note that this can also be done by setting `raft_id` in
+                    `RAFT` in the XML configuration. For example, the following code sets `raft_id` from the command line:
+[source,java]
+----
+protected void start(String raft_id) throws Exception {
+    JChannel ch=new JChannel("raft.xml").name(raft_id);   // <2>
+    RaftHandle handle=new RaftHandle(ch, this).raftId(raft_id); // <3>
+    ch.connect("raft-cluster");  // <4>
+}
+
+public static void main(String[] args) throws Exception {
+    new bla().start(args[0]);  // <1>
+}
+----
+<1> The `raft_id` can for example be passed to the program as an argument
+<2> The channel is created and its logical name set to be the same as `raft_id`. This is not necessary, but convenient.
+<3> Now `raft_id` can be set via `RaftHandle.raftId(String id)`.
+
+
 
 
 
@@ -103,4 +172,5 @@ one of the `setX()` calls.
 [[DynamicMembership]]
 === Adding and removing members
 
+tba
 

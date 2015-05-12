@@ -26,7 +26,6 @@ of jgroups-raft.
 Bela Ban, Kreuzlingen Switzerland 2015
 
 
-
 include::./overview.adoc[Overview]
 
 include::./using.adoc[Using jgroups-raft]
