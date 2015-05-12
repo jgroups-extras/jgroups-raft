@@ -60,11 +60,13 @@ The components that make up jgroups-raft are
 * A JGroups protocol stack with jgroups-raft specific protocols added:
 ** `NO_DUPES`: makes sure that a jgroups-raft node does not appear in a view more than once
 ** `ELECTION`: handles leader election
-** `RAFT`: implements the Raft algorithm, ie. appending entries to the log, committing them, syncing new members etc
+** `RAFT`: implements the Raft algorithm, ie. appending entries to the persistent log, committing them, syncing new members etc
 ** `CLIENT`: handles client requests and redirects requests to the leader
 * `Channel`: this is a regular JGroups `JChannel` or `ForkChannel`
 * `RaftHandle`: the main class for users of jgroups-raft to interact with
 * `StateMachine`: an implementation of `StateMachine`. This is typically a replicated state machine. jgroups-raft
    ships with a number of building blocks implementing `StateMachine` such as `CounterService` or `ReplicatedStateMachine`.
 
-The components are discussed later.
+The figure below shows one node in a cluster, but the other nodes have the same setup except that every node is required
+to have a different `raft_id` (defined in `RAFT`). This is a string which defines one cluster member; all members
+need to have different raft_ids (more on this later).

@@ -1,6 +1,5 @@
 [[protlist]]
-
-== List of Protocols
+== List of protocols
 
 This chapter describes the most frequently used protocols, and their configuration.
     

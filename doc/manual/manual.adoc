@@ -1,6 +1,6 @@
 
-jgroups-raft
-============
+Distributed consensus with jgroups-raft
+=======================================
 :author: Bela Ban <belaban@yahoo.com>
 :toc2:
 :toclevels: 3
@@ -28,5 +28,9 @@ Bela Ban, Kreuzlingen Switzerland 2015
 
 
 include::./overview.adoc[Overview]
+
+include::./using.adoc[Using jgroups-raft]
+
+include::./blocks.adoc[Building blocks]
 
 include::./protocols.adoc.tmp[Protocol list]

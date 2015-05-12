@@ -90,8 +90,8 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
     protected Log                     log_impl;
 
-    protected RequestTable<String> request_table;
-    protected CommitTable commit_table;
+    protected RequestTable<String>    request_table;
+    protected CommitTable             commit_table;
 
     protected final List<RoleChange>  role_change_listeners=new ArrayList<>();
 
