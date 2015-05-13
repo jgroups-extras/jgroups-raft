@@ -44,7 +44,7 @@ Caused by: java.lang.SecurityException: join of B rejected as it would create a 
 	at org.jgroups.protocols.pbcast.STATE_TRANSFER.down(STATE_TRANSFER.java:202)
 	at org.jgroups.protocols.raft.ELECTION.down(ELECTION.java:112)
 	at org.jgroups.protocols.raft.RAFT.down(RAFT.java:442)
-	at org.jgroups.protocols.raft.CLIENT.down(CLIENT.java:103)
+	at org.jgroups.protocols.raft.REDIRECT.down(REDIRECT.java:103)
 	at org.jgroups.stack.ProtocolStack.down(ProtocolStack.java:1038)
 	at org.jgroups.JChannel.down(JChannel.java:791)
 	at org.jgroups.JChannel._connect(JChannel.java:564)
@@ -61,17 +61,14 @@ ${NO_DUPES}
 
         
 
-[[CLIENT]]
-=== CLIENT
+[[REDIRECT]]
+=== REDIRECT
 
-The `CLIENT` protocol needs to be somewhere above `RAFT`. It keeps track of the current Raft leader and redirects
+The `REDIRECT` protocol needs to be somewhere above `RAFT`. It keeps track of the current Raft leader and redirects
 requests to the right leader. If there is no leader, e.g. because there's no majority to elect one, an exception will
 be thrown.
 
-In the future, `CLIENT` will also handle requests received from remote clients (e.g. via a TCP socket), possibly
-written in a different language.
-
-${CLIENT}
+${REDIRECT}
 
 
 [[ELECTION]]

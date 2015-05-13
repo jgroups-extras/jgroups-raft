@@ -74,7 +74,7 @@
          ELECTION election=new ELECTION().noElections(true);
          RAFT raft=new RAFT().members(members).raftId(name)
            .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
-         CLIENT client=new CLIENT();
+         REDIRECT client=new REDIRECT();
          return new JChannel(Util.getTestStack(election, raft, client)).name(name);
      }
 

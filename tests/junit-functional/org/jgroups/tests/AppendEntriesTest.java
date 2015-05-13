@@ -502,7 +502,7 @@ public class AppendEntriesTest {
         ELECTION election=new ELECTION().noElections(follower);
         RAFT raft=new RAFT().members(members).raftId(name)
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
-        return new JChannel(Util.getTestStack(election, raft, new CLIENT())).name(name);
+        return new JChannel(Util.getTestStack(election, raft, new REDIRECT())).name(name);
     }
 
 

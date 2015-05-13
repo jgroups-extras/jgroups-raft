@@ -24,7 +24,7 @@ import java.util.function.ObjIntConsumer;
 public class RaftHandle implements Settable {
     protected Channel      ch;
     protected RAFT         raft;
-    protected Settable     settable; // usually CLIENT (at the top of the stack)
+    protected Settable     settable; // usually REDIRECT (at the top of the stack)
 
     /**
      * Creates a RaftHandle instance.
@@ -37,7 +37,7 @@ public class RaftHandle implements Settable {
         if((raft=RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
             throw new IllegalStateException("RAFT protocol was not found");
         if((settable=RAFT.findProtocol(Settable.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
-            throw new IllegalStateException("did not find a protocol implementing Settable (e.g. CLIENT or RAFT)");
+            throw new IllegalStateException("did not find a protocol implementing Settable (e.g. REDIRECT or RAFT)");
         stateMachine(sm);
     }
 

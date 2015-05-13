@@ -25,15 +25,15 @@ import java.util.function.BiConsumer;
  * @since  0.1
  */
 @MBean(description="Redirects requests to current leader")
-public class CLIENT extends Protocol implements Settable {
+public class REDIRECT extends Protocol implements Settable {
     // When moving to JGroups -> add to jg-protocol-ids.xml
-    protected static final short CLIENT_ID      = 1026;
+    protected static final short REDIRECT_ID    = 1026;
 
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short REDIRECT_HDR   = 4000;
 
     static {
-        ClassConfigurator.addProtocol(CLIENT_ID,CLIENT.class);
+        ClassConfigurator.addProtocol(REDIRECT_ID,REDIRECT.class);
         ClassConfigurator.add(REDIRECT_HDR, RedirectHeader.class);
     }
 
@@ -138,7 +138,7 @@ public class CLIENT extends Protocol implements Settable {
         Address sender=msg.src();
         switch(hdr.type) {
             case RedirectHeader.REQ:
-                log.trace("%s: received redirected request %d from %s", local_addr, hdr.corr_id,  sender);
+                log.trace("%s: received redirected request %d from %s", local_addr, hdr.corr_id, sender);
                 raft.setAsync(msg.getRawBuffer(), msg.getOffset(), msg.getLength())
                   .whenComplete(new ResponseHandler(sender, hdr.corr_id));
                 break;
