@@ -52,50 +52,12 @@ There's a demo `ReplicatedStateMachineDemo` which can be used to interactively u
 [source,java]
 ----
 public interface Counter {
-
-    public String getName();
-
-    /**
-     * Gets the current value of the counter
-     * @return The current value
-     */
-    public long get();
-
-    /**
-     * Sets the counter to a new value
-     * @param new_value The new value
-     */
-    public void set(long new_value);
-
-    /**
-     * Atomically updates the counter using a CAS operation
-     *
-     * @param expect The expected value of the counter
-     * @param update The new value of the counter
-     * @return True if the counter could be updated, false otherwise
-     */
+    public long    get();
+    public void    set(long new_value);
     public boolean compareAndSet(long expect, long update);
-
-    /**
-     * Atomically increments the counter and returns the new value
-     * @return The new value
-     */
-    public long incrementAndGet();
-
-    /**
-     * Atomically decrements the counter and returns the new value
-     * @return The new value
-     */
-    public long decrementAndGet();
-
-
-    /**
-     * Atomically adds the given value to the current value.
-     *
-     * @param delta the value to add
-     * @return the updated value
-     */
-    public long addAndGet(long delta);
+    public long    incrementAndGet();
+    public long    decrementAndGet();
+    public long    addAndGet(long delta);
 }
 ----
 
@@ -162,6 +124,24 @@ expense of availability. In the JGroups version, counters are always available, 
 scenario, and have to be reconciled by the application after the split brain is resolved.
 
 There's a demo `CounterServiceDemo` which can be used to interactively manipulate replicated counters.
+
+
+==== Reads and consensus
+
+Currently (as of jgroups-raft version 0.2), reading a counter is by default _dirty_, meaning that a read may return a
+stale value.
+
+This can be changed by calling `counter_service.allowDirtyReads(false)`.
+
+However, this inserts a dummy _read log entry_ which returns the value of counter when committed. Since this dummy entry
+is ordered correctly wrt writes in the log, it will always return correct values.
+
+The cost is that reads take up space in the persistent logs and that we need consensus (majority) for reads. In the next
+release of jgroups-raft, the mechanism for client reads as suggested in the Raft paper will be implemented. See
+https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
+
+NOTE: Non-dirty reads has not yet been implemented in `ReplicatedStateMachine`.
+
 
 
 

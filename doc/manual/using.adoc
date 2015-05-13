@@ -20,7 +20,7 @@ This defines a cluster of 3 members: "A", "B" and "C" (whose majority is 2).
 
 These are the `raft_id` attributes of the 3 members, so attribute `raft_id` in the example above needs to be one of them.
 If we don't start this member with the system property `-Draft_id=X` (where X needs to be "A", "B", or "C"),
-then the member will not start up as "undefined" is not a member of `{"A", "B", "C"}`.
+then the member will start up as "undefined" is not a member of `{"A", "B", "C"}`.
 
 NOTE: Note that while `RAFT` ensures that non-members cannot join a cluster, the `NO_DUPES` protocol makes sure that
 no duplicate member can join. Example: if we have `RAFT.members="A,B,C"` and actual members "A" and "B" joined, then
@@ -71,7 +71,7 @@ CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length); // <3>
 ----
 <1> Synchronous change; the caller will be blocked until the change has been forwarded to the leader, which sends it to
     all cluster members which apply it to their persistent logs and ack the change back to the leader. Once the leader
-    gets a majority of acks, it commits the change it its own log, applies it to its state machine and returns the
+    gets a majority of acks, it commits the change to its own log, applies it to its state machine and returns the
     response to the caller. The state machines thus only contain _committed changes_.
 <2> Same as above, except that this call is bounded with a timeout. If it elapses before a majority of acks have been
     received, a `TimeoutException` will be thrown.
@@ -80,7 +80,7 @@ CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length); // <3>
 
 The contents of the request and response buffers is application specific.
 
-For example, if we implemented a replicated hash map, then a request could for example be a `put(key,value)`. The `put()`
+For example, if we implemented a replicated hash map, then a request could be a `put(key,value)`. The `put()`
 would have to be serialized into the buffer, as well as the key and the value.
 
 When committing the change, every state machine needs to de-serialize the buffer into a `put(key,value)` and apply it to
@@ -199,47 +199,43 @@ A sample XML configuration file is shown below (edited for brevity):
     <raft.ELECTION election_min_interval="100" election_max_interval="500"/> // <2>
     <raft.RAFT members="A,B,C,D" raft_id="${raft_id:undefined}"/>            // <3>
     <raft.REDIRECT/>                                                         // <4>
+    <raft.CLIENT bind_addr="0.0.0.0" />                                      // <5>
 </config>
 ----
-<1> `NO_DUPES`: checks that joining a new member doesn't lead to duplicate `raft_id` s in the membership. Rejects the
+<1> `NO_DUPES`: checks that joining a new member doesn't lead to duplicate `raft_ids` in the membership. Rejects the
      JOIN if it would. Must be placed somewhere _below_ `GMS`
 <2> `ELECTION`: this protocol implements leader election, as defined in Raft. It is independent from `RAFT` and could
      (and may, in the future) be replaced with a different election protocol. Attributes `election_min_interval` and
-     `election_max_interval` define the range in which jgroups-raft picks a random election timeout.
+     `election_max_interval` define the range from which jgroups-raft picks a random election timeout.
 <3> `RAFT`: the main protocol implementing log appending and committing, handling state machine updates, snapshotting etc.
      Attribute `members` defines the (fixed) membership (may still be redfined by `addServer`/`removeServer` log entries
-     when initializing a member from the persistent log. Attribute `raft_id` defines the ID of the current member (needs
+     when initializing a member from the persistent log). Attribute `raft_id` defines the ID of the current member (needs
      to be an element of `members`, as discussed earlier).
 <4> `REDIRECT` is used to redirect requests to the current Raft leader, or to throw an exception if no member is leader
+<5> `CLIENT` listens on a socket (port `1965` by default) for client requests, executes them and sends the result back
+     to the clients. Currently, `addServer` and `removeServer` has been implemented.
 
-This is a regular JGroups XML configuration, except that jgroups-raft added 4 additional protocols.
+This is a regular JGroups XML configuration, except that jgroups-raft added a few additional protocols.
 
 
 
 
 [[DynamicMembership]]
-=== Adding and removing members
-
-TBD: discuss scripts provided to add/remove servers
+=== Adding and removing members dynamically
 
 The `RAFT` protocol provides methods `addServer(String raft_id)` and `removeServer(String raft_id)` to add and remove
-servers from the static membership (defined by `RAFT.members`). Only one server at a time can be added and removed.
+servers from the static membership (defined by `RAFT.members`). Only one server at a time can be added and removed, and
+adding or removing a server needs a majority ack to be committed.
 
-Both methods are exposed via JMX, so `jconsole` or `probe.sh` can be used. To use probe.sh:
+Both methods are exposed via JMX, so `jconsole` could be used. However, jgroups-raft also provides a script
+(`client.sh`) to do this in a more convenient way. The script uses `Client` to connect to a member's `CLIENT` protocol
+running at `localhost:1965` (can be changed). The request is then forwarded to the current leader.
 
-----
-probe.sh op=RAFT.addServer["D"]
-----
+The steps to add a member are as follows (say we have `RAFT.members="A,B,C"` and want to add "D"):
 
-This will call `addServer("D")` in all cluster members. Non-leaders will ignore the request and log a warning message;
-the leader is the only member which processes the request.
-
-The steps to add a member are as follows (say we have `RAFT.members="A,B,C"` and want o add "D"):
-
-* The current majority (out of {"A", "B", "C"}) is 2
-* To add "D", we need agreement from the current membership. This means that at least 2 members have to be running. If
-  not, calling `addServer("D")` will fail
-* Once `A` (the leader) processed `addServer("D")`, everybody's `RAFT.members` is "A","B","C","D"
+* Call `bin/client.sh -add D`
+** If needed, `-port PORT` or `-bind_addr ADDR` can be given, e.g. if we need to reach a member running on a different host
+* Once `A` (the leader) processed `addServer("D")`, everybody's `RAFT.members` is `"A","B","C","D"`
 * At this point, the XML configuration files should be updated so that `RAFT.members="A,B,C,D"`
 * If not, members will read the correct membership when getting initialized by their logs
 * A new member `D` can now be started (its XML config needs to have the correct `members` attribute !)

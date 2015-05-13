@@ -29,7 +29,7 @@ import java.util.function.ObjIntConsumer;
  * @since  0.1
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
-public class RAFT extends Protocol implements Runnable, Settable {
+public class RAFT extends Protocol implements Runnable, Settable, DynamicMembership {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final byte[] raft_id_key          = Util.stringToBytes("raft-id");
     protected static final short  RAFT_ID              = 1024;
@@ -273,13 +273,28 @@ public class RAFT extends Protocol implements Runnable, Settable {
     }
 
     @ManagedOperation(description="Adds a new server to members. Prevents duplicates")
-    public void addServer(String name) throws Exception {
-        changeMembers(name, InternalCommand.Type.addServer);
+    public CompletableFuture<byte[]> addServer(String name) throws Exception {
+        return changeMembers(name, InternalCommand.Type.addServer);
     }
 
     @ManagedOperation(description="Removes a new server from members")
-    public void removeServer(String name) throws Exception {
-        changeMembers(name, InternalCommand.Type.removeServer);
+    public CompletableFuture<byte[]> removeServer(String name) throws Exception {
+        return changeMembers(name, InternalCommand.Type.removeServer);
+    }
+
+    protected CompletableFuture<byte[]> changeMembers(String name, InternalCommand.Type type) throws Exception {
+        if(!dynamic_view_changes)
+            throw new Exception("dynamic view changes are not allowed; set dynamic_view_changes to true to enable it");
+        if(leader == null || (local_addr != null && !leader.equals(local_addr)))
+            throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+
+        if(members_being_changed)
+            throw new IllegalStateException(type + "(" + name + ") cannot be invoked as previous operation has not yet been committed");
+        members_being_changed=true;
+
+        InternalCommand cmd=new InternalCommand(type, name);
+        byte[] buf=Util.streamableToByteBuffer(cmd);
+        return setAsync(buf, 0, buf.length, cmd);
     }
 
     void _addServer(String name) {
@@ -862,20 +877,6 @@ public class RAFT extends Protocol implements Runnable, Settable {
 
 
 
-    protected void changeMembers(String name, InternalCommand.Type type) throws Exception {
-        if(!dynamic_view_changes)
-            throw new Exception("dynamic view changes are not allowed; set dynamic_view_changes to true to enable it");
-        if(leader == null || (local_addr != null && !leader.equals(local_addr)))
-            throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
-
-        if(members_being_changed)
-            throw new IllegalStateException(type + "(" + name + ") cannot be invoked as previous operation has not yet been committed");
-        members_being_changed=true;
-
-        InternalCommand cmd=new InternalCommand(type, name);
-        byte[] buf=Util.streamableToByteBuffer(cmd);
-        setAsync(buf, 0, buf.length, cmd);
-    }
 
     /** If cmd is not null, execute it. Else parse buf into InternalCommand then call cmd.execute() */
     protected void executeInternalCommand(InternalCommand cmd, byte[] buf, int offset, int length) {

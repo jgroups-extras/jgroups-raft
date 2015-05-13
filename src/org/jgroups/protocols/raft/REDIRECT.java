@@ -25,7 +25,7 @@ import java.util.function.BiConsumer;
  * @since  0.1
  */
 @MBean(description="Redirects requests to current leader")
-public class REDIRECT extends Protocol implements Settable {
+public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short REDIRECT_ID    = 1026;
 
@@ -36,6 +36,8 @@ public class REDIRECT extends Protocol implements Settable {
         ClassConfigurator.addProtocol(REDIRECT_ID,REDIRECT.class);
         ClassConfigurator.add(REDIRECT_HDR, RedirectHeader.class);
     }
+
+    public enum RequestType {SET_REQ, ADD_SERVER, REMOVE_SERVER, RSP};
 
 
     protected RAFT                raft;
@@ -61,11 +63,7 @@ public class REDIRECT extends Protocol implements Settable {
 
     @Override
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) {
-        Address leader=raft.leader();
-        if(leader == null)
-            throw new RuntimeException("there is currently no leader to forward set() request to");
-        if(view != null && !view.containsMember(leader))
-            throw new RuntimeException("leader " + leader + " is not member of view " + view);
+        Address leader=leader("set()");
 
         // we are the current leader: pass the call to the RAFT protocol
         if(local_addr != null && local_addr.equals(leader))
@@ -81,11 +79,21 @@ public class REDIRECT extends Protocol implements Settable {
         // we're not the current leader -> redirect request to leader and wait for response or timeout
         log.trace("%s: redirecting request %d to leader %s", local_addr, req_id, leader);
         Message redirect=new Message(leader, buf, offset, length)
-          .putHeader(id, new RedirectHeader(RedirectHeader.REQ, req_id, false));
+          .putHeader(id, new RedirectHeader(RequestType.SET_REQ, req_id, false));
         down_prot.down(new Event(Event.MSG, redirect));
         return future;
     }
 
+
+    @Override
+    public CompletableFuture<byte[]> addServer(String name) throws Exception {
+        return changeServer(name, true);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> removeServer(String name) throws Exception {
+        return changeServer(name, false);
+    }
 
 
     public void init() throws Exception {
@@ -137,12 +145,30 @@ public class REDIRECT extends Protocol implements Settable {
     protected void handleEvent(Message msg, RedirectHeader hdr) {
         Address sender=msg.src();
         switch(hdr.type) {
-            case RedirectHeader.REQ:
+            case SET_REQ:
                 log.trace("%s: received redirected request %d from %s", local_addr, hdr.corr_id, sender);
-                raft.setAsync(msg.getRawBuffer(), msg.getOffset(), msg.getLength())
-                  .whenComplete(new ResponseHandler(sender, hdr.corr_id));
+                ResponseHandler rsp_handler=new ResponseHandler(sender, hdr.corr_id);
+                try {
+                    raft.setAsync(msg.getRawBuffer(), msg.getOffset(), msg.getLength())
+                      .whenComplete(rsp_handler);
+                }
+                catch(Throwable t) {
+                    rsp_handler.apply(t);
+                }
                 break;
-            case RedirectHeader.RSP:
+            case ADD_SERVER:
+            case REMOVE_SERVER:
+                rsp_handler=new ResponseHandler(sender, hdr.corr_id);
+                InternalCommand.Type type=hdr.type == RequestType.ADD_SERVER? InternalCommand.Type.addServer : InternalCommand.Type.removeServer;
+                try {
+                    raft.changeMembers(new String(msg.getRawBuffer(), msg.getOffset(), msg.getLength()), type)
+                      .whenComplete(rsp_handler);
+                }
+                catch(Throwable t) {
+                    rsp_handler.apply(t);
+                }
+                break;
+            case RSP:
                 CompletableFuture<byte[]> future=null;
                 synchronized(requests) {
                     future=requests.remove(hdr.corr_id);
@@ -168,6 +194,38 @@ public class REDIRECT extends Protocol implements Settable {
         }
     }
 
+    protected Address leader(String req_type) {
+        Address leader=raft.leader();
+        if(leader == null)
+            throw new RuntimeException(String.format("there is currently no leader to forward %s request to", req_type));
+        if(view != null && !view.containsMember(leader))
+            throw new RuntimeException("leader " + leader + " is not member of view " + view);
+        return leader;
+    }
+
+    protected CompletableFuture<byte[]> changeServer(String name, boolean add) throws Exception {
+        Address leader=leader("addServer()/removeServer()");
+
+        // we are the current leader: pass the call to the RAFT protocol
+        if(local_addr != null && local_addr.equals(leader))
+            return raft.changeMembers(name, add? InternalCommand.Type.addServer : InternalCommand.Type.removeServer);
+
+        // add a unique ID to the request table, so we can correlate the response to the request
+        int req_id=request_ids.getAndIncrement();
+        CompletableFuture<byte[]> future=new CompletableFuture<>();
+        synchronized(requests) {
+            requests.put(req_id, future);
+        }
+
+        // we're not the current leader -> redirect request to leader and wait for response or timeout
+        log.trace("%s: redirecting request %d to leader %s", local_addr, req_id, leader);
+        byte[] buffer=Util.stringToBytes(name);
+        Message redirect=new Message(leader, buffer)
+          .putHeader(id, new RedirectHeader(add? RequestType.ADD_SERVER : RequestType.REMOVE_SERVER, req_id, false));
+        down_prot.down(new Event(Event.MSG, redirect));
+        return future;
+    }
+
 
     protected class ResponseHandler implements BiConsumer<byte[],Throwable> {
         protected final Address dest;
@@ -187,14 +245,14 @@ public class REDIRECT extends Protocol implements Settable {
         }
 
         protected void apply(byte[] arg) {
-            Message msg=new Message(dest, arg).putHeader(id, new RedirectHeader(RedirectHeader.RSP, corr_id, false));
+            Message msg=new Message(dest, arg).putHeader(id, new RedirectHeader(RequestType.RSP, corr_id, false));
             down_prot.down(new Event(Event.MSG, msg));
         }
 
         protected void apply(Throwable t) {
             try {
                 byte[] buf=Util.objectToByteBuffer(t);
-                Message msg=new Message(dest, buf).putHeader(id, new RedirectHeader(RedirectHeader.RSP, corr_id, true));
+                Message msg=new Message(dest, buf).putHeader(id, new RedirectHeader(RequestType.RSP, corr_id, true));
                 down_prot.down(new Event(Event.MSG, msg));
             }
             catch(Exception ex) {
@@ -205,15 +263,13 @@ public class REDIRECT extends Protocol implements Settable {
 
 
     public static class RedirectHeader extends Header {
-        protected static final byte REQ = 1;
-        protected static final byte RSP = 2;
-        protected byte    type;    // REQ or RSP
-        protected int     corr_id; // correlation ID at the sender, so responses can unblock requests (keyed by ID)
-        protected boolean exception; // true if RSP is an exception
+        protected RequestType type;
+        protected int         corr_id;   // correlation ID at the sender, so responses can unblock requests (keyed by ID)
+        protected boolean     exception; // true if RSP is an exception
 
         public RedirectHeader() {}
 
-        public RedirectHeader(byte type, int corr_id, boolean exception) {
+        public RedirectHeader(RequestType type, int corr_id, boolean exception) {
             this.type=type;
             this.corr_id=corr_id;
             this.exception=exception;
@@ -225,21 +281,20 @@ public class REDIRECT extends Protocol implements Settable {
         }
 
         public void writeTo(DataOutput out) throws Exception {
-            out.writeByte(type);
+            out.writeByte((byte)type.ordinal());
             Bits.writeInt(corr_id, out);
             out.writeBoolean(exception);
         }
 
         public void readFrom(DataInput in) throws Exception {
-            type=in.readByte();
+            type=RequestType.values()[in.readByte()];
             corr_id=Bits.readInt(in);
             exception=in.readBoolean();
         }
 
         public String toString() {
-            StringBuilder sb=new StringBuilder(type == 1? "req" : type == 2? "rsp" : "n/a");
-            sb.append(", corr_id=").append(corr_id).append(", exception=").append(exception);
-            return sb.toString();
+            return new StringBuilder(type.toString()).append(", corr_id=").append(corr_id)
+              .append(", exception=").append(exception).toString();
         }
     }
 }

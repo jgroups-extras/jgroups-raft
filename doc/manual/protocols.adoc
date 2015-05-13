@@ -59,17 +59,6 @@ is rejected.
 ${NO_DUPES}
 
 
-        
-
-[[REDIRECT]]
-=== REDIRECT
-
-The `REDIRECT` protocol needs to be somewhere above `RAFT`. It keeps track of the current Raft leader and redirects
-requests to the right leader. If there is no leader, e.g. because there's no majority to elect one, an exception will
-be thrown.
-
-${REDIRECT}
-
 
 [[ELECTION]]
 === ELECTION
@@ -87,3 +76,22 @@ ${ELECTION}
 syncing of new members and so on.
 
 ${RAFT}
+
+
+[[REDIRECT]]
+=== REDIRECT
+
+The `REDIRECT` protocol needs to be somewhere above `RAFT`. It keeps track of the current Raft leader and redirects
+requests to the right leader. If there is no leader, e.g. because there's no majority to elect one, an exception will
+be thrown.
+
+${REDIRECT}
+
+
+[[CLIENT]]
+=== CLIENT
+
+`CLIENT` listens on a socket for client requests. When a request is received, it is sent down where it will be forwarded
+(by `REDIRECT`) to the current leader which executes the request. The responses is then sent back to the client.
+
+${CLIENT}

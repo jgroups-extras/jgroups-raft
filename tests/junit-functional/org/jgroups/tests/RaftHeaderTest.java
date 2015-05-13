@@ -47,10 +47,10 @@ public class RaftHeaderTest {
     }
 
     public static void testRedirectHeader() throws Exception {
-        REDIRECT.RedirectHeader hdr=new REDIRECT.RedirectHeader();
+        REDIRECT.RedirectHeader hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.SET_REQ, 22, true);
         _testSize(hdr, REDIRECT.RedirectHeader.class);
 
-        hdr=new REDIRECT.RedirectHeader((byte)1, 22, true);
+        hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.RSP, 322649, false);
         _testSize(hdr, REDIRECT.RedirectHeader.class);
     }
 
