@@ -143,7 +143,41 @@ https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
 NOTE: Non-dirty reads has not yet been implemented in `ReplicatedStateMachine`.
 
 
+=== Singleton service
 
+A _singleton service_ is a service which is supposed to run only once in an entire cluster. Typically, in JGroups, a
+singleton service is started on the first member of a cluster. For example, if we have `{A,B,C,D,E}`, the singleton
+service (or services) would be running on `A`.
+
+If we have a partition, such that the cluster falls apart into `{A,B,C}` and `{D,E}`, then an _additional_ singleton
+would be started on `D`, as `D` became coordinator and doesn't know `{A,B,C}` didn't leave, but were partitioned away
+instead.
+
+When the partition ends, if `D` is not coordinator anymore, it would stop its singleton services.
+
+If multiple singletons (as provided by JGroups, e.g. during a network split) cannot be tolerated by the application,
+and the application has a requirement that _at most one singleton service_ can be running (better none than two),
+jgroups-raft can be used.
+
+The mechanism to implement singleton services in jgroups-raft is leader election: it is guaranteed that at most one
+leader exists in a given cluster at the same time. This is exactly what we need for singletons. The code below shows
+how to do this:
+
+[source,java]
+----
+JChannel ch=null;
+RaftHandle handle=new RaftHandle(ch, this); // <1>
+handle.addRoleListener(role -> {            // <2>
+    if(role == Role.Leader)                 // <3>
+        // start singleton services
+    else
+        // stop singleton services
+});
+----
+<1> A `RaftHandle` is created over a channel
+<2> A `RAFT.RoleChange` callback is registered with the handle. Alternatively, `addRoleListener()` could be called
+    directly on an instance of `RAFT` retrieved from the protocol stack associated with the given channel
+<3> When we become the Raft leader, the singleton services can be started, when not, they should be stopped (if running)
 
 
 
