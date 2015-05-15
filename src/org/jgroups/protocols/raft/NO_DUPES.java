@@ -71,7 +71,7 @@ public class NO_DUPES extends Protocol {
             case GMS.GmsHeader.JOIN_REQ_WITH_STATE_TRANSFER:
                 Address joiner=hdr.getMember();
                 if(!(joiner instanceof ExtendedUUID)) {
-                    log.error("joiner needs to have an ExtendedUUID but has a " + joiner.getClass().getSimpleName());
+                    log.debug("joiner %s needs to have an ExtendedUUID but has a %s", sender, joiner.getClass().getSimpleName());
                     break;
                 }
                 View v=view;
