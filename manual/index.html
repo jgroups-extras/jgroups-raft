@@ -774,6 +774,7 @@ p { margin-bottom: 1.25rem; }
 <li><a href="#_reads_and_consensus">3.2.1. Reads and consensus</a></li>
 </ul>
 </li>
+<li><a href="#_singleton_service">3.3. Singleton service</a></li>
 </ul>
 </li>
 <li><a href="#protlist">4. List of protocols</a>
@@ -1537,6 +1538,61 @@ Non-dirty reads has not yet been implemented in <code>ReplicatedStateMachine</co
 </tr>
 </table>
 </div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_singleton_service">3.3. Singleton service</h3>
+<div class="paragraph">
+<p>A <em>singleton service</em> is a service which is supposed to run only once in an entire cluster. Typically, in JGroups, a
+singleton service is started on the first member of a cluster. For example, if we have <code>{A,B,C,D,E}</code>, the singleton
+service (or services) would be running on <code>A</code>.</p>
+</div>
+<div class="paragraph">
+<p>If we have a partition, such that the cluster falls apart into <code>{A,B,C}</code> and <code>{D,E}</code>, then an <em>additional</em> singleton
+would be started on <code>D</code>, as <code>D</code> became coordinator and doesn&#8217;t know <code>{A,B,C}</code> didn&#8217;t leave, but were partitioned away
+instead.</p>
+</div>
+<div class="paragraph">
+<p>When the partition ends, if <code>D</code> is not coordinator anymore, it would stop its singleton services.</p>
+</div>
+<div class="paragraph">
+<p>If multiple singletons (as provided by JGroups, e.g. during a network split) cannot be tolerated by the application,
+and the application has a requirement that <em>at most one singleton service</em> can be running (better none than two),
+jgroups-raft can be used.</p>
+</div>
+<div class="paragraph">
+<p>The mechanism to implement singleton services in jgroups-raft is leader election: it is guaranteed that at most one
+leader exists in a given cluster at the same time. This is exactly what we need for singletons. The code below shows
+how to do this:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java" data-lang="java">JChannel ch=null;
+RaftHandle handle=new RaftHandle(ch, this); <img src="./images/icons/callouts/1.png" alt="1">
+handle.addRoleListener(role -&gt; {            <img src="./images/icons/callouts/2.png" alt="2">
+    if(role == Role.Leader)                 <img src="./images/icons/callouts/3.png" alt="3">
+        // start singleton services
+    else
+        // stop singleton services
+});</code></pre>
+</div>
+</div>
+<div class="colist arabic">
+<table>
+<tr>
+<td><img src="./images/icons/callouts/1.png" alt="1"></td>
+<td>A <code>RaftHandle</code> is created over a channel</td>
+</tr>
+<tr>
+<td><img src="./images/icons/callouts/2.png" alt="2"></td>
+<td>A <code>RAFT.RoleChange</code> callback is registered with the handle. Alternatively, <code>addRoleListener()</code> could be called
+directly on an instance of <code>RAFT</code> retrieved from the protocol stack associated with the given channel</td>
+</tr>
+<tr>
+<td><img src="./images/icons/callouts/3.png" alt="3"></td>
+<td>When we become the Raft leader, the singleton services can be started, when not, they should be stopped (if running)</td>
+</tr>
+</table>
 </div>
 </div>
 </div>
