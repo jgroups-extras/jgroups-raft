@@ -4,7 +4,7 @@
     <groupId>org.jgroups</groupId>
     <artifactId>jgroups-raft</artifactId>
     <packaging>bundle</packaging>
-    <name>jgroups-raft</name>
+    <name>JGroups-raft</name>
     <version>0.3</version>
     <url>http://www.jgroups.org</url>
     <description>
@@ -82,7 +82,7 @@
         <dependency>
             <groupId>org.jgroups</groupId>
             <artifactId>jgroups</artifactId>
-            <version>3.6.3.Final</version>
+            <version>3.6.0.Final</version>
         </dependency>
         <dependency>
             <groupId>org.fusesource.leveldbjni</groupId>
@@ -95,9 +95,9 @@
             <version>1.0.6</version>
         </dependency>
         <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-api</artifactId>
-            <version>2.0</version>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <version>1.2.14</version>
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -296,7 +296,7 @@
                             schema;version=${project.version},
                             ${project.groupId}.*;version=${project.version}
                         </Export-Package>
-                        <Bundle-RequiredExecutionEnvironment>J2SE-1.6</Bundle-RequiredExecutionEnvironment>
+                        <!--Bundle-RequiredExecutionEnvironment>1.8</Bundle-RequiredExecutionEnvironment-->
                     </instructions>
                 </configuration>
             </plugin>
@@ -332,7 +332,7 @@
                 <plugin>
                     <groupId>org.apache.felix</groupId>
                     <artifactId>maven-bundle-plugin</artifactId>
-                    <version>2.3.7</version>
+                    <version>2.5.3</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
