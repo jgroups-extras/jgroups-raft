@@ -31,21 +31,17 @@ public abstract class RaftImpl {
      * @param offset The offset
      * @param length The length
      * @param leader The leader's address (= the sender)
-     * @param term The current term of the sender of the append request
      * @param prev_log_index The index of the previous log entry
      * @param prev_log_term The term of the previous log entry
      * @param entry_term The term of the entry
      * @param leader_commit The leader's commit_index
+     * @param internal True if the command is an internal command
      * @return AppendResult A result (true or false), or null if the request was ignored (e.g. due to lower term)
      */
-    protected AppendResult handleAppendEntriesRequest(int term, byte[] data, int offset, int length, Address leader,
-                                              int prev_log_index, int prev_log_term, int entry_term, int leader_commit) {
+    protected AppendResult handleAppendEntriesRequest(byte[] data, int offset, int length, Address leader,
+                                                      int prev_log_index, int prev_log_term, int entry_term,
+                                                      int leader_commit, boolean internal) {
         // todo: synchronize
-        if(!raft.currentTerm(term)) {
-            raft.getLog().warn("%s: dropped AppendEntries request from %s with term %d: my term is %s",
-                               raft.local_addr, leader, term, raft.currentTerm());
-            return null; // ignore request if req.term < current_term
-        }
         raft.leader(leader);
 
         if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit
@@ -66,7 +62,9 @@ public abstract class RaftImpl {
                 // delete this and all subsequent entries and overwrite with received entry
                 raft.deleteAllLogEntriesStartingFrom(curr_index);
             }
-            raft.append(entry_term, curr_index, data, offset, length).commitLogTo(leader_commit);
+            raft.append(entry_term, curr_index, data, offset, length, internal).commitLogTo(leader_commit);
+            if(internal)
+                raft.executeInternalCommand(null, data, offset, length);
             return new AppendResult(true, curr_index).commitIndex(raft.commitIndex());
         }
         return new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term), prev.term);

@@ -1,0 +1,73 @@
+
+== Overview
+
+The http://www.github.com/belaban/jgroups-raft[jgroups-raft] project is an implementation of
+https://raftconsensus.github.io/[Raft] in http://www.jgroups.org[JGroups].
+
+It provides a consensus based system where leader election and changes are committed by _consensus_ (majority agreement).
+A fixed number of nodes form a cluster and each node is a state machine. A leader is elected by consensus and all
+changes happen through the leader which replicates them to all nodes, which add them to their persistent log.
+
+Because Raft guarantees that there's only ever one leader at any time, and changes are identified uniquely, all state
+machines receive the same ordered stream of updates and thus have the exact same state.
+
+Raft favors _consistency_ over _availability_; in terms of the http://en.wikipedia.org/wiki/CAP_theorem[Cap theorem],
+jgroups-raft is a CP system. This means jgroups-raft is highly consistent, and the data replicated to nodes will never
+diverge, even in the face of network partitions (split brains).
+
+In case of a network partition, in a cluster of `N` nodes, at least `N/2+1` nodes have to be running for the
+system to be available.
+
+If for example, in a 5 node cluster, 2 nodes go down, then the system can still commit changes
+and elect leaders as 3 is still the majority. However, if another node goes down, the system becomes unavailable and client
+requests will be rejected. (Depending on configuration, there may still be some limited form of read-only availability.)
+
+By implementing jgroups-raft in JGroups, the following benefits can be had:
+
+* Transports already available: UDP, TCP
+** Contains thread pools, priority delivery (OOB), batching etc
+* Variety of discovery protocols
+* Encryption, authentication, compression
+* Fragmentation, reliability over UDP
+* Multicasting for larger clusters
+* Failure detection
+* Sync/async cluster RPCs
+
+The code required to be written for a full Raft implementation is smaller than if it had been implemented outside of JGroups.
+
+
+The feature set of jgroups-raft includes
+
+* Leader election and append entries functionality by consensus
+* Persistent log (using LevelDB)
+* Dynamic addition and removal of cluster nodes
+* Cluster wide atomic counters
+* Replicated hash maps (replicated state machines)
+
+
+
+
+=== Architecture
+
+The architecture of jgroups-raft is shown below.
+
+[[ArchitectureFig]]
+.The architecture of jgroups-raft
+image::images/Architecture.png["Architecture of jgroups-raft,align=left,valign=top,width="60%"]
+
+The components that make up jgroups-raft are
+
+* A JGroups protocol stack with jgroups-raft specific protocols added:
+** `NO_DUPES`: makes sure that a jgroups-raft node does not appear in a view more than once
+** `ELECTION`: handles leader election
+** `RAFT`: implements the Raft algorithm, ie. appending entries to the persistent log, committing them, syncing new members etc
+** `REDIRECT` (not shown): redirects requests to the leader
+** `CLIENT`: accepts client requests over a socket, executes them and sends the results back to the clients
+* `Channel`: this is a regular JGroups `JChannel` or `ForkChannel`
+* `RaftHandle`: the main class for users of jgroups-raft to interact with
+* `StateMachine`: an implementation of `StateMachine`. This is typically a replicated state machine. jgroups-raft
+   ships with a number of building blocks implementing `StateMachine` such as `CounterService` or `ReplicatedStateMachine`.
+
+The figure above shows one node in a cluster, but the other nodes have the same setup except that every node is required
+to have a different `raft_id` (defined in `RAFT`). This is a string which defines one cluster member; all members
+need to have different raft_ids (more on this later).

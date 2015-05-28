@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 public class RaftHeaderTest {
 
     public void testVoteRequestHeader() throws Exception {
-        VoteRequest hdr=new VoteRequest(22);
+        VoteRequest hdr=new VoteRequest(22, 3, 7);
         _testSize(hdr, VoteRequest.class);
     }
 
@@ -29,7 +29,7 @@ public class RaftHeaderTest {
     }
 
     public void testAppendEntriesRequest() throws Exception {
-        AppendEntriesRequest req=new AppendEntriesRequest(22, Util.createRandomAddress("A"), 4, 21, 22, 18);
+        AppendEntriesRequest req=new AppendEntriesRequest(22, Util.createRandomAddress("A"), 4, 21, 22, 18, true);
         _testSize(req, AppendEntriesRequest.class);
     }
 
@@ -47,11 +47,11 @@ public class RaftHeaderTest {
     }
 
     public static void testRedirectHeader() throws Exception {
-        CLIENT.RedirectHeader hdr=new CLIENT.RedirectHeader();
-        _testSize(hdr, CLIENT.RedirectHeader.class);
+        REDIRECT.RedirectHeader hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.SET_REQ, 22, true);
+        _testSize(hdr, REDIRECT.RedirectHeader.class);
 
-        hdr=new CLIENT.RedirectHeader((byte)1, 22, true);
-        _testSize(hdr, CLIENT.RedirectHeader.class);
+        hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.RSP, 322649, false);
+        _testSize(hdr, REDIRECT.RedirectHeader.class);
     }
 
 
@@ -68,14 +68,14 @@ public class RaftHeaderTest {
     }
 
 
-    protected static <T extends CLIENT.RedirectHeader> void _testSize(T hdr, Class<T> clazz) throws Exception {
+    protected static <T extends REDIRECT.RedirectHeader> void _testSize(T hdr, Class<T> clazz) throws Exception {
         int size=hdr.size();
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(size);
         hdr.writeTo(out);
         System.out.println(clazz.getSimpleName() + ": size=" + size);
         assert out.position() == size;
 
-        CLIENT.RedirectHeader hdr2=(CLIENT.RedirectHeader)Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
+        REDIRECT.RedirectHeader hdr2=(REDIRECT.RedirectHeader)Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
         assert hdr2 != null;
         assert hdr.size() == hdr2.size();
     }

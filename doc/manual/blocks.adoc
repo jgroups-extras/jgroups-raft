@@ -1,0 +1,184 @@
+
+[[BuildingBlocks]]
+== Building blocks
+
+Similar to JGroups' building blocks, jgroups-raft also has building blocks, which provide additional functionality on
+top of a `RaftHandle`. They are typically given a JChannel, create a `RaftHandle` and register themselves as
+`StateMachine` with the handle. Building blocks offer a different interface to the users, e.g. a replicated hashmap
+with puts and gets, or a distributed counter or lock.
+
+
+
+[[ReplicatedStateMachine]]
+=== ReplicatedStateMachine
+
+`ReplicatedStateMachine` is a key-value store replicating its contents to all cluster members. Contrary to the JGroups
+equivalent (`ReplicatedHashMap`), changes are replicated by consensus and logged to a persistent log.
+
+While the JGroups version is allowed to make progress during network partitions, and users need to merge possibly
+diverging state from different partitions after a partition heals, `ReplicatedStateMachine` will allow progress only in
+the _majority partition_, so no state merging needs to be done after a partition heals.
+
+Not having to merge state is certainly simpler, but comes at the expense of availability: if `N/2+1` members leave or
+split into different partitions, `ReplicatedStateMachine` will be unavailable (all requests will time out).
+
+However, the advantage is that the members' states will never diverge.
+
+`ReplicatedStateMachine` requires a `JChannel` in its constructor and has `put()`, `get()` and `remove()` methods.
+The code below shows how to create an instance of `ReplicatedStateMachine` and add an element to it:
+
+[source,java]
+----
+protected void start(String raft_id) throws Exception {
+    JChannel ch=new JChannel("raft.xml").name(raft_id);
+    ReplicatedStateMachine<String,String> rsm=new ReplicatedStateMachine<>(ch);
+    rsm.raftId(raft_id);
+    ch.connect("rsm-cluster");
+    rsm.put("name", "Bela");
+}
+----
+
+There's a demo `ReplicatedStateMachineDemo` which can be used to interactively use `ReplicatedStateMachine`.
+
+
+
+
+[[CounterService]]
+=== CounterService
+
+`CounterService` provides a replicated counter which can get be set, get and compare-and-set, implementing JGroups'
+`Counter` interface:
+
+[source,java]
+----
+public interface Counter {
+    public long    get();
+    public void    set(long new_value);
+    public boolean compareAndSet(long expect, long update);
+    public long    incrementAndGet();
+    public long    decrementAndGet();
+    public long    addAndGet(long delta);
+}
+----
+
+A `Counter` implementation is created via the `CounterService` building block (edited):
+
+[source,java]
+----
+public class CounterService implements StateMachine {
+    public CounterService(Channel ch);
+    public long           replTimeout();
+    public CounterService replTimeout(long timeout);
+    public boolean        allowDirtyReads();
+    public CounterService allowDirtyReads(boolean flag);
+    public CounterService raftId(String id);
+
+    /**
+     * Returns an existing counter, or creates a new one if none exists
+     * @param name Name of the counter, different counters have to have different names
+     * @param initial_value The initial value of a new counter if there is no existing counter.
+     * Ignored if the counter already exists
+     * @return The counter implementation
+     */
+    public Counter getOrCreateCounter(String name, long initial_value) throws Exception;
+
+
+    /**
+     * Deletes a counter instance (on the coordinator)
+     * @param name The name of the counter. No-op if the counter doesn't exist
+     */
+    public void deleteCounter(String name) throws Exception;
+}
+----
+
+`CounterService` is mainly used to get an existing or create a new `Counter` implementation (`getOrCreateCounter()`), or
+to delete an existing counter (`deleteCounter()`).
+
+To create an instance of `CounterService`, a JChannel has to be passed to the constructor. The sample code below
+shows how to use this:
+
+[source,java]
+----
+protected void start(String raft_id) throws Exception {
+    JChannel ch=new JChannel("raft.xml").name(raft_id);
+    CounterService cs=new CounterService(ch);               // <1>
+    ch.connect("counter-cluster");
+    Counter counter=cs.getOrCreateCounter("mycounter", 1);  // <2>
+    counter.incrementAndGet();                              // <3>
+    counter.compareAndSet(2, 5);                            // <4>
+    long current_value=counter.get();                       // <5>
+}
+----
+<1> First a `CounterService` is created and given a reference to a channel
+<2> Once the member has joined the cluster, we create a counter named "mycounter" with an initial value of 1
+<3> The counter is then incremented to 2
+<4> Now a compare-and-set operation sets the counter to 5 if it was 2
+<5> The last operation fetches the current value of "mycounter"
+
+
+Any member in the cluster can change the same counter and all operations are ordered by the Raft leader, which causes
+the replicated counters to have exactly the same value in all members.
+
+Comparing this to the JGroups equivalent, a jgroups-raft counter never diverges in different members, again at the
+expense of availability. In the JGroups version, counters are always available, but may diverge, e.g. in a split brain
+scenario, and have to be reconciled by the application after the split brain is resolved.
+
+There's a demo `CounterServiceDemo` which can be used to interactively manipulate replicated counters.
+
+
+==== Reads and consensus
+
+Currently (as of jgroups-raft version 0.2), reading a counter is by default _dirty_, meaning that a read may return a
+stale value.
+
+This can be changed by calling `counter_service.allowDirtyReads(false)`.
+
+However, this inserts a dummy _read log entry_ which returns the value of counter when committed. Since this dummy entry
+is ordered correctly wrt writes in the log, it will always return correct values.
+
+The cost is that reads take up space in the persistent logs and that we need consensus (majority) for reads. In the next
+release of jgroups-raft, the mechanism for client reads as suggested in the Raft paper will be implemented. See
+https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
+
+NOTE: Non-dirty reads has not yet been implemented in `ReplicatedStateMachine`.
+
+
+=== Singleton service
+
+A _singleton service_ is a service which is supposed to run only once in an entire cluster. Typically, in JGroups, a
+singleton service is started on the first member of a cluster. For example, if we have `{A,B,C,D,E}`, the singleton
+service (or services) would be running on `A`.
+
+If we have a partition, such that the cluster falls apart into `{A,B,C}` and `{D,E}`, then an _additional_ singleton
+would be started on `D`, as `D` became coordinator and doesn't know `{A,B,C}` didn't leave, but were partitioned away
+instead.
+
+When the partition ends, if `D` is not coordinator anymore, it would stop its singleton services.
+
+If multiple singletons (as provided by JGroups, e.g. during a network split) cannot be tolerated by the application,
+and the application has a requirement that _at most one singleton service_ can be running (better none than two),
+jgroups-raft can be used.
+
+The mechanism to implement singleton services in jgroups-raft is leader election: it is guaranteed that at most one
+leader exists in a given cluster at the same time. This is exactly what we need for singletons. The code below shows
+how to do this:
+
+[source,java]
+----
+JChannel ch=null;
+RaftHandle handle=new RaftHandle(ch, this); // <1>
+handle.addRoleListener(role -> {            // <2>
+    if(role == Role.Leader)                 // <3>
+        // start singleton services
+    else
+        // stop singleton services
+});
+----
+<1> A `RaftHandle` is created over a channel
+<2> A `RAFT.RoleChange` callback is registered with the handle. Alternatively, `addRoleListener()` could be called
+    directly on an instance of `RAFT` retrieved from the protocol stack associated with the given channel
+<3> When we become the Raft leader, the singleton services can be started, when not, they should be stopped (if running)
+
+
+
+

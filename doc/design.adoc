@@ -19,7 +19,7 @@ Author: Bela Ban
     -------------        |
            |             |
       ----------         |
-      | CLIENT |         |
+     | REDIRECT |        |
       ----------         |
            |             |
       -----------        |
@@ -33,8 +33,8 @@ Author: Bela Ban
       ------------
 ----
 
-* Protocols are `CLIENT`, `RAFT` and `ELECTION`
-. `CLIENT` handles the set(), get() and remove() events from above (e.g. a building block) and passes them down to the
+* Protocols are `REDIRECT`, `RAFT` and `ELECTION`
+. `REDIRECT` handles the set(), get() and remove() events from above (e.g. a building block) and passes them down to the
   `RAFT` protocol. This protocol could also provide a REST interface, e.g. to handle requests from etcd
 . RAFT handles requests according to its role (follower, candidate, leader) and talks to Log and StateMachine
 ** It has references to a `Log` and a `StateMachine`
@@ -47,7 +47,7 @@ Author: Bela Ban
 * `StateMachine` implements a state machine. Log entries can be applied to it
 
 
-== CLIENT
+== REDIRECT
 * Handles commands such as `set()`, `get()` and `remove()` sent from above
 * Handles redirection to leader (?)
 ** Buffers commands if no leader is present ?

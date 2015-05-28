@@ -1,0 +1,35 @@
+
+Distributed consensus with jgroups-raft
+=======================================
+:author: Bela Ban <belaban@yahoo.com>
+:toc2:
+:toclevels: 3
+:icons:
+:homepage: http://belaban.github.io/jgroups-raft
+:source-highlighter: pygments
+:iconsdir: ./images/icons
+
+Copyright Red Hat 2014 - 2020
+
+This document is licensed under the
+http://creativecommons.org/licenses/by-sa/3.0/us/legalcode["Creative Commons Attribution-ShareAlike (CC-BY-SA) 3.0"]
+license.
+
+
+This is the jgroups-raft manual. It provides information about
+
+* Design and architecture
+* Configuration and use
+
+of jgroups-raft.
+
+Bela Ban, Kreuzlingen Switzerland 2015
+
+
+include::./overview.adoc[Overview]
+
+include::./using.adoc[Using jgroups-raft]
+
+include::./blocks.adoc[Building blocks]
+
+include::./protocols.adoc.tmp[Protocol list]

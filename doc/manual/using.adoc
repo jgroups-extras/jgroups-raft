@@ -1,0 +1,246 @@
+
+== Using jgroups-raft
+
+
+=== Cluster members and identity
+
+Each cluster member has an address (a UUID) assigned by JGroups and a `raft_id` which needs to be assigned by the user.
+The latter is a string (e.g. "A") which needs to be unique in the entire cluster. In other words, the `raft_id` is the
+_identity_ of a member for the sake of jgroups-raft.
+
+A Raft cluster has a fixed size, so that a majority can be computed for leader election and appending of entries. The
+members allowed into the cluster is defined in `RAFT.members`, e.g.
+
+[source,xml]
+----
+<raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}"/>
+----
+
+This defines a cluster of 3 members: "A", "B" and "C" (whose majority is 2).
+
+These are the `raft_id` attributes of the 3 members, so attribute `raft_id` in the example above needs to be one of them.
+If we don't start this member with the system property `-Draft_id=X` (where X needs to be "A", "B", or "C"),
+then the member will start up as "undefined" is not a member of `{"A", "B", "C"}`.
+
+NOTE: Note that while `RAFT` ensures that non-members cannot join a cluster, the `NO_DUPES` protocol makes sure that
+no duplicate member can join. Example: if we have `RAFT.members="A,B,C"` and actual members "A" and "B" joined, then
+a join attempt by a member with duplicate name "B" will be rejected and that member won't be able to join.
+
+Attribute `raft_id` is also used to define the location of the persistent log; unless `log_name` is defined in
+`RAFT`, the location is computed as `<temp_dir>/<raft_id>.log`, e.g. `/tmp/A.log`.
+
+Note that members can be added and removed dynamically (without taking the entire cluster down, changing the configuration
+and restarting it), see <<DynamicMembership>>.
+
+
+
+
+=== RaftHandle
+
+As shown in <<ArchitectureFig>>, `RaftHandle` is the main class users will be dealing with. It provides methods to change
+state (append entries) in the replicated state machines, and a state machine can be registered with it. The state machine
+will be initialized at startup and updated by jgroups-raft whenever there is a change.
+
+A successful change is committed to the persistent logs of all cluster members and applied to their state machines, so
+all state machines have exactly the same state.
+
+
+==== Creation
+An instance of RaftHandle is associated with exactly _one_ JGroups channel, and can be created as follows:
+
+[source,java]
+----
+JChannel ch=new JChannel("/home/bela/raft.xml"); // <1>
+RaftHandle handle=new RaftHandle(ch, this);      // <2>
+ch.connect("raft-cluster");                      // <3>
+----
+<1> A new JGroups channel is created (see the JGroups manual for details on the JGroups API)
+<2> A RaftHandle instance is created over the channel (which must be non-null). The second argument is an implementation
+    of `StateMachine`. If null, no changes will be applied. The state machine can be set with `stateMachine(StateMachine sm)`.
+<3> The channel is connected which causes the member to join the cluster
+
+
+==== Making changes
+The `setX()` methods can be used to make changes:
+
+[source,java]
+----
+byte[] set(byte[] buf, int offset, int length) throws Exception; // <1>
+byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception; // <2>
+CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length); // <3>
+----
+<1> Synchronous change; the caller will be blocked until the change has been forwarded to the leader, which sends it to
+    all cluster members which apply it to their persistent logs and ack the change back to the leader. Once the leader
+    gets a majority of acks, it commits the change to its own log, applies it to its state machine and returns the
+    response to the caller. The state machines thus only contain _committed changes_.
+<2> Same as above, except that this call is bounded with a timeout. If it elapses before a majority of acks have been
+    received, a `TimeoutException` will be thrown.
+<3> Asynchronous change; this method returns immediately with a `CompletableFuture` which can be used to retrieve the
+    result later, or to provide some code that's executed as soon as the result is available (e.g. `whenComplete()`).
+
+The contents of the request and response buffers is application specific.
+
+For example, if we implemented a replicated hash map, then a request could be a `put(key,value)`. The `put()`
+would have to be serialized into the buffer, as well as the key and the value.
+
+When committing the change, every state machine needs to de-serialize the buffer into a `put(key,value)` and apply it to
+its state (see <<ImplementingStateMachine>>). If there is a return value to the `put()` call, e.g. the previous value
+associated with `key`, then it will be serialized into a buffer and returned as result of one of the `setX()` calls.
+
+
+
+
+[[ImplementingStateMachine]]
+==== Implementing a StateMachine
+
+`StateMachine` is an interface and is defined as follows:
+
+[source,java]
+----
+public interface StateMachine {
+    byte[] apply(byte[] data, int offset, int length) throws Exception;  // <1>
+    void   readContentFrom(DataInput in) throws Exception;               // <2>
+    void   writeContentTo(DataOutput out) throws Exception;              // <3>
+}
+----
+<1> This method is called whenever a log entry is _committed_. The buffer's contents are application specific (e.g this
+    could be a serialized `put(key,value)` as discussed above. If there is a return value of applying the change to the
+    state machine, it needs to be serialized so that it can be returned to the caller (e.g. a client).
+<2> This method is called when `RAFT` needs to initialize a state machine from a _snapshot_ (a dump of a state
+    machine's contents to an external stream (e.g. a file)). The `writeContentTo()` method below wrote the contents
+    to a file before, in an application specific format, and this method now needs to read the contents back into the
+    state machine.
+<3> This method is the opposite of `readContentFrom()` and writes the contents of this state machine to a stream
+    (e.g. a file).
+
+
+[[Snapshots]]
+==== Snapshotting and state transfer
+
+All cluster members maintain a persistent log and append all changes as log entries to the end of the log. To prevent
+logs from growing indefinitely, a _snapshot_ of the state machine can be made and the log truncated. This is done
+(programatically) with method `snapshot()`, or declaratively (see below).
+
+This method calls `StateMachine.writeContentTo()` to dump the state of the state machine into a snapshot file and then
+truncates the log. New members who don't have a log yet are initialized by sending them the snapshot first. After that,
+they will catch up via the regular Raft mechanism.
+
+Logs can be snapshot automatically by setting `RAFT.max_log_size` to the max number of bytes that a log is allowed to
+grow to until a snapshot is taken.
+
+
+==== Miscellaneous methods
+
+Other methods in `RaftHandle` include:
+
+leader():: Returns the address of the current Raft leader, or null if there is no leader (e.g. in case there was no
+           majority to elect a leader)
+isLeader():: Whether or not the current member is the leader
+addRoleListener(RAFT.RoleChange listener):: Allows to register a  `RoleChange` listener which is notified when the current
+             member changes its role (`Leader`, `Follower`, `Candidate`)
+currentTerm():: Returns the current term (see Raft for details)
+lastApplied():: Returns the index of the last log entry that was appended to the log
+commitIndex():: Returns the index of the last log entry that was committed
+raft():: Returns a reference to the `RAFT` protocol in the current member's stack. Provided for experts who need to
+         access `RAFT` directly.
+
+raftId(String id):: Used to set the `raft_id` programmatically (note that this can also be done by setting `raft_id` in
+                    `RAFT` in the XML configuration. For example, the following code sets `raft_id` from the command line:
+[source,java]
+----
+protected void start(String raft_id) throws Exception {
+    JChannel ch=new JChannel("raft.xml").name(raft_id);   // <2>
+    RaftHandle handle=new RaftHandle(ch, this).raftId(raft_id); // <3>
+    ch.connect("raft-cluster");  // <4>
+}
+
+public static void main(String[] args) throws Exception {
+    new bla().start(args[0]);  // <1>
+}
+----
+<1> The `raft_id` can for example be passed to the program as an argument
+<2> The channel is created and its logical name set to be the same as `raft_id`. This is not necessary, but convenient.
+<3> Now `raft_id` can be set via `RaftHandle.raftId(String id)`.
+
+
+
+=== Configuration
+
+The configuration of a member is either done declaratively via an XML config file or programmatically. Refer to the
+JGroups documentation for details.
+
+A sample XML configuration file is shown below (edited for brevity):
+
+[source,xml]
+----
+<config xmlns="urn:org:jgroups"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="urn:org:jgroups http://www.jgroups.org/schema/jgroups.xsd">
+    <UDP
+         mcast_addr="228.5.5.5"
+         mcast_port="${jgroups.udp.mcast_port:45588}"/>
+    <PING />
+    <MERGE3 />
+    <FD_SOCK/>
+    <FD_ALL/>
+    <VERIFY_SUSPECT timeout="1500"  />
+    <pbcast.NAKACK2 xmit_interval="500"
+                    discard_delivered_msgs="true"/>
+    <UNICAST3 xmit_interval="500"
+              max_msg_batch_size="500"/>
+    <pbcast.STABLE desired_avg_gossip="50000"
+                   max_bytes="4M"/>
+    <raft.NO_DUPES/>                                                         // <1>
+    <pbcast.GMS print_local_addr="true" join_timeout="2000"
+                view_bundling="true"/>
+    <UFC max_credits="2M" min_threshold="0.4"/>
+    <MFC max_credits="2M" min_threshold="0.4"/>
+    <FRAG2 frag_size="60K"  />
+    <raft.ELECTION election_min_interval="100" election_max_interval="500"/> // <2>
+    <raft.RAFT members="A,B,C,D" raft_id="${raft_id:undefined}"/>            // <3>
+    <raft.REDIRECT/>                                                         // <4>
+    <raft.CLIENT bind_addr="0.0.0.0" />                                      // <5>
+</config>
+----
+<1> `NO_DUPES`: checks that joining a new member doesn't lead to duplicate `raft_ids` in the membership. Rejects the
+     JOIN if it would. Must be placed somewhere _below_ `GMS`
+<2> `ELECTION`: this protocol implements leader election, as defined in Raft. It is independent from `RAFT` and could
+     (and may, in the future) be replaced with a different election protocol. Attributes `election_min_interval` and
+     `election_max_interval` define the range from which jgroups-raft picks a random election timeout.
+<3> `RAFT`: the main protocol implementing log appending and committing, handling state machine updates, snapshotting etc.
+     Attribute `members` defines the (fixed) membership (may still be redfined by `addServer`/`removeServer` log entries
+     when initializing a member from the persistent log). Attribute `raft_id` defines the ID of the current member (needs
+     to be an element of `members`, as discussed earlier).
+<4> `REDIRECT` is used to redirect requests to the current Raft leader, or to throw an exception if no member is leader
+<5> `CLIENT` listens on a socket (port `1965` by default) for client requests, executes them and sends the result back
+     to the clients. Currently, `addServer` and `removeServer` has been implemented.
+
+This is a regular JGroups XML configuration, except that jgroups-raft added a few additional protocols.
+
+
+
+
+[[DynamicMembership]]
+=== Adding and removing members dynamically
+
+The `RAFT` protocol provides methods `addServer(String raft_id)` and `removeServer(String raft_id)` to add and remove
+servers from the static membership (defined by `RAFT.members`). Only one server at a time can be added and removed, and
+adding or removing a server needs a majority ack to be committed.
+
+Both methods are exposed via JMX, so `jconsole` could be used. However, jgroups-raft also provides a script
+(`client.sh`) to do this in a more convenient way. The script uses `Client` to connect to a member's `CLIENT` protocol
+running at `localhost:1965` (can be changed). The request is then forwarded to the current leader.
+
+The steps to add a member are as follows (say we have `RAFT.members="A,B,C"` and want to add "D"):
+
+* Call `bin/client.sh -add D`
+** If needed, `-port PORT` or `-bind_addr ADDR` can be given, e.g. if we need to reach a member running on a different host
+* Once `A` (the leader) processed `addServer("D")`, everybody's `RAFT.members` is `"A","B","C","D"`
+* At this point, the XML configuration files should be updated so that `RAFT.members="A,B,C,D"`
+* If not, members will read the correct membership when getting initialized by their logs
+* A new member `D` can now be started (its XML config needs to have the correct `members` attribute !)
+
+
+
+
+

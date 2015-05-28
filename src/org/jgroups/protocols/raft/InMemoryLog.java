@@ -4,6 +4,7 @@ import org.jgroups.Address;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.ObjIntConsumer;
 
 /**
  * In-memory log implementation without any persistence. Used by some unit tests
@@ -109,10 +110,6 @@ public class InMemoryLog implements Log {
         }
     }
 
-    @Override
-    public AppendResult append(int prev_index, int prev_term, LogEntry... entries) {
-        throw new UnsupportedOperationException();
-    }
 
     @Override
     public synchronized LogEntry get(int index) {
@@ -148,7 +145,7 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public synchronized void forEach(Function function, int start_index, int end_index) {
+    public synchronized void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
         if(start_index < first_applied)
             start_index=first_applied;
         if(end_index > last_applied)
@@ -157,14 +154,13 @@ public class InMemoryLog implements Log {
         int start=Math.max(1, start_index)-first_applied, end=end_index-first_applied;
         for(int i=start; i <= end; i++) {
             LogEntry entry=entries[i];
-            if(!function.apply(start_index, entry.term, entry.command, entry.offset, entry.length))
-                break;
+            function.accept(entry, start_index);
             start_index++;
         }
     }
 
     @Override
-    public synchronized void forEach(Function function) {
+    public synchronized void forEach(ObjIntConsumer<LogEntry> function) {
         forEach(function, Math.max(1, first_applied), last_applied);
     }
 

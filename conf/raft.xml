@@ -9,7 +9,7 @@
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="urn:org:jgroups http://www.jgroups.org/schema/jgroups.xsd">
     <UDP
-         mcast_addr="232.5.5.5"
+         mcast_addr="228.5.5.5"
          mcast_port="${jgroups.udp.mcast_port:45588}"
          ip_ttl="0"
          tos="8"
@@ -66,6 +66,7 @@
               max_msg_batch_size="500"/>
     <pbcast.STABLE stability_delay="1000" desired_avg_gossip="50000"
                    max_bytes="4M"/>
+    <raft.NO_DUPES/>
     <pbcast.GMS print_local_addr="true" join_timeout="2000"
                 view_bundling="true"/>
     <UFC max_credits="2M"
@@ -76,6 +77,7 @@
     <RSVP resend_interval="2000" timeout="10000"/>
     <pbcast.STATE_TRANSFER />
     <raft.ELECTION election_min_interval="100" election_max_interval="500"/>
-    <raft.RAFT majority="2" />
-    <raft.CLIENT/>
+    <raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}"/>
+    <raft.REDIRECT/>
+    <raft.CLIENT bind_addr="0.0.0.0" />
 </config>

@@ -152,14 +152,23 @@ public class ELECTION extends Protocol {
 
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
-        // log.trace("%s: received %s from %s", local_addr, hdr, msg.src());
+        // drop the message if hdr.term < raft.current_term, else accept
+        // if hdr.term > raft.current_term -> change to follower
+        int rc=raft.currentTerm(hdr.term);
+        if(rc < 0)
+            return;
+        if(rc > 0) { // a new term was set
+            changeRole(Role.Follower);
+            voteFor(null); // so we can vote again in this term
+        }
+
         if(hdr instanceof HeartbeatRequest) {
             HeartbeatRequest hb=(HeartbeatRequest)hdr;
             handleHeartbeat(hb.term(), hb.leader);
         }
         else if(hdr instanceof VoteRequest) {
             VoteRequest header=(VoteRequest)hdr;
-            handleVoteRequest(msg.src(), header.term());
+            handleVoteRequest(msg.src(), header.term(), header.lastLogTerm(), header.lastLogIndex());
         }
         else if(hdr instanceof VoteResponse) {
             VoteResponse rsp=(VoteResponse)hdr;
@@ -174,38 +183,40 @@ public class ELECTION extends Protocol {
         heartbeatReceived(true);
         if(role != Role.Follower || raft.updateTermAndLeader(term, leader)) {
             changeRole(Role.Follower);
-            voted_for=null;
+            voteFor(null);
         }
     }
 
-    protected void handleVoteRequest(Address sender, int term) {
+    protected void handleVoteRequest(Address sender, int term, int last_log_term, int last_log_index) {
         if(local_addr != null && local_addr.equals(sender))
             return;
+        if(log.isTraceEnabled())
+            log.trace("%s: received VoteRequest from %s: term=%d, my term=%d, last_log_term=%d, last_log_index=%d",
+                      local_addr, sender, term, raft.currentTerm(), last_log_term, last_log_index);
         boolean send_vote_rsp=false;
         synchronized(this) {
-            if(term > raft.current_term) {
-                raft.currentTerm(term);
-                voted_for=null;
+            if(voteFor(sender)) {
+                if(sameOrNewer(last_log_term, last_log_index))
+                    send_vote_rsp=true;
+                else {
+                    log.trace("%s: dropped VoteRequest from %s as my log is more up-to-date", local_addr, sender);
+                }
             }
-            if(voteFor(sender))
-                send_vote_rsp=true;
+            else
+                log.trace("%s: already voted for %s in term %d; skipping vote", local_addr, sender, term);
         }
         if(send_vote_rsp)
             sendVoteResponse(sender, term); // raft.current_term);
     }
 
     protected synchronized void handleVoteResponse(int term) {
-        switch(role) {
-            case Follower:
-            case Candidate:
-                if(term == raft.current_term) {
-                    if(++current_votes >= raft.majority) {
-                        // we've got the majority: become leader
-                        log.trace("%s: received majority (%d) of votes in term %d -> becoming leader", local_addr, current_votes, term);
-                        changeRole(Role.Leader);
-                    }
-                }
-                break;
+        if(role == Role.Candidate && term == raft.current_term) {
+            if(++current_votes >= raft.majority) {
+                // we've got the majority: become leader
+                log.trace("%s: collected %d votes (majority=%d) in term %d -> becoming leader",
+                          local_addr, current_votes, raft.majority, term);
+                changeRole(Role.Leader);
+            }
         }
     }
 
@@ -222,6 +233,19 @@ public class ELECTION extends Protocol {
         }
     }
 
+    /**
+     * Returns true if last_log_term >= my own last log term, or last_log_index >= my own index
+     * @param last_log_term
+     * @param last_log_index
+     * @return
+     */
+    protected boolean sameOrNewer(int last_log_term, int last_log_index) {
+        int my_last_log_index;
+        LogEntry entry=raft.log().get(my_last_log_index=raft.log().lastApplied());
+        int my_last_log_term=entry != null? entry.term : 0;
+        int comp=Integer.compare(my_last_log_term, last_log_term);
+        return comp <= 0 && (comp < 0 || Integer.compare(my_last_log_index, last_log_index) <= 0);
+    }
 
 
     protected synchronized boolean heartbeatReceived(final boolean flag) {
@@ -232,21 +256,28 @@ public class ELECTION extends Protocol {
 
     protected void sendHeartbeat(int term, Address leader) {
         Message req=new Message(null).putHeader(id, new HeartbeatRequest(term, leader))
+          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
           .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK);
         down_prot.down(new Event(Event.MSG, req));
     }
 
     protected void sendVoteRequest(int term) {
-        VoteRequest req=new VoteRequest(term);
-        log.trace("%s: sending %s",local_addr,req);
-        Message vote_req=new Message(null).putHeader(id, req).setTransientFlag(Message.TransientFlag.DONT_LOOPBACK);
+        int last_log_index=raft.log().lastApplied();
+        LogEntry entry=raft.log().get(last_log_index);
+        int last_log_term=entry != null? entry.term() : 0;
+        VoteRequest req=new VoteRequest(term, last_log_term, last_log_index);
+        log.trace("%s: sending %s", local_addr, req);
+        Message vote_req=new Message(null).putHeader(id, req)
+          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
+          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK);
         down_prot.down(new Event(Event.MSG,vote_req));
     }
 
     protected void sendVoteResponse(Address dest, int term) {
         VoteResponse rsp=new VoteResponse(term, true);
         log.trace("%s: sending %s",local_addr,rsp);
-        Message vote_rsp=new Message(dest).putHeader(id, rsp);
+        Message vote_rsp=new Message(dest).putHeader(id, rsp)
+          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(new Event(Event.MSG,vote_rsp));
     }
 
@@ -255,6 +286,8 @@ public class ELECTION extends Protocol {
             return;
         if(role != Role.Leader && new_role == Role.Leader) {
             raft.leader(local_addr);
+            // send a first heartbeat immediately after the election so other candidates step down
+            sendHeartbeat(raft.currentTerm(), raft.leader());
             stopElectionTimer();
             startHeartbeatTimer();
         }
@@ -272,7 +305,7 @@ public class ELECTION extends Protocol {
 
         synchronized(this) {
             new_term=raft.createNewTerm();
-            voted_for=null;
+            voteFor(null);
             current_votes=0;
             // Vote for self - return if I already voted for someone else
             if(!voteFor(local_addr))
@@ -280,9 +313,7 @@ public class ELECTION extends Protocol {
             current_votes++; // vote for myself
         }
 
-        sendVoteRequest(new_term); // send VoteRequest message
-
-        // Responses are received asynchronously. If majority -> become leader
+        sendVoteRequest(new_term); // Send VoteRequest message; responses are received asynchronously. If majority -> become leader
     }
 
     @ManagedAttribute(description="Vote cast for a candidate in the current term")
@@ -299,7 +330,7 @@ public class ELECTION extends Protocol {
             voted_for=addr;
             return true;
         }
-        return voted_for.equals(addr); // a vote for the same candidate is ok
+        return voted_for.equals(addr); // a vote for the same candidate in the same term is ok
     }
 
 

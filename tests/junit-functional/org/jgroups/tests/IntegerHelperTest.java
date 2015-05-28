@@ -4,8 +4,8 @@ import org.jgroups.Global;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.jgroups.util.IntegerHelper.fromByteArrayToInt;
-import static org.jgroups.util.IntegerHelper.fromIntToByteArray;
+import static org.jgroups.raft.util.IntegerHelper.fromByteArrayToInt;
+import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
 
 /**
  * Created by ugol on 05/12/14.

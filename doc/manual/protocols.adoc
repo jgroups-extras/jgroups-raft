@@ -1,0 +1,97 @@
+[[protlist]]
+== List of protocols
+
+This chapter describes the most frequently used protocols, and their configuration.
+    
+Meanwhile, we recommend that users should copy one of the predefined configurations (shipped with jgroups-raft), e.g.
++raft.xml+, and make only minimal changes to it.
+
+
+
+
+
+[[NO_DUPES]]
+=== NO_DUPES
+
+This protocol prevents duplicate members from joining the cluster. The protocol needs to be located somewhere below
+`GMS`.
+
+`NO_DUPES` catches JOIN requests from a joiner to the JGroups coordinator and checks if the joiner's `raft_id` is
+already contained in the current membership, and rejects the JOIN if this is the case.
+
+For example, if we have current members `{A,B}` and another member with `raft_id` "B" joins, then the joiner would
+get the following exception when trying to join the cluster:
+----
+-------------------------------------------------------------------
+GMS: address=B, cluster=cntrs, physical address=127.0.0.1:64733
+-------------------------------------------------------------------
+Exception in thread "main" java.lang.Exception: connecting to channel "cntrs" failed
+	at org.jgroups.JChannel._connect(JChannel.java:570)
+	at org.jgroups.JChannel.connect(JChannel.java:294)
+	at org.jgroups.JChannel.connect(JChannel.java:279)
+	at org.jgroups.raft.demos.CounterServiceDemo.start(CounterServiceDemo.java:32)
+	at org.jgroups.raft.demos.CounterServiceDemo.main(CounterServiceDemo.java:163)
+Caused by: java.lang.SecurityException: join of B rejected as it would create a view with duplicate members (current view: [B|1] (2) [B, A])
+	at org.jgroups.protocols.pbcast.ClientGmsImpl.isJoinResponseValid(ClientGmsImpl.java:187)
+	at org.jgroups.protocols.pbcast.ClientGmsImpl.installViewIfValidJoinRsp(ClientGmsImpl.java:153)
+	at org.jgroups.protocols.pbcast.ClientGmsImpl.joinInternal(ClientGmsImpl.java:111)
+	at org.jgroups.protocols.pbcast.ClientGmsImpl.join(ClientGmsImpl.java:41)
+	at org.jgroups.protocols.pbcast.GMS.down(GMS.java:1087)
+	at org.jgroups.protocols.FlowControl.down(FlowControl.java:353)
+	at org.jgroups.protocols.FlowControl.down(FlowControl.java:353)
+	at org.jgroups.protocols.FRAG2.down(FRAG2.java:136)
+	at org.jgroups.protocols.RSVP.down(RSVP.java:153)
+	at org.jgroups.protocols.pbcast.STATE_TRANSFER.down(STATE_TRANSFER.java:202)
+	at org.jgroups.protocols.raft.ELECTION.down(ELECTION.java:112)
+	at org.jgroups.protocols.raft.RAFT.down(RAFT.java:442)
+	at org.jgroups.protocols.raft.REDIRECT.down(REDIRECT.java:103)
+	at org.jgroups.stack.ProtocolStack.down(ProtocolStack.java:1038)
+	at org.jgroups.JChannel.down(JChannel.java:791)
+	at org.jgroups.JChannel._connect(JChannel.java:564)
+	... 4 more
+[mac] /Users/bela/jgroups-raft$
+----
+
+The error message is `SecurityException: join of B rejected as it would create a view with duplicate members (current view: [B|1] (2) [B, A])`,
+which shows that view `{B,A}` already contains a member with `raft_id` `B`, and so the JOIN request of the new member
+is rejected.
+
+${NO_DUPES}
+
+
+
+[[ELECTION]]
+=== ELECTION
+
+`ELECTION` is the protocol which performs leader election, as defined by Raft.
+Its attributes define the election timeout and the heartbeat interval (see Raft for details).
+
+${ELECTION}
+
+
+[[RAFT]]
+=== RAFT
+
+`RAFT` is the main protocol in jgroups-raft; it implements log appending and committing, snapshotting and log compaction,
+syncing of new members and so on.
+
+${RAFT}
+
+
+[[REDIRECT]]
+=== REDIRECT
+
+The `REDIRECT` protocol needs to be somewhere above `RAFT`. It keeps track of the current Raft leader and redirects
+requests to the right leader. If there is no leader, e.g. because there's no majority to elect one, an exception will
+be thrown.
+
+${REDIRECT}
+
+
+[[CLIENT]]
+=== CLIENT
+
+`CLIENT` listens on a socket for client requests. When a request is received, it is sent down where it will be forwarded
+(by `REDIRECT`) to the current leader which executes the request. The responses is then sent back to the client.
+
+${CLIENT}
