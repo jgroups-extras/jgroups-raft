@@ -27,7 +27,7 @@ import java.util.function.BiConsumer;
 @MBean(description="Redirects requests to current leader")
 public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     // When moving to JGroups -> add to jg-protocol-ids.xml
-    protected static final short REDIRECT_ID    = 1026;
+    protected static final short REDIRECT_ID    = 502;
 
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short REDIRECT_HDR   = 4000;

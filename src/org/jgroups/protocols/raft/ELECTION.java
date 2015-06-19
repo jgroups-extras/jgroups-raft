@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 @MBean(description="Protocol performing leader election according to the RAFT paper")
 public class ELECTION extends Protocol {
     // when moving to JGroups -> add to jg-protocol-ids.xml
-    protected static final short ELECTION_ID    = 1025;
+    protected static final short ELECTION_ID    = 500;
 
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short VOTE_REQ       = 3000;

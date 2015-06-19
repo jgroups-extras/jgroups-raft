@@ -25,7 +25,7 @@ import java.util.function.BiConsumer;
  */
 @MBean(description="Listens on a socket for client requests, forwards them to the leader and send responses")
 public class CLIENT extends Protocol implements Runnable {
-    protected static final short  CLIENT_ID = 1027;
+    protected static final short  CLIENT_ID = 503;
     protected static final byte[] BUF={};
 
     public enum RequestType {set_req, add_server, remove_server, type, rsp}

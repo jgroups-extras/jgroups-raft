@@ -32,7 +32,7 @@ import java.util.function.ObjIntConsumer;
 public class RAFT extends Protocol implements Runnable, Settable, DynamicMembership {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final byte[] raft_id_key          = Util.stringToBytes("raft-id");
-    protected static final short  RAFT_ID              = 1024;
+    protected static final short  RAFT_ID              = 501;
 
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short  APPEND_ENTRIES_REQ   = 2000;
