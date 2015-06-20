@@ -94,6 +94,11 @@
             <artifactId>mapdb</artifactId>
             <version>1.0.6</version>
         </dependency>
+        <!--dependency>
+            <groupId>org.jetbrains.xodus</groupId>
+            <artifactId></artifactId>
+            <version></version>
+        </dependency-->
         <dependency>
             <groupId>log4j</groupId>
             <artifactId>log4j</artifactId>
