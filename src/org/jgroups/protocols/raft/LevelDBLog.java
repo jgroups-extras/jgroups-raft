@@ -146,10 +146,9 @@ public class LevelDBLog implements Log {
 
     @Override
     public void append(int index, boolean overwrite, LogEntry... entries) {
-        WriteBatch batch = db.createWriteBatch();
 
         log.trace("Appending %d entries", entries.length);
-        try {
+        try (WriteBatch batch = db.createWriteBatch()){
             for(LogEntry entry : entries) {
                 if(overwrite) {
                     appendEntry(index, entry, batch);
@@ -169,10 +168,7 @@ public class LevelDBLog implements Log {
         catch(Exception ex) {
             ex.printStackTrace(); // todo: better error handling
         }
-        finally {
-            log.trace("Closing batch: %s", batch);
-            Util.close(batch);
-        }
+
     }
 
     @Override
@@ -263,23 +259,20 @@ public class LevelDBLog implements Log {
         log.info("-----------------");
 
         byte[] firstAppliedBytes = db.get(FIRSTAPPLIED);
-        log.info("First Applied: " + fromByteArrayToInt(firstAppliedBytes));
+        log.info("First Applied: %d", fromByteArrayToInt(firstAppliedBytes));
         byte[] lastAppliedBytes = db.get(LASTAPPLIED);
-        log.info("Last Applied: " + fromByteArrayToInt(lastAppliedBytes));
+        log.info("Last Applied: %d", fromByteArrayToInt(lastAppliedBytes));
         byte[] currentTermBytes = db.get(CURRENTTERM);
-        log.info("Current Term: " + fromByteArrayToInt(currentTermBytes));
+        log.info("Current Term: %d", fromByteArrayToInt(currentTermBytes));
         byte[] commitIndexBytes = db.get(COMMITINDEX);
-        log.info("Commit Index: " + fromByteArrayToInt(commitIndexBytes));
+        log.info("Commit Index: %d", fromByteArrayToInt(commitIndexBytes));
         Address votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
-        log.info("Voted for: " + votedFor);
+        log.info("Voted for: %s", votedFor);
     }
 
     @Override
     public String toString() {
-        StringBuilder sb=new StringBuilder();
-        sb.append("firstApplied=").append(firstApplied).append(", lastApplied=").append(lastApplied)
-          .append(", commitIndex=").append(commitIndex).append(", currentTerm=").append(currentTerm);
-        return sb.toString();
+        return "firstApplied=" + firstApplied + ", lastApplied=" + lastApplied + ", commitIndex=" + commitIndex + ", currentTerm=" + currentTerm;
     }
 
     private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
