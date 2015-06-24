@@ -224,8 +224,8 @@ public class LogTest {
         log.truncate(4);
         log.close();
         log.init(filename, null);
-        assertEquals(log.firstApplied(), 4);
-        assertEquals(log.lastApplied(), 5);
+        assertEquals(log.firstAppended(), 4);
+        assertEquals(log.lastAppended(), 5);
         for(int i=1; i <= 3; i++)
             assertNull(log.get(i));
         for(int i=4; i <= 5; i++)
@@ -242,12 +242,12 @@ public class LogTest {
         log.commitIndex(6);
         log.truncate(4);
         assertEquals(log.commitIndex(), 6);
-        assertEquals(log.firstApplied(), 4);
+        assertEquals(log.firstAppended(), 4);
 
         log.commitIndex(10);
         log.truncate(8);
         assertEquals(log.commitIndex(), 10);
-        assertEquals(log.firstApplied(), 8);
+        assertEquals(log.firstAppended(), 8);
     }
 
 
@@ -286,8 +286,8 @@ public class LogTest {
     }
 
     protected void assertIndices(int first_applied, int last_applied, int commit_index, int current_term) {
-        assertEquals(log.firstApplied(), first_applied);
-        assertEquals(log.lastApplied(),  last_applied);
+        assertEquals(log.firstAppended(), first_applied);
+        assertEquals(log.lastAppended(),  last_applied);
         assertEquals(log.commitIndex(),  commit_index);
         assertEquals(log.currentTerm(),  current_term);
     }

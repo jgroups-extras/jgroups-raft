@@ -85,9 +85,9 @@ public class VoteTest {
             if(!ch.isConnected())
                 continue;
             RAFT r=raft(ch);
-            System.out.println(ch.getAddress() + ": last_applied=" + r.lastApplied() + ", commit_index=" + r.commitIndex());
+            System.out.println(ch.getAddress() + ": last_applied=" + r.lastAppended() + ", commit_index=" + r.commitIndex());
             assert r.commitIndex() == 0 : "commit_index of " + ch.getName() + " should be 0 (was " + r.commitIndex() + ")";
-            int actual_last_applied=r.lastApplied();
+            int actual_last_applied=r.lastAppended();
             assert actual_last_applied == 1 : "expected last_applied=" + 1 + ", but got " + actual_last_applied;
         }
 
@@ -109,15 +109,15 @@ public class VoteTest {
             if(!ch.isConnected())
                 continue;
             RAFT r=raft(ch);
-            System.out.println(ch.getAddress() + ": last_applied=" + r.lastApplied() + ", commit_index=" + r.commitIndex());
+            System.out.println(ch.getAddress() + ": last_applied=" + r.lastAppended() + ", commit_index=" + r.commitIndex());
         }
         for(JChannel ch: channels) {
             if(!ch.isConnected())
                 continue;
             RAFT r=raft(ch);
-            System.out.println(ch.getAddress() + ": last_applied=" + r.lastApplied() + ", commit_index=" + r.commitIndex());
+            System.out.println(ch.getAddress() + ": last_applied=" + r.lastAppended() + ", commit_index=" + r.commitIndex());
             assert r.commitIndex() == 0 : "commit_index of " + ch.getName() + " should be 0 (was " + r.commitIndex() + ")";
-            int actual_last_applied=r.lastApplied();
+            int actual_last_applied=r.lastAppended();
             assert actual_last_applied == 1 : "expected last_applied=" + 1 + ", but got " + actual_last_applied;
         }
     }
@@ -187,9 +187,9 @@ public class VoteTest {
         for(JChannel ch: channels) {
             RAFT raft=raft(ch);
             System.out.printf("%s: members=%s, last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.members(),
-                              raft.lastApplied(), raft.commitIndex());
+                              raft.lastAppended(), raft.commitIndex());
             assert raft.commitIndex() == expected_commit : String.format("%s: last-applied=%d, commit-index=%d",
-                                                                         ch.getAddress(), raft.lastApplied(), raft.commitIndex());
+                                                                         ch.getAddress(), raft.lastAppended(), raft.commitIndex());
         }
     }
 

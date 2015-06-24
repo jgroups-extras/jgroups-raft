@@ -69,7 +69,7 @@ public class CommitTable {
 
 
     public static class Entry {
-        // the next index to send; initialized to last_applied +1
+        // the next index to send; initialized to last_appended +1
         protected int     next_index;
 
         // the index of the highest entry known to be replicated to the member

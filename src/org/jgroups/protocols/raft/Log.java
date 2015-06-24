@@ -47,18 +47,18 @@ public interface Log {
      */
     Log commitIndex(int new_index);
 
-    /** Returns the index of the firstApplied entry */
-    int firstApplied();
+    /** Returns the index of the first log entry */
+    int firstAppended();
 
-    /** Returns the index of the last applied append operation (May get removed as this should be in-memory)<p/>
+    /** Returns the index of the last append operation (May get removed as this should be in-memory)<p/>
      * This value is set by {@link #append(int,boolean,LogEntry...)} */
-    int lastApplied();
+    int lastAppended();
 
     /**
-     * Append the entries starting at index. Advance last_applied by the number of entries appended.<p/>
+     * Append the entries starting at index. Advance last_appended by the number of entries appended.<p/>
      * This is used by the leader when appending entries before sending AppendEntries requests to cluster members.
      * Contrary to {@link #append(int,boolean,LogEntry...)}, no consistency check needs to be performed.
-     * @param index The index at which to append the entries. Should be the same as lastApplied. LastApplied needs
+     * @param index The index at which to append the entries. Should be the same as lastAppended. LastAppended needs
      *              to be incremented by the number of entries appended
      * @param overwrite If there is an existing entry and overwrite is true, overwrite it. Else throw an exception
      * @param entries The entries to append
@@ -68,7 +68,7 @@ public interface Log {
 
     /**
      * Delete all entries starting from start_index.
-     * Updates current_term and last_applied accordingly
+     * Updates current_term and last_appended accordingly
      *
      * @param index The index
      * @return The LogEntry, or null if none's present at index.
@@ -84,7 +84,7 @@ public interface Log {
 
     /**
      * Delete all entries starting from start_index (including the entry at start_index).
-     * Updates current_term and last_applied accordingly
+     * Updates current_term and last_appended accordingly
      *
      * @param start_index
      */
@@ -92,13 +92,13 @@ public interface Log {
 
 
     /**
-     * Applies function to all elements of the log in range [max(start_index,first_applied) .. min(last_applied,end_index)].
+     * Applies function to all elements of the log in range [max(start_index,first_appended) .. min(last_appended,end_index)].
      * @param function The function to be applied
-     * @param start_index The start index. If smaller than first_applied, first_applied will be used
-     * @param end_index The end index. If greater than last_applied, last_applied will be used
+     * @param start_index The start index. If smaller than first_appended, first_appended will be used
+     * @param end_index The end index. If greater than last_appended, last_appended will be used
      */
     void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index);
 
-    /** Applies a function to all elements in range [first_applied .. last_applied] */
+    /** Applies a function to all elements in range [first_appended .. last_appended] */
     void forEach(ObjIntConsumer<LogEntry> function);
 }

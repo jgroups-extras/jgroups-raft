@@ -158,8 +158,8 @@ public class AppendEntriesTest {
         }
 
         RAFT raft=(RAFT)a.getProtocolStack().findProtocol(RAFT.class);
-        System.out.printf("A: last-applied=%d, commit-index=%d\n", raft.lastApplied(), raft.commitIndex());
-        assert raft.lastApplied() == 1;
+        System.out.printf("A: last-applied=%d, commit-index=%d\n", raft.lastAppended(), raft.commitIndex());
+        assert raft.lastAppended() == 1;
         assert raft.commitIndex() == 0;
 
         // Now start B. This should get the first put() replicated and committed from A to B
@@ -168,11 +168,11 @@ public class AppendEntriesTest {
         b.connect(CLUSTER);
         Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b);
 
-        assertCommitIndex(10000, 500, raft.lastApplied(), raft.lastApplied(), a, b);
+        assertCommitIndex(10000, 500, raft.lastAppended(), raft.lastAppended(), a, b);
         for(JChannel ch: Arrays.asList(a,b)) {
             raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
-            System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
-            assert raft.lastApplied() == 1;
+            System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
+            assert raft.lastAppended() == 1;
             assert raft.commitIndex() == 1;
         }
         assertSame(as, bs);
@@ -624,7 +624,7 @@ public class AppendEntriesTest {
     }
 
     protected void assertLogIndices(Log log, int last_applied, int commit_index, int term) {
-        assertEquals(log.lastApplied(), last_applied);
+        assertEquals(log.lastAppended(), last_applied);
         assertEquals(log.commitIndex(), commit_index);
         assertEquals(log.currentTerm(), term);
     }
@@ -635,7 +635,7 @@ public class AppendEntriesTest {
             boolean all_ok=true;
             for(JChannel ch: channels) {
                 RAFT raft=raft(ch);
-                if(expected_commit != raft.commitIndex() || expected_applied != raft.lastApplied())
+                if(expected_commit != raft.commitIndex() || expected_applied != raft.lastAppended())
                     all_ok=false;
             }
             if(all_ok)
@@ -644,9 +644,9 @@ public class AppendEntriesTest {
         }
         for(JChannel ch: channels) {
             RAFT raft=raft(ch);
-            System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
-            assert raft.commitIndex() == expected_commit && raft.lastApplied() == expected_applied
-              : String.format("%s: last-applied=%d, commit-index=%d", ch.getAddress(), raft.lastApplied(), raft.commitIndex());
+            System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
+            assert raft.commitIndex() == expected_commit && raft.lastAppended() == expected_applied
+              : String.format("%s: last-applied=%d, commit-index=%d", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
         }
     }
 

@@ -21,7 +21,7 @@ public class Follower extends RaftImpl {
 
         // 2. Delete the log (if it exists) and create a new log. Append a dummy entry at last_included_index with an
         //    empty buffer and term=last_included_term
-        //    - first_applied=last_applied=commit_index=last_included_index
+        //    - first_appended=last_appended=commit_index=last_included_index
 
         StateMachine sm;
         if((sm=raft.state_machine) == null) {
@@ -38,15 +38,14 @@ public class Follower extends RaftImpl {
             // insert a dummy entry
             Log log=raft.log();
             log.append(last_included_index, true, new LogEntry(last_included_term, null));
-            raft.last_applied=last_included_index;
+            raft.last_appended=last_included_index;
             log.commitIndex(last_included_index);
             raft.commit_index=last_included_index;
             log.truncate(last_included_index);
 
-            raft.getLog().debug("%s: applied snapshot (%s) from %s; last_applied=%d, commit_index=%d",
-                                raft.local_addr, Util.printBytes(msg.getLength()), msg.src(), raft.lastApplied(), raft.commitIndex());
+            raft.getLog().debug("%s: applied snapshot (%s) from %s; last_appended=%d, commit_index=%d",
+                                raft.local_addr, Util.printBytes(msg.getLength()), msg.src(), raft.lastAppended(), raft.commitIndex());
 
-            // send an ApendEntries(true) message with index=last_applied_index
             AppendResult result=new AppendResult(true, last_included_index).commitIndex(raft.commitIndex());
             Message ack=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
             raft.getDownProtocol().down(new Event(Event.MSG, ack));

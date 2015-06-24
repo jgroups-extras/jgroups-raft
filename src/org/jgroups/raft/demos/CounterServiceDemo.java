@@ -113,7 +113,7 @@ public class CounterServiceDemo {
 
     protected int firstApplied() {
         RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
-        return raft.log().firstApplied();
+        return raft.log().firstAppended();
     }
 
     protected int logSize() {

@@ -139,7 +139,7 @@ public class DynamicMembershipTest {
         assertMembers(10000, 500, mbrs2, 3, channels);
 
         // wait until everyone has committed the addServer(D) operation
-        assertCommitIndex(20000, 500, raft(leader).lastApplied(), channels);
+        assertCommitIndex(20000, 500, raft(leader).lastAppended(), channels);
 
         // Now addServer(E) should work
         raft.addServer("E");
@@ -224,9 +224,9 @@ public class DynamicMembershipTest {
         for(JChannel ch: channels) {
             RAFT raft=raft(ch);
             System.out.printf("%s: members=%s, last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.members(),
-                              raft.lastApplied(), raft.commitIndex());
+                              raft.lastAppended(), raft.commitIndex());
             assert raft.commitIndex() == expected_commit : String.format("%s: last-applied=%d, commit-index=%d",
-                                                                         ch.getAddress(), raft.lastApplied(), raft.commitIndex());
+                                                                         ch.getAddress(), raft.lastAppended(), raft.commitIndex());
         }
     }
 

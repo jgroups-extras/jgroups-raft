@@ -95,7 +95,7 @@
      protected void setLog(JChannel ch, int ... terms) {
          RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
          Log log=raft.log();
-         int index=log.lastApplied();
+         int index=log.lastAppended();
          for(int term: terms)
              log.append(++index, true, new LogEntry(term, BUF));
      }

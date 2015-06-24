@@ -53,7 +53,7 @@ public abstract class RaftImpl {
         int curr_index=prev_log_index+1;
 
         if(prev == null && prev_log_index > 0) // didn't find entry
-            return new AppendResult(false, raft.lastApplied());
+            return new AppendResult(false, raft.lastAppended());
 
         // if the term at prev_log_index != prev_term -> return false and the start index of the conflicting term
         if(prev_log_index == 0 || prev.term == prev_log_term) {
@@ -83,7 +83,7 @@ public abstract class RaftImpl {
     /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log */
     protected int getFirstIndexOfConflictingTerm(int start_index, int conflicting_term) {
         Log log=raft.log_impl;
-        int first=Math.max(1, log.firstApplied()), last=log.lastApplied();
+        int first=Math.max(1, log.firstAppended()), last=log.lastAppended();
         int retval=Math.min(start_index, last);
         for(int i=retval; i >= first; i--) {
             LogEntry entry=log.get(i);
@@ -96,7 +96,7 @@ public abstract class RaftImpl {
 
     protected void handleCommitRequest(Address sender, int leader_commit) {
         raft.commitLogTo(leader_commit);
-        AppendResult result=new AppendResult(true, raft.lastApplied()).commitIndex(raft.commitIndex());
+        AppendResult result=new AppendResult(true, raft.lastAppended()).commitIndex(raft.commitIndex());
         Message msg=new Message(sender).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
         raft.getDownProtocol().down(new Event(Event.MSG, msg));
     }

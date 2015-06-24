@@ -8,14 +8,14 @@ The persistent log maintains a list of log entries, where each entry has a term 
 to be applied to the state machine.
 
 A log starts at index 1, so the first element is always unused (marker element). Indices are monotonically increasing.
-Iteration works on elements in range [first_applied .. last_applied]
+Iteration works on elements in range [first_appended .. last_appended]
 
 
 Variables
 ----------
-- first_applied: the index of the first applied item. Initial value: 0
-- last_applied: the index of the last added item. Initial value: 0
-- commit_index: the index of the last committed item. Always <= last_applied. Initial value: 0
+- first_appended: the index of the first appended item. Initial value: 0
+- last_appended: the index of the last added item. Initial value: 0
+- commit_index: the index of the last committed item. Always <= last_appended. Initial value: 0
 
 
 Initial state (at the leader)
@@ -28,9 +28,9 @@ The initial log looks like this (conceptually shown as an array):
                   ---------------------
                     ^
                     |
-  first_applied -----
+  first_appended ----
                     |
-  last_applied ------
+  last_appended -----
                     |
   commit_index ------
 
@@ -44,9 +44,9 @@ After adding A and B:
                   ---------------------
                     ^       ^
                     |       |
-  first_applied -----       |
+  first_appended ----       |
                     |       |
-  last_applied --------------
+  last_appended -------------
                     |
   commit_index ------
 
@@ -60,9 +60,9 @@ Now we got acks from a majority of members for index 2:
                   ---------------------
                     ^       ^
                     |       |
-  first_applied -----       |
+  first_appended ----       |
                             |
-  last_applied --------------
+  last_appended -------------
                             |
   commit_index --------------
 
@@ -75,9 +75,9 @@ After adding a few more log entries:
                   -------------------------------------
                     ^
                     |
-  first_applied -----                       ^       ^
+  first_appended ----                       ^       ^
                                             |       |
-  last_applied --------------------------------------
+  last_appended -------------------------------------
                                             |
   commit_index ------------------------------
 
@@ -92,9 +92,9 @@ Now the log is truncated at the last committed entry (Log.truncate(6)):
                   -------------------------------------
                     ^       ^
                     |       |
-  first_applied -----       |
+  first_appended ----       |
                     |       |
-  last_applied --------------
+  last_appended -------------
                     |
   commit_index ------
 
@@ -102,7 +102,7 @@ Now the log is truncated at the last committed entry (Log.truncate(6)):
 - All entries from [1 .. 6] were written to a snapshot
 - The array was wiped and the first entry is now the last committed entry written to the snapshot (6)
   - This is needed because we need that entry to compare to (prev entry) on the next log append
-- first_applied is set to 6
+- first_appended is set to 6
 
 Now a log entry H with index 9 is added:
                     6   7   8   9  10  11  12  13  14
@@ -111,13 +111,13 @@ Now a log entry H with index 9 is added:
                   -------------------------------------
                     ^           ^
                     |           |
-  first_applied -----           |
+  first_appended ----           |
                     |           |
-  last_applied ------------------
+  last_appended -----------------
                     |
   commit_index ------
 
-- last_applied is advanced
+- last_appended is advanced
 - commit_index will also advance when acks from the majority have been received
 
 

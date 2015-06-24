@@ -15,8 +15,8 @@ public class InMemoryLog implements Log {
     protected String       name; // the name of this log
     protected int          current_term;
     protected Address      voted_for;
-    protected int          first_applied;
-    protected int          last_applied;
+    protected int          first_appended;
+    protected int          last_appended;
     protected int          commit_index;
     protected LogEntry[]   entries;
 
@@ -35,16 +35,16 @@ public class InMemoryLog implements Log {
         if(existing != null) {
             current_term=existing.current_term;
             voted_for=existing.voted_for;
-            first_applied=existing.first_applied;
-            last_applied=existing.last_applied;
+            first_appended=existing.first_appended;
+            last_appended=existing.last_appended;
             commit_index=existing.commit_index;
             entries=existing.entries;
         }
         else {
             current_term=0;
             voted_for=null;
-            first_applied=0;
-            last_applied=0;
+            first_appended=0;
+            last_appended=0;
             commit_index=0;
             entries=new LogEntry[16];
         }
@@ -79,31 +79,31 @@ public class InMemoryLog implements Log {
 
     @Override
     public synchronized Log commitIndex(int new_index) {
-        //if(new_index > last_applied)
+        //if(new_index > last_appended)
           //  throw new IllegalStateException("commit_index (" + commit_index + ") cannot be set to " + new_index +
-            //                                  " as last_applied is " + last_applied);
+            //                                  " as last_appended is " + last_appended);
         commit_index=new_index; return this;
     }
 
     @Override
-    public int firstApplied() {return first_applied;}
+    public int firstAppended() {return first_appended;}
 
     @Override
-    public int lastApplied() {return last_applied;}
+    public int lastAppended() {return last_appended;}
 
     @Override
     public synchronized void append(int index, boolean overwrite, LogEntry... new_entries) {
         int space_required=new_entries != null? new_entries.length : 0;
-        int available_space=this.entries.length - last_applied;
+        int available_space=this.entries.length - last_appended;
         if(space_required > available_space)
             expand(space_required - available_space +1);
 
         for(LogEntry entry: new_entries) {
-            int idx=index-first_applied;
+            int idx=index- first_appended;
             if(!overwrite && this.entries[idx] != null)
                 throw new IllegalStateException("Index " + index + " already contains a log entry: " + this.entries[idx]);
             this.entries[idx]=entry;
-            last_applied=Math.max(last_applied, index);
+            last_appended=Math.max(last_appended, index);
             index++;
             if(entry.term > current_term)
                 current_term=entry.term;
@@ -113,7 +113,7 @@ public class InMemoryLog implements Log {
 
     @Override
     public synchronized LogEntry get(int index) {
-        int real_index=index - first_applied;
+        int real_index=index - first_appended;
         return real_index < 0 || real_index >= entries.length? null : entries[real_index];
     }
 
@@ -122,36 +122,36 @@ public class InMemoryLog implements Log {
         if(index > commit_index)
             index=commit_index;
         LogEntry[] tmp=new LogEntry[entries.length];
-        int idx=index-first_applied;
+        int idx=index- first_appended;
         System.arraycopy(entries, idx, tmp, 0, entries.length - idx);
         entries=tmp;
-        first_applied=index;
+        first_appended=index;
     }
 
     @Override
     public synchronized void deleteAllEntriesStartingFrom(int start_index) {
-        int idx=start_index-first_applied;
+        int idx=start_index- first_appended;
         if(idx < 0 || idx >= entries.length)
             return;
 
-        for(int index=idx; index <= last_applied; index++)
+        for(int index=idx; index <= last_appended; index++)
             entries[index]=null;
 
         LogEntry last=get(start_index - 1);
         current_term=last != null? last.term : 0;
-        last_applied=start_index-1;
-        if(commit_index > last_applied)
-            commit_index=last_applied;
+        last_appended=start_index-1;
+        if(commit_index > last_appended)
+            commit_index=last_appended;
     }
 
     @Override
     public synchronized void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
-        if(start_index < first_applied)
-            start_index=first_applied;
-        if(end_index > last_applied)
-            end_index=last_applied;
+        if(start_index < first_appended)
+            start_index=first_appended;
+        if(end_index > last_appended)
+            end_index=last_appended;
 
-        int start=Math.max(1, start_index)-first_applied, end=end_index-first_applied;
+        int start=Math.max(1, start_index)- first_appended, end=end_index- first_appended;
         for(int i=start; i <= end; i++) {
             LogEntry entry=entries[i];
             function.accept(entry, start_index);
@@ -161,14 +161,14 @@ public class InMemoryLog implements Log {
 
     @Override
     public synchronized void forEach(ObjIntConsumer<LogEntry> function) {
-        forEach(function, Math.max(1, first_applied), last_applied);
+        forEach(function, Math.max(1, first_appended), last_appended);
     }
 
 
     @Override
     public String toString() {
         StringBuilder sb=new StringBuilder();
-        sb.append("first_applied=").append(first_applied).append(", last_applied=").append(last_applied)
+        sb.append("first_appended=").append(first_appended).append(", last_appended=").append(last_appended)
           .append(", commit_index=").append(commit_index).append(", current_term=").append(current_term);
         return sb.toString();
     }

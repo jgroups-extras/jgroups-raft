@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 @MBean(description="Protocol performing leader election according to the RAFT paper")
 public class ELECTION extends Protocol {
     // when moving to JGroups -> add to jg-protocol-ids.xml
-    protected static final short ELECTION_ID    = 500;
+    protected static final short ELECTION_ID    = 520;
 
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short VOTE_REQ       = 3000;
@@ -241,7 +241,7 @@ public class ELECTION extends Protocol {
      */
     protected boolean sameOrNewer(int last_log_term, int last_log_index) {
         int my_last_log_index;
-        LogEntry entry=raft.log().get(my_last_log_index=raft.log().lastApplied());
+        LogEntry entry=raft.log().get(my_last_log_index=raft.log().lastAppended());
         int my_last_log_term=entry != null? entry.term : 0;
         int comp=Integer.compare(my_last_log_term, last_log_term);
         return comp <= 0 && (comp < 0 || Integer.compare(my_last_log_index, last_log_index) <= 0);
@@ -262,7 +262,7 @@ public class ELECTION extends Protocol {
     }
 
     protected void sendVoteRequest(int term) {
-        int last_log_index=raft.log().lastApplied();
+        int last_log_index=raft.log().lastAppended();
         LogEntry entry=raft.log().get(last_log_index);
         int last_log_term=entry != null? entry.term() : 0;
         VoteRequest req=new VoteRequest(term, last_log_term, last_log_index);

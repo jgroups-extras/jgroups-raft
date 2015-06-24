@@ -32,7 +32,7 @@ import java.util.function.ObjIntConsumer;
 public class RAFT extends Protocol implements Runnable, Settable, DynamicMembership {
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final byte[] raft_id_key          = Util.stringToBytes("raft-id");
-    protected static final short  RAFT_ID              = 501;
+    protected static final short  RAFT_ID              = 521;
 
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short  APPEND_ENTRIES_REQ   = 2000;
@@ -112,8 +112,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @ManagedAttribute(description="The current term")
     protected int                     current_term;
 
-    @ManagedAttribute(description="Index of the highest log entry applied to the state machine")
-    protected int                     last_applied;
+    @ManagedAttribute(description="Index of the highest log entry appended to the log")
+    protected int                     last_appended;
 
     @ManagedAttribute(description="Index of the highest committed log entry")
     protected int                     commit_index;
@@ -150,7 +150,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
     public int          currentTerm()                 {return current_term;}
-    public int          lastApplied()                 {return last_applied;}
+    public int          lastAppended()                {return last_appended;}
     public int          commitIndex()                 {return commit_index;}
     public Log          log()                         {return log_impl;}
     public RAFT         log(Log new_log)              {this.log_impl=new_log; return this;}
@@ -228,7 +228,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @ManagedOperation(description="Dumps the last N log entries")
     public String dumpLog(int last_n) {
         final StringBuilder sb=new StringBuilder();
-        int to=last_applied, from=Math.max(1, to-last_n);
+        int to=last_appended, from=Math.max(1, to-last_n);
         log_impl.forEach((entry,index) ->
                            sb.append("index=").append(index).append(", term=").append(entry.term()).append(" (")
                              .append(entry.command().length).append(" bytes)\n"),
@@ -238,7 +238,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     @ManagedOperation(description="Dumps all log entries")
     public String dumpLog() {
-        return dumpLog(last_applied -1);
+        return dumpLog(last_appended -1);
     }
 
     public void logEntries(ObjIntConsumer<LogEntry> func) {
@@ -252,14 +252,14 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     protected synchronized void createRequestTable() {
         request_table=new RequestTable<>();
         // Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31)
-        for(int i=this.commit_index+1; i <= this.last_applied; i++)
+        for(int i=this.commit_index+1; i <= this.last_appended; i++)
             request_table.create(i, raft_id, null);
     }
 
     protected void createCommitTable() {
         List<Address> mbrs=new ArrayList<>(view.getMembers());
         mbrs.remove(local_addr);
-        commit_table=new CommitTable(mbrs, last_applied+1);
+        commit_table=new CommitTable(mbrs, last_appended +1);
     }
 
     public synchronized boolean updateTermAndLeader(int term, Address new_leader) {
@@ -355,7 +355,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
                     // log.debug("snapshot %s not found, initializing state machine from persistent log", snapshot_name);
                 }
 
-                int from=Math.max(1, log_impl.firstApplied()+snapshot_offset), to=commit_index, count=0;
+                int from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;
                 for(int i=from; i <= to; i++) {
                     LogEntry log_entry=log_impl.get(i);
                     if(log_entry == null) {
@@ -426,10 +426,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         snapshot_name=createLogName(snapshot_name, "snapshot");
 
         log_impl.init(log_name, args);
-        last_applied=log_impl.lastApplied();
+        last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
         current_term=log_impl.currentTerm();
-        log.trace("set last_applied=%d, commit_index=%d, current_term=%d", last_applied, commit_index, current_term);
+        log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
         initStateMachineFromLog(false);
         log_size_bytes=logSizeInBytes();
 
@@ -549,8 +549,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
         // 1. Append to the log
         synchronized(this) {
-            prev_index=last_applied;
-            curr_index=++last_applied;
+            prev_index=last_appended;
+            curr_index=++last_appended;
             LogEntry entry=log_impl.get(prev_index);
             prev_term=entry != null? entry.term : 0;
             curr_term=current_term;
@@ -625,21 +625,21 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
         int next_index=entry.nextIndex(), commit_idx=entry.commitIndex(), match_index=entry.matchIndex();
-        if(next_index < log().firstApplied()) {
+        if(next_index < log().firstAppended()) {
             if(entry.snapshotInProgress(true)) {
                 try {
                     sendSnapshotTo(member); // will reset snapshot_in_progress // todo: run in separate thread
                 }
                 catch(Exception e) {
                     log.error("%s: failed sending snapshot to %s: next_index=%d, first_applied=%d",
-                              local_addr, member, next_index, log().firstApplied());
+                              local_addr, member, next_index, log().firstAppended());
                 }
             }
             return;
         }
 
-        if(this.last_applied >= next_index) {
-            int to=entry.sendSingleMessage()? next_index : last_applied;
+        if(this.last_appended >= next_index) {
+            int to=entry.sendSingleMessage()? next_index : last_appended;
             for(int i=Math.max(next_index,1); i <= to; i++) {  // i=match_index+1 ?
                 if(log.isTraceEnabled())
                     log.trace("%s: resending %d to %s\n", local_addr, i, member);
@@ -648,8 +648,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             return;
         }
 
-        if(this.last_applied > match_index) {
-            int index=this.last_applied;
+        if(this.last_appended > match_index) {
+            int index=this.last_appended;
             if(index > 0) {
                 log.trace("%s: resending %d to %s\n", local_addr, index, member);
                 resend(member, index);
@@ -663,8 +663,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             return;
         }
 
-        if(this.commit_index < this.last_applied) { // fixes https://github.com/belaban/jgroups-raft/issues/30
-            for(int i=this.commit_index+1; i <= this.last_applied; i++)
+        if(this.commit_index < this.last_appended) { // fixes https://github.com/belaban/jgroups-raft/issues/30
+            for(int i=this.commit_index+1; i <= this.last_appended; i++)
                 resend(member, i);
         }
     }
@@ -760,7 +760,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
      */
     protected synchronized RAFT commitLogTo(int leader_commit) {
         try {
-            for(int i=commit_index + 1; i <= Math.min(last_applied, leader_commit); i++) {
+            for(int i=commit_index + 1; i <= Math.min(last_appended, leader_commit); i++) {
                 applyCommit(i);
                 commit_index=Math.max(commit_index, i);
             }
@@ -774,14 +774,14 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     protected RAFT append(int term, int index, byte[] data, int offset, int length, boolean internal) {
         LogEntry entry=new LogEntry(term, data, offset, length, internal);
         log_impl.append(index, true, entry);
-        last_applied=log_impl.lastApplied();
+        last_appended=log_impl.lastAppended();
         snapshotIfNeeded(length);
         return this;
     }
 
     protected void deleteAllLogEntriesStartingFrom(int index) {
         log_impl.deleteAllEntriesStartingFrom(index);
-        last_applied=log_impl.lastApplied();
+        last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
     }
 
@@ -843,7 +843,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         if(commit_table != null) {
             List<Address> mbrs=new ArrayList<>(view.getMembers());
             mbrs.remove(local_addr);
-            commit_table.adjust(mbrs, last_applied + 1);
+            commit_table.adjust(mbrs, last_appended + 1);
         }
 
         // if we're the leader, check if the view contains no duplicate raft-ids

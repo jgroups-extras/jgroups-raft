@@ -132,7 +132,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
 
     protected int firstApplied() {
         RAFT raft=(RAFT)rsm.channel().getProtocolStack().findProtocol(RAFT.class);
-        return raft.log().firstApplied();
+        return raft.log().firstAppended();
     }
 
     protected int logSize() {
