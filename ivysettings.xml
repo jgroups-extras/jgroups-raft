@@ -5,8 +5,8 @@
 
     <!--<property name="nexus-public"
               value="https://repository.jboss.org/nexus/content/groups/public"/>-->
-    <property name="nexus-public"
-              value="${nexus.url}"/>
+    <property name="nexus-public"    value="${nexus.url}"/>
+    <property name="nexus-snapshots" value="${nexus.snapshots.url}"/>
 
     <property
             name="m2-location"
@@ -38,11 +38,15 @@
 
         <ibiblio name="nexus"  m2compatible="true" root="${nexus-public}"/>
 
+        <ibiblio name="nexus-snapshots" m2compatible="true" root="${nexus-snapshots}"/>
+
+
         <!-- Tries to find an artifact in the local maven repo first -->
         <chain name="default">
             <resolver ref="local-ivy"/>
             <resolver ref="local-maven2"/>
             <resolver ref="public"/>
+            <resolver ref="nexus-snapshots"/>
         </chain>
     </resolvers>
 
