@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.ObjIntConsumer;
 
@@ -96,7 +97,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     protected final List<RoleChange>  role_change_listeners=new ArrayList<>();
 
     // Set to true during an addServer()/removeServer() op until the change has been committed
-    protected volatile boolean        members_being_changed;
+    protected final AtomicBoolean     members_being_changed = new AtomicBoolean(false);
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     @GuardedBy("impl_lock")
@@ -178,7 +179,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     @Property
-    public List<String> members() {return members;}
+    public List<String> members() {
+        synchronized (members) {
+            return new ArrayList<>(members);
+        }
+    }
 
 
     /**
@@ -238,7 +243,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     @ManagedOperation(description="Dumps all log entries")
     public String dumpLog() {
-        return dumpLog(last_appended -1);
+        return dumpLog(last_appended - 1);
     }
 
     public void logEntries(ObjIntConsumer<LogEntry> func) {
@@ -288,13 +293,13 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
 
-        if(members_being_changed)
+        if(members_being_changed.compareAndSet(false, true)) {
+            InternalCommand cmd=new InternalCommand(type, name);
+            byte[] buf=Util.streamableToByteBuffer(cmd);
+            return setAsync(buf, 0, buf.length, cmd);
+        } else {
             throw new IllegalStateException(type + "(" + name + ") cannot be invoked as previous operation has not yet been committed");
-        members_being_changed=true;
-
-        InternalCommand cmd=new InternalCommand(type, name);
-        byte[] buf=Util.streamableToByteBuffer(cmd);
-        return setAsync(buf, 0, buf.length, cmd);
+        }
     }
 
     void _addServer(String name) {
@@ -817,7 +822,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
                 cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
                                                                    log_entry.offset, log_entry.length);
                 if(cmd.type() == InternalCommand.Type.addServer || cmd.type() == InternalCommand.Type.removeServer)
-                    members_being_changed=false; // new addServer()/removeServer() operations can now be started
+                    members_being_changed.set(false); // new addServer()/removeServer() operations can now be started
             }
             catch(Throwable t) {
                 log.error("%s: failed unmarshalling internal command: %s", local_addr, t);
@@ -986,6 +991,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             }
         }
         return false;
+    }
+
+    /** number of requests being processed */
+    public int requestTableSize() {
+        return request_table.size();
     }
 
     public interface RoleChange {

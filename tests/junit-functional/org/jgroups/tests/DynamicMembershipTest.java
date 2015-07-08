@@ -3,9 +3,9 @@ package org.jgroups.tests;
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
@@ -16,6 +16,8 @@ import java.io.DataOutput;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests the addServer() / removeServer) functionality
@@ -93,6 +95,48 @@ public class DynamicMembershipTest {
         raft=raft(leader);
         raft.removeServer("D");
         assertMembers(10000, 500, mbrs, 2, channels);
+    }
+
+    /**
+     * {A,B,C} +D +E +F +G +H +I +J
+     */
+    public void testAddServerSimultaneously()
+            throws Exception {
+        init("A", "B", "C");
+        leader = leader(10000, 500, channels);
+        System.out.println("leader = " + leader);
+        assert leader != null;
+        assertSameLeader(leader, channels);
+        assertMembers(5000, 500, mbrs, 2, channels);
+
+        final RAFT raft = raft(leader);
+
+        final List<String> newServers = Arrays.asList("D", "E", "F", "G", "H", "I", "J");
+        final CountDownLatch addServerLatch = new CountDownLatch(1);
+        final CountDownLatch completionLatch = new CountDownLatch(newServers.size());
+        final AtomicBoolean success = new AtomicBoolean(true);
+
+        for (String newServer : newServers) {
+            new Thread(() -> {
+                try {
+                    addServerLatch.await();
+                    raft.addServer(newServer);
+                    if (raft.requestTableSize() > 1){
+                        success.compareAndSet(true, false);
+                    }
+                } catch (IllegalStateException e) {
+
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                completionLatch.countDown();
+            }).start();
+        }
+
+        addServerLatch.countDown();
+        completionLatch.await();
+
+        assert success.get();
     }
 
     /**

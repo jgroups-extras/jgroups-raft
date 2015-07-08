@@ -41,6 +41,11 @@ public class RequestTable<T> {
         return entry != null && entry.committed;
     }
 
+    /** number of requests being processed */
+    public synchronized int size() {
+        return requests.size();
+    }
+
     /** Notifies the CompletableFuture and then removes the entry for index */
     public synchronized void notifyAndRemove(int index, byte[] response, int offset, int length) {
         Entry entry=requests.get(index);
