@@ -87,6 +87,13 @@ public class CLIENT extends Protocol implements Runnable {
         thread_pool.shutdown();
     }
 
+    @Override
+    public void destroy() {
+        super.destroy();
+        Util.close(sock);
+        if(thread_pool != null)
+            thread_pool.shutdown();
+    }
 
     public void run() {
         while(true) {
