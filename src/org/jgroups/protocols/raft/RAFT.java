@@ -556,25 +556,25 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         synchronized(this) {
             prev_index=last_appended;
             curr_index=++last_appended;
-            LogEntry entry=log_impl.get(prev_index);
-            prev_term=entry != null? entry.term : 0;
             curr_term=current_term;
             commit_idx=commit_index;
+            LogEntry entry=log_impl.get(prev_index);
+            prev_term=entry != null? entry.term : 0;
+
+            log_impl.append(curr_index, true, new LogEntry(curr_term, buf, offset, length, cmd != null));
+
+            if(cmd != null)
+                executeInternalCommand(cmd, null, 0, 0);
+
+            // 2. Add the request to the client table, so we can return results to clients when done
+            reqtab.create(curr_index, raft_id, retval);
+
+            // 3. Multicast an AppendEntries message (exclude self)
+            Message msg=new Message(null, buf, offset, length)
+              .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
+              .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+            down_prot.down(new Event(Event.MSG, msg));
         }
-
-        log_impl.append(curr_index, true, new LogEntry(curr_term, buf, offset, length, cmd != null));
-
-        if(cmd != null)
-            executeInternalCommand(cmd, null, 0, 0);
-
-        // 2. Add the request to the client table, so we can return results to clients when done
-        reqtab.create(curr_index, raft_id, retval);
-
-        // 3. Multicast an AppendEntries message (exclude self)
-        Message msg=new Message(null, buf, offset, length)
-          .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
-          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
-        down_prot.down(new Event(Event.MSG, msg));
 
         snapshotIfNeeded(length);
 

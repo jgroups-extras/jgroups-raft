@@ -77,7 +77,7 @@
     <RSVP resend_interval="2000" timeout="10000"/>
     <pbcast.STATE_TRANSFER />
     <raft.ELECTION election_min_interval="100" election_max_interval="500"/>
-    <raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}"/>
+    <raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}" resend_interval="1000"/>
     <raft.REDIRECT/>
     <raft.CLIENT bind_addr="0.0.0.0" />
 </config>
