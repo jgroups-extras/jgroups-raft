@@ -21,9 +21,11 @@ public class RequestTable<T> {
     protected final Map<Integer,Entry<T>> requests=new HashMap<>(); // maps an index to a set of (response) senders
 
 
-    public synchronized void create(int index, T vote, CompletableFuture<byte[]> future) {
+    public void create(int index, T vote, CompletableFuture<byte[]> future) {
         Entry<T> entry=new Entry<>(future, vote);
-        requests.put(index, entry);
+        synchronized(this) {
+            requests.put(index, entry);
+        }
     }
 
     /**

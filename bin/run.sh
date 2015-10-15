@@ -35,6 +35,7 @@ FLAGS="$FLAGS -Xshare:off"
 
 JMX="-Dcom.sun.management.jmxremote"
 EXPERIMENTAL="$EXPERIMENTAL -XX:+EliminateLocks -XX:+UseBiasedLocking"
+#JMC="-XX:+UnlockCommercialFeatures -XX:+FlightRecorder"
 
 java -cp $CP $DEBUG $LOG $GC $JG_FLAGS $FLAGS $EXPERIMENTAL $JMX $JMC $*
 
