@@ -146,7 +146,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public String       getLeader()                   {return leader != null? leader.toString() : "none";}
     public Address      leader()                      {return leader;}
     public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
-    public boolean      isLeader()                    {return leader != null && leader.equals(local_addr);}
+    public boolean      isLeader()                    {return Objects.equals(leader, local_addr);}
     public org.jgroups.logging.Log getLog()           {return this.log;}
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}

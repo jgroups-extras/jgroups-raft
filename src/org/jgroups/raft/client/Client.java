@@ -16,7 +16,7 @@ import java.net.Socket;
  */
 public class Client {
 
-    protected void start(InetAddress dest, int port, String add_server, String remove_server) throws Throwable {
+    protected static void start(InetAddress dest, int port, String add_server, String remove_server) throws Throwable {
         try(Socket sock=new Socket(dest, port);
             DataInputStream in=new DataInputStream(sock.getInputStream());
             DataOutputStream out=new DataOutputStream(sock.getOutputStream())) {
@@ -79,8 +79,7 @@ public class Client {
             System.err.println("only one server can be added or removed at a time");
             return;
         }
-        Client client=new Client();
-        client.start(dest, port, add_server, remove_server);
+        Client.start(dest, port, add_server, remove_server);
     }
 
     protected static void help() {

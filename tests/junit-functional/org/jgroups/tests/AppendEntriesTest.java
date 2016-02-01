@@ -1,24 +1,25 @@
  package org.jgroups.tests;
 
  import org.jgroups.Address;
- import org.jgroups.Global;
- import org.jgroups.JChannel;
- import org.jgroups.raft.blocks.ReplicatedStateMachine;
- import org.jgroups.protocols.raft.*;
- import org.jgroups.util.Util;
- import org.testng.annotations.AfterMethod;
- import org.testng.annotations.Test;
+import org.jgroups.Global;
+import org.jgroups.JChannel;
+import org.jgroups.protocols.raft.*;
+import org.jgroups.raft.blocks.ReplicatedStateMachine;
+import org.jgroups.util.Util;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.Test;
 
- import java.io.DataInput;
- import java.io.DataOutput;
- import java.lang.reflect.Field;
- import java.lang.reflect.Method;
- import java.util.Arrays;
- import java.util.List;
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.List;
+ import java.util.Objects;
  import java.util.concurrent.TimeUnit;
- import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeoutException;
 
- import static org.testng.Assert.*;
+import static org.testng.Assert.*;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc
@@ -581,7 +582,7 @@ public class AppendEntriesTest {
             boolean found=true;
             for(ReplicatedStateMachine<Integer,Integer> rsm: rsms) {
                 Integer val=rsm.get(key);
-                if(val == null || !val.equals(value)) {
+                if(!Objects.equals(val, value)) {
                     found=false;
                     break;
                 }
@@ -593,12 +594,13 @@ public class AppendEntriesTest {
 
         for(ReplicatedStateMachine<Integer,Integer> rsm: rsms) {
             Integer val=rsm.get(key);
-            assert val != null && val.equals(value);
+            assert Objects.equals(val, value);
             System.out.println("rsm = " + rsm);
         }
     }
 
-    protected void assertSame(ReplicatedStateMachine<Integer,Integer> ... rsms) {
+    @SafeVarargs
+    protected final void assertSame(ReplicatedStateMachine<Integer,Integer>... rsms) {
         ReplicatedStateMachine<Integer,Integer> first=rsms[0];
         for(int i=0; i < 10; i++) {
             boolean same=true;

@@ -11,6 +11,7 @@ import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.TimeScheduler;
 
+import java.util.Objects;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
@@ -178,7 +179,7 @@ public class ELECTION extends Protocol {
 
 
     protected synchronized void handleHeartbeat(int term, Address leader) {
-        if(local_addr != null && local_addr.equals(leader))
+        if(Objects.equals(local_addr, leader))
             return;
         heartbeatReceived(true);
         if(role != Role.Follower || raft.updateTermAndLeader(term, leader)) {
@@ -188,7 +189,7 @@ public class ELECTION extends Protocol {
     }
 
     protected void handleVoteRequest(Address sender, int term, int last_log_term, int last_log_index) {
-        if(local_addr != null && local_addr.equals(sender))
+        if(Objects.equals(local_addr, sender))
             return;
         if(log.isTraceEnabled())
             log.trace("%s: received VoteRequest from %s: term=%d, my term=%d, last_log_term=%d, last_log_index=%d",

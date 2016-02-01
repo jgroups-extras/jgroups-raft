@@ -2,7 +2,10 @@ package org.jgroups.raft.blocks;
 
 import org.jgroups.Channel;
 import org.jgroups.blocks.atomic.Counter;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.InternalCommand;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.Role;
+import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.util.*;
 
@@ -84,11 +87,10 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
 
     public String printCounters() {
-        StringBuilder sb=new StringBuilder();
-        for(Map.Entry<String,Long> entry: counters.entrySet()) {
-            sb.append(entry.getKey()).append(" = ").append(entry.getValue()).append("\n");
-        }
-        return sb.toString();
+        return counters.entrySet()
+          .stream().collect(StringBuilder::new,
+                            (sb,entry) -> sb.append(entry.getKey()).append(" = ").append(entry.getValue()).append("\n"),
+                            (l,r) -> {}).toString();
     }
 
 

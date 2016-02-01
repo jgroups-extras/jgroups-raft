@@ -12,6 +12,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -66,7 +67,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         Address leader=leader("set()");
 
         // we are the current leader: pass the call to the RAFT protocol
-        if(local_addr != null && local_addr.equals(leader))
+        if(Objects.equals(local_addr, leader))
             return raft.setAsync(buf, offset, length);
 
         // add a unique ID to the request table, so we can correlate the response to the request
@@ -207,7 +208,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         Address leader=leader("addServer()/removeServer()");
 
         // we are the current leader: pass the call to the RAFT protocol
-        if(local_addr != null && local_addr.equals(leader))
+        if(Objects.equals(local_addr, leader))
             return raft.changeMembers(name, add? InternalCommand.Type.addServer : InternalCommand.Type.removeServer);
 
         // add a unique ID to the request table, so we can correlate the response to the request

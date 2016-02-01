@@ -33,10 +33,10 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
     protected PrintStream old_stdout=System.out;
     protected PrintStream old_stderr=System.err;
 
-    protected final ConcurrentMap<Class<?>, DataOutputStream> tests=new ConcurrentHashMap<Class<?>,DataOutputStream>(100);
+    protected final ConcurrentMap<Class<?>, DataOutputStream> tests=new ConcurrentHashMap<>(100);
 
-    public static final InheritableThreadLocal<PrintStream>   stdout=new InheritableThreadLocal<PrintStream>();
-    public static final InheritableThreadLocal<PrintStream>   stderr=new InheritableThreadLocal<PrintStream>();
+    public static final InheritableThreadLocal<PrintStream>   stdout=new InheritableThreadLocal<>();
+    public static final InheritableThreadLocal<PrintStream>   stderr=new InheritableThreadLocal<>();
 
 
 
@@ -59,8 +59,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
     /** Invoked after all test classes in this test have been run */
     public void onFinish(ITestContext context) {
         try {
-            for(DataOutputStream out: tests.values())
-                Util.close(out);
+            tests.values().forEach(Util::close);
             tests.clear();
             generateReports();
         }
@@ -223,7 +222,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
         File root_dir=new File(output_dir);
         if(!root_dir.exists())
             throw new IOException(root_dir + " not found");
-        File[] subdirs=root_dir.listFiles(new FileFilter() {public boolean accept(File f) {return f.isDirectory();}});
+        File[] subdirs=root_dir.listFiles(File::isDirectory);
         if(subdirs != null) {
             for(File dir: subdirs) {
                 try {
@@ -241,7 +240,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
         File file=new File(dir, TESTS);
         if(!file.exists())
             throw new IOException(file + " not found");
-        List<TestCase> test_cases=new ArrayList<TestCase>();
+        List<TestCase> test_cases=new ArrayList<>();
         DataInputStream input=new DataInputStream(new FileInputStream(file));
         try {
             for(;;) {

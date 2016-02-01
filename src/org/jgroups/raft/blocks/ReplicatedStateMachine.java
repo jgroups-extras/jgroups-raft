@@ -103,10 +103,6 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         return map.equals(((ReplicatedStateMachine)obj).map);
     }
 
-    /*public void loadFromLog() throws Exception {
-        raftie.initStateMachineFromLog(false);
-    }*/
-
 
     /**
      * Adds a key value pair to the state machine. The data is not added directly, but sent to the RAFT leader and only
