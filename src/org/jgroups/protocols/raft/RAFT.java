@@ -51,7 +51,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     @Property(description="The identifier of this node. Needs to be unique and an element of members. Must not be null",
               writable=false)
-    protected String                  raft_id;
+    protected String                  raftId;
 
     /** The set of members defining the Raft cluster */
     protected final List<String>      members=new ArrayList<>();
@@ -126,8 +126,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
 
     public Address      address()                     {return local_addr;}
-    public String       raftId()                      {return raft_id;}
-    public RAFT         raftId(String id)             {this.raft_id=id; return this;}
+    public String       raftId()                      {return raftId;}
+    public RAFT         raftId(String id)             {this.raftId=id; return this;}
     public int          majority()                    {synchronized(members) {return majority;}}
     public String       logClass()                    {return log_class;}
     public RAFT         logClass(String clazz)        {log_class=clazz; return this;}
@@ -258,7 +258,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         request_table=new RequestTable<>();
         // Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31)
         for(int i=this.commit_index+1; i <= this.last_appended; i++)
-            request_table.create(i, raft_id, null);
+            request_table.create(i, raftId, null);
     }
 
     protected void createCommitTable() {
@@ -386,7 +386,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @Override public void init() throws Exception {
         super.init();
         timer=getTransport().getTimer();
-        if(raft_id == null)
+        if(raftId == null)
             throw new IllegalStateException("raft_id must not be null");
 
         // we can only add/remove 1 member at a time (section 4.1 of [1])
@@ -405,7 +405,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         final JChannel ch=stack.getChannel();
-        ch.addAddressGenerator(() -> ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id)));
+        ch.addAddressGenerator(() -> ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raftId)));
     }
 
     @Override public void start() throws Exception {
@@ -425,7 +425,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             args=new HashMap<>();
 
         if(log_name == null)
-            log_name=raft_id;
+            log_name=raftId;
         snapshot_name=log_name;
         log_name=createLogName(log_name, "log");
         snapshot_name=createLogName(snapshot_name, "snapshot");
@@ -438,8 +438,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         initStateMachineFromLog(false);
         log_size_bytes=logSizeInBytes();
 
-        if(!members.contains(raft_id))
-            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
+        if(!members.contains(raftId))
+            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raftId, this.members));
     }
 
 
@@ -567,7 +567,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
                 executeInternalCommand(cmd, null, 0, 0);
 
             // 2. Add the request to the client table, so we can return results to clients when done
-            reqtab.create(curr_index, raft_id, retval);
+            reqtab.create(curr_index, raftId, retval);
 
             // 3. Multicast an AppendEntries message (exclude self)
             Message msg=new Message(null, buf, offset, length)
