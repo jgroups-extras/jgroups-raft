@@ -115,19 +115,20 @@ public class MapDBLog implements Log {
 
     @Override
     public void truncate(int index) {
-
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void deleteAllEntriesStartingFrom(int start_index) {
+        throw new UnsupportedOperationException();
     }
 
     public void forEach(ObjIntConsumer<LogEntry> function,int start_index,int end_index) {
-
+        throw new UnsupportedOperationException();
     }
 
     public void forEach(ObjIntConsumer<LogEntry> function) {
-
+        throw new UnsupportedOperationException();
     }
 
 

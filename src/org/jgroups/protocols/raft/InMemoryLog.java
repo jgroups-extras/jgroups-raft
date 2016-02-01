@@ -52,7 +52,9 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public void close() {}
+    public void close() {
+        throw new UnsupportedOperationException();
+    }
 
     @Override
     public void delete() {
