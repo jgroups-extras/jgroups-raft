@@ -33,10 +33,10 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
     protected PrintStream old_stdout=System.out;
     protected PrintStream old_stderr=System.err;
 
-    protected final ConcurrentMap<Class<?>, DataOutputStream> tests=new ConcurrentHashMap<>(100);
+    protected final ConcurrentMap<Class<?>, DataOutputStream> testsMap=new ConcurrentHashMap<>(100);
 
-    public static final InheritableThreadLocal<PrintStream>   stdout=new InheritableThreadLocal<>();
-    public static final InheritableThreadLocal<PrintStream>   stderr=new InheritableThreadLocal<>();
+    public static final InheritableThreadLocal<PrintStream>   STD_OUT=new InheritableThreadLocal<>();
+    public static final InheritableThreadLocal<PrintStream>   STD_ERR=new InheritableThreadLocal<>();
 
 
 
@@ -59,8 +59,8 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
     /** Invoked after all test classes in this test have been run */
     public void onFinish(ITestContext context) {
         try {
-            tests.values().forEach(Util::close);
-            tests.clear();
+            testsMap.values().forEach(Util::close);
+            testsMap.clear();
             generateReports();
         }
         catch(IOException e) {
@@ -132,21 +132,21 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
         File _tests=new File(dir, TESTS), _stdout=new File(dir, STDOUT), _stderr=new File(dir, STDERR);
         try {
             Class<?> clazz=result.getTestClass().getRealClass();
-            if(!tests.containsKey(clazz)) {
+            if(!testsMap.containsKey(clazz)) {
                 DataOutputStream output=new DataOutputStream(new FileOutputStream(_tests,true));
-                DataOutputStream tmp=tests.putIfAbsent(clazz, output);
+                DataOutputStream tmp=testsMap.putIfAbsent(clazz, output);
                 if(tmp != null) {
                     Util.close(output);
                     output=tmp;
                 }
             }
             
-            if(stdout.get() == null)
-                stdout.set(new PrintStream(new FileOutputStream(_stdout, true)));
-            if(stderr.get() == null)
-                stderr.set(new PrintStream(new FileOutputStream(_stderr, true)));
+            if(STD_OUT.get() == null)
+                STD_OUT.set(new PrintStream(new FileOutputStream(_stdout, true)));
+            if(STD_ERR.get() == null)
+                STD_ERR.set(new PrintStream(new FileOutputStream(_stderr, true)));
             if(printMethodName)
-                stdout.get().println("\n\n------------- " + getMethodName(result) + " -----------");
+                STD_OUT.get().println("\n\n------------- " + getMethodName(result) + " -----------");
         }
         catch(IOException e) {
             error(e.toString());
@@ -154,10 +154,10 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
     }
 
     protected static void closeStreams() {
-        Util.close(stdout.get());
-        stdout.set(null);
-        Util.close(stderr.get());
-        stderr.set(null);
+        Util.close(STD_OUT.get());
+        STD_OUT.set(null);
+        Util.close(STD_ERR.get());
+        STD_ERR.set(null);
     }
 
     protected static void print(PrintStream out, String msg, String classname, String method_name) {
@@ -192,7 +192,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
             }
 
             synchronized(this) { // handle concurrent access by different threads, if test methods are run in parallel
-                DataOutputStream output=tests.get(clazz);
+                DataOutputStream output=testsMap.get(clazz);
                 test_case.writeTo(output);
             }
         }
@@ -559,7 +559,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
         }
 
         protected synchronized void append(String x, boolean newline) {
-            PrintStream tmp=type == 1? stdout.get() : stderr.get();
+            PrintStream tmp=type == 1? STD_OUT.get() : STD_ERR.get();
             if(tmp == null)
                 return;
             if(newline)

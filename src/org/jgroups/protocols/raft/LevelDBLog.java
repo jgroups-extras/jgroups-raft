@@ -23,11 +23,11 @@ public class LevelDBLog implements Log {
 
     protected final org.jgroups.logging.Log log= LogFactory.getLog(this.getClass());
 
-    private static final byte[] FIRSTAPPENDED = "FA".getBytes();
-    private static final byte[] LASTAPPENDED  = "LA".getBytes();
-    private static final byte[] CURRENTTERM   = "CT".getBytes();
-    private static final byte[] COMMITINDEX   = "CX".getBytes();
-    private static final byte[] VOTEDFOR      = "VF".getBytes();
+    private static final byte[] FIRST_APPENDED = "FA".getBytes();
+    private static final byte[] LAST_APPENDED  = "LA".getBytes();
+    private static final byte[] CURRENT_TERM   = "CT".getBytes();
+    private static final byte[] COMMIT_INDEX   = "CX".getBytes();
+    private static final byte[] VOTED_FOR      = "VF".getBytes();
 
     private DB db;
     private File dbFileName;
@@ -100,7 +100,7 @@ public class LevelDBLog implements Log {
     public Log currentTerm(int new_term) {
         currentTerm = new_term;
         log.trace("Updating current term: %d", currentTerm);
-        db.put(CURRENTTERM, fromIntToByteArray(currentTerm));
+        db.put(CURRENT_TERM, fromIntToByteArray(currentTerm));
         return this;
     }
 
@@ -114,7 +114,7 @@ public class LevelDBLog implements Log {
         votedFor = member;
         try {
             log.debug("Updating Voted for: %s", votedFor);
-            db.put(VOTEDFOR, Util.objectToByteBuffer(member));
+            db.put(VOTED_FOR, Util.objectToByteBuffer(member));
         } catch (Exception e) {
             e.printStackTrace(); // todo: better error handling
         }
@@ -135,7 +135,7 @@ public class LevelDBLog implements Log {
     public Log commitIndex(int new_index) {
         commitIndex = new_index;
         log.trace("Updating commit index: %d", commitIndex);
-        db.put(COMMITINDEX, fromIntToByteArray(commitIndex));
+        db.put(COMMIT_INDEX, fromIntToByteArray(commitIndex));
         return this;
     }
 
@@ -207,7 +207,7 @@ public class LevelDBLog implements Log {
             }
 
             firstAppended= upto_index;
-            batch.put(FIRSTAPPENDED, fromIntToByteArray(upto_index));
+            batch.put(FIRST_APPENDED, fromIntToByteArray(upto_index));
             db.write(batch);
         }
         finally {
@@ -258,15 +258,15 @@ public class LevelDBLog implements Log {
         log.info("RAFT Log Metadata");
         log.info("-----------------");
 
-        byte[] firstAppendedBytes = db.get(FIRSTAPPENDED);
+        byte[] firstAppendedBytes = db.get(FIRST_APPENDED);
         log.info("First Appended: %d", fromByteArrayToInt(firstAppendedBytes));
-        byte[] lastAppendedBytes = db.get(LASTAPPENDED);
+        byte[] lastAppendedBytes = db.get(LAST_APPENDED);
         log.info("Last Appended: %d", fromByteArrayToInt(lastAppendedBytes));
-        byte[] currentTermBytes = db.get(CURRENTTERM);
+        byte[] currentTermBytes = db.get(CURRENT_TERM);
         log.info("Current Term: %d", fromByteArrayToInt(currentTermBytes));
-        byte[] commitIndexBytes = db.get(COMMITINDEX);
+        byte[] commitIndexBytes = db.get(COMMIT_INDEX);
         log.info("Commit Index: %d", fromByteArrayToInt(commitIndexBytes));
-        Address votedForTmp = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
+        Address votedForTmp = (Address)Util.objectFromByteBuffer(db.get(VOTED_FOR));
         log.info("Voted for: %s", votedForTmp);
     }
 
@@ -322,19 +322,19 @@ public class LevelDBLog implements Log {
     private void updateCurrentTerm(int index, WriteBatch batch) {
         currentTerm=index;
         log.trace("Updating currentTerm: %d", index);
-        batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
+        batch.put(CURRENT_TERM, fromIntToByteArray(currentTerm));
     }
 
     private void updateLastAppended(int index, WriteBatch batch) {
         lastAppended= index;
         log.trace("Updating lastAppended: %d", index);
-        batch.put(LASTAPPENDED, fromIntToByteArray(lastAppended));
+        batch.put(LAST_APPENDED, fromIntToByteArray(lastAppended));
     }
 
 
 
     private boolean isANewRAFTLog() {
-        return (db.get(FIRSTAPPENDED) == null);
+        return (db.get(FIRST_APPENDED) == null);
     }
 
     private void initLogWithMetadata() {
@@ -342,10 +342,10 @@ public class LevelDBLog implements Log {
         log.debug("Initializing log with empty Metadata");
         WriteBatch batch = db.createWriteBatch();
         try {
-            batch.put(FIRSTAPPENDED, fromIntToByteArray(0));
-            batch.put(LASTAPPENDED, fromIntToByteArray(0));
-            batch.put(CURRENTTERM, fromIntToByteArray(0));
-            batch.put(COMMITINDEX, fromIntToByteArray(0));
+            batch.put(FIRST_APPENDED, fromIntToByteArray(0));
+            batch.put(LAST_APPENDED, fromIntToByteArray(0));
+            batch.put(CURRENT_TERM, fromIntToByteArray(0));
+            batch.put(COMMIT_INDEX, fromIntToByteArray(0));
             db.write(batch);
         } catch (Exception ex) {
             ex.printStackTrace(); // todo: better error handling
@@ -359,30 +359,30 @@ public class LevelDBLog implements Log {
     }
 
     private void readMetadataFromLog() throws Exception {
-        firstAppended= fromByteArrayToInt(db.get(FIRSTAPPENDED));
-        lastAppended= fromByteArrayToInt(db.get(LASTAPPENDED));
-        currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
-        commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
+        firstAppended= fromByteArrayToInt(db.get(FIRST_APPENDED));
+        lastAppended= fromByteArrayToInt(db.get(LAST_APPENDED));
+        currentTerm = fromByteArrayToInt(db.get(CURRENT_TERM));
+        commitIndex = fromByteArrayToInt(db.get(COMMIT_INDEX));
+        votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTED_FOR));
         log.debug("read metadata from log: firstAppended=%d, lastAppended=%d, currentTerm=%d, commitIndex=%d, votedFor=%s",
                   firstAppended, lastAppended, currentTerm, commitIndex, votedFor);
     }
 
     private void checkForConsistency() throws Exception {
 
-        int loggedFirstAppended = fromByteArrayToInt(db.get(FIRSTAPPENDED));
+        int loggedFirstAppended = fromByteArrayToInt(db.get(FIRST_APPENDED));
         log.trace("FirstAppended in DB is: %d", loggedFirstAppended);
 
-        int loggedLastAppended = fromByteArrayToInt(db.get(LASTAPPENDED));
+        int loggedLastAppended = fromByteArrayToInt(db.get(LAST_APPENDED));
         log.trace("LastAppended in DB is: %d", loggedLastAppended);
 
-        int loggedCurrentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
+        int loggedCurrentTerm = fromByteArrayToInt(db.get(CURRENT_TERM));
         log.trace("CurrentTerm in DB is: %d", loggedCurrentTerm);
 
-        int loggedCommitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
+        int loggedCommitIndex = fromByteArrayToInt(db.get(COMMIT_INDEX));
         log.trace("CommitIndex in DB is: %d", loggedCommitIndex);
 
-        Address loggedVotedForAddress = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
+        Address loggedVotedForAddress = (Address)Util.objectFromByteBuffer(db.get(VOTED_FOR));
         log.trace("VotedFor in DB is: %s", loggedVotedForAddress);
 
         assert (firstAppended == loggedFirstAppended);
