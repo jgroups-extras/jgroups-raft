@@ -15,6 +15,7 @@ import java.util.function.ObjIntConsumer;
  * @since  0.1
  */
 public class MapDBLog implements Log {
+    private static final String REQUESTED_OPERATION_IS_NOT_SUPPORTED = "Requested operation is not supported.";
     protected DB                         db;
     protected String                     filename;
     protected Atomic.Integer             current_term, last_appended, commit_index;
@@ -115,19 +116,20 @@ public class MapDBLog implements Log {
 
     @Override
     public void truncate(int index) {
-
+        throw new UnsupportedOperationException(REQUESTED_OPERATION_IS_NOT_SUPPORTED);
     }
 
     @Override
     public void deleteAllEntriesStartingFrom(int start_index) {
+        throw new UnsupportedOperationException(REQUESTED_OPERATION_IS_NOT_SUPPORTED);
     }
 
     public void forEach(ObjIntConsumer<LogEntry> function,int start_index,int end_index) {
-
+        throw new UnsupportedOperationException(REQUESTED_OPERATION_IS_NOT_SUPPORTED);
     }
 
     public void forEach(ObjIntConsumer<LogEntry> function) {
-
+        throw new UnsupportedOperationException(REQUESTED_OPERATION_IS_NOT_SUPPORTED);
     }
 
 
