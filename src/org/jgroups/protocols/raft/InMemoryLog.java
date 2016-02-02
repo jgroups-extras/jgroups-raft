@@ -53,7 +53,7 @@ public class InMemoryLog implements Log {
 
     @Override
     public void close() {
-        throw new UnsupportedOperationException();
+        throw new UnsupportedOperationException("Requested operation is not supported.");
     }
 
     @Override
