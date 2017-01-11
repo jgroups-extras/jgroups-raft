@@ -41,7 +41,7 @@
          a=create("A"); a.connect(CLUSTER);
          b=create("B"); b.connect(CLUSTER);
          c=create("C"); c.connect(CLUSTER);
-         Util.waitUntilAllChannelsHaveSameSize(10000, 500, a,b,c);
+         Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b,c);
      }
 
      @AfterMethod protected void destroy() {

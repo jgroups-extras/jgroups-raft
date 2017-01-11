@@ -132,7 +132,7 @@ public class AppendEntriesTest {
         c=create("C", true);  // follower
         cs=new ReplicatedStateMachine<>(c);
         c.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a,b,c);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b,c);
 
         // Now C should also have the same entries (1-5) as A and B
         assertSame(as, bs, cs);
@@ -167,7 +167,7 @@ public class AppendEntriesTest {
         b=create("B", true);
         bs=new ReplicatedStateMachine<>(b);
         b.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, a, b);
 
         assertCommitIndex(10000, 500, raft.lastAppended(), raft.lastAppended(), a, b);
         for(JChannel ch: Arrays.asList(a,b)) {
@@ -191,7 +191,7 @@ public class AppendEntriesTest {
         a.connect(CLUSTER);
         b.connect(CLUSTER);
         // A and B now have a majority and A is leader
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, a, b);
 
         assertLeader(a, 10000, 500);
         assert !raft(b).isLeader();
@@ -216,7 +216,7 @@ public class AppendEntriesTest {
         raft(b).stateMachine(new DummyStateMachine());
         b.connect(CLUSTER);
         // A and B now have a majority and A is leader
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, a, b);
 
         // A and B should now have last_applied=1 and commit_index=1
         assertCommitIndex(10000, 500, 1, 1, a,b);
@@ -241,7 +241,7 @@ public class AppendEntriesTest {
         c=create("C", true);  // follower
         cs=new ReplicatedStateMachine<>(c);
         c.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a, b, c);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, a, b, c);
 
         assertSame(as, bs, cs);
     }
@@ -530,7 +530,7 @@ public class AppendEntriesTest {
         c.connect(CLUSTER);
         b.connect(CLUSTER);
         a.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, a,b,c);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b,c);
 
         for(int i=0; i < 20; i++) {
             if(isLeader(a) && !isLeader(b) && !isLeader(c))

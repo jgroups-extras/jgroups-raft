@@ -145,7 +145,7 @@ public class DynamicMembershipTest {
      */
     public void testAddServerOnLeaderWhichCantCommit() throws Exception {
         init("A", "B");
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, channels);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
         leader=leader(10000, 500, channels);
         System.out.println("leader = " + leader);
         assert leader != null;
@@ -177,7 +177,7 @@ public class DynamicMembershipTest {
             if(channels[i].isClosed())
                 channels[i]=create(String.valueOf((char)('A' + i)));
         }
-        Util.waitUntilAllChannelsHaveSameSize(10000, 500, channels);
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
 
         // Now wait (and assert) for RAFT.members to be {A,B,C,D}
         assertMembers(10000, 500, mbrs2, 3, channels);
