@@ -56,7 +56,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     /** The set of members defining the Raft cluster */
     protected final List<String>      members=new ArrayList<>();
 
-    @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)", writable=false)
+    @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)")
     protected int                     majority=-1;
 
     @ManagedAttribute(description="If true, we can change 'members' at runtime")
@@ -127,7 +127,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     public Address      address()                     {return local_addr;}
     public String       raftId()                      {return raft_id;}
-    public RAFT         raftId(String id)             {this.raft_id=id; return this;}
+    public RAFT         raftId(String id)             {if(id != null) this.raft_id=id; return this;}
     public int          majority()                    {synchronized(members) {return majority;}}
     public String       logClass()                    {return log_class;}
     public RAFT         logClass(String clazz)        {log_class=clazz; return this;}
