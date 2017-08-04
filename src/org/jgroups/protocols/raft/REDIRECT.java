@@ -17,6 +17,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 /**
  * Protocol that redirects RAFT commands from clients to the actual RAFT leader. E.g. if a client issues a set(), but
@@ -81,7 +82,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         log.trace("%s: redirecting request %d to leader %s", local_addr, req_id, leader);
         Message redirect=new Message(leader, buf, offset, length)
           .putHeader(id, new RedirectHeader(RequestType.SET_REQ, req_id, false));
-        down_prot.down(new Event(Event.MSG, redirect));
+        down_prot.down(redirect);
         return future;
     }
 
@@ -106,7 +107,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     public Object down(Event evt) {
         switch(evt.getType()) {
             case Event.SET_LOCAL_ADDRESS:
-                local_addr=(Address)evt.getArg();
+                local_addr=evt.getArg();
                 break;
         }
         return down_prot.down(evt);
@@ -114,25 +115,27 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
     public Object up(Event evt) {
         switch(evt.getType()) {
-            case Event.MSG:
-                Message msg=(Message)evt.getArg();
-                RedirectHeader hdr=(RedirectHeader)msg.getHeader(id);
-                if(hdr == null)
-                    break;
-                handleEvent(msg, hdr);
-                return null;
             case Event.VIEW_CHANGE:
-                view=(View)evt.getArg();
+                view=evt.getArg();
                 break;
         }
         return up_prot.up(evt);
     }
 
 
+    public Object up(Message msg) {
+        RedirectHeader hdr=msg.getHeader(id);
+        if(hdr != null) {
+            handleEvent(msg, hdr);
+            return null;
+        }
+        return up_prot.up(msg);
+    }
+
     @Override
     public void up(MessageBatch batch) {
         for(Message msg: batch) {
-            RedirectHeader hdr=(RedirectHeader)msg.getHeader(id);
+            RedirectHeader hdr=msg.getHeader(id);
             if(hdr != null) {
                 batch.remove(msg);
                 handleEvent(msg, hdr);
@@ -180,7 +183,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
                         future.complete(msg.getBuffer());
                     else {
                         try {
-                            Throwable t=(Throwable)Util.objectFromByteBuffer(msg.getBuffer());
+                            Throwable t=Util.objectFromByteBuffer(msg.getBuffer());
                             future.completeExceptionally(t);
                         }
                         catch(Exception e) {
@@ -223,7 +226,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         byte[] buffer=Util.stringToBytes(name);
         Message redirect=new Message(leader, buffer)
           .putHeader(id, new RedirectHeader(add? RequestType.ADD_SERVER : RequestType.REMOVE_SERVER, req_id, false));
-        down_prot.down(new Event(Event.MSG, redirect));
+        down_prot.down(redirect);
         return future;
     }
 
@@ -247,14 +250,14 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
         protected void apply(byte[] arg) {
             Message msg=new Message(dest, arg).putHeader(id, new RedirectHeader(RequestType.RSP, corr_id, false));
-            down_prot.down(new Event(Event.MSG, msg));
+            down_prot.down(msg);
         }
 
         protected void apply(Throwable t) {
             try {
                 byte[] buf=Util.objectToByteBuffer(t);
                 Message msg=new Message(dest, buf).putHeader(id, new RedirectHeader(RequestType.RSP, corr_id, true));
-                down_prot.down(new Event(Event.MSG, msg));
+                down_prot.down(msg);
             }
             catch(Exception ex) {
                 log.error("failed serializing exception", ex);
@@ -276,8 +279,15 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
             this.exception=exception;
         }
 
+        public short getMagicId() {
+            return REDIRECT.REDIRECT_HDR;
+        }
 
-        public int size() {
+        public Supplier<? extends Header> create() {
+            return RedirectHeader::new;
+        }
+
+        public int serializedSize() {
             return Global.BYTE_SIZE*2 + Bits.size(corr_id);
         }
 

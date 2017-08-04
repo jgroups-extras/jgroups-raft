@@ -184,15 +184,12 @@ A sample XML configuration file is shown below (edited for brevity):
     <FD_SOCK/>
     <FD_ALL/>
     <VERIFY_SUSPECT timeout="1500"  />
-    <pbcast.NAKACK2 xmit_interval="500"
-                    discard_delivered_msgs="true"/>
-    <UNICAST3 xmit_interval="500"
-              max_msg_batch_size="500"/>
+    <pbcast.NAKACK2 xmit_interval="500"/>
+    <UNICAST3 xmit_interval="500"/>
     <pbcast.STABLE desired_avg_gossip="50000"
                    max_bytes="4M"/>
     <raft.NO_DUPES/>                                                         // <1>
-    <pbcast.GMS print_local_addr="true" join_timeout="2000"
-                view_bundling="true"/>
+    <pbcast.GMS print_local_addr="true" join_timeout="2000"/>
     <UFC max_credits="2M" min_threshold="0.4"/>
     <MFC max_credits="2M" min_threshold="0.4"/>
     <FRAG2 frag_size="60K"  />

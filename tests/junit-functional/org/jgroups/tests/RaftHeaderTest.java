@@ -10,7 +10,7 @@ import org.testng.annotations.Test;
  * @author Bela Ban
  * @since  0.1
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=false)
+@Test(groups=Global.FUNCTIONAL)
 public class RaftHeaderTest {
 
     public void testVoteRequestHeader() throws Exception {
@@ -56,27 +56,27 @@ public class RaftHeaderTest {
 
 
     protected static <T extends RaftHeader> void _testSize(T hdr, Class<T> clazz) throws Exception {
-        int size=hdr.size();
+        int size=hdr.serializedSize();
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(size);
         hdr.writeTo(out);
         System.out.println(clazz.getSimpleName() + ": size=" + size);
         assert out.position() == size;
 
-        RaftHeader hdr2=(RaftHeader)Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
+        RaftHeader hdr2=Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
         assert hdr2 != null;
         assert hdr.term() == hdr2.term();
     }
 
 
     protected static <T extends REDIRECT.RedirectHeader> void _testSize(T hdr, Class<T> clazz) throws Exception {
-        int size=hdr.size();
+        int size=hdr.serializedSize();
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(size);
         hdr.writeTo(out);
         System.out.println(clazz.getSimpleName() + ": size=" + size);
         assert out.position() == size;
 
-        REDIRECT.RedirectHeader hdr2=(REDIRECT.RedirectHeader)Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
+        REDIRECT.RedirectHeader hdr2=Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
         assert hdr2 != null;
-        assert hdr.size() == hdr2.size();
+        assert hdr.serializedSize() == hdr2.serializedSize();
     }
 }

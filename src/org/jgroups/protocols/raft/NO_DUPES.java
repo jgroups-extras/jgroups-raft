@@ -34,27 +34,22 @@ public class NO_DUPES extends Protocol {
     public Object down(Event evt) {
         switch(evt.getType()) {
             case Event.VIEW_CHANGE:
-                view=(View)evt.getArg();
+                view=evt.getArg();
                 break;
         }
         return down_prot.down(evt);
     }
 
-    public Object up(Event evt) {
-        if(evt.getType() == Event.MSG) {
-            Message msg=(Message)evt.getArg();
-            GMS.GmsHeader hdr=(GMS.GmsHeader)msg.getHeader(gms_id);
-            if(hdr != null && !handleGmsHeader(hdr, msg.src()))
-                return null;
-        }
-        return up_prot.up(evt);
+    public Object up(Message msg) {
+        GMS.GmsHeader hdr=msg.getHeader(gms_id);
+        if(hdr != null && !handleGmsHeader(hdr, msg.src()))
+            return null;
+        return up_prot.up(msg);
     }
-
-
 
     public void up(MessageBatch batch) {
         for(Message msg: batch) {
-            GMS.GmsHeader hdr=(GMS.GmsHeader)msg.getHeader(gms_id);
+            GMS.GmsHeader hdr=msg.getHeader(gms_id);
             if(hdr != null && !handleGmsHeader(hdr, msg.src()))
                 batch.remove(msg);
         }
@@ -106,9 +101,8 @@ public class NO_DUPES extends Protocol {
     protected void sendJoinRejectedMessageTo(Address joiner, String reject_message) {
         try {
             Buffer buffer=Util.streamableToBuffer(new JoinRsp(reject_message));
-            Message msg=new Message(joiner).setBuffer(buffer)
-              .putHeader(gms_id, new GMS.GmsHeader(GMS.GmsHeader.JOIN_RSP));
-            down_prot.down(new Event(Event.MSG, msg));
+            Message msg=new Message(joiner, buffer).putHeader(gms_id, new GMS.GmsHeader(GMS.GmsHeader.JOIN_RSP));
+            down_prot.down(msg);
         }
         catch(Exception ex) {
             log.error("failed sending JoinRsp to %s: %s", joiner, ex);

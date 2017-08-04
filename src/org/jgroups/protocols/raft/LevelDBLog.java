@@ -266,7 +266,7 @@ public class LevelDBLog implements Log {
         log.info("Current Term: %d", fromByteArrayToInt(currentTermBytes));
         byte[] commitIndexBytes = db.get(COMMITINDEX);
         log.info("Commit Index: %d", fromByteArrayToInt(commitIndexBytes));
-        Address votedForTmp = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
+        Address votedForTmp =Util.objectFromByteBuffer(db.get(VOTEDFOR));
         log.info("Voted for: %s", votedForTmp);
     }
 
@@ -297,7 +297,7 @@ public class LevelDBLog implements Log {
         byte[] entryBytes = db.get(fromIntToByteArray(index));
         LogEntry entry = null;
         try {
-            if (entryBytes != null) entry = (LogEntry) Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
+            if (entryBytes != null) entry =Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -363,7 +363,7 @@ public class LevelDBLog implements Log {
         lastAppended= fromByteArrayToInt(db.get(LASTAPPENDED));
         currentTerm = fromByteArrayToInt(db.get(CURRENTTERM));
         commitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
-        votedFor = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
+        votedFor =Util.objectFromByteBuffer(db.get(VOTEDFOR));
         log.debug("read metadata from log: firstAppended=%d, lastAppended=%d, currentTerm=%d, commitIndex=%d, votedFor=%s",
                   firstAppended, lastAppended, currentTerm, commitIndex, votedFor);
     }
@@ -382,7 +382,7 @@ public class LevelDBLog implements Log {
         int loggedCommitIndex = fromByteArrayToInt(db.get(COMMITINDEX));
         log.trace("CommitIndex in DB is: %d", loggedCommitIndex);
 
-        Address loggedVotedForAddress = (Address)Util.objectFromByteBuffer(db.get(VOTEDFOR));
+        Address loggedVotedForAddress =Util.objectFromByteBuffer(db.get(VOTEDFOR));
         log.trace("VotedFor in DB is: %s", loggedVotedForAddress);
 
         assert (firstAppended == loggedFirstAppended);

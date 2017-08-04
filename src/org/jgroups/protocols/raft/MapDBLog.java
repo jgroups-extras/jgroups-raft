@@ -36,10 +36,10 @@ public class MapDBLog implements Log {
         current_term=db.getAtomicInteger(CURRENT_TERM);
         last_appended=db.getAtomicInteger(LAST_APPENDED);
         commit_index=db.getAtomicInteger(COMMIT_INDEX);
-        voted_for=db.exists(VOTED_FOR)? db.<Address>getAtomicVar(VOTED_FOR)
+        voted_for=db.exists(VOTED_FOR)? db.getAtomicVar(VOTED_FOR)
           : db.createAtomicVar(VOTED_FOR, null, new StreamableSerializer<>(Address.class));
-        log_entries=db.exists(LOG_ENTRIES)? db.<Integer,LogEntry>getTreeMap(LOG_ENTRIES)
-          : db.createTreeMap(LOG_ENTRIES).valueSerializer(new StreamableSerializer<>(LogEntry.class)).<Integer,LogEntry>make();
+        log_entries=db.exists(LOG_ENTRIES)? db.getTreeMap(LOG_ENTRIES)
+          : db.createTreeMap(LOG_ENTRIES).valueSerializer(new StreamableSerializer<>(LogEntry.class)).make();
     }
 
 
@@ -132,7 +132,7 @@ public class MapDBLog implements Log {
 
 
 
-    protected static class StreamableSerializer<T> implements Serializer<T>, Serializable {
+    protected static class StreamableSerializer<T extends Streamable> implements Serializer<T>, Serializable {
         private static final long serialVersionUID=7230936820893354049L;
         protected final Class<T>  clazz;
 
@@ -145,7 +145,7 @@ public class MapDBLog implements Log {
         @Override
         public void serialize(DataOutput out, T value) throws IOException {
             try {
-                Util.writeStreamable((Streamable)value, out);
+                Util.writeStreamable(value, out);
             }
             catch(Exception ex) {
                 throw new IOException(ex);
@@ -155,7 +155,7 @@ public class MapDBLog implements Log {
         @Override
         public T deserialize(DataInput in, int available) throws IOException {
             try {
-                return (T)Util.readStreamable(clazz, in);
+                return Util.readStreamable(clazz, in);
             }
             catch(Exception ex) {
                 throw new IOException(ex);

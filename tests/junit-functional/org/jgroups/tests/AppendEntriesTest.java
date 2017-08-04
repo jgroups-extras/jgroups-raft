@@ -158,7 +158,7 @@ public class AppendEntriesTest {
             System.out.println("The first put() timed out as expected as there's no majority to commit it");
         }
 
-        RAFT raft=(RAFT)a.getProtocolStack().findProtocol(RAFT.class);
+        RAFT raft=a.getProtocolStack().findProtocol(RAFT.class);
         System.out.printf("A: last-applied=%d, commit-index=%d\n", raft.lastAppended(), raft.commitIndex());
         assert raft.lastAppended() == 1;
         assert raft.commitIndex() == 0;
@@ -171,7 +171,7 @@ public class AppendEntriesTest {
 
         assertCommitIndex(10000, 500, raft.lastAppended(), raft.lastAppended(), a, b);
         for(JChannel ch: Arrays.asList(a,b)) {
-            raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+            raft=ch.getProtocolStack().findProtocol(RAFT.class);
             System.out.printf("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
             assert raft.lastAppended() == 1;
             assert raft.commitIndex() == 1;
@@ -511,7 +511,7 @@ public class AppendEntriesTest {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
-            RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+            RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
             if(remove_log)
                 raft.log().delete(); // remove log files after the run
             if(remove_snapshot)
@@ -554,12 +554,12 @@ public class AppendEntriesTest {
     }
 
     protected boolean isLeader(JChannel ch) {
-        RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+        RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
         return ch.getAddress().equals(raft.leader());
     }
 
     protected RaftImpl getImpl(JChannel ch) {
-        RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+        RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
         Field impl=Util.getField(RAFT.class, "impl");
         return (RaftImpl)Util.getField(impl, raft);
     }

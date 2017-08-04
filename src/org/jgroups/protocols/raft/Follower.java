@@ -1,7 +1,6 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
-import org.jgroups.Event;
 import org.jgroups.Message;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
@@ -48,7 +47,7 @@ public class Follower extends RaftImpl {
 
             AppendResult result=new AppendResult(true, last_included_index).commitIndex(raft.commitIndex());
             Message ack=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
-            raft.getDownProtocol().down(new Event(Event.MSG, ack));
+            raft.getDownProtocol().down(ack);
         }
         catch(Exception ex) {
             raft.getLog().error("%s: failed applying snapshot from %s: %s", raft.local_addr, sender, ex);

@@ -1,10 +1,12 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.Header;
 import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.util.function.Supplier;
 
 /**
  * Used by {@link org.jgroups.protocols.raft.ELECTION} to send heartbeats. Contrary to the RAFT paper, heartbeats are
@@ -18,8 +20,16 @@ public class HeartbeatRequest extends RaftHeader {
     public HeartbeatRequest() {}
     public HeartbeatRequest(int term, Address leader) {super(term); this.leader=leader;}
 
-    public int size() {
-        return super.size() + Util.size(leader);
+    public short getMagicId() {
+        return ELECTION.HEARTBEAT_REQ;
+    }
+
+    public Supplier<? extends Header> create() {
+        return HeartbeatRequest::new;
+    }
+
+    public int serializedSize() {
+        return super.serializedSize() + Util.size(leader);
     }
 
     public void writeTo(DataOutput out) throws Exception {

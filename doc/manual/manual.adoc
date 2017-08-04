@@ -23,7 +23,7 @@ This is the jgroups-raft manual. It provides information about
 
 of jgroups-raft.
 
-Bela Ban, Kreuzlingen Switzerland 2015
+Bela Ban, Kreuzlingen Switzerland 2017
 
 
 include::./overview.adoc[Overview]

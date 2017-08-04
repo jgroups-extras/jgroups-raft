@@ -31,8 +31,8 @@ The code below shows how to create an instance of `ReplicatedStateMachine` and a
 ----
 protected void start(String raft_id) throws Exception {
     JChannel ch=new JChannel("raft.xml").name(raft_id);
-    ReplicatedStateMachine<String,String> rsm=new ReplicatedStateMachine<>(ch);
-    rsm.raftId(raft_id);
+    ReplicatedStateMachine<String,String> rsm=new ReplicatedStateMachine<>(ch)
+        .raftId(raft_id);
     ch.connect("rsm-cluster");
     rsm.put("name", "Bela");
 }
@@ -128,7 +128,7 @@ There's a demo `CounterServiceDemo` which can be used to interactively manipulat
 
 ==== Reads and consensus
 
-Currently (as of jgroups-raft version 0.2), reading a counter is by default _dirty_, meaning that a read may return a
+Currently (as of jgroups-raft version 0.4), reading a counter is by default _dirty_, meaning that a read may return a
 stale value.
 
 This can be changed by calling `counter_service.allowDirtyReads(false)`.
@@ -143,7 +143,7 @@ https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
 NOTE: Non-dirty reads has not yet been implemented in `ReplicatedStateMachine`.
 
 
-=== Singleton service
+=== Cluster singleton service
 
 A _singleton service_ is a service which is supposed to run only once in an entire cluster. Typically, in JGroups, a
 singleton service is started on the first member of a cluster. For example, if we have `{A,B,C,D,E}`, the singleton

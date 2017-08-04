@@ -1,6 +1,6 @@
 package org.jgroups.raft.blocks;
 
-import org.jgroups.Channel;
+import org.jgroups.JChannel;
 import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.protocols.raft.InternalCommand;
 import org.jgroups.protocols.raft.RAFT;
@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit;
  * @since  0.2
  */
 public class CounterService implements StateMachine, RAFT.RoleChange {
-    protected Channel    ch;
+    protected JChannel   ch;
     protected RaftHandle raft;
     protected long       repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
 
@@ -35,11 +35,11 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     protected enum Command {create, delete, get, set, compareAndSet, incrementAndGet, decrementAndGet, addAndGet}
 
 
-    public CounterService(Channel ch) {
+    public CounterService(JChannel ch) {
         setChannel(ch);
     }
 
-    public void setChannel(Channel ch) {
+    public void setChannel(JChannel ch) {
         this.ch=ch;
         this.raft=new RaftHandle(this.ch, this);
         raft.addRoleListener(this);
@@ -201,8 +201,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             }
             if(entry.internal()) {
                 try {
-                    InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class,
-                                                                                       entry.command(), entry.offset(), entry.length());
+                    InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class,
+                                                                      entry.command(), entry.offset(), entry.length());
                     sb.append("[internal] ").append(cmd);
                 }
                 catch(Exception ex) {

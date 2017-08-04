@@ -1,11 +1,13 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.Header;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.util.function.Supplier;
 
 /**
  * @author Bela Ban
@@ -26,10 +28,17 @@ public class InstallSnapshotRequest extends RaftHeader {
         this.last_included_term=last_included_term;
     }
 
+    public short getMagicId() {
+        return RAFT.INSTALL_SNAPSHOT_REQ;
+    }
+
+    public Supplier<? extends Header> create() {
+        return InstallSnapshotRequest::new;
+    }
 
     @Override
-    public int size() {
-        return super.size() + Util.size(leader) + Bits.size(last_included_index) + Bits.size(last_included_term);
+    public int serializedSize() {
+        return super.serializedSize() + Util.size(leader) + Bits.size(last_included_index) + Bits.size(last_included_term);
     }
 
     @Override

@@ -1,7 +1,7 @@
 package org.jgroups.raft;
 
 import org.jgroups.Address;
-import org.jgroups.Channel;
+import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.*;
 
 import java.util.concurrent.CompletableFuture;
@@ -22,16 +22,17 @@ import java.util.function.ObjIntConsumer;
  * @since  0.2
  */
 public class RaftHandle implements Settable {
-    protected Channel      ch;
+    protected JChannel     ch;
     protected RAFT         raft;
     protected Settable     settable; // usually REDIRECT (at the top of the stack)
 
     /**
      * Creates a RaftHandle instance.
      * @param ch The channel over which to create the RaftHandle. Must be non-null, but doesn't yet need to be connected
-     * @param sm An implementation of {@link StateMachine}. Can be null, ie. if it is set later via {@link #stateMachine(StateMachine)}.
+     * @param sm An implementation of {@link StateMachine}.
+     *           Can be null, ie. if it is set later via {@link #stateMachine(StateMachine)}.
      */
-    public RaftHandle(Channel ch, StateMachine sm) {
+    public RaftHandle(JChannel ch, StateMachine sm) {
         if((this.ch=ch) == null)
             throw new IllegalStateException("channel must not be null");
         if((raft=RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
@@ -41,7 +42,7 @@ public class RaftHandle implements Settable {
         stateMachine(sm);
     }
 
-    public Channel      channel()                                    {return ch;}
+    public JChannel     channel()                                    {return ch;}
     public RAFT         raft()                                       {return raft;}
     public String       raftId()                                     {return raft.raftId();}
     public RaftHandle   raftId(String id)                            {raft.raftId(id); return this;}

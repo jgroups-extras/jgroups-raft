@@ -1,7 +1,10 @@
 package org.jgroups.protocols.raft;
 
+import org.jgroups.Header;
+
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.util.function.Supplier;
 
 /**
  * @author Bela Ban
@@ -13,9 +16,16 @@ public class VoteResponse extends RaftHeader {
     public VoteResponse() {}
     public VoteResponse(int term, boolean result) {super(term); this.result=result;}
 
+    public short getMagicId() {
+        return ELECTION.VOTE_RSP;
+    }
 
-    public int size() {
-        return super.size();
+    public Supplier<? extends Header> create() {
+        return VoteResponse::new;
+    }
+
+    public int serializedSize() {
+        return super.serializedSize();
     }
 
     public void readFrom(DataInput in) throws Exception {

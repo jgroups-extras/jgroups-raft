@@ -453,10 +453,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public Object down(Event evt) {
         switch(evt.getType()) {
             case Event.SET_LOCAL_ADDRESS:
-                local_addr=(Address)evt.getArg();
+                local_addr=evt.getArg();
                 break;
             case Event.VIEW_CHANGE:
-                handleView((View)evt.getArg());
+                handleView(evt.getArg());
                 break;
         }
         return down_prot.down(evt);
@@ -465,24 +465,25 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     public Object up(Event evt) {
         switch(evt.getType()) {
-            case Event.MSG:
-                Message msg=(Message)evt.getArg();
-                RaftHeader hdr=(RaftHeader)msg.getHeader(id);
-                if(hdr == null)
-                    break;
-                handleEvent(msg, hdr);
-                return null;
             case Event.VIEW_CHANGE:
-                handleView((View)evt.getArg());
+                handleView(evt.getArg());
                 break;
         }
         return up_prot.up(evt);
     }
 
+    public Object up(Message msg) {
+        RaftHeader hdr=msg.getHeader(id);
+        if(hdr != null) {
+            handleEvent(msg, hdr);
+            return null;
+        }
+        return up_prot.up(msg);
+    }
 
     public void up(MessageBatch batch) {
         for(Message msg: batch) {
-            RaftHeader hdr=(RaftHeader)msg.getHeader(id);
+            RaftHeader hdr=msg.getHeader(id);
             if(hdr != null) {
                 batch.remove(msg);
                 handleEvent(msg, hdr);
@@ -573,7 +574,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             Message msg=new Message(null, buf, offset, length)
               .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
               .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
-            down_prot.down(new Event(Event.MSG, msg));
+            down_prot.down(msg);
         }
 
         snapshotIfNeeded(length);
@@ -599,7 +600,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             if(result != null) {
                 result.commitIndex(commit_index);
                 Message rsp=new Message(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
-                down_prot.down(new Event(Event.MSG, rsp));
+                down_prot.down(rsp);
             }
         }
         else if(hdr instanceof AppendEntriesResponse) {
@@ -664,7 +665,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
         if(this.commit_index > commit_idx) { // send an empty AppendEntries message as commit message
             Message msg=new Message(member).putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, 0, 0, 0, this.commit_index, false));
-            down_prot.down(new Event(Event.MSG, msg));
+            down_prot.down(msg);
             return;
         }
 
@@ -685,7 +686,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         int prev_term=prev != null? prev.term : 0;
         Message msg=new Message(target).setBuffer(entry.command, entry.offset, entry.length)
           .putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, index - 1, prev_term, entry.term, commit_index, entry.internal));
-        down_prot.down(new Event(Event.MSG, msg));
+        down_prot.down(msg);
     }
 
     protected void doSnapshot() throws Exception {
@@ -722,7 +723,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.length), dest);
             Message msg=new Message(dest, data)
               .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
-            down_prot.down(new Event(Event.MSG, msg));
+            down_prot.down(msg);
 
         }
         finally {
@@ -819,8 +820,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         if(log_entry.internal) {
             InternalCommand cmd;
             try {
-                cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
-                                                                   log_entry.offset, log_entry.length);
+                cmd=Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
+                                                  log_entry.offset, log_entry.length);
                 if(cmd.type() == InternalCommand.Type.addServer || cmd.type() == InternalCommand.Type.removeServer)
                     members_being_changed.set(false); // new addServer()/removeServer() operations can now be started
             }
@@ -873,7 +874,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     protected void disableViewBundling() {
-        GMS gms=(GMS)stack.findProtocol(GMS.class);
+        GMS gms=stack.findProtocol(GMS.class);
         if(gms.isViewBundling()) {
             log.trace("disabled view bundling to provide dynamic view changes");
             gms.setViewBundling(false);
@@ -887,7 +888,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     protected void executeInternalCommand(InternalCommand cmd, byte[] buf, int offset, int length) {
         if(cmd == null) {
             try {
-                cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class, buf, offset, length);
+                cmd=Util.streamableFromByteBuffer(InternalCommand.class, buf, offset, length);
             }
             catch(Exception ex) {
                 log.error("%s: failed unmarshalling internal command: %s", local_addr, ex);

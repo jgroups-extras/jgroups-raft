@@ -1,9 +1,11 @@
 package org.jgroups.protocols.raft;
 
+import org.jgroups.Header;
 import org.jgroups.util.Bits;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.util.function.Supplier;
 
 /**
  * @author Bela Ban
@@ -24,9 +26,16 @@ public class VoteRequest extends RaftHeader {
     public int lastLogTerm()  {return last_log_term;}
     public int lastLogIndex() {return last_log_index;}
 
+    public short getMagicId() {
+        return ELECTION.VOTE_REQ;
+    }
 
-    public int size() {
-        return super.size() + Bits.size(last_log_term) + Bits.size(last_log_index);
+    public Supplier<? extends Header> create() {
+        return VoteRequest::new;
+    }
+
+    public int serializedSize() {
+        return super.serializedSize() + Bits.size(last_log_term) + Bits.size(last_log_index);
     }
 
     public void writeTo(DataOutput out) throws Exception {

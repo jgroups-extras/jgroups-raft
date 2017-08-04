@@ -294,7 +294,7 @@ public class DynamicMembershipTest {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
-            RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+            RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
             if(remove_log)
                 raft.log().delete(); // remove log files after the run
             if(remove_snapshot)

@@ -50,7 +50,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     }
 
     protected static void disableElections(JChannel ch) {
-        ELECTION election=(ELECTION)ch.getProtocolStack().findProtocol(ELECTION.class);
+        ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
         if(election != null)
             election.noElections(true);
     }
@@ -131,7 +131,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     }
 
     protected int firstApplied() {
-        RAFT raft=(RAFT)rsm.channel().getProtocolStack().findProtocol(RAFT.class);
+        RAFT raft=rsm.channel().getProtocolStack().findProtocol(RAFT.class);
         return raft.log().firstAppended();
     }
 

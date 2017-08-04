@@ -64,8 +64,8 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
             }
             if(entry.internal()) {
                 try {
-                    InternalCommand cmd=(InternalCommand)Util.streamableFromByteBuffer(InternalCommand.class,
-                                                                                       entry.command(), entry.offset(), entry.length());
+                    InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class,
+                                                                      entry.command(), entry.offset(), entry.length());
                     sb.append("[internal] ").append(cmd).append("\n");
                 }
                 catch(Exception ex) {
@@ -79,12 +79,12 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
                 byte type=in.readByte();
                 switch(type) {
                     case PUT:
-                        K key=(K)Util.objectFromStream(in);
-                        V val=(V)Util.objectFromStream(in);
+                        K key=Util.objectFromStream(in);
+                        V val=Util.objectFromStream(in);
                         sb.append("put(").append(key).append(", ").append(val).append(")");
                         break;
                     case REMOVE:
-                        key=(K)Util.objectFromStream(in);
+                        key=Util.objectFromStream(in);
                         sb.append("remove(").append(key).append(")");
                         break;
                     default:
@@ -149,13 +149,13 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         byte command=in.readByte();
         switch(command) {
             case PUT:
-                K key=(K)Util.objectFromStream(in);
-                V val=(V)Util.objectFromStream(in);
+                K key=Util.objectFromStream(in);
+                V val=Util.objectFromStream(in);
                 V old_val=map.put(key, val);
                 notifyPut(key, val, old_val);
                 return old_val == null? null : Util.objectToByteBuffer(old_val);
             case REMOVE:
-                key=(K)Util.objectFromStream(in);
+                key=Util.objectFromStream(in);
                 old_val=map.remove(key);
                 notifyRemove(key, old_val);
                 return old_val == null? null : Util.objectToByteBuffer(old_val);
@@ -167,8 +167,8 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     @Override public void readContentFrom(DataInput in) throws Exception {
         int size=Bits.readInt(in);
         for(int i=0; i < size; i++) {
-            K key=(K)Util.objectFromStream(in);
-            V val=(V)Util.objectFromStream(in);
+            K key=Util.objectFromStream(in);
+            V val=Util.objectFromStream(in);
             map.put(key, val);
         }
     }

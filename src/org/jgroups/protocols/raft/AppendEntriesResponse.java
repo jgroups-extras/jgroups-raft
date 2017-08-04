@@ -1,10 +1,12 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Global;
+import org.jgroups.Header;
 import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.util.function.Supplier;
 
 /**
  * @author Bela Ban
@@ -16,10 +18,17 @@ public class AppendEntriesResponse extends RaftHeader {
     public AppendEntriesResponse() {}
     public AppendEntriesResponse(int term, AppendResult result) {super(term); this.result=result;}
 
+    public short getMagicId() {
+        return RAFT.APPEND_ENTRIES_RSP;
+    }
+
+    public Supplier<? extends Header> create() {
+        return AppendEntriesResponse::new;
+    }
+
     @Override
-    public int size() {
-        return super.size() +
-          Global.BYTE_SIZE + (result != null? result.size() : 0);
+    public int serializedSize() {
+        return super.serializedSize() + Global.BYTE_SIZE + (result != null? result.size() : 0);
     }
 
     @Override
@@ -31,7 +40,7 @@ public class AppendEntriesResponse extends RaftHeader {
     @Override
     public void readFrom(DataInput in) throws Exception {
         super.readFrom(in);
-        result=(AppendResult)Util.readStreamable(AppendResult.class, in);
+        result=Util.readStreamable(AppendResult.class, in);
     }
 
     @Override

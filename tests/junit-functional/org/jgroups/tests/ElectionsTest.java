@@ -83,7 +83,7 @@
          for(JChannel ch: channels) {
              if(ch == null)
                  continue;
-             RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
              if(remove_log)
                  raft.log().delete(); // remove log files after the run
              if(remove_snapshot)
@@ -93,7 +93,7 @@
      }
 
      protected void setLog(JChannel ch, int ... terms) {
-         RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
          Log log=raft.log();
          int index=log.lastAppended();
          for(int term: terms)
@@ -102,14 +102,14 @@
 
      protected void startElections(JChannel... channels) throws Exception {
          for(JChannel ch: channels) {
-             ELECTION election=(ELECTION)ch.getProtocolStack().findProtocol(ELECTION.class);
+             ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
              election.noElections(false);
              startElectionTimer.invoke(election);
          }
      }
 
      protected boolean isLeader(JChannel ch) {
-         RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
          return ch.getAddress().equals(raft.leader());
      }
 

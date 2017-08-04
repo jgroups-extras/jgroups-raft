@@ -20,7 +20,7 @@ public abstract class RaftHeader extends Header {
     public RaftHeader term(int t) {term=t; return this;}
 
 
-    public int size() {
+    public int serializedSize() {
         return Bits.size(term);
     }
 

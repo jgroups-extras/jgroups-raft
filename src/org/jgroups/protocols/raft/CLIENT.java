@@ -36,7 +36,7 @@ public class CLIENT extends Protocol implements Runnable {
 
 
 
-    @Property(description="Port to listen for client requests",writable=false,exposeAsManagedAttribute=true)
+    @Property(description="Port to listen for client requests",writable=false)
     protected int               port=1965;
 
     @Property(name="bind_addr",
@@ -74,7 +74,7 @@ public class CLIENT extends Protocol implements Runnable {
 
     public void start() throws Exception {
         super.start();
-        sock=Util.createServerSocket(getSocketFactory(), "CLIENR.srv_sock", bind_addr, port);
+        sock=Util.createServerSocket(getSocketFactory(), "CLIENR.srv_sock", bind_addr, port, port+50);
         thread_pool=new ThreadPoolExecutor(min_threads, max_threads, idle_time, TimeUnit.MILLISECONDS,
                                            new SynchronousQueue<>(), getThreadFactory(), new ThreadPoolExecutor.DiscardPolicy());
         acceptor=new Thread(this, "CLIENT.Acceptor");

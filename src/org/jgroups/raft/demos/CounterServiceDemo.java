@@ -112,7 +112,7 @@ public class CounterServiceDemo {
     }
 
     protected int firstApplied() {
-        RAFT raft=(RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+        RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
         return raft.log().firstAppended();
     }
 
@@ -121,7 +121,7 @@ public class CounterServiceDemo {
     }
 
     protected static void disableElections(JChannel ch) {
-        ELECTION election=(ELECTION)ch.getProtocolStack().findProtocol(ELECTION.class);
+        ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
         if(election != null)
             election.noElections(true);
     }

@@ -2,11 +2,13 @@ package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
+import org.jgroups.Header;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.util.function.Supplier;
 
 /**
  * Used to send AppendEntries messages to cluster members. The log entries are contained in actual payload of the message,
@@ -34,10 +36,17 @@ public class AppendEntriesRequest extends RaftHeader {
         this.internal=internal;
     }
 
+    public short getMagicId() {
+        return RAFT.APPEND_ENTRIES_REQ;
+    }
+
+    public Supplier<? extends Header> create() {
+        return AppendEntriesRequest::new;
+    }
 
     @Override
-    public int size() {
-        return super.size() + Util.size(leader) + Bits.size(prev_log_index) + Bits.size(prev_log_term) +
+    public int serializedSize() {
+        return super.serializedSize() + Util.size(leader) + Bits.size(prev_log_index) + Bits.size(prev_log_term) +
           Bits.size(entry_term) + Bits.size(leader_commit) + Global.BYTE_SIZE;
     }
 

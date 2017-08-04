@@ -118,30 +118,25 @@ public class ELECTION extends Protocol {
                 stopElectionTimer();
                 break;
             case Event.SET_LOCAL_ADDRESS:
-                local_addr=(Address)evt.getArg();
+                local_addr=evt.getArg();
                 break;
         }
         return down_prot.down(evt);
     }
 
 
-    public Object up(Event evt) {
-        switch(evt.getType()) {
-            case Event.MSG:
-                Message msg=(Message)evt.getArg();
-                RaftHeader hdr=(RaftHeader)msg.getHeader(id);
-                if(hdr == null)
-                    break;
-                handleEvent(msg, hdr);
-                return null;
+    public Object up(Message msg) {
+        RaftHeader hdr=msg.getHeader(id);
+        if(hdr != null) {
+            handleEvent(msg, hdr);
+            return null;
         }
-        return up_prot.up(evt);
+        return up_prot.up(msg);
     }
-
 
     public void up(MessageBatch batch) {
         for(Message msg: batch) {
-            RaftHeader hdr=(RaftHeader)msg.getHeader(id);
+            RaftHeader hdr=msg.getHeader(id);
             if(hdr != null) {
                 batch.remove(msg);
                 handleEvent(msg, hdr);
@@ -259,7 +254,7 @@ public class ELECTION extends Protocol {
         Message req=new Message(null).putHeader(id, new HeartbeatRequest(term, leader))
           .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
           .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK);
-        down_prot.down(new Event(Event.MSG, req));
+        down_prot.down(req);
     }
 
     protected void sendVoteRequest(int term) {
@@ -271,7 +266,7 @@ public class ELECTION extends Protocol {
         Message vote_req=new Message(null).putHeader(id, req)
           .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
           .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK);
-        down_prot.down(new Event(Event.MSG,vote_req));
+        down_prot.down(vote_req);
     }
 
     protected void sendVoteResponse(Address dest, int term) {
@@ -279,7 +274,7 @@ public class ELECTION extends Protocol {
         log.trace("%s: sending %s",local_addr,rsp);
         Message vote_rsp=new Message(dest).putHeader(id, rsp)
           .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
-        down_prot.down(new Event(Event.MSG,vote_rsp));
+        down_prot.down(vote_rsp);
     }
 
     protected void changeRole(Role new_role) {

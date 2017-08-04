@@ -7,9 +7,6 @@ import org.testng.annotations.Test;
 import static org.jgroups.raft.util.IntegerHelper.fromByteArrayToInt;
 import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
 
-/**
- * Created by ugol on 05/12/14.
- */
 
 @Test(groups= Global.FUNCTIONAL,singleThreaded=true)
 public class IntegerHelperTest {
@@ -39,7 +36,7 @@ public class IntegerHelperTest {
     }
 
 
-    private int convertToBytesAndBack(int number) {
+    private static int convertToBytesAndBack(int number) {
         byte[] b = fromIntToByteArray(number);
         return fromByteArrayToInt(b);
     }
