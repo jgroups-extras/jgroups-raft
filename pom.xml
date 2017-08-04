@@ -6,10 +6,17 @@
     <packaging>bundle</packaging>
     <name>JGroups-raft</name>
     <version>0.4.Final</version>
-    <url>http://www.jgroups.org</url>
-    <description>
-        JGroups RAFT implementation
-    </description>
+    <url>https://github.com/belaban/jgroups-raft</url>
+    <description>JGroups RAFT implementation</description>
+
+    <properties>
+        <!-- nexus-staging-maven-plugin -->
+        <autoReleaseAfterClose>true</autoReleaseAfterClose>
+        <nexus.server.id>jboss-releases-repository</nexus.server.id>
+        <nexus.server.url>https://repository.jboss.org/nexus</nexus.server.url>
+        <nexus.snapshot.server.id>jboss-snapshots-repository</nexus.snapshot.server.id>
+        <nexus.snapshot.server.url>https://repository.jboss.org/nexus/content/repositories/snapshots/</nexus.snapshot.server.url>
+    </properties>
 
     <organization>
         <name>JBoss, a division of Red Hat</name>
@@ -45,16 +52,20 @@
     </scm>
 
     <issueManagement>
-        <system>jira</system>
-        <url>https://jira.jboss.com/jira/browse/JGRP</url>
+        <system>GitHub</system>
+        <url>https://github.com/belaban/jgroups-raft/issues</url>
     </issueManagement>
 
     <distributionManagement>
         <repository>
-            <id>jboss-releases-repository</id>
+            <id>${nexus.server.id}</id>
             <name>JBoss Releases Repository</name>
-            <url>https://repository.jboss.org/nexus/service/local/staging/deploy/maven2/</url>
+            <url>${nexus.server.url}</url>
         </repository>
+        <snapshotRepository>
+            <id>${nexus.snapshot.server.id}</id>
+            <url>${nexus.snapshot.server.url}</url>
+        </snapshotRepository>
     </distributionManagement>
 
     <prerequisites>
@@ -73,10 +84,26 @@
             </releases>
             <snapshots>
                 <enabled>true</enabled>
+                <updatePolicy>interval:120</updatePolicy>
+            </snapshots>
+        </repository>
+
+        <repository>
+            <id>jboss-snapshots-repository</id>
+            <name>JBoss Nexus snapshots repository</name>
+            <url>https://repository.jboss.org/nexus/content/repositories/snapshots/</url>
+            <layout>default</layout>
+            <releases>
+                <enabled>false</enabled>
                 <updatePolicy>never</updatePolicy>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>interval:120</updatePolicy>
             </snapshots>
         </repository>
     </repositories>
+
 
     <dependencies>
         <dependency>
@@ -156,6 +183,17 @@
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.sonatype.plugins</groupId>
+                <artifactId>nexus-staging-maven-plugin</artifactId>
+                <extensions>true</extensions>
+                <configuration>
+                    <!-- See configuration details at http://books.sonatype.com/nexus-book/reference/staging-deployment.html -->
+                    <nexusUrl>${nexus.server.url}</nexusUrl>
+                    <serverId>${nexus.server.id}</serverId>
+                    <autoReleaseAfterClose>true</autoReleaseAfterClose>
+                </configuration>
+            </plugin>
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
@@ -319,18 +357,6 @@
                     </execution>
                 </executions>
             </plugin>
-
-            <plugin>
-                <groupId>org.sonatype.plugins</groupId>
-                <artifactId>nexus-staging-maven-plugin</artifactId>
-                <version>1.6.3</version>
-                <extensions>true</extensions>
-                <configuration>
-                    <serverId>jboss-releases-repository</serverId>
-                    <nexusUrl>https://repository.jboss.org/nexus/</nexusUrl>
-                </configuration>
-            </plugin>
-
         </plugins>
         <pluginManagement>
             <plugins>

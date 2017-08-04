@@ -8,24 +8,28 @@
 # Author: Bela Ban
 
 
-DIST=../dist
-POM=../pom.xml
+#DIST=../dist
+#POM=../pom.xml
+POM=`dirname $0`/../pom.xml
 
-JAR=`find $DIST -name "jgroups-raft*.jar" | grep -v source`
-SRC_JAR=`find $DIST -name "jgroups-raft*.jar" | grep source`
+#JAR=`find $DIST -name "jgroups-raft*.jar" | grep -v source`
+#SRC_JAR=`find $DIST -name "jgroups-raft*.jar" | grep source`
 
 ## Release directly, skipping the staging repo
 ## REPO=https://repository.jboss.org/nexus/content/repositories/releases/
 
-REPO=https://repository.jboss.org/nexus/service/local/staging/deploy/maven2
-FLAGS="-Dpackaging=jar -DrepositoryId=jboss-releases-repository"
+#REPO=https://repository.jboss.org/nexus/service/local/staging/deploy/maven2
+#FLAGS="-Dpackaging=jar -DrepositoryId=jboss-releases-repository"
 
 
-echo "Deploying $JAR to $REPO"
-mvn deploy:deploy-file -Dfile=$JAR -Durl=$REPO -DpomFile=$POM $FLAGS
+#echo "Deploying $JAR to $REPO"
+#mvn deploy:deploy-file -Dfile=$JAR -Durl=$REPO -DpomFile=$POM $FLAGS
 
 
-echo "Deploying $SRC_JAR to $REPO"
-mvn deploy:deploy-file -Dfile=$SRC_JAR -Durl=$REPO -DpomFile=$POM -Dclassifier=sources $FLAGS
+# echo "Deploying $SRC_JAR to $REPO"
+# mvn deploy:deploy-file -Dfile=$SRC_JAR -Durl=$REPO -DpomFile=$POM -Dclassifier=sources $FLAGS
+
+
+mvn -f $POM -Dmaven.test.skip=true deploy
 
 
