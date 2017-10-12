@@ -58,7 +58,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
     protected void loop() {
         boolean looping=true;
         while(looping) {
-            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [6] snapshot [x] exit\n" +
+            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [6] snapshot [7] put N [x] exit\n" +
                                       "first-applied=" + firstApplied() +
                                       ", last-applied=" + rsm.lastApplied() +
                                       ", commit-index=" + rsm.commitIndex() +
@@ -85,6 +85,25 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
                     }
                     catch(Exception e) {
                         e.printStackTrace();
+                    }
+                    break;
+                case '7':
+                    try {
+                        int num=Util.readIntFromStdin("num: ");
+                        System.out.println("");
+                        String value="hello world #";
+                        int print=num / 10;
+                        long start=System.currentTimeMillis();
+                        for(int i=1; i <= num; i++) {
+                            put("key-" + i, value + i);
+                            if(i > 0 && i % print == 0)
+                                System.out.println("-- count=" + num);
+                        }
+                        long diff=System.currentTimeMillis() - start;
+                        System.out.println("\n" + num + " puts took " + diff + " ms; " + (num / (diff / 1000.0)) + " ops /sec\n");
+                    }
+                    catch(Throwable t) {
+
                     }
                     break;
                 case 'x':
