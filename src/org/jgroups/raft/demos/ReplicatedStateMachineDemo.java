@@ -97,7 +97,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
                         for(int i=1; i <= num; i++) {
                             put("key-" + i, value + i);
                             if(i > 0 && i % print == 0)
-                                System.out.println("-- count=" + num);
+                                System.out.println("-- count=" + i);
                         }
                         long diff=System.currentTimeMillis() - start;
                         System.out.println("\n" + num + " puts took " + diff + " ms; " + (num / (diff / 1000.0)) + " ops /sec\n");
