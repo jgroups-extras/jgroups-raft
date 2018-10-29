@@ -3,7 +3,6 @@ package org.jgroups.protocols.raft;
 import org.jgroups.*;
 import org.jgroups.annotations.*;
 import org.jgroups.conf.ClassConfigurator;
-import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.stack.Protocol;
@@ -390,8 +389,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             throw new IllegalStateException("raft_id must not be null");
 
         // we can only add/remove 1 member at a time (section 4.1 of [1])
-        if(dynamic_view_changes)
-            disableViewBundling();
         synchronized(members) {
             Set<String> tmp=new HashSet<>(members);
             if(tmp.size() != members.size()) {
@@ -873,14 +870,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         }
     }
 
-    protected void disableViewBundling() {
-        GMS gms=stack.findProtocol(GMS.class);
-        if(gms.isViewBundling()) {
-            log.trace("disabled view bundling to provide dynamic view changes");
-            gms.setViewBundling(false);
-        }
-    }
-
 
 
 
@@ -967,7 +956,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             try {
                 ch.roleChanged(role);
             }
-            catch(Throwable t) {}
+            catch(Throwable ignored) {}
         }
     }
 
