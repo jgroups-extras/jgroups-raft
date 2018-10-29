@@ -29,7 +29,7 @@ public class CommitTable {
     public void adjust(List<Address> members, int next_index) {
         map.keySet().retainAll(members);
         // entry is only created if mbr is not in map, reducing unneeded creations
-        members.stream().forEach(mbr -> map.computeIfAbsent(mbr, k -> new Entry(next_index)));
+        members.forEach(mbr -> map.computeIfAbsent(mbr, k -> new Entry(next_index)));
     }
 
     public CommitTable update(Address member, int match_index, int next_index, int commit_index, boolean single_resend) {
