@@ -213,7 +213,8 @@
         <xmlproperty file="${ant.file}" collapseAttributes="true"/>
         <jar destfile="${dist.dir}/jgroups-raft-${version}.jar"
              basedir="${compile.dir}"
-             includes="org/jgroups/**">
+             includes="org/jgroups/**"
+             excludes="org/jgroups/tests/**">
             <fileset dir="${conf.dir}" includes="*.dtd, *.xml, jg-messages*.properties" excludes="*-service.xml"/>
             <fileset dir="${root.dir}">
                 <include name="README*"/>
@@ -226,7 +227,9 @@
         <mkdir dir="${dist.dir}"/>
         <jar jarfile="${dist.dir}/jgroups-raft-${version}-sources.jar"
              basedir="${src.dir}"
-             includes="org/jgroups/**">
+             includes="org/jgroups/**"
+             excludes="org/jgroups/tests/**">
+            <fileset dir="${conf.dir}" includes="*.dtd, *.xml, jg-messages*.properties" excludes="*-service.xml"/>
         </jar>
     </target>
 
@@ -373,7 +376,7 @@
                     threadcount="@{threadcount}"
                     usedefaultlisteners="false"
                     outputdir="@{outputdir}"
-                    listeners="org.jgroups.raft.util.JUnitXMLReporter"
+                    listeners="org.jgroups.tests.utils.JUnitXMLReporter"
                     timeout="${unittest.timeout}"
                     timeOut="${unittest.timeout}"
                     verbose="0"
