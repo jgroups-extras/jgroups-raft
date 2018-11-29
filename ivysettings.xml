@@ -3,10 +3,10 @@
     <settings defaultResolver="default"/>
     <credentials  host="${nexus.host}" realm="Sonatype Nexus Repository Manager" username="${nexus.user}" passwd="${nexus.password}"/>
 
-    <!--<property name="nexus-public"
-              value="https://repository.jboss.org/nexus/content/groups/public"/>-->
-    <property name="nexus-public"    value="${nexus.url}"/>
-    <property name="nexus-snapshots" value="${nexus.snapshots.url}"/>
+    <property name="nexus-public" value="https://repository.jboss.org/nexus/content/groups/public"/>
+    <property name="nexus-snapshots" value="https://repository.jboss.org/nexus/content/groups/public"/>
+    <!--<property name="nexus-public"    value="${nexus.url}"/>-->
+    <!--<property name="nexus-snapshots" value="${nexus.snapshots.url}"/>-->
 
     <property
             name="m2-location"

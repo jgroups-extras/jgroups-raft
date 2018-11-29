@@ -16,6 +16,14 @@
         <nexus.server.url>https://repository.jboss.org/nexus</nexus.server.url>
         <nexus.snapshot.server.id>jboss-snapshots-repository</nexus.snapshot.server.id>
         <nexus.snapshot.server.url>https://repository.jboss.org/nexus/content/repositories/snapshots/</nexus.snapshot.server.url>
+
+        <testng.version>6.8.7</testng.version>
+
+        <jgroups.version>4.0.15.Final</jgroups.version>
+        <leveldbjni.version>1.8</leveldbjni.version>
+        <mapdb.version>1.0.8</mapdb.version>
+        <commons-io.version>2.5</commons-io.version>
+        <log4j.version>2.11.1</log4j.version>
     </properties>
 
     <organization>
@@ -109,45 +117,40 @@
         <dependency>
             <groupId>org.jgroups</groupId>
             <artifactId>jgroups</artifactId>
-            <version>4.0.12.Final</version>
+            <version>${jgroups.version}</version>
         </dependency>
         <dependency>
             <groupId>org.fusesource.leveldbjni</groupId>
             <artifactId>leveldbjni-all</artifactId>
-            <version>1.8</version>
+            <version>${leveldbjni.version}</version>
         </dependency>
         <dependency>
             <groupId>org.mapdb</groupId>
             <artifactId>mapdb</artifactId>
-            <version>1.0.6</version>
+            <version>${mapdb.version}</version>
         </dependency>
-        <!--dependency>
-            <groupId>org.jetbrains.xodus</groupId>
-            <artifactId></artifactId>
-            <version></version>
-        </dependency-->
         <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>log4j</artifactId>
-            <version>1.2.14</version>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>${log4j.version}</version>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-core</artifactId>
-            <version>2.0</version>
+            <version>${log4j.version}</version>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>commons-io</groupId>
             <artifactId>commons-io</artifactId>
-            <version>2.4</version>
+            <version>${commons-io.version}</version>
         </dependency>
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
-            <version>6.8.7</version>
+            <version>${testng.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -168,18 +171,18 @@
                 <directory>${project.build.directory}/schema</directory>
             </resource>
             <resource>
-               <directory>${project.basedir}</directory>
-               <includes>
-                  <include>INSTALL.html</include>
-                  <include>LICENSE</include>
-                  <include>README</include>
-               </includes>
+                <directory>${project.basedir}</directory>
+                <includes>
+                    <include>INSTALL.html</include>
+                    <include>LICENSE</include>
+                    <include>README</include>
+                </includes>
             </resource>
             <resource>
-              <directory>${project.basedir}/lib</directory>
-              <includes>
-                 <include>licenses/thirdparty*</include>
-              </includes>
+                <directory>${project.basedir}/lib</directory>
+                <includes>
+                    <include>licenses/thirdparty*</include>
+                </includes>
             </resource>
         </resources>
         <plugins>
@@ -199,10 +202,6 @@
                 <configuration>
                     <source>1.8</source>
                     <target>1.8</target>
-                    <excludes>
-                        <exclude>org/jgroups/util/JUnitXMLReporter.java</exclude>
-                        <!--<exclude>org/jgroups/demos/**</exclude>-->
-                    </excludes>
                 </configuration>
             </plugin>
             <plugin>
@@ -229,40 +228,39 @@
                     </rules>
                 </configuration>
             </plugin>
-           <plugin>
-              <groupId>org.codehaus.mojo</groupId>
-              <artifactId>build-helper-maven-plugin</artifactId>
-              <executions>
-                 <execution>
-                    <id>add-source</id>
-                    <phase>validate</phase>
-                    <goals>
-                       <goal>add-source</goal>
-                    </goals>
-                    <configuration>
-                       <sources>
-                          <!-- These tests have to go in the main jar -->
-                          <source>tests/other</source>
-                          <source>tests/perf</source>
-                       </sources>
-                    </configuration>
-                 </execution>
-                 <execution>
-                    <id>add-test-source</id>
-                    <phase>validate</phase>
-                    <goals>
-                       <goal>add-test-source</goal>
-                    </goals>
-                    <configuration>
-                       <sources>
-                          <source>tests/junit-functional</source>
-                          <!-- tests/other and tests/perf are included in the normal sources -->
-                       </sources>
-                    </configuration>
-                 </execution>
-              </executions>
-           </plugin>
-           <plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>add-source</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <!-- These tests have to go in the main jar -->
+                                <source>tests/other</source>
+                                <source>tests/perf</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>add-test-source</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>tests/junit-functional</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
                     <execution>
@@ -305,10 +303,10 @@
             </plugin>
             <!-- Make sure we generate src jars too -->
             <plugin>
-               <groupId>org.apache.maven.plugins</groupId>
-               <artifactId>maven-source-plugin</artifactId>
-               <inherited>true</inherited>
-               <executions>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <inherited>true</inherited>
+                <executions>
                     <execution>
                         <id>attach-sources</id>
                         <phase>verify</phase>
@@ -335,11 +333,16 @@
                     <instructions>
                         <Main-Class>org.jgroups.Version</Main-Class>
                         <Implementation-Version>${project.version}</Implementation-Version>
+                        <Import-Package>
+                            !org.testng.*,
+                            *
+                        </Import-Package>
                         <Export-Package>
+                            !org.testng,
                             schema;version=${project.version},
-                            ${project.groupId}.*;version=${project.version}
+                            ${project.groupId}.raft.*;version=${project.version},
+                            ${project.groupId}.protocol.raft.*;version=${project.version}
                         </Export-Package>
-                        <!--Bundle-RequiredExecutionEnvironment>1.8</Bundle-RequiredExecutionEnvironment-->
                     </instructions>
                 </configuration>
             </plugin>

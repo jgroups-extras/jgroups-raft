@@ -1,4 +1,4 @@
-package org.jgroups.raft.util;
+package org.jgroups.tests.utils;
 
 import org.jgroups.util.*;
 import org.testng.IConfigurationListener2;
