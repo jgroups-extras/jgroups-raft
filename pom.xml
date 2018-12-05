@@ -338,10 +338,10 @@
                             *
                         </Import-Package>
                         <Export-Package>
-                            !org.testng,
+                            !org.testng.*,
                             schema;version=${project.version},
                             ${project.groupId}.raft.*;version=${project.version},
-                            ${project.groupId}.protocol.raft.*;version=${project.version}
+                            ${project.groupId}.protocols.raft.*;version=${project.version}
                         </Export-Package>
                     </instructions>
                 </configuration>
