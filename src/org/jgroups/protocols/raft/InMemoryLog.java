@@ -95,7 +95,7 @@ public class InMemoryLog implements Log {
     @Override
     public synchronized void append(int index, boolean overwrite, LogEntry... new_entries) {
         int space_required=new_entries != null? new_entries.length : 0;
-        int available_space=this.entries.length - last_appended;
+        int available_space=this.entries.length - 1 - last_appended;
         if(space_required > available_space)
             expand(space_required - available_space +1);
 
