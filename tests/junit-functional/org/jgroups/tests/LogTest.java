@@ -128,6 +128,16 @@ public class LogTest {
         assertIndices(0, 33, 0, 29/2);
     }
 
+    public void testAppendMultipleEntriesOneByOne(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        for(int i=0; i < 30; i++) {
+            log.append(i, false, new LogEntry(i, buf));
+        }
+        assertIndices(0,29,0,29);
+    }
+
     public void testDeleteEntriesInTheMiddle(Log log) throws Exception {
         this.log = log;
         log.init(filename, null);
