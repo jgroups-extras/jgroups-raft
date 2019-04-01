@@ -32,12 +32,12 @@ public class LevelDBLog implements Log {
     private DB db;
     private File dbFileName;
 
-    private Integer currentTerm = 0;
+    private int currentTerm = 0;
     private Address votedFor = null;
 
-    private Integer commitIndex   = 0;
-    private Integer lastAppended  = 0;
-    private Integer firstAppended = 0;
+    private int commitIndex   = 0;
+    private int lastAppended  = 0;
+    private int firstAppended = 0;
 
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
