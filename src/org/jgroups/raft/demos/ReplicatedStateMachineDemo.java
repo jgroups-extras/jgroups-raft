@@ -21,7 +21,7 @@ public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.
 
     protected void start(String props, String name, boolean follower, long timeout) throws Exception {
         ch=new JChannel(props).name(name);
-        rsm=new ReplicatedStateMachine<>(ch).raftId(name).timeout(timeout);
+        rsm=new ReplicatedStateMachine<String,Object>(ch).raftId(name).timeout(timeout);
         if(follower)
             disableElections(ch);
         ch.setReceiver(this);
