@@ -16,7 +16,7 @@ import static org.jgroups.raft.util.IntegerHelper.fromByteArrayToInt;
 import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
 
 /**
- * Implementation of ${link #Log}
+ * Implementation of {@link Log}
  * @author Ugo Landini
  */
 public class LevelDBLog implements Log {
@@ -321,15 +321,15 @@ public class LevelDBLog implements Log {
     }
 
 
-    private void updateCurrentTerm(int index, WriteBatch batch) {
-        currentTerm=index;
-        log.trace("Updating currentTerm: %d", index);
+    private void updateCurrentTerm(int updatedCurrentTerm, WriteBatch batch) {
+        currentTerm = updatedCurrentTerm;
+        log.trace("Updating currentTerm: %d", updatedCurrentTerm);
         batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
     }
 
-    private void updateLastAppended(int index, WriteBatch batch) {
-        lastAppended= index;
-        log.trace("Updating lastAppended: %d", index);
+    private void updateLastAppended(int updatedLastAppended, WriteBatch batch) {
+        lastAppended = updatedLastAppended;
+        log.trace("Updating lastAppended: %d", updatedLastAppended);
         batch.put(LASTAPPENDED, fromIntToByteArray(lastAppended));
     }
 
