@@ -45,9 +45,6 @@ public class LevelDBLog implements Log {
         Options options = new Options();
         options.createIfMissing(true);
 
-        //String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
-        //filename=dir + File.separator + log_name;
-
         this.dbFileName = new File(log_name);
         db = factory.open(dbFileName, options);
         log.trace("opened %s", db);
@@ -275,24 +272,6 @@ public class LevelDBLog implements Log {
     @Override
     public String toString() {
         return "firstAppended=" + firstAppended + ", lastAppended=" + lastAppended + ", commitIndex=" + commitIndex + ", currentTerm=" + currentTerm;
-    }
-
-    private boolean checkIfPreviousEntryHasDifferentTerm(int prev_index, int prev_term) {
-
-        log.trace("Checking term (%d) of previous entry (%d)", prev_term, prev_index);
-        if(prev_index == 0) // index starts at 1
-            return false;
-        LogEntry prev_entry = getLogEntry(prev_index);
-        return prev_entry == null || (prev_entry.term != prev_term);
-    }
-
-
-    private int findIndexWithTerm(int start_index, int prev_term) {
-
-        for (LogEntry prev_entry = getLogEntry(start_index); prev_entry == null || (prev_entry.term != prev_term); prev_entry = getLogEntry(--start_index)) {
-            if (start_index == firstAppended) break;
-        }
-        return start_index;
     }
 
     private LogEntry getLogEntry(int index) {
