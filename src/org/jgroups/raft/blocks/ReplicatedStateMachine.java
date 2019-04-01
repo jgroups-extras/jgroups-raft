@@ -27,7 +27,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     protected JChannel                 ch;
     protected RaftHandle               raft;
     protected long                     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
-    protected final List<Notification> listeners=new ArrayList<>();
+    protected final List<Notification<K,V>> listeners=new ArrayList<>();
 
     // Hashmap for the contents. Doesn't need to be reentrant, as updates will be applied sequentially
     protected final Map<K,V>           map=new HashMap<>();
@@ -41,10 +41,10 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         this.raft=new RaftHandle(this.ch, this);
     }
 
-    public      ReplicatedStateMachine timeout(long timeout)       {this.repl_timeout=timeout; return this;}
+    public      ReplicatedStateMachine<K,V> timeout(long timeout)       {this.repl_timeout=timeout; return this;}
     public void addRoleChangeListener(RAFT.RoleChange listener)    {raft.addRoleListener(listener);}
-    public void addNotificationListener(Notification n)            {if(n != null) listeners.add(n);}
-    public void removeNotificationListener(Notification n)         {listeners.remove(n);}
+    public void addNotificationListener(Notification<K,V> n)            {if(n != null) listeners.add(n);}
+    public void removeNotificationListener(Notification<K,V> n)         {listeners.remove(n);}
     public void removeRoleChangeListener(RAFT.RoleChange listener) {raft.removeRoleListener(listener);}
     public int  lastApplied()                                      {return raft.lastApplied();}
     public int  commitIndex()                                      {return raft.commitIndex();}
@@ -101,6 +101,11 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     @Override
     public boolean equals(Object obj) {
         return map.equals(((ReplicatedStateMachine)obj).map);
+    }
+
+    @Override
+    public int hashCode() {
+    	return map.hashCode();
     }
 
 
