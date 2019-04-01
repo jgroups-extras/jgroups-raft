@@ -394,7 +394,7 @@ public class LevelDBLog implements Log {
         }
 
         LogEntry lastAppendedEntry = getLogEntry(lastAppended);
-        assert (lastAppendedEntry==null || lastAppendedEntry.term == currentTerm);
+        assert (lastAppendedEntry==null || lastAppendedEntry.term <= currentTerm);
 
     }
 
