@@ -99,8 +99,17 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     }
 
     @Override
-    public boolean equals(Object obj) {
-        return map.equals(((ReplicatedStateMachine)obj).map);
+    public boolean equals(Object other) {
+    	if(this == other) {
+    		return true;
+    	}
+    	if(other == null) {
+    		return false;
+    	}
+    	if(other.getClass() != getClass()) {
+    		return false;
+    	}
+        return map.equals(((ReplicatedStateMachine<?, ?>)other).map);
     }
 
     @Override
