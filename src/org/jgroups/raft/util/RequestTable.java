@@ -39,7 +39,7 @@ public class RequestTable<T> {
 
     /** Whether or not the entry at index is committed */
     public synchronized boolean isCommitted(int index) {
-        Entry entry=requests.get(index);
+        Entry<?> entry=requests.get(index);
         return entry != null && entry.committed;
     }
 
@@ -49,16 +49,11 @@ public class RequestTable<T> {
     }
 
     /** Notifies the CompletableFuture and then removes the entry for index */
-    public synchronized void notifyAndRemove(int index, byte[] response, int offset, int length) {
-        Entry entry=requests.get(index);
+    public synchronized void notifyAndRemove(int index, byte[] response) {
+        Entry<?> entry=requests.get(index);
         if(entry != null) {
-            byte[] value=response;
-            if(response != null && offset > 0) {
-                value=new byte[length];
-                System.arraycopy(response, offset, value, 0, length);
-            }
             if(entry.client_future != null)
-                entry.client_future.complete(value);
+                entry.client_future.complete(response);
             requests.remove(index);
         }
     }

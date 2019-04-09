@@ -831,10 +831,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
         // Notify the client's CompletableFuture and then remove the entry in the client request table
         if(request_table != null) {
-            if(rsp == null)
-                request_table.notifyAndRemove(index, null, 0, 0);
-            else
-                request_table.notifyAndRemove(index, rsp, 0, rsp.length);
+            request_table.notifyAndRemove(index, rsp);
         }
 
         log_impl.commitIndex(index);
