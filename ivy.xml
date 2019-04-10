@@ -14,11 +14,11 @@
 
     <dependencies>
         <dependency org="org.jgroups"               name="jgroups"        rev="4.0.+"/>
-        <dependency org="org.apache.logging.log4j"  name="log4j-api"      rev="2.+"/>
-        <dependency org="org.apache.logging.log4j"  name="log4j-core"     rev="2.+"/>
+        <dependency org="org.apache.logging.log4j"  name="log4j-api"      rev="2.11.+"/>
+        <dependency org="org.apache.logging.log4j"  name="log4j-core"     rev="2.11.+"/>
         <dependency org="org.mapdb"                 name="mapdb"          rev="1.0.8"/>
         <dependency org="org.fusesource.leveldbjni" name="leveldbjni-all" rev="1.8"/>
-        <dependency org="org.testng"                name="testng"         rev="6.9.+"/>
+        <dependency org="org.testng"                name="testng"         rev="6.14.+"/>
         <dependency org="com.beust"                 name="jcommander"     rev="1.+"/>
         <dependency org="commons-io"                name="commons-io"     rev="2.5"/>
     </dependencies>
