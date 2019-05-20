@@ -168,7 +168,9 @@ public class ELECTION extends Protocol {
         }
         else if(hdr instanceof VoteResponse) {
             VoteResponse rsp=(VoteResponse)hdr;
-            handleVoteResponse(rsp.term());
+            if(rsp.result()) {
+            	handleVoteResponse(rsp.term());
+            }
         }
     }
 
