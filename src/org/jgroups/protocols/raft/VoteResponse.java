@@ -24,16 +24,20 @@ public class VoteResponse extends RaftHeader {
         return VoteResponse::new;
     }
 
+    public boolean result() {return result;}
+
     public int serializedSize() {
-        return super.serializedSize();
+        return super.serializedSize() + 1;
     }
 
     public void readFrom(DataInput in) throws Exception {
         super.readFrom(in);
+    	result = in.readByte() == 1 ? true : false;
     }
 
     public void writeTo(DataOutput out) throws Exception {
         super.writeTo(out);
+        out.writeByte(result ? 1 : 0);
     }
 
     public String toString() {
