@@ -14,6 +14,8 @@
  import java.util.Arrays;
  import java.util.List;
 
+ import static org.testng.Assert.fail;
+
  /**
   * Tests elections
   * @author Bela Ban
@@ -53,6 +55,41 @@
      public void testSimpleElection() throws Exception {
          startElections(a, b, c);
          assertLeader(20, 500, null, a,b,c);
+     }
+
+     /** Test whether having min-interval higher than max-interval throws an exception */
+     public void testMinIntervalAboveMaxInterval() {
+    	 ELECTION election=new ELECTION().noElections(true).electionMaxInterval(500L).electionMinInterval(1000L).heartbeatInterval(100L);
+    	 try {
+			election.init();
+			fail("should have thrown an exception due to misconfiguration");
+		} catch (Exception ex) {
+			assert String.format("election_min_interval (%d) needs to be smaller than "
+                + "election_max_interval (%d)", election.electionMinInterval(), election.electionMaxInterval()).equals(ex.getMessage());
+		}
+     }
+
+     /** Test whether having heartbeat-interval higher than min-interval throws an exception */
+     public void testHeartbeatIntervalAboveMinInterval() {
+    	 ELECTION election=new ELECTION().noElections(true).electionMaxInterval(500L).electionMinInterval(250L).heartbeatInterval(300L);
+    	 try {
+			election.init();
+			fail("should have thrown an exception due to misconfiguration");
+		} catch (Exception ex) {
+			assert String.format("heartbeat_interval (%d) needs to be smaller than "
+                + "election_min_interval (%d)", election.heartbeatInterval(), election.electionMinInterval()).equals(ex.getMessage());
+		}
+     }
+
+     /** Test whether heartbeat-interval below one throws an Exception */
+     public void testNegativeHeartbeat() {
+    	 ELECTION election=new ELECTION().noElections(true).electionMaxInterval(500L).electionMinInterval(250L).heartbeatInterval(-300L);
+    	 try {
+			election.init();
+			fail("should have thrown an exception due to misconfiguration");
+		} catch (Exception ex) {
+			assert String.format("heartbeat_interval (%d) must not be below one", election.heartbeatInterval()).equals(ex.getMessage());
+		}
      }
 
 
