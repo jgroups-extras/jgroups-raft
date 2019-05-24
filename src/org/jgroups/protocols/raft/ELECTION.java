@@ -100,10 +100,10 @@ public class ELECTION extends Protocol {
         	throw new Exception(String.format("heartbeat_interval (%d) must not be below one", heartbeat_interval));
         }
         if(heartbeat_interval >= election_min_interval)
-            throw new Exception(String.format("heartbeat_interval (%d) needs to be lower than " +
+            throw new Exception(String.format("heartbeat_interval (%d) needs to be smaller than " +
                                   "election_min_interval (%d)", heartbeat_interval, election_min_interval));
         if(election_min_interval >= election_max_interval)
-            throw new Exception(String.format("election_min_interval (%d) needs to be lower than " +
+            throw new Exception(String.format("election_min_interval (%d) needs to be smaller than " +
                                   "election_max_interval (%d)", election_min_interval, election_max_interval));
         timer=getTransport().getTimer();
         raft=findProtocol(RAFT.class);

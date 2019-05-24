@@ -64,7 +64,7 @@ import java.lang.reflect.Method;
 			election.init();
 			fail("should have thrown an exception due to misconfiguration");
 		} catch (Exception ex) {
-			assert String.format("election_min_interval (%d) needs to be lower than "
+			assert String.format("election_min_interval (%d) needs to be smaller than "
                 + "election_max_interval (%d)", election.electionMinInterval(), election.electionMaxInterval()).equals(ex.getMessage());
 		}
      }
@@ -76,13 +76,13 @@ import java.lang.reflect.Method;
 			election.init();
 			fail("should have thrown an exception due to misconfiguration");
 		} catch (Exception ex) {
-			assert String.format("heartbeat_interval (%d) needs to be lower than "
+			assert String.format("heartbeat_interval (%d) needs to be smaller than "
                 + "election_min_interval (%d)", election.heartbeatInterval(), election.electionMinInterval()).equals(ex.getMessage());
 		}
      }
 
      /** Test whether heartbeat-interval below one throws an Exception */
-     public void testNegativeHeartbeatInterval() {
+     public void testNegativeHeartbeat() {
     	 ELECTION election=new ELECTION().noElections(true).electionMaxInterval(500L).electionMinInterval(250L).heartbeatInterval(-300L);
     	 try {
 			election.init();
