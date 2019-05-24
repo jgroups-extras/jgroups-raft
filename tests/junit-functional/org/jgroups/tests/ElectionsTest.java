@@ -9,12 +9,12 @@
  import org.testng.annotations.BeforeMethod;
  import org.testng.annotations.Test;
 
- import static org.testng.Assert.fail;
-
  import java.lang.reflect.Method;
  import java.util.ArrayList;
  import java.util.Arrays;
  import java.util.List;
+
+ import static org.testng.Assert.fail;
 
  /**
   * Tests elections
