@@ -368,6 +368,7 @@
             <property name="default-excludes" value=""/>
 
             <testng classpathref="@{classpath}"
+                    haltonfailure="true"
                     suitename="@{suitename}"
                     testname="@{suitename}"
                     groups="@{groups}"
