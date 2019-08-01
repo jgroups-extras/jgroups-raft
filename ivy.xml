@@ -3,7 +3,7 @@
             xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
             xmlns:e="http://ant.apache.org/ivy/extra">
 
-    <info organisation="org.jgroups" module="jgroups-raft" revision="0.4.3.Final"/>
+    <info organisation="org.jgroups" module="jgroups-raft" revision="0.4.4-SNAPSHOT"/>
 
     <publications>
         <artifact name="jgroups-raft" type="pom" />
