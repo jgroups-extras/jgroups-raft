@@ -192,8 +192,6 @@ public class ELECTION extends Protocol {
     }
 
     protected void handleVoteRequest(Address sender, int term, int last_log_term, int last_log_index) {
-        if(Objects.equals(local_addr, sender))
-            return;
         if(log.isTraceEnabled())
             log.trace("%s: received VoteRequest from %s: term=%d, my term=%d, last_log_term=%d, last_log_index=%d",
                       local_addr, sender, term, raft.currentTerm(), last_log_term, last_log_index);
@@ -248,7 +246,7 @@ public class ELECTION extends Protocol {
         LogEntry entry=raft.log().get(my_last_log_index=raft.log().lastAppended());
         int my_last_log_term=entry != null? entry.term : 0;
         int comp=Integer.compare(my_last_log_term, last_log_term);
-        return comp <= 0 && (comp < 0 || Integer.compare(my_last_log_index, last_log_index) <= 0);
+        return comp <= 0 && (comp < 0 || my_last_log_index <= last_log_index);
     }
 
 
@@ -272,8 +270,7 @@ public class ELECTION extends Protocol {
         VoteRequest req=new VoteRequest(term, last_log_term, last_log_index);
         log.trace("%s: sending %s", local_addr, req);
         Message vote_req=new Message(null).putHeader(id, req)
-          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
-          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK);
+          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(vote_req);
     }
 
@@ -311,13 +308,10 @@ public class ELECTION extends Protocol {
             new_term=raft.createNewTerm();
             voteFor(null);
             current_votes=0;
-            // Vote for self - return if I already voted for someone else
             if(!voteFor(local_addr))
                 return;
-            current_votes++; // vote for myself
         }
-
-        sendVoteRequest(new_term); // Send VoteRequest message; responses are received asynchronously. If majority -> become leader
+        sendVoteRequest(new_term); // send VoteRequest message; responses are received asynchronously. If majority -> become leader
     }
 
     @ManagedAttribute(description="Vote cast for a candidate in the current term")

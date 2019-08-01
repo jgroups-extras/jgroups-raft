@@ -461,11 +461,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
 
     public Object up(Event evt) {
-        switch(evt.getType()) {
-            case Event.VIEW_CHANGE:
-                handleView(evt.getArg());
-                break;
-        }
+        if(evt.getType() == Event.VIEW_CHANGE)
+            handleView(evt.getArg());
         return up_prot.up(evt);
     }
 
