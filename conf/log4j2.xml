@@ -13,6 +13,6 @@
         </root>
         <logger name="org.jgroups" level="warn"/>
         <logger name="org.jgroups.protocols.raft.RAFT"     level="debug"/>
-        <logger name="org.jgroups.protocols.raft.ELECTION" level="trace"/>
+        <logger name="org.jgroups.protocols.raft.ELECTION" level="debug"/>
     </loggers>
 </configuration>
