@@ -3,9 +3,9 @@ package org.jgroups.tests;
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
@@ -14,6 +14,7 @@ import org.testng.annotations.Test;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -122,6 +123,16 @@ public class VoteTest {
         }
     }
 
+    /** Membership=A, member=A: should become leader immediately */
+    public void testSingleMember() throws Exception {
+        channels=new JChannel[]{create("A", Collections.singletonList("A"))};
+        rafts=new RAFT[]{raft(channels[0])};
+
+        leader=leader(10000, 500, channels);
+        System.out.println("leader = " + leader);
+        assert leader != null;
+        assert leader.equals(channels[0].getAddress());
+    }
 
 
     protected void init(String ... nodes) throws Exception {
@@ -133,13 +144,18 @@ public class VoteTest {
         }
     }
 
-    protected JChannel create(String name) throws Exception {
+    protected static JChannel create(String name) throws Exception {
+        return create(name, mbrs);
+    }
+
+    protected static JChannel create(String name, List<String> mbrs) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
         ch.connect(CLUSTER);
         return ch;
     }
+
 
     protected static Address leader(long timeout, long interval, JChannel ... channels) {
         long target_time=System.currentTimeMillis() + timeout;
@@ -164,14 +180,14 @@ public class VoteTest {
         return -1;
     }
 
-    protected void assertSameLeader(Address leader, JChannel ... channels) {
+    protected static void assertSameLeader(Address leader, JChannel... channels) {
         for(JChannel ch: channels)
             assert leader.equals(raft(ch).leader());
     }
 
 
 
-    protected void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
+    protected static void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;
@@ -198,7 +214,7 @@ public class VoteTest {
     }
 
     protected JChannel channel(Address addr) {
-        for(JChannel ch: Arrays.asList(channels)) {
+        for(JChannel ch: channels) {
             if(ch.getAddress() != null && ch.getAddress().equals(addr))
                 return ch;
         }
@@ -209,7 +225,7 @@ public class VoteTest {
         return (RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
-    protected void close(boolean remove_log, boolean remove_snapshot, JChannel ... channels) {
+    protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
