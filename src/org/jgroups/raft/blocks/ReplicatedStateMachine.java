@@ -29,7 +29,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     protected long                     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
     protected final List<Notification<K,V>> listeners=new ArrayList<>();
 
-    // Hashmap for the contents. Doesn't need to be reentrant, as updates will be applied sequentially
+    // Hashmap for the contents
     protected final Map<K,V>           map=new HashMap<>();
 
     protected static final byte        PUT    = 1;
@@ -99,7 +99,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     }
 
     @Override
-    public boolean equals(Object other) {
+    public boolean equals(Object other) { // why is this method needed?
     	if(this == other) {
     		return true;
     	}
@@ -109,12 +109,16 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     	if(other.getClass() != getClass()) {
     		return false;
     	}
-        return map.equals(((ReplicatedStateMachine<?, ?>)other).map);
+    	synchronized(map) {
+            return map.equals(((ReplicatedStateMachine<?,?>)other).map);
+        }
     }
 
     @Override
-    public int hashCode() {
-    	return map.hashCode();
+    public int hashCode() { // why is this method needed?
+        synchronized(map) {
+            return map.hashCode();
+        }
     }
 
 
@@ -139,7 +143,9 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
      * @return The value associated with key (might be stale)
      */
     public V get(K key) {
-        return map.get(key);
+        synchronized(map) {
+            return map.get(key);
+        }
     }
 
     /**
@@ -153,7 +159,11 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     }
 
     /** Returns the number of elements in the RSM */
-    public int size() {return map.size();}
+    public int size() {
+        synchronized(map) {
+            return map.size();
+        }
+    }
 
 
     ///////////////////////////////////////// StateMachine callbacks /////////////////////////////////////
@@ -165,12 +175,17 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
             case PUT:
                 K key=Util.objectFromStream(in);
                 V val=Util.objectFromStream(in);
-                V old_val=map.put(key, val);
+                V old_val;
+                synchronized(map) {
+                    old_val=map.put(key, val);
+                }
                 notifyPut(key, val, old_val);
                 return old_val == null? null : Util.objectToByteBuffer(old_val);
             case REMOVE:
                 key=Util.objectFromStream(in);
-                old_val=map.remove(key);
+                synchronized(map) {
+                    old_val=map.remove(key);
+                }
                 notifyRemove(key, old_val);
                 return old_val == null? null : Util.objectToByteBuffer(old_val);
             default:
@@ -180,19 +195,25 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     @Override public void readContentFrom(DataInput in) throws Exception {
         int size=Bits.readInt(in);
+        Map<K,V> tmp=new HashMap<>(size);
         for(int i=0; i < size; i++) {
             K key=Util.objectFromStream(in);
             V val=Util.objectFromStream(in);
-            map.put(key, val);
+            tmp.put(key, val);
+        }
+        synchronized(map) {
+            map.putAll(tmp);
         }
     }
 
     @Override public void writeContentTo(DataOutput out) throws Exception {
-        int size=map.size();
-        Bits.writeInt(size, out);
-        for(Map.Entry<K,V> entry: map.entrySet()) {
-            Util.objectToStream(entry.getKey(), out);
-            Util.objectToStream(entry.getValue(), out);
+        synchronized(map) {
+            int size=map.size();
+            Bits.writeInt(size, out);
+            for(Map.Entry<K,V> entry : map.entrySet()) {
+                Util.objectToStream(entry.getKey(), out);
+                Util.objectToStream(entry.getValue(), out);
+            }
         }
     }
 
@@ -200,7 +221,9 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
 
     public String toString() {
-        return map.toString();
+        synchronized(map) {
+            return map.toString();
+        }
     }
 
     protected V invoke(byte command, K key, V val, boolean ignore_return_value) throws Exception {
@@ -222,13 +245,13 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     protected void notifyPut(K key, V val, V old_val) {
         for(Notification<K,V> n: listeners) {
-            try {n.put(key, val, old_val);}catch(Throwable t) {}
+            try {n.put(key, val, old_val);}catch(Throwable ignored) {}
         }
     }
 
     protected void notifyRemove(K key, V old_val) {
         for(Notification<K,V> n: listeners) {
-            try {n.remove(key, old_val);}catch(Throwable t) {}
+            try {n.remove(key, old_val);}catch(Throwable ignored) {}
         }
     }
 
