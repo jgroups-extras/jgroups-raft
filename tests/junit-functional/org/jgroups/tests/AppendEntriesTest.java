@@ -5,6 +5,7 @@ import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
+import org.jgroups.raft.RaftHandle;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -18,6 +19,7 @@ import java.util.List;
  import java.util.Objects;
  import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.Collections;
 
 import static org.testng.Assert.*;
 
@@ -52,6 +54,20 @@ public class AppendEntriesTest {
         close(true, true, c, b, a);
     }
 
+    public void testSingleMember() throws Exception  {
+        // given
+        a=create("A", false, Collections.singletonList("A"));
+        a.connect(CLUSTER);
+        RaftHandle raft=new RaftHandle(a, new DummyStateMachine());
+        Util.waitUntil(1000, 250, raft::isLeader);
+
+        // when
+        byte[] data="foo".getBytes();
+        byte[] result=raft.set(data, 0, data.length, 1, TimeUnit.SECONDS);
+
+        // then
+        assert Arrays.equals(result, new byte[0]) : "should have received empty byte array";
+    }
 
     public void testNormalOperation() throws Exception {
         init(true);
@@ -498,8 +514,11 @@ public class AppendEntriesTest {
         assertLogIndices(log, 11, 11, 3);
     }
 
-
     protected JChannel create(String name, boolean follower) throws Exception {
+        return create(name, follower, members);
+    }
+
+    protected JChannel create(String name, boolean follower, final List<String> members) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
         RAFT raft=new RAFT().members(members).raftId(name)
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);

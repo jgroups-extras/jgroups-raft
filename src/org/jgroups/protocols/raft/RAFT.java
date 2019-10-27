@@ -257,13 +257,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         request_table=new RequestTable<>();
         // Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31)
         for(int i=this.commit_index+1; i <= this.last_appended; i++)
-            request_table.create(i, raft_id, null);
+            request_table.create(i, raft_id, null, majority());
     }
 
     protected void createCommitTable() {
-        List<Address> mbrs=new ArrayList<>(view.getMembers());
-        mbrs.remove(local_addr);
-        commit_table=new CommitTable(mbrs, last_appended +1);
+        commit_table=new CommitTable(view.getMembers(), last_appended +1);
     }
 
     public synchronized boolean updateTermAndLeader(int term, Address new_leader) {
@@ -562,16 +560,20 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
                 executeInternalCommand(cmd, null, 0, 0);
 
             // 2. Add the request to the client table, so we can return results to clients when done
-            reqtab.create(curr_index, raft_id, retval);
+            reqtab.create(curr_index, raft_id, retval, majority());
 
             // 3. Multicast an AppendEntries message (exclude self)
             Message msg=new Message(null, buf, offset, length)
               .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
               .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
             down_prot.down(msg);
+
         }
 
         snapshotIfNeeded(length);
+        if (reqtab.isCommitted(curr_index)) {
+            handleCommit(curr_index);
+        }
 
         // 4. Return CompletableFuture
         return retval;
@@ -986,5 +988,15 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         void roleChanged(Role role);
     }
 
+    protected void updateMatchIndex(Address member, int match_index, int next_index, int commit_index) {
+        RequestTable<String> reqtab=request_table;
+        if(reqtab == null)
+            throw new IllegalStateException("request table cannot be null in leader");
 
+        ExtendedUUID uuid=(ExtendedUUID)member;
+        String raft_id=Util.bytesToString(uuid.get(RAFT.raft_id_key));
+        commit_table.update(member, match_index, next_index, commit_index, false);
+        if(reqtab.add(match_index, raft_id, majority()))
+            handleCommit(match_index);
+    }
 }

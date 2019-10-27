@@ -21,10 +21,11 @@ public class RequestTable<T> {
     protected final Map<Integer,Entry<T>> requests=new HashMap<>(); // maps an index to a set of (response) senders
 
 
-    public void create(int index, T vote, CompletableFuture<byte[]> future) {
-        Entry<T> entry=new Entry<>(future, vote);
+    public void create(int index, T vote, CompletableFuture<byte[]> future, int majority) {
+        Entry<T> entry=new Entry<>(future);
         synchronized(this) {
             requests.put(index, entry);
+            entry.add(vote, majority);
         }
     }
 
@@ -72,14 +73,20 @@ public class RequestTable<T> {
         protected final Set<T>                    votes=new HashSet<>();
         protected boolean                         committed;
 
-        public Entry(CompletableFuture<byte[]> client_future, T vote) {
+        public Entry(CompletableFuture<byte[]> client_future) {
             this.client_future=client_future;
-            votes.add(vote);
         }
 
         protected boolean add(T vote, int majority) {
-            boolean reached_majority=votes.add(vote) && votes.size() >= majority;
-            return reached_majority && !committed && (committed=true);
+            votes.add(vote);
+            return votes.size() >= majority && commit();
+        }
+
+        // returns true only the first time the entry is committed
+        protected boolean commit() {
+            boolean prev_committed = committed;
+            committed=true;
+            return !prev_committed;
         }
 
         @Override
