@@ -18,6 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Tests the addServer() / removeServer) functionality
@@ -73,6 +74,7 @@ public class DynamicMembershipTest {
         leader=leader(10000, 500, channels);
         System.out.println("leader = " + leader);
         assert leader != null;
+        waitUntilAllRaftsHaveLeader(channels);
         assertSameLeader(leader, channels);
         assertMembers(5000, 500, mbrs, 2, channels);
 
@@ -106,6 +108,7 @@ public class DynamicMembershipTest {
         leader = leader(10000, 500, channels);
         System.out.println("leader = " + leader);
         assert leader != null;
+        waitUntilAllRaftsHaveLeader(channels);
         assertSameLeader(leader, channels);
         assertMembers(5000, 500, mbrs, 2, channels);
 
@@ -220,8 +223,11 @@ public class DynamicMembershipTest {
     }
 
     protected void assertSameLeader(Address leader, JChannel ... channels) {
-        for(JChannel ch: channels)
-            assert leader.equals(raft(ch).leader());
+        for(JChannel ch: channels) {
+            final Address raftLeader = raft(ch).leader();
+            assert leader.equals(raftLeader)
+                : String.format("expected leader to be '%s' but was '%s'", leader, raftLeader);
+        }
     }
 
     protected void assertMembers(long timeout, long interval, List<String> members, int expected_majority, JChannel... channels) {
@@ -272,6 +278,10 @@ public class DynamicMembershipTest {
             assert raft.commitIndex() == expected_commit : String.format("%s: last-applied=%d, commit-index=%d",
                                                                          ch.getAddress(), raft.lastAppended(), raft.commitIndex());
         }
+    }
+
+    protected void waitUntilAllRaftsHaveLeader(JChannel[] channels) throws TimeoutException {
+        Util.waitUntil(5000, 250, () -> Arrays.stream(channels).allMatch(ch -> raft(ch).leader() != null));
     }
 
     protected RAFT raft(Address addr) {
