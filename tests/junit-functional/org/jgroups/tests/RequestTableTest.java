@@ -16,7 +16,7 @@ public class RequestTableTest {
 
     public void testSimple() {
         RequestTable<String> table=new RequestTable<>();
-        table.create(1, "A", future);
+        table.create(1, "A", future, 3);
         table.add(1, "A", 3);
         assert !table.isCommitted(1);
         boolean done=table.add(1, "B", 3);
@@ -26,4 +26,11 @@ public class RequestTableTest {
         assert table.isCommitted(1);
     }
 
+    public void testSingleNode() {
+        RequestTable<String> table=new RequestTable<>();
+        table.create(1, "A", future, 1);
+        assert table.isCommitted(1);
+        boolean done=table.add(1, "A", 1);
+        assert !done : "should only mark as committed once";
+    }
 }
