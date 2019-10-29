@@ -10,7 +10,7 @@ import java.util.concurrent.CompletableFuture;
  * @author Bela Ban
  * @since  0.1
  */
-@Test(groups=Global.FUNCTIONAL)
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true) // single-threaded because of the single CompletableFuture
 public class RequestTableTest {
     protected static final CompletableFuture<byte[]> future=new CompletableFuture<>();
 
@@ -30,7 +30,7 @@ public class RequestTableTest {
         RequestTable<String> table=new RequestTable<>();
         table.create(1, "A", future, 1);
         assert table.isCommitted(1);
-        boolean done=table.add(1, "A", 1);
-        assert !done : "should only mark as committed once";
+        boolean added=table.add(1, "A", 1);
+        assert !added : "should only mark as committed once";
     }
 }

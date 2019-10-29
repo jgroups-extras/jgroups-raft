@@ -170,7 +170,7 @@ public class AppendEntriesTest {
             as.put(1, 1);
             assert false : "should have gotten a TimeoutException";
         }
-        catch(TimeoutException ex) {
+        catch(TimeoutException ignored) {
             System.out.println("The first put() timed out as expected as there's no majority to commit it");
         }
 
@@ -514,11 +514,11 @@ public class AppendEntriesTest {
         assertLogIndices(log, 11, 11, 3);
     }
 
-    protected JChannel create(String name, boolean follower) throws Exception {
+    protected static JChannel create(String name, boolean follower) throws Exception {
         return create(name, follower, members);
     }
 
-    protected JChannel create(String name, boolean follower, final List<String> members) throws Exception {
+    protected static JChannel create(String name, boolean follower, final List<String> members) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
         RAFT raft=new RAFT().members(members).raftId(name)
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
@@ -526,7 +526,7 @@ public class AppendEntriesTest {
     }
 
 
-    protected void close(boolean remove_log, boolean remove_snapshot, JChannel ... channels) {
+    protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
@@ -572,18 +572,18 @@ public class AppendEntriesTest {
         b.connect(CLUSTER);
     }
 
-    protected boolean isLeader(JChannel ch) {
+    protected static boolean isLeader(JChannel ch) {
         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
         return ch.getAddress().equals(raft.leader());
     }
 
-    protected RaftImpl getImpl(JChannel ch) {
+    protected static RaftImpl getImpl(JChannel ch) {
         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
         Field impl=Util.getField(RAFT.class, "impl");
         return (RaftImpl)Util.getField(impl, raft);
     }
 
-    protected void assertLeader(JChannel ch, long timeout, long interval) {
+    protected static void assertLeader(JChannel ch, long timeout, long interval) {
         RAFT raft=raft(ch);
         long stop_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() < stop_time) {
@@ -644,13 +644,13 @@ public class AppendEntriesTest {
         }
     }
 
-    protected void assertLogIndices(Log log, int last_applied, int commit_index, int term) {
+    protected static void assertLogIndices(Log log, int last_applied, int commit_index, int term) {
         assertEquals(log.lastAppended(), last_applied);
         assertEquals(log.commitIndex(), commit_index);
         assertEquals(log.currentTerm(), term);
     }
 
-    protected void assertCommitIndex(long timeout, long interval, int expected_commit, int expected_applied, JChannel... channels) {
+    protected static void assertCommitIndex(long timeout, long interval, int expected_commit, int expected_applied, JChannel... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;
@@ -675,12 +675,12 @@ public class AppendEntriesTest {
         return (RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
-    protected AppendResult append(RaftImpl impl, int index, int prev_term, LogEntry entry, Address leader, int leader_commit) throws Exception {
+    protected static AppendResult append(RaftImpl impl, int index, int prev_term, LogEntry entry, Address leader, int leader_commit) throws Exception {
         return append(impl, entry.command(), leader, Math.max(0, index-1), prev_term, entry.term(), leader_commit);
     }
 
-    protected AppendResult append(RaftImpl impl, byte[] data, Address leader,
-                                  int prev_log_index, int prev_log_term, int entry_term, int leader_commit) throws Exception {
+    protected static AppendResult append(RaftImpl impl, byte[] data, Address leader,
+                                         int prev_log_index, int prev_log_term, int entry_term, int leader_commit) throws Exception {
         return (AppendResult)handleAppendEntriesRequest.invoke(impl, data, 0, data.length, leader,
                                                                prev_log_index, prev_log_term, entry_term, leader_commit, false);
     }
