@@ -4,6 +4,7 @@ import org.jgroups.Header;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
@@ -30,12 +31,12 @@ public class VoteResponse extends RaftHeader {
         return super.serializedSize() + 1;
     }
 
-    public void readFrom(DataInput in) throws Exception {
+    public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
-    	result = in.readByte() == 1 ? true : false;
+    	result=in.readByte() == 1;
     }
 
-    public void writeTo(DataOutput out) throws Exception {
+    public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         out.writeByte(result ? 1 : 0);
     }

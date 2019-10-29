@@ -5,6 +5,7 @@ import org.jgroups.util.Streamable;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 
 /**
  * Internal command to be added to the log, e.g. adding or removing a server
@@ -25,12 +26,12 @@ public class InternalCommand implements Streamable {
 
     public Type type() {return type;}
 
-    public void writeTo(DataOutput out) throws Exception {
+    public void writeTo(DataOutput out) throws IOException {
         out.writeByte(type.ordinal());
         Bits.writeString(name, out);
     }
 
-    public void readFrom(DataInput in) throws Exception {
+    public void readFrom(DataInput in) throws IOException {
         type=Type.values()[in.readByte()];
         name=Bits.readString(in);
     }

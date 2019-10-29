@@ -249,7 +249,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
                     test_case.readFrom(input);
                     test_cases.add(test_case);
                 }
-                catch(Exception e) {
+                catch(Exception ignored) {
                     break;
                 }
             }
@@ -492,7 +492,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
                 out.write(buf, 0, num);
                 count+=num;
             }
-            catch(IOException e) {
+            catch(IOException ignored) {
                 break;
             }
         }
@@ -626,7 +626,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
             }
         }
 
-        public void writeTo(DataOutput out) throws Exception {
+        public void writeTo(DataOutput out) throws IOException {
             out.writeInt(status);
             Bits.writeString(classname, out);
             Bits.writeString(name,out);
@@ -637,7 +637,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
             Bits.writeString(stack_trace,out);
         }
 
-        public void readFrom(DataInput in) throws Exception {
+        public void readFrom(DataInput in) throws IOException {
             status=in.readInt();
             classname=Bits.readString(in);
             name=Bits.readString(in);

@@ -6,6 +6,7 @@ import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 
 /**
  * An element in a log. Captures the term and command to be applied to the state machine
@@ -45,13 +46,13 @@ public class LogEntry implements Streamable {
     public int     length()   {return length;}
     public boolean internal() {return internal;}
 
-    public void writeTo(DataOutput out) throws Exception {
+    public void writeTo(DataOutput out) throws IOException {
         Bits.writeInt(term, out);
         Util.writeByteBuffer(command, offset, length, out);
         out.writeBoolean(internal);
     }
 
-    public void readFrom(DataInput in) throws Exception {
+    public void readFrom(DataInput in) throws IOException {
         term=Bits.readInt(in);
         command=Util.readByteBuffer(in);
         offset=0;

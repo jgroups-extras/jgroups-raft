@@ -6,6 +6,7 @@ import org.jgroups.util.Streamable;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 
 /**
  * The result of an AppendEntries request
@@ -52,14 +53,14 @@ public class AppendResult implements Streamable {
         return Global.BYTE_SIZE + Bits.size(index) + Bits.size(commit_index) + Bits.size(non_matching_term);
     }
 
-    public void writeTo(DataOutput out) throws Exception {
+    public void writeTo(DataOutput out) throws IOException {
         out.writeBoolean(success);
         Bits.writeInt(index, out);
         Bits.writeInt(commit_index, out);
         Bits.writeInt(non_matching_term, out);
     }
 
-    public void readFrom(DataInput in) throws Exception {
+    public void readFrom(DataInput in) throws IOException {
         success=in.readBoolean();
         index=Bits.readInt(in);
         commit_index=Bits.readInt(in);

@@ -155,7 +155,8 @@ public class MapDBLog implements Log {
         @Override
         public T deserialize(DataInput in, int available) throws IOException {
             try {
-                return Util.readStreamable(clazz, in);
+                T instance=clazz.getConstructor().newInstance();
+                return Util.readStreamable(() -> instance, in);
             }
             catch(Exception ex) {
                 throw new IOException(ex);

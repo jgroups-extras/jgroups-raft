@@ -5,6 +5,7 @@ import org.jgroups.util.Bits;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
@@ -38,13 +39,13 @@ public class VoteRequest extends RaftHeader {
         return super.serializedSize() + Bits.size(last_log_term) + Bits.size(last_log_index);
     }
 
-    public void writeTo(DataOutput out) throws Exception {
+    public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Bits.writeInt(last_log_term, out);
         Bits.writeInt(last_log_index, out);
     }
 
-    public void readFrom(DataInput in) throws Exception {
+    public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         last_log_term=Bits.readInt(in);
         last_log_index=Bits.readInt(in);

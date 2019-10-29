@@ -6,6 +6,7 @@ import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
@@ -32,15 +33,15 @@ public class AppendEntriesResponse extends RaftHeader {
     }
 
     @Override
-    public void writeTo(DataOutput out) throws Exception {
+    public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeStreamable(result, out);
     }
 
     @Override
-    public void readFrom(DataInput in) throws Exception {
+    public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
-        result=Util.readStreamable(AppendResult.class, in);
+        result=Util.readStreamable(AppendResult::new, in);
     }
 
     @Override

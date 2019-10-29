@@ -8,6 +8,7 @@ import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
@@ -51,7 +52,7 @@ public class AppendEntriesRequest extends RaftHeader {
     }
 
     @Override
-    public void writeTo(DataOutput out) throws Exception {
+    public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
         Bits.writeInt(prev_log_index, out);
@@ -62,7 +63,7 @@ public class AppendEntriesRequest extends RaftHeader {
     }
 
     @Override
-    public void readFrom(DataInput in) throws Exception {
+    public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
         prev_log_index=Bits.readInt(in);

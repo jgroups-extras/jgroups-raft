@@ -8,7 +8,7 @@
         Ant/ivy based build.xml file for jgroups-raft. Needs ant to run
     </description>
 
-    <property name="version"               value="0.4.4-SNAPSHOT"/>
+    <property name="version"               value="0.4.5-SNAPSHOT"/>
     <property name="build.properties.file" value="build.properties"/>
     <property file="${build.properties.file}"/>
     <property name="root.dir"              value="${basedir}"/>
@@ -28,7 +28,7 @@
     <property name="javadoc.packages"      value="org.jgroups.*"/>
     <property name="timestamp"             value=".timestamp"/>
     <property name="maven.executable"      value="mvn"/>
-    <property name="ivy.version"           value="2.5.0-rc1" />
+    <property name="ivy.version"           value="2.5.0" />
     <property name="ivy.props"             value="ivy.properties"/>
     <property name="asciidoc.executable"   value="asciidoctor"/>
 

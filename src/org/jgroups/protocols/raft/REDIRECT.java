@@ -10,6 +10,7 @@ import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -105,20 +106,14 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     }
 
     public Object down(Event evt) {
-        switch(evt.getType()) {
-            case Event.SET_LOCAL_ADDRESS:
-                local_addr=evt.getArg();
-                break;
-        }
+        if(evt.getType() == Event.SET_LOCAL_ADDRESS)
+            local_addr=evt.getArg();
         return down_prot.down(evt);
     }
 
     public Object up(Event evt) {
-        switch(evt.getType()) {
-            case Event.VIEW_CHANGE:
-                view=evt.getArg();
-                break;
-        }
+        if(evt.getType() == Event.VIEW_CHANGE)
+            view=evt.getArg();
         return up_prot.up(evt);
     }
 
@@ -291,13 +286,13 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
             return Global.BYTE_SIZE*2 + Bits.size(corr_id);
         }
 
-        public void writeTo(DataOutput out) throws Exception {
+        public void writeTo(DataOutput out) throws IOException {
             out.writeByte((byte)type.ordinal());
             Bits.writeInt(corr_id, out);
             out.writeBoolean(exception);
         }
 
-        public void readFrom(DataInput in) throws Exception {
+        public void readFrom(DataInput in) throws IOException {
             type=RequestType.values()[in.readByte()];
             corr_id=Bits.readInt(in);
             exception=in.readBoolean();

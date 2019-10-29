@@ -46,7 +46,7 @@ public class PropsToAsciidoc {
             Properties props = new Properties();
             for (Class<Protocol> clazz : classes)
                 convertProtocolToAsciidocTable(props,clazz);
-            String result = Util.replaceProperties(s, props);
+            String result = Util.substituteVariable(s, props);
             FileWriter fw = new FileWriter(f, false);
             fw.write(result);
             fw.flush();
