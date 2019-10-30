@@ -984,17 +984,4 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public interface RoleChange {
         void roleChanged(Role role);
     }
-
-    // todo: remove?
-   /* protected void updateMatchIndex(Address member, int match_index, int next_index, int commit_index) {
-        RequestTable<String> reqtab=request_table;
-        if(reqtab == null)
-            throw new IllegalStateException("request table cannot be null in leader");
-
-        ExtendedUUID uuid=(ExtendedUUID)member;
-        String raft_id_str=Util.bytesToString(uuid.get(RAFT.raft_id_key));
-        commit_table.update(member, match_index, next_index, commit_index, false);
-        if(reqtab.add(match_index, raft_id_str, majority()))
-            handleCommit(match_index);
-    }*/
 }
