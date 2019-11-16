@@ -13,6 +13,7 @@
  import java.util.ArrayList;
  import java.util.Arrays;
  import java.util.List;
+ import java.util.function.Supplier;
 
  import static org.testng.Assert.fail;
 
@@ -105,11 +106,23 @@
          assert !leader.equals(a.getAddress());
      }
 
+     /** ELECTION should look for RAFT or its subclasses */
+     public void testRAFTSubclass() throws Exception {
+         JChannel z = createWithRAFTSubclass("Z");
+         z.connect(CLUSTER);
+     }
 
+     protected JChannel createWithRAFTSubclass(String name) throws Exception {
+         return create(name, () -> new RAFT(){});
+     }
 
      protected JChannel create(String name) throws Exception {
+         return create(name, RAFT::new);
+     }
+
+     protected JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
          ELECTION election=new ELECTION().noElections(true);
-         RAFT raft=new RAFT().members(members).raftId(name)
+         RAFT raft=raftSupplier.get().members(members).raftId(name)
            .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
          REDIRECT client=new REDIRECT();
          return new JChannel(Util.getTestStack(election, raft, client)).name(name);

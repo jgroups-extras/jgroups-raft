@@ -353,7 +353,7 @@ public class ELECTION extends Protocol {
 
     protected <T extends Protocol> T findProtocol(Class<T> clazz) {
         for(Protocol p=up_prot; p != null; p=p.getUpProtocol()) {
-            if(p.getClass().equals(clazz))
+            if(clazz.isAssignableFrom(p.getClass()))
                 return (T)p;
         }
         throw new IllegalStateException(clazz.getSimpleName() + " not found above " + this.getClass().getSimpleName());
