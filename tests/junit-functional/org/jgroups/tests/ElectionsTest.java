@@ -108,19 +108,20 @@
 
      /** ELECTION should look for RAFT or its subclasses */
      public void testRAFTSubclass() throws Exception {
-         JChannel z = createWithRAFTSubclass("Z");
-         z.connect(CLUSTER);
+         close(true, true, c);
+         c=createWithRAFTSubclass("C");
+         c.connect(CLUSTER);
      }
 
-     protected JChannel createWithRAFTSubclass(String name) throws Exception {
+     protected static JChannel createWithRAFTSubclass(String name) throws Exception {
          return create(name, () -> new RAFT(){});
      }
 
-     protected JChannel create(String name) throws Exception {
+     protected static JChannel create(String name) throws Exception {
          return create(name, RAFT::new);
      }
 
-     protected JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
+     protected static JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
          ELECTION election=new ELECTION().noElections(true);
          RAFT raft=raftSupplier.get().members(members).raftId(name)
            .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
@@ -129,20 +130,26 @@
      }
 
 
-     protected void close(boolean remove_log, boolean remove_snapshot, JChannel ... channels) {
+     protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
          for(JChannel ch: channels) {
              if(ch == null)
                  continue;
-             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-             if(remove_log)
-                 raft.log().delete(); // remove log files after the run
-             if(remove_snapshot)
-                 raft.deleteSnapshot();
-             Util.close(ch);
+             close(remove_log, remove_snapshot, ch);
          }
      }
 
-     protected void setLog(JChannel ch, int ... terms) {
+     protected static void close(boolean remove_log, boolean remove_snapshot, JChannel ch) {
+         if(ch == null)
+             return;
+         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
+         if(remove_log)
+             raft.log().delete(); // remove log files after the run
+         if(remove_snapshot)
+             raft.deleteSnapshot();
+         Util.close(ch);
+     }
+
+     protected static void setLog(JChannel ch, int... terms) {
          RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
          Log log=raft.log();
          int index=log.lastAppended();
@@ -150,7 +157,7 @@
              log.append(++index, true, new LogEntry(term, BUF));
      }
 
-     protected void startElections(JChannel... channels) throws Exception {
+     protected static void startElections(JChannel... channels) throws Exception {
          for(JChannel ch: channels) {
              ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
              election.noElections(false);
@@ -158,12 +165,12 @@
          }
      }
 
-     protected boolean isLeader(JChannel ch) {
+     protected static boolean isLeader(JChannel ch) {
          RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
          return ch.getAddress().equals(raft.leader());
      }
 
-     protected List<Address> leaders(JChannel ... channels) {
+     protected static List<Address> leaders(JChannel... channels) {
          List<Address> leaders=new ArrayList<>(channels.length);
          for(JChannel ch: channels) {
              if(isLeader(ch))
@@ -173,7 +180,7 @@
      }
 
      /** If expected is null, then any member can be a leader */
-     protected Address assertLeader(int times, long sleep, Address expected, JChannel ... channels) {
+     protected static Address assertLeader(int times, long sleep, Address expected, JChannel... channels) {
          // wait until there is 1 leader
          for(int i=0; i < times; i++) {
              List<Address> leaders=leaders(channels);
@@ -182,8 +189,7 @@
                  assert size <= 1;
                  Address leader=leaders.get(0);
                  System.out.println("leader: " + leader);
-                 if(expected != null)
-                     assert expected.equals(leader);
+                 assert expected == null || expected.equals(leader);
                  break;
              }
 
