@@ -65,9 +65,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * @return The counter implementation
      */
     public Counter getOrCreateCounter(String name, long initial_value) throws Exception {
-        Object existing_value=allow_dirty_reads? _get(name) : invoke(Command.get, name, false);
-        if(existing_value != null)
-            counters.put(name, (Long)existing_value);
+        if(allow_dirty_reads)
+            this._create(name, initial_value);
         else {
             Object retval=invoke(Command.create, name, false, initial_value);
             if(retval instanceof Long)
