@@ -57,21 +57,28 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public String         raftId()                      {return raft.raftId();}
     public CounterService raftId(String id)             {raft.raftId(id); return this;}
 
+
     /**
-     * Returns an existing counter, or creates a new one if none exists
+     * Returns an instance of the counter. This is local operation which never fails and don't create a record in the
+     * log. For cluster-wide operation call getOrCreateCounter(name, initial_value).
+     * @param name Name of the counter, different counters have to have different names
+     * @return The counter instance
+     */
+    public Counter counter(String name) {
+        return new CounterImpl(name, this);
+    }
+
+
+    /**
+     * Returns an existing counter, or creates a new one if none exists. This is a cluster-wide operation which would
+     * fail if no leader is elected.
      * @param name Name of the counter, different counters have to have different names
      * @param initial_value The initial value of a new counter if there is no existing counter. Ignored
      * if the counter already exists
      * @return The counter implementation
      */
     public Counter getOrCreateCounter(String name, long initial_value) throws Exception {
-        if(allow_dirty_reads)
-            this._create(name, initial_value);
-        else {
-            Object retval=invoke(Command.create, name, false, initial_value);
-            if(retval instanceof Long)
-                counters.put(name, (Long)retval);
-        }
+        invoke(Command.create, name, false, initial_value);
         return new CounterImpl(name, this);
     }
 

@@ -40,18 +40,22 @@ public class CounterServiceDemo {
 
 
     protected void loop() throws Exception {
-        Counter counter=counter_service.getOrCreateCounter("counter", 1);
+        Counter counter=counter_service.counter("counter");
         boolean looping=true;
         while(looping) {
             try {
-                int key=Util.keyPress("[1] Increment [2] Decrement [3] Compare and set [4] Dump log\n" +
-                                        "[8] Snapshot [9] Increment N times [x] Exit\n" +
-                                        "first-applied=" + firstApplied() +
-                                        ", last-applied=" + counter_service.lastApplied() +
-                                        ", commit-index=" + counter_service.commitIndex() +
-                                        ", log size=" + Util.printBytes(logSize()) + "\n");
+                int key=Util.keyPress("[0] Initialize counter [1] Increment [2] Decrement [3] Compare and set\n" +
+                        "[4] Dump log [8] Snapshot [9] Increment N times [x] Exit\n" +
+                        "first-applied=" + firstApplied() +
+                        ", last-applied=" + counter_service.lastApplied() +
+                        ", commit-index=" + counter_service.commitIndex() +
+                        ", log size=" + Util.printBytes(logSize()) + "\n");
 
                 switch(key) {
+                    case '0':
+                        long initial_value=Util.readLongFromStdin("initial value: ");
+                        counter_service.getOrCreateCounter("counter", initial_value);
+                        break;
                     case '1':
                         long val=counter.incrementAndGet();
                         System.out.printf("%s: %s\n", counter.getName(), val);
