@@ -23,7 +23,7 @@
         <leveldbjni.version>1.8</leveldbjni.version>
         <mapdb.version>1.0.8</mapdb.version>
         <commons-io.version>2.5</commons-io.version>
-        <log4j.version>2.11.1</log4j.version>
+        <log4j.version>2.13.3</log4j.version>
     </properties>
 
     <organization>
