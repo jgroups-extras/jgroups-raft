@@ -75,7 +75,7 @@ public class RaftHandle implements Settable {
     }
 
     @Override
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) {
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
         return settable.setAsync(buf, offset, length);
     }
 

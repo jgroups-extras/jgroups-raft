@@ -65,7 +65,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     }
 
     @Override
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) {
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
         Address leader=leader("set()");
 
         // we are the current leader: pass the call to the RAFT protocol
@@ -193,12 +193,12 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
-    protected Address leader(String req_type) {
+    protected Address leader(String req_type) throws RaftLeaderException {
         Address leader=raft.leader();
         if(leader == null)
-            throw new RuntimeException(String.format("there is currently no leader to forward %s request to", req_type));
+            throw new RaftLeaderException(String.format("there is currently no leader to forward %s request to", req_type));
         if(view != null && !view.containsMember(leader))
-            throw new RuntimeException("leader " + leader + " is not member of view " + view);
+            throw new RaftLeaderException("leader " + leader + " is not member of view " + view);
         return leader;
     }
 

@@ -42,5 +42,5 @@ public interface Settable {
      * @param length he number of bytes to be used in the buffer, starting at offset
      * @return A CompletableFuture which can be used to fetch the result.
      */
-    CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length);
+    CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception;
 }
