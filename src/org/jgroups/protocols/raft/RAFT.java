@@ -19,6 +19,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 
 
@@ -33,6 +34,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     // When moving to JGroups -> add to jg-protocol-ids.xml
     protected static final byte[] raft_id_key          = Util.stringToBytes("raft-id");
     protected static final short  RAFT_ID              = 521;
+
+    protected static final Function<ExtendedUUID,String> print_function=uuid -> {
+        byte[] val=uuid.get(raft_id_key);
+        return val != null? Util.bytesToString(val) : uuid.print();
+    };
 
     // When moving to JGroups -> add to jg-magic-map.xml
     protected static final short  APPEND_ENTRIES_REQ   = 2000;
@@ -400,7 +406,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         final JChannel ch=stack.getChannel();
-        ch.addAddressGenerator(() -> ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id)));
+        ch.addAddressGenerator(() -> {
+            ExtendedUUID.setPrintFunction(print_function);
+            return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
+        });
     }
 
     @Override public void start() throws Exception {
