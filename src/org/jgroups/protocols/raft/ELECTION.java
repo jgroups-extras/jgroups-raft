@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.Event;
 import org.jgroups.Message;
+import org.jgroups.View;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.Property;
@@ -126,10 +127,19 @@ public class ELECTION extends Protocol {
             case Event.SET_LOCAL_ADDRESS:
                 local_addr=evt.getArg();
                 break;
+            case Event.VIEW_CHANGE:
+                handleView(evt.getArg());
+                break;
         }
         return down_prot.down(evt);
     }
 
+    @Override
+    public Object up(Event evt) {
+        if(evt.getType() == Event.VIEW_CHANGE)
+            handleView(evt.getArg());
+        return up_prot.up(evt);
+    }
 
     public Object up(Message msg) {
         RaftHeader hdr=msg.getHeader(id);
@@ -152,6 +162,17 @@ public class ELECTION extends Protocol {
             up_prot.up(batch);
     }
 
+    protected void handleView(View v) {
+        if(role == Role.Leader) {
+            if(v != null && v.size() < raft.majority())
+                changeRole(Role.Candidate);
+        }
+        else { // follower or candidate
+            if(v != null && v.size() < raft.majority())
+                raft.leader(null);
+        }
+    }
+
 
     protected void handleEvent(Message msg, RaftHeader hdr) {
         // drop the message if hdr.term < raft.current_term, else accept
@@ -160,7 +181,7 @@ public class ELECTION extends Protocol {
         if(rc < 0)
             return;
         if(rc > 0) { // a new term was set
-            changeRole(Role.Follower);
+            changeRole(Role.Follower); // duplicate, was already done in currentTerm()!
             voteFor(null); // so we can vote again in this term
         }
 

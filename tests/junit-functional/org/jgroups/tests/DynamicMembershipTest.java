@@ -17,8 +17,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tests the addServer() / removeServer) functionality
@@ -44,7 +44,9 @@ public class DynamicMembershipTest {
     public void testStartOfNonMember() {
         JChannel non_member=null;
         try {
-            init("X");
+            init("A", "B", "C");
+            channels=Arrays.copyOf(channels, channels.length+1);
+            channels[channels.length-1]=create("X");
             assert false : "Starting a non-member should throw an exception";
         }
         catch(Exception e) {
@@ -143,8 +145,8 @@ public class DynamicMembershipTest {
     }
 
     /**
-     * {A,B} -> -B -> {A} (A is the leader). Then addServer(D) on A. Then another addServer(E) on A. The second addServer()
-     * should fail as A hasn't yet committed the first.
+     * {A,B} -> -B -> {A} (A is the leader). Call addServer("C"): this will fail as A is not the leader anymore. Then
+     * make B rejoin, and addServer("C") will succeed
      */
     public void testAddServerOnLeaderWhichCantCommit() throws Exception {
         init("A", "B");
@@ -153,59 +155,64 @@ public class DynamicMembershipTest {
         System.out.println("leader = " + leader);
         assert leader != null;
 
-        // close all non-leaders
+        // close non-leaders
         for(JChannel ch: channels)
             if(!ch.getAddress().equals(leader))
                 close(true, true, ch);
 
         RAFT raft=raft(leader);
-        // try to add D. The leader will actually add this to the log, but won't be able to commit it, so the second
-        // addServer() below will fail
-        raft.addServer("D");
-        assertMembers(5000, 500, mbrs2, 3, channels);
-
-        // This will fail as the first addServer(D) has not yet been committed
-        try {
-            raft.addServer("E");
-            assert false : "Adding server E should fail as adding server D has not yet been committed";
+        try { // this will fail as leader A stepped down when it found that the view's size dropped below the majority
+            raft.addServer("C");
+            assert false : "Adding server C should fail as the leader stepped down";
         }
         catch(Exception ex) {
-            System.out.println("Caught exception (as expected) trying to add another server: " + ex);
+            System.out.println("Caught exception (as expected) trying to add C: " + ex);
         }
 
-        // Now add B and C again, so that the first addServer(D) op can commit (it now needs 3 votes to commit)
-        channels=Arrays.copyOf(channels, 3);
-        channels[2]=create("C");
+        // Now start B again, so that addServer("C") can succeed
         for(int i=0; i < channels.length; i++) {
             if(channels[i].isClosed())
                 channels[i]=create(String.valueOf((char)('A' + i)));
         }
         Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
 
-        // Now wait (and assert) for RAFT.members to be {A,B,C,D}
-        assertMembers(10000, 500, mbrs2, 3, channels);
+        leader=leader(10000, 500, channels);
+        System.out.println("leader = " + leader);
+        assert leader != null;
+        raft=raft(leader);
+        raft.addServer("C"); // adding C should now succeed, as we have a valid leader again
 
-        // wait until everyone has committed the addServer(D) operation
+        // Now create and connect C
+        channels=Arrays.copyOf(channels, 3);
+        channels[2]=create("C");
+
+        assertMembers(10000, 500, mbrs, 2, channels);
+
+        // wait until everyone has committed the addServer(C) operation
         assertCommitIndex(20000, 500, raft(leader).lastAppended(), channels);
-
-        // Now addServer(E) should work
-        raft.addServer("E");
-        assertMembers(10000, 500, mbrs3, 3, channels);
     }
 
     protected void init(String ... nodes) throws Exception {
         channels=new JChannel[nodes.length];
         rafts=new RAFT[nodes.length];
         for(int i=0; i < nodes.length; i++) {
-            channels[i]=create(nodes[i]);
+            channels[i]=create(nodes, i);
             rafts[i]=raft(channels[i]);
         }
     }
 
-    protected JChannel create(String name) throws Exception {
+    protected static JChannel create(String name) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
+        ch.connect(CLUSTER);
+        return ch;
+    }
+
+    protected static JChannel create(String[] names, int index) throws Exception {
+        RAFT raft=new RAFT().members(Arrays.asList(names)).raftId(names[index]).stateMachine(new DummyStateMachine())
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(names[index] + "-" + CLUSTER);
+        JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(names[index]);
         ch.connect(CLUSTER);
         return ch;
     }
@@ -222,7 +229,7 @@ public class DynamicMembershipTest {
         return null;
     }
 
-    protected void assertSameLeader(Address leader, JChannel ... channels) {
+    protected static void assertSameLeader(Address leader, JChannel... channels) {
         for(JChannel ch: channels) {
             final Address raftLeader = raft(ch).leader();
             assert leader.equals(raftLeader)
@@ -230,7 +237,7 @@ public class DynamicMembershipTest {
         }
     }
 
-    protected void assertMembers(long timeout, long interval, List<String> members, int expected_majority, JChannel... channels) {
+    protected static void assertMembers(long timeout, long interval, List<String> members, int expected_majority, JChannel... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;
@@ -258,7 +265,7 @@ public class DynamicMembershipTest {
         }
     }
 
-    protected void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
+    protected static void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;
@@ -280,7 +287,7 @@ public class DynamicMembershipTest {
         }
     }
 
-    protected void waitUntilAllRaftsHaveLeader(JChannel[] channels) throws TimeoutException {
+    protected static void waitUntilAllRaftsHaveLeader(JChannel[] channels) throws TimeoutException {
         Util.waitUntil(5000, 250, () -> Arrays.stream(channels).allMatch(ch -> raft(ch).leader() != null));
     }
 
@@ -289,7 +296,7 @@ public class DynamicMembershipTest {
     }
 
     protected JChannel channel(Address addr) {
-        for(JChannel ch: Arrays.asList(channels)) {
+        for(JChannel ch: channels) {
             if(ch.getAddress() != null && ch.getAddress().equals(addr))
                 return ch;
         }
@@ -297,10 +304,10 @@ public class DynamicMembershipTest {
     }
 
     protected static RAFT raft(JChannel ch) {
-        return (RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+        return ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
-    protected void close(boolean remove_log, boolean remove_snapshot, JChannel ... channels) {
+    protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;

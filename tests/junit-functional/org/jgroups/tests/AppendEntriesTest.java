@@ -1,27 +1,31 @@
  package org.jgroups.tests;
 
  import org.jgroups.Address;
-import org.jgroups.Global;
-import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.*;
-import org.jgroups.raft.blocks.ReplicatedStateMachine;
-import org.jgroups.raft.RaftHandle;
-import org.jgroups.util.Util;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.Test;
+ import org.jgroups.Global;
+ import org.jgroups.JChannel;
+ import org.jgroups.protocols.DISCARD;
+ import org.jgroups.protocols.TP;
+ import org.jgroups.protocols.raft.*;
+ import org.jgroups.raft.RaftHandle;
+ import org.jgroups.raft.blocks.ReplicatedStateMachine;
+ import org.jgroups.stack.ProtocolStack;
+ import org.jgroups.util.Util;
+ import org.testng.annotations.AfterMethod;
+ import org.testng.annotations.Test;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.List;
+ import java.io.DataInput;
+ import java.io.DataOutput;
+ import java.lang.reflect.Field;
+ import java.lang.reflect.Method;
+ import java.util.Arrays;
+ import java.util.Collections;
+ import java.util.List;
  import java.util.Objects;
  import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.Collections;
+ import java.util.concurrent.TimeoutException;
+ import java.util.stream.Stream;
 
-import static org.testng.Assert.*;
+ import static org.testng.Assert.*;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc
@@ -106,7 +110,7 @@ public class AppendEntriesTest {
 
     /**
      * The leader has no majority in the cluster and therefore cannot commit changes. The effect is that all puts on the
-     * state machine will time out and the replicated state machine will be empty.
+     * state machine will fail and the replicated state machine will be empty.
      */
     public void testNonCommitWithoutMajority() throws Exception {
         init(true);
@@ -117,8 +121,8 @@ public class AppendEntriesTest {
             try {
                 as.put(i, i);
             }
-            catch(TimeoutException ex) {
-                System.out.println("received " + ex.getClass().getSimpleName() + " as expected; cache size is " + as.size());
+            catch(Exception ex) {
+                System.out.printf("received %s as expected; cache size is %d\n", ex.getClass().getSimpleName(), as.size());
             }
             assert as.size() == 0;
         }
@@ -155,14 +159,19 @@ public class AppendEntriesTest {
     }
 
     /**
-     * Leader A adds the first entry to its log but cannot commit it because it doesn't have a majority. Then B joins,
-     * and it should get the first entry and finally the first entry should be committed on both A and B as they now
-     * have a majority.
+     * Leader A adds the first entry to its log but cannot commit it because it doesn't have a majority (B and C
+     * discard all traffic). Then, the DISCARD protocol is removed and the commit entries of B and C should catch up.
      */
     public void testCatchingUpFirstEntry() throws Exception {
         // Create {A,B,C}, A is the leader, then close B and C (A is still the leader)
         init(false);
-        close(true, true, b, c);
+
+        // make B and C drop all traffic; this means A won't be able to commit
+        for(JChannel ch: Arrays.asList(b,c)) {
+            ProtocolStack stack=ch.getProtocolStack();
+            DISCARD discard=new DISCARD().setDiscardAll(true);
+            stack.insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
+        };
 
         // Add the first entry, this will time out as there's no majority
         as.timeout(500);
@@ -179,11 +188,8 @@ public class AppendEntriesTest {
         assert raft.lastAppended() == 1;
         assert raft.commitIndex() == 0;
 
-        // Now start B. This should get the first put() replicated and committed from A to B
-        b=create("B", true);
-        bs=new ReplicatedStateMachine<>(b);
-        b.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, a, b);
+        // now remove the DISCARD protocol from B and C
+        Stream.of(b,c).forEach(ch -> ch.getProtocolStack().removeProtocol(DISCARD.class));
 
         assertCommitIndex(10000, 500, raft.lastAppended(), raft.lastAppended(), a, b);
         for(JChannel ch: Arrays.asList(a,b)) {
@@ -214,17 +220,17 @@ public class AppendEntriesTest {
         System.out.println("--> disconnecting B");
         b.disconnect(); // stop B; it was only needed to make A the leader
 
-        // Now try to make a change on A. It will appen it to its log but fail to commit as it doesn't have a majority
+        // Now try to make a change on A. This will fail as A is not leader anymore
         try {
             raft(a).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
             assert false : "set() should have thrown a timeout as we cannot commit the change";
         }
-        catch(TimeoutException ex) {
+        catch(IllegalStateException ex) {
             System.out.printf("got exception as expected: %s\n", ex);
         }
 
         // A now has last_applied=1 and commit_index=0:
-        assertCommitIndex(10000, 500, 0, 1, a);
+        assertCommitIndex(10000, 500, 0, 0, a);
 
         // Now start B again, this gives us a majority and entry #1 should be able to be committed
         System.out.println("--> restarting B");
@@ -234,8 +240,8 @@ public class AppendEntriesTest {
         // A and B now have a majority and A is leader
         Util.waitUntilAllChannelsHaveSameView(10000, 500, a, b);
 
-        // A and B should now have last_applied=1 and commit_index=1
-        assertCommitIndex(10000, 500, 1, 1, a,b);
+        // A and B should now have last_applied=0 and commit_index=0
+        assertCommitIndex(10000, 500, 0, 0, a,b);
     }
 
 

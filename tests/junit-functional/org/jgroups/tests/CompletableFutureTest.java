@@ -92,20 +92,14 @@ public class CompletableFutureTest {
         assert handler.getValue() == 5;
     }
 
-    public void testCompletionHandlerWithException() {
+    public void testCompletionHandlerWithException() throws TimeoutException {
         MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
         future=new CompletableFuture<>();
         future.whenComplete(handler);
-        new Completer<>(future, 0, new NullPointerException("booom"), 500).start();
-
-        for(int i=0; i < 20; i++) {
-            if(future.isDone())
-                break;
-            Util.sleep(500);
-        }
-
+        new Completer<>(future, 0, new NullPointerException("booom"), 2000).start();
+        Util.waitUntil(10000, 500, () -> future.isDone());
         Throwable ex=handler.getException();
-        assert ex != null && ex instanceof NullPointerException;
+        assert ex instanceof NullPointerException;
     }
 
 
