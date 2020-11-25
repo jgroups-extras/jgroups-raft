@@ -203,7 +203,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             log.trace("%s: changed term from %d -> %d", local_addr, current_term, new_term);
             current_term=new_term;
             log_impl.currentTerm(new_term);
-            changeRole(Role.Follower);
             return 1;
         }
         return 0;

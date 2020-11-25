@@ -181,7 +181,11 @@ public class ELECTION extends Protocol {
         if(rc < 0)
             return;
         if(rc > 0) { // a new term was set
-            changeRole(Role.Follower); // duplicate, was already done in currentTerm()!
+            if(hdr instanceof HeartbeatRequest) {
+                // we only step down if we're getting a HeartbeatRequest from a leader; requests from candidates
+                // don't change anything (https://github.com/belaban/jgroups-raft/issues/81)
+                changeRole(Role.Follower);
+            }
             voteFor(null); // so we can vote again in this term
         }
 
