@@ -1,11 +1,10 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.jgroups</groupId>
     <artifactId>jgroups-raft</artifactId>
     <packaging>bundle</packaging>
     <name>jgroups-raft</name>
-    <version>0.5.3-SNAPSHOT</version>
+    <version>0.5.3.Final</version>
     <url>https://github.com/belaban/jgroups-raft</url>
     <description>JGroups RAFT implementation</description>
 
@@ -57,7 +56,7 @@
         <connection>scm:git:git://github.com/belaban/jgroups-raft.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/belaban/jgroups-raft.git</developerConnection>
         <url>https://github.com/belaban/jgroups-raft</url>
-        <tag>HEAD</tag>
+        <tag>jgroups-raft-0.5.3.Final</tag>
     </scm>
 
     <issueManagement>
@@ -272,16 +271,16 @@
                         </goals>
                         <configuration>
                             <tasks>
-                                <property name="compile_classpath" refid="maven.compile.classpath"/>
-                                <property name="plugin_classpath" refid="maven.plugin.classpath"/>
-                                <delete dir="${project.build.directory}/schema" failonerror="false"/>
-                                <mkdir dir="${project.build.directory}/schema"/>
+                                <property name="compile_classpath" refid="maven.compile.classpath" />
+                                <property name="plugin_classpath" refid="maven.plugin.classpath" />
+                                <delete dir="${project.build.directory}/schema" failonerror="false" />
+                                <mkdir dir="${project.build.directory}/schema" />
                                 <java classname="org.jgroups.util.XMLSchemaGenerator">
                                     <classpath>
-                                        <pathelement path="${compile_classpath}"/>
-                                        <pathelement path="${plugin_classpath}"/>
+                                        <pathelement path="${compile_classpath}" />
+                                        <pathelement path="${plugin_classpath}" />
                                     </classpath>
-                                    <arg line="-o ${project.build.directory}/schema"/>
+                                    <arg line="-o ${project.build.directory}/schema" />
                                 </java>
                             </tasks>
                         </configuration>
@@ -292,7 +291,7 @@
                         <configuration>
                             <tasks unless="maven.test.skip">
                                 <ant antfile="${basedir}/build.xml" target="all-tests">
-                                    <property name="build.compiler" value="extJavac"/>
+                                    <property name="build.compiler" value="extJavac" />
                                 </ant>
                             </tasks>
                         </configuration>
