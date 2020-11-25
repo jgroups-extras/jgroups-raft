@@ -46,7 +46,7 @@ public class CLIENT extends Protocol implements Runnable {
     protected InetAddress       bind_addr;
 
     @Property(description="The min threads in the thread pool")
-    protected int               min_threads=2;
+    protected int               min_threads=0;
 
     @Property(description="Max number of threads in the thread pool")
     protected int               max_threads=100;
