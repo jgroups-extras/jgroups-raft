@@ -54,9 +54,10 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:git@github.com:belaban/jgroups-raft.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com:belaban/jgroups-raft.git</developerConnection>
+        <connection>scm:git:git://github.com/belaban/jgroups-raft.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/belaban/jgroups-raft.git</developerConnection>
         <url>https://github.com/belaban/jgroups-raft</url>
+        <tag>HEAD</tag>
     </scm>
 
     <issueManagement>
