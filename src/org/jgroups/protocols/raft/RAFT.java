@@ -21,6 +21,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
@@ -419,11 +421,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         if(!(local_addr instanceof ExtendedUUID))
             throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
 
-        Class<? extends Log> clazz=Util.loadClass(log_class,getClass());
-        log_impl=clazz.newInstance();
+        Class<?> clazz=Util.loadClass(log_class,getClass());
+        log_impl=(Log)clazz.getDeclaredConstructor().newInstance();
         Map<String,String> args;
         if(log_args != null && !log_args.isEmpty())
-            args=Util.parseCommaDelimitedProps(log_args);
+            args=parseCommaDelimitedProps(log_args);
         else
             args=new HashMap<>();
 
@@ -571,9 +573,9 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             reqtab.create(curr_index, raft_id, retval, majority());
 
             // 3. Multicast an AppendEntries message (exclude self)
-            Message msg=new Message(null, buf, offset, length)
+            Message msg=new BytesMessage(null, buf, offset, length)
               .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
-              .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+              .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
             down_prot.down(msg);
         }
 
@@ -596,12 +598,12 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest req=(AppendEntriesRequest)hdr;
-            AppendResult result=impl.handleAppendEntriesRequest(msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
+            AppendResult result=impl.handleAppendEntriesRequest(msg.getArray(), msg.getOffset(), msg.getLength(), msg.src(),
                                                                 req.prev_log_index, req.prev_log_term, req.entry_term,
                                                                 req.leader_commit, req.internal);
             if(result != null) {
                 result.commitIndex(commit_index);
-                Message rsp=new Message(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
+                Message rsp=new EmptyMessage(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
                 down_prot.down(rsp);
             }
         }
@@ -666,7 +668,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         }
 
         if(this.commit_index > commit_idx) { // send an empty AppendEntries message as commit message
-            Message msg=new Message(member).putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, 0, 0, 0, this.commit_index, false));
+            Message msg=new EmptyMessage(member).putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, 0, 0, 0, this.commit_index, false));
             down_prot.down(msg);
             return;
         }
@@ -686,7 +688,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         }
         LogEntry prev=log_impl.get(index-1);
         int prev_term=prev != null? prev.term : 0;
-        Message msg=new Message(target).setBuffer(entry.command, entry.offset, entry.length)
+        Message msg=new BytesMessage(target).setArray(entry.command, entry.offset, entry.length)
           .putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, index - 1, prev_term, entry.term, commit_index, entry.internal));
         down_prot.down(msg);
     }
@@ -723,7 +725,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             // todo: use streaming approach (STATE$StateOutputStream, BlockingInputStream from JGroups)
             byte[] data=Files.readAllBytes(Paths.get(snapshot_name));
             log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.length), dest);
-            Message msg=new Message(dest, data)
+            Message msg=new BytesMessage(dest, data)
               .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
             down_prot.down(msg);
 
@@ -982,6 +984,18 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             }
         }
         return false;
+    }
+
+    protected static Map<String,String> parseCommaDelimitedProps(String s) {
+        if (s == null)
+            return null;
+        Map<String,String> props=new HashMap<>();
+        Pattern p=Pattern.compile("\\s*([^=\\s]+)\\s*=\\s*([^=\\s,]+)\\s*,?"); //Pattern.compile("\\s*([^=\\s]+)\\s*=\\s([^=\\s]+)\\s*,?");
+        Matcher matcher=p.matcher(s);
+        while(matcher.find()) {
+            props.put(matcher.group(1), matcher.group(2));
+        }
+        return props;
     }
 
     /** number of requests being processed */

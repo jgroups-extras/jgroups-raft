@@ -169,7 +169,7 @@ public class AppendEntriesTest {
         // make B and C drop all traffic; this means A won't be able to commit
         for(JChannel ch: Arrays.asList(b,c)) {
             ProtocolStack stack=ch.getProtocolStack();
-            DISCARD discard=new DISCARD().setDiscardAll(true);
+            DISCARD discard=new DISCARD().discardAll(true);
             stack.insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
         };
 
@@ -678,7 +678,7 @@ public class AppendEntriesTest {
     }
 
     protected static RAFT raft(JChannel ch) {
-        return (RAFT)ch.getProtocolStack().findProtocol(RAFT.class);
+        return ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
     protected static AppendResult append(RaftImpl impl, int index, int prev_term, LogEntry entry, Address leader, int leader_commit) throws Exception {

@@ -3,15 +3,22 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Global;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.Property;
+import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Util;
 
-import java.io.*;
+import java.io.DataInputStream;
+import java.io.DataOutput;
+import java.io.DataOutputStream;
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
 
 /**
@@ -34,27 +41,27 @@ public class CLIENT extends Protocol implements Runnable {
         ClassConfigurator.addProtocol(CLIENT_ID, CLIENT.class);
     }
 
-
-
-    @Property(description="Port to listen for client requests",writable=false)
-    protected int               port=1965;
-
     @Property(name="bind_addr",
       description="The bind address which should be used by the server socket. The following special values " +
         "are also recognized: GLOBAL, SITE_LOCAL, LINK_LOCAL, NON_LOOPBACK, match-interface, match-host, match-address",
       systemProperty={Global.BIND_ADDR},writable=false)
     protected InetAddress       bind_addr;
 
+    @Property(description="Port to listen for client requests",writable=false)
+    protected int               port=1965;
+
     @Property(description="The min threads in the thread pool")
-    protected int               min_threads=0;
+    protected int               min_threads;
 
     @Property(description="Max number of threads in the thread pool")
     protected int               max_threads=100;
 
-    @Property(description="Number of ms a thread can be idle before being removed from the thread pool")
+    @Property(description="Number of ms a thread can be idle before being removed from the thread pool",
+      type=AttributeType.TIME)
     protected long              idle_time=5000;
 
-
+    @Property(description="Number of bytes of the server socket's receive buffer",type=AttributeType.BYTES)
+    protected int               recv_buf_size;
 
     protected Settable          settable;
     protected DynamicMembership dyn_membership;
@@ -62,6 +69,19 @@ public class CLIENT extends Protocol implements Runnable {
     protected ExecutorService   thread_pool; // to handle requests
     protected Thread            acceptor;
 
+
+    public InetAddress getBindAddress()              {return bind_addr;}
+    public CLIENT      setBindAddress(InetAddress b) {this.bind_addr=b; return this;}
+    public int         getPort()                     {return port;}
+    public CLIENT      setPort(int p)                {this.port=p; return this;}
+    public int         getMinThreads()               {return min_threads;}
+    public CLIENT      setMinThreads(int t)          {this.min_threads=t; return this;}
+    public int         getMaxThreads()               {return max_threads;}
+    public CLIENT      setMaxThreads(int t)          {this.max_threads=t; return this;}
+    public long        getIdleTime()                 {return idle_time;}
+    public CLIENT      setIdleTime(long t)           {this.idle_time=t; return this;}
+    public int         getReceiveBufferSize()        {return recv_buf_size;}
+    public CLIENT      setReceiveBufferSize(int s)   {this.recv_buf_size=s; return this;}
 
 
     public void init() throws Exception {
@@ -74,7 +94,9 @@ public class CLIENT extends Protocol implements Runnable {
 
     public void start() throws Exception {
         super.start();
-        sock=Util.createServerSocket(getSocketFactory(), "CLIENR.srv_sock", bind_addr, port, port+50);
+        sock=Util.createServerSocket(getSocketFactory(), "CLIENR.srv_sock", bind_addr, port, port+50, recv_buf_size);
+        if(sock == null)
+            throw new IllegalStateException(String.format("failed creating server socket at %s:%d", bind_addr, port));
         thread_pool=new ThreadPoolExecutor(min_threads, max_threads, idle_time, TimeUnit.MILLISECONDS,
                                            new SynchronousQueue<>(), getThreadFactory(), new ThreadPoolExecutor.DiscardPolicy());
         acceptor=new Thread(this, "CLIENT.Acceptor");
@@ -189,7 +211,7 @@ public class CLIENT extends Protocol implements Runnable {
                     log.error("failed in sending response to client", t);
                 }
                 finally {
-                    Util.close(output,input,s);
+                    Util.close(output, input, s);
                 }
             }
         }

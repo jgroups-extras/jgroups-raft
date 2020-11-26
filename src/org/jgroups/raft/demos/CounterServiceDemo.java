@@ -1,12 +1,12 @@
 package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
-import org.jgroups.ReceiverAdapter;
+import org.jgroups.Receiver;
 import org.jgroups.View;
 import org.jgroups.blocks.atomic.Counter;
-import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.util.Util;
 
 /**
@@ -22,7 +22,7 @@ public class CounterServiceDemo {
         counter_service=new CounterService(ch).raftId(name).replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
         if(follower)
             disableElections(ch);
-        ch.setReceiver(new ReceiverAdapter() {
+        ch.setReceiver(new Receiver() {
             public void viewAccepted(View view) {
                 System.out.println("-- view: " + view);
             }
@@ -83,7 +83,7 @@ public class CounterServiceDemo {
                         break;
                     case '9':
                         int NUM=Util.readIntFromStdin("num: ");
-                        System.out.println("");
+                        System.out.println();
                         int print=NUM / 10;
                         long retval=0;
                         long start=System.currentTimeMillis();
@@ -112,7 +112,7 @@ public class CounterServiceDemo {
     protected void dumpLog() {
         System.out.println("\nindex (term): command\n---------------------");
         counter_service.dumpLog();
-        System.out.println("");
+        System.out.println();
     }
 
     protected int firstApplied() {

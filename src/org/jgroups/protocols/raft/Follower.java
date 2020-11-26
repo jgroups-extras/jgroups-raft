@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
@@ -29,7 +30,7 @@ public class Follower extends RaftImpl {
         }
         Address sender=msg.src();
         try {
-            ByteArrayDataInputStream in=new ByteArrayDataInputStream(msg.getRawBuffer(), msg.getOffset(), msg.getLength());
+            ByteArrayDataInputStream in=new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength());
             sm.readContentFrom(in);
 
             raft.doSnapshot();
@@ -46,7 +47,7 @@ public class Follower extends RaftImpl {
                                 raft.local_addr, Util.printBytes(msg.getLength()), msg.src(), raft.lastAppended(), raft.commitIndex());
 
             AppendResult result=new AppendResult(true, last_included_index).commitIndex(raft.commitIndex());
-            Message ack=new Message(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
+            Message ack=new EmptyMessage(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
             raft.getDownProtocol().down(ack);
         }
         catch(Exception ex) {

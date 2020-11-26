@@ -1,15 +1,12 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.Address;
-import org.jgroups.Event;
-import org.jgroups.Message;
-import org.jgroups.View;
+import org.jgroups.*;
 import org.jgroups.annotations.MBean;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.pbcast.JoinRsp;
 import org.jgroups.stack.Protocol;
-import org.jgroups.util.Buffer;
+import org.jgroups.util.ByteArray;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
@@ -100,8 +97,10 @@ public class NO_DUPES extends Protocol {
 
     protected void sendJoinRejectedMessageTo(Address joiner, String reject_message) {
         try {
-            Buffer buffer=Util.streamableToBuffer(new JoinRsp(reject_message));
-            Message msg=new Message(joiner, buffer).putHeader(gms_id, new GMS.GmsHeader(GMS.GmsHeader.JOIN_RSP));
+            // needs to be a BytesMessage for now (no ObjectMessage) as GMS itself also uses a BytesMessage;
+            // once GMS has been changed in JGroups itself to use an ObjectMessage, we can change this here, too
+            ByteArray buffer=Util.streamableToBuffer(new JoinRsp(reject_message));
+            Message msg=new BytesMessage(joiner, buffer).putHeader(gms_id, new GMS.GmsHeader(GMS.GmsHeader.JOIN_RSP));
             down_prot.down(msg);
         }
         catch(Exception ex) {

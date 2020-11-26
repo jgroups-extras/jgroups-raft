@@ -1,7 +1,7 @@
 package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
-import org.jgroups.ReceiverAdapter;
+import org.jgroups.Receiver;
 import org.jgroups.View;
 import org.jgroups.jmx.JmxConfigurator;
 import org.jgroups.protocols.raft.ELECTION;
@@ -15,7 +15,7 @@ import org.jgroups.util.Util;
  * @author Bela Ban
  * @since  0.1
  */
-public class ReplicatedStateMachineDemo extends ReceiverAdapter implements RAFT.RoleChange {
+public class ReplicatedStateMachineDemo implements Receiver, RAFT.RoleChange {
     protected JChannel                              ch;
     protected ReplicatedStateMachine<String,Object> rsm;
 
