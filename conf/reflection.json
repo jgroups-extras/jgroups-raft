@@ -1,0 +1,34 @@
+[
+  {
+    "name" : "org.jgroups.protocols.TP",
+    "fields" : [
+      { "name" : "bind_addr",            "allowWrite" : true },
+      { "name" :  "bind_port",           "allowWrite" :  true},
+      { "name" :  "thread_pool_enabled", "allowWrite" :  true}
+    ]
+  },
+  {
+    "name": "org.jgroups.util.ObjectWrapper",
+    "methods" : [
+      { "name" : "<init>", "parameterTypes" : [] }
+    ]
+  },
+  {
+    "name": "org.jgroups.tests.perf.PerfUtil$Config",
+    "methods" : [
+      {"name" :  "<init>", "parameterTypes":  []}
+    ]
+  },
+  {
+    "name": "org.jgroups.tests.perf.PerfUtil$Results",
+    "methods" : [
+      {"name" :  "<init>", "parameterTypes":  []}
+    ]
+  },
+  {
+    "name": "org.jgroups.tests.perf.PerfUtil$CustomCall",
+    "methods" : [
+      {"name" :  "<init>", "parameterTypes":  []}
+    ]
+  }
+]
