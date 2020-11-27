@@ -29,9 +29,8 @@
     <MERGE3 max_interval="30000"
             min_interval="10000"/>
     <FD_SOCK/>
-    <FD_ALL/>
+    <FD_ALL3/>
     <VERIFY_SUSPECT timeout="1500"  />
-    <BARRIER />
     <pbcast.NAKACK2 xmit_interval="500"
                     xmit_table_num_rows="100"
                     xmit_table_msgs_per_row="2000"
@@ -51,8 +50,7 @@
          min_threshold="0.4"/>
     <MFC max_credits="2M"
          min_threshold="0.4"/>
-    <FRAG2 frag_size="60K"  />
-    <pbcast.STATE_TRANSFER />
+    <FRAG4 frag_size="60K"  />
     <raft.ELECTION election_min_interval="100" election_max_interval="500"/>
     <raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}" resend_interval="1000"/>
     <raft.REDIRECT/>

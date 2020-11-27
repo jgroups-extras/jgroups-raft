@@ -30,5 +30,11 @@
     "methods" : [
       {"name" :  "<init>", "parameterTypes":  []}
     ]
+  },
+  {
+    "name": "org.jgroups.protocols.raft.LevelDBLog"
+  },
+  {
+    "name": "Lorg/iq80/leveldb/DB;"
   }
 ]
