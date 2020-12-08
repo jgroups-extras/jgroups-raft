@@ -197,7 +197,7 @@ public class ReplicatedStateMachineDemo implements Receiver, RAFT.RoleChange {
                 timeout=Long.parseLong(args[++i]);
                 continue;
             }
-            System.out.println("ReplicatedStateMachine [-props <config>] [-name <name>] [-follower] [-timeout timeout]");
+            System.out.println("ReplicatedStateMachineDemo [-props <config>] [-name <name>] [-follower] [-timeout timeout]");
             return;
         }
         new ReplicatedStateMachineDemo().start(props, name, follower, timeout);
