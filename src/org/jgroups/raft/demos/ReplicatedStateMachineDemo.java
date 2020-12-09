@@ -33,7 +33,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
 
 
     public void start(String props, String name, boolean follower, long timeout,
-                      InetAddress bind_addr, int port, boolean listen) throws Exception {
+                      InetAddress bind_addr, int port, boolean listen, boolean nohup) throws Exception {
         ch=new JChannel(props).name(name);
         rsm=new ReplicatedStateMachine<String,Object>(ch).raftId(name).timeout(timeout);
         if(follower)
@@ -44,28 +44,22 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
             }
         });
 
-        try {
-            ch.connect("rsm");
-            Util.registerChannel(rsm.channel(), "rsm");
-            rsm.addRoleChangeListener(this);
-            rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
-                @Override
-                public void put(String key, Object val, Object old_val) {
-                    System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
-                }
+        ch.connect("rsm");
+        Util.registerChannel(rsm.channel(), "rsm");
+        rsm.addRoleChangeListener(this);
+        rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
+            @Override public void put(String key, Object val, Object old_val) {
+                System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
+            }
 
-                @Override
-                public void remove(String key, Object old_val) {
-                    System.out.printf("-- remove(%s) -> %s\n", key, old_val);
-                }
-            });
-            if(listen)
-                start(bind_addr, port);
+            @Override public void remove(String key, Object old_val) {
+                System.out.printf("-- remove(%s) -> %s\n", key, old_val);
+            }
+        });
+        if(listen)
+            start(bind_addr, port);
+        if(!nohup)
             loop();
-        }
-        finally {
-            Util.close(server, ch);
-        }
     }
 
     @Override
@@ -267,7 +261,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     public static void main(String[] args) throws Exception {
         String      props="raft.xml";
         String      name=null;
-        boolean     follower=false, listen=false;
+        boolean     follower=false, listen=false, nohup=false;
         long        timeout=3000;
         InetAddress bind_addr=null;
         int         port=2065;
@@ -289,6 +283,10 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                 listen=true;
                 continue;
             }
+            if(args[i].equals("-nohup")) {
+                nohup=true;
+                continue;
+            }
             if(args[i].equals("-timeout")) {
                 timeout=Long.parseLong(args[++i]);
                 continue;
@@ -302,11 +300,11 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                 continue;
             }
             System.out.printf("\n%s [-props <config>] [-name <name>] [-follower] [-timeout timeout]\n" +
-                                "                   [-bind_addr <bind address>] [-port <bind port>]\n\n",
+                                "                   [-bind_addr <bind address>] [-port <bind port>] [-nohup]\n\n",
                               ReplicatedStateMachineDemo.class.getSimpleName());
             return;
         }
-        new ReplicatedStateMachineDemo().start(props, name, follower, timeout, bind_addr, port, listen);
+        new ReplicatedStateMachineDemo().start(props, name, follower, timeout, bind_addr, port, listen, nohup);
     }
 
 

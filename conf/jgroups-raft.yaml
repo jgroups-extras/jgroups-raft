@@ -1,0 +1,76 @@
+##
+## Can be used to deploy 3 pods running with raft.xml and a service to Kubernetes
+##
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jgroups-raft
+  labels:
+    run: jgroups-raft
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      run: jgroups-raft
+  serviceName: "jgroups-raft"
+  template:
+    metadata:
+      labels:
+        run: jgroups-raft
+    spec:
+      containers:
+      - image: belaban/jgroups-raft
+        name: jgroups-raft
+        command: ["run.sh"]
+        args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -name C -nohup"]
+        env:
+          - name: DNS_QUERY
+            value: "jgroups-raft.default.svc.cluster.local"
+          - name: DNS_RECORD_TYPE
+            value: A
+#          - name: DNS_QUERY
+#            value: "_ping._tcp.jgroups-raft.default.svc.cluster.local"
+#          - name: DNS_RECORD_TYPE
+#            value: SRV
+#          - name: DNS_ADDRESS
+#            value: 10.96.0.10
+#          - name: DNS_PROBE_TRANSPORT_PORTS
+#            value: "true"
+---
+apiVersion: v1
+kind: Service
+metadata:
+#  annotations:
+#    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
+  name: jgroups-raft
+  labels:
+    run: jgroups-raft
+spec:
+  publishNotReadyAddresses: true
+  clusterIP: None
+  ports:
+    - name: ping
+      port: 7800
+      protocol: TCP
+      targetPort: 7800
+    - name: probe
+      port: 7500
+      protocol: UDP
+      targetPort: 7500
+    - name: debug
+      port: 8787
+      protocol: TCP
+      targetPort: 8787
+    - name: stomp
+      port: 9000
+      protocol: TCP
+      targetPort: 9000
+  selector:
+     run: jgroups-raft
+  sessionAffinity: None
+  type: ClusterIP
+status:
+  loadBalancer: {}
+---
+
+
