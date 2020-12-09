@@ -54,24 +54,25 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public String raftId()                                         {return raft.raftId();}
     public ReplicatedStateMachine<K,V> raftId(String id)           {raft.raftId(id); return this;}
 
-    public void dumpLog() {
+    public String dumpLog() {
+        StringBuilder sb=new StringBuilder();
+
         raft.logEntries((entry, index) -> {
-            StringBuilder sb=new StringBuilder().append(index).append(" (").append(entry.term()).append("): ");
+            sb.append(index).append(" (").append(entry.term()).append("): ");
             if(entry.command() == null) {
-                sb.append("<marker record>");
-                System.out.println(sb);
+                sb.append("<marker record>\n");
                 return;
             }
             if(entry.internal()) {
                 try {
                     InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class,
                                                                       entry.command(), entry.offset(), entry.length());
-                    sb.append("[internal] ").append(cmd).append("\n");
+                    sb.append("[internal] ").append(cmd);
                 }
                 catch(Exception ex) {
-                    sb.append("[failure reading internal cmd] ").append(ex).append("\n");
+                    sb.append("[failure reading internal cmd] ").append(ex);
                 }
-                System.out.println(sb);
+                sb.append("\n");
                 return;
             }
             ByteArrayDataInputStream in=new ByteArrayDataInputStream(entry.command(), entry.offset(), entry.length());
@@ -94,8 +95,9 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
             catch(Throwable t) {
                 sb.append(t);
             }
-            System.out.println(sb);
+            sb.append("\n");
         });
+        return sb.toString();
     }
 
     @Override

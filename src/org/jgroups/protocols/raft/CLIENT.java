@@ -25,7 +25,7 @@ import java.util.function.BiConsumer;
  * Protocol listening on a socket for client requests. Dispatches them to the leader (via {@link REDIRECT}) and sends
  * back the response. Requests and responses are always sent as
  * <pre>
- *     | RequestType (byte) | length (int) | byte[] buffer |
+ *     | RequestType (byte) | request-id (int) | length (int) | byte[] buffer |
  * </pre>
  * @author Bela Ban
  * @since  0.2
@@ -147,15 +147,15 @@ public class CLIENT extends Protocol implements Runnable {
             try {
                 in=new DataInputStream(client_sock.getInputStream());
                 out=new DataOutputStream(client_sock.getOutputStream());
-                completion_handler=new CompletionHandler(client_sock, in, out);
                 RequestType type=RequestType.values()[in.readByte()];
+                int request_id=in.readInt();
+                completion_handler=new CompletionHandler(client_sock, in, out, request_id);
                 int length=in.readInt();
                 byte[] buffer=new byte[length];
                 in.readFully(buffer);
                 switch(type) {
                     case set_req:
-                        settable.setAsync(buffer, 0, buffer.length)
-                          .whenComplete(new CompletionHandler(client_sock, in, out));
+                        settable.setAsync(buffer, 0, buffer.length).whenComplete(completion_handler);
                         break;
                     case add_server:
                         dyn_membership.addServer(Util.bytesToString(buffer)).whenComplete(completion_handler);
@@ -176,8 +176,10 @@ public class CLIENT extends Protocol implements Runnable {
             }
         }
 
-        protected void send(DataOutput out, RequestType type, byte[] buffer, int offset, int length) throws Exception {
+        protected void send(DataOutput out, RequestType type, int request_id,
+                            byte[] buffer, int offset, int length) throws Exception {
             out.writeByte((byte)type.ordinal());
+            out.writeInt(request_id);
             int len=buffer == null? 0 : length;
             out.writeInt(len);
             if(len > 0)
@@ -189,23 +191,25 @@ public class CLIENT extends Protocol implements Runnable {
             protected final Socket           s;
             protected final DataInputStream  input;
             protected final DataOutputStream output;
+            protected final int              req_id;
 
-            public CompletionHandler(Socket client_sock, DataInputStream input, DataOutputStream output) {
+            public CompletionHandler(Socket client_sock, DataInputStream input, DataOutputStream output, int req) {
                 this.s=client_sock;
                 this.input=input;
                 this.output=output;
+                this.req_id=req;
             }
 
             public void accept(byte[] buf, Throwable ex) {
                 try {
                     if(ex != null) {
                         byte[] rsp_buffer=Util.objectToByteBuffer(ex);
-                        send(output, RequestType.rsp, rsp_buffer, 0, rsp_buffer.length);
+                        send(output, RequestType.rsp, req_id, rsp_buffer, 0, rsp_buffer.length);
                         return;
                     }
                     if(buf == null)
                         buf=BUF;
-                    send(output, RequestType.rsp, buf, 0, buf.length);
+                    send(output, RequestType.rsp, req_id, buf, 0, buf.length);
                 }
                 catch(Throwable t) {
                     log.error("failed in sending response to client", t);

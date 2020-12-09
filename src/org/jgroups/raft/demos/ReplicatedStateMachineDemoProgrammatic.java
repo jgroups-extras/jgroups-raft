@@ -218,9 +218,8 @@ public class ReplicatedStateMachineDemoProgrammatic implements Receiver, RAFT.Ro
     }
 
     protected void dumpLog() {
-        System.out.println("\nindex (term): command\n---------------------");
-        rsm.dumpLog();
-        System.out.println();
+        System.out.printf("\nindex (term): command\n---------------------\n%s\n",
+                          rsm.dumpLog());
     }
 
     @Override

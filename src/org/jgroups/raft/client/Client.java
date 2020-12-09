@@ -3,10 +3,8 @@ package org.jgroups.raft.client;
 import org.jgroups.protocols.raft.CLIENT;
 import org.jgroups.util.Util;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
 import java.net.InetAddress;
-import java.net.Socket;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Client which accesses the {@link org.jgroups.protocols.raft.CLIENT} protocol through a socket. Currently used to
@@ -16,30 +14,27 @@ import java.net.Socket;
  */
 public class Client {
 
+
     protected static void start(InetAddress dest, int port, String add_server, String remove_server) throws Throwable {
-        try(Socket sock=new Socket(dest, port);
-            DataInputStream in=new DataInputStream(sock.getInputStream());
-            DataOutputStream out=new DataOutputStream(sock.getOutputStream())) {
-
+        try(ClientStub stub=new ClientStub(dest, port).start()) {
             CLIENT.RequestType type=add_server != null? CLIENT.RequestType.add_server : CLIENT.RequestType.remove_server;
-            out.writeByte((byte)type.ordinal());
             byte[] buf=Util.stringToBytes(add_server != null? add_server : remove_server);
-            out.writeInt(buf.length);
-            out.write(buf, 0, buf.length);
-
-            type=CLIENT.RequestType.values()[in.readByte()];
-            if(type != CLIENT.RequestType.rsp)
-                throw new IllegalStateException(String.format("expected type %s but got %s", CLIENT.RequestType.rsp, type));
-            int len=in.readInt();
-            if(len == 0)
-                return;
-            buf=new byte[len];
-            in.readFully(buf);
-
-            Object response=Util.objectFromByteBuffer(buf);
-            if(response instanceof Throwable)
-                throw (Throwable)response;
-            System.out.println("response = " + response);
+            CompletableFuture<byte[]> cf=stub.setAsync(type, buf, 0, buf.length);
+            cf.whenComplete((rsp, ex) -> {
+                if(ex != null)
+                    System.err.printf("-- exception: %s\n", ex);
+                else {
+                    try {
+                        Object response=Util.objectFromByteBuffer(rsp);
+                        if(response instanceof Throwable)
+                            throw (Throwable)response;
+                        System.out.printf("-- response: %s\n", response);
+                    }
+                    catch(Throwable t) {
+                        t.printStackTrace();
+                    }
+                }
+            });
         }
         catch(Exception ex) {
             ex.printStackTrace();
