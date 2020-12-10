@@ -18,6 +18,7 @@ RUN useradd --uid 1000 --home /opt/jgroups --create-home --shell /bin/bash jgrou
 RUN echo root:root | chpasswd ; echo jgroups:jgroups | chpasswd
 RUN printf "\njgroups ALL=(ALL) NOPASSWD: ALL\n" >> /etc/sudoers
 # EXPOSE 7800-7900:7800-7900 9000-9100:9000-9100
+EXPOSE 1965-1975:2065-2075
 ENV HOME /opt/jgroups
 ENV PATH $PATH:$HOME/jgroups-raft/bin
 ENV JGROUPS_RAFT_HOME=$HOME/jgroups-raft

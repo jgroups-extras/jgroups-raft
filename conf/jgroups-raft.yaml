@@ -63,10 +63,14 @@ spec:
       port: 8787
       protocol: TCP
       targetPort: 8787
-    - name: stomp
-      port: 9000
+    - name: client
+      port: 1965
       protocol: TCP
-      targetPort: 9000
+      targetPort: 1965
+    - name: rsm-service
+      port: 2065
+      protocol: TCP
+      targetPort: 2065
   selector:
      run: jgroups-raft
   sessionAffinity: None
