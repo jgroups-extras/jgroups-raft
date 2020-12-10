@@ -8,7 +8,7 @@ metadata:
   labels:
     run: jgroups-raft
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       run: jgroups-raft
