@@ -11,6 +11,7 @@ import org.jgroups.util.*;
 
 import java.io.*;
 import java.lang.reflect.Array;
+import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
@@ -390,8 +391,15 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @Override public void init() throws Exception {
         super.init();
         timer=getTransport().getTimer();
-        if(raft_id == null)
-            throw new IllegalStateException("raft_id must not be null");
+        if(raft_id == null) {
+            raft_id=InetAddress.getLocalHost().getHostName();
+            if(!members.contains(raft_id))
+                throw new IllegalStateException(String.format("raft-id (set to %s) is not listed in members %s", raft_id, this.members));
+        }
+        else {
+            if(!members.contains(raft_id))
+                throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
+        }
 
         // we can only add/remove 1 member at a time (section 4.1 of [1])
         synchronized(members) {

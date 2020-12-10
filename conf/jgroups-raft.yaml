@@ -22,7 +22,7 @@ spec:
       - image: belaban/jgroups-raft
         name: jgroups-raft
         command: ["run.sh"]
-        args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -name C -nohup"]
+        args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -nohup"]
         env:
           - name: DNS_QUERY
             value: "jgroups-raft.default.svc.cluster.local"

@@ -35,7 +35,9 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     public void start(String props, String name, boolean follower, long timeout,
                       InetAddress bind_addr, int port, boolean listen, boolean nohup) throws Exception {
         ch=new JChannel(props).name(name);
-        rsm=new ReplicatedStateMachine<String,Object>(ch).raftId(name).timeout(timeout);
+        rsm=new ReplicatedStateMachine<String,Object>(ch).timeout(timeout);
+        if(name != null)
+            rsm.raftId(name);
         if(follower)
             disableElections(ch);
         ch.setReceiver(new org.jgroups.Receiver() {
