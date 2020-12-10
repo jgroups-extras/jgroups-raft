@@ -36,6 +36,7 @@ FLAGS="$FLAGS -Xshare:off"
 JMX="-Dcom.sun.management.jmxremote"
 EXPERIMENTAL="$EXPERIMENTAL -XX:+EliminateLocks -XX:+UseBiasedLocking"
 #JMC="-XX:+UnlockCommercialFeatures -XX:+FlightRecorder"
+DEBUG="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:8787"
 
 java -cp $CP $DEBUG $LOG $GC $JG_FLAGS $FLAGS $EXPERIMENTAL $JMX $JMC $*
 
