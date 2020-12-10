@@ -404,6 +404,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             majority=members.size() / 2 + 1;
         }
 
+        if(raft_id == null) {
+            raft_id=InetAddress.getLocalHost().getHostName();
+            log.warn("raft_id was not set, defaulting to %s", raft_id);
+        }
+
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         final JChannel ch=stack.getChannel();
         ch.addAddressGenerator(() -> {
@@ -415,15 +420,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @Override public void start() throws Exception {
         super.start();
 
-        if(raft_id == null) {
-            raft_id=InetAddress.getLocalHost().getHostName();
-            if(!members.contains(raft_id))
-                throw new IllegalStateException(String.format("raft-id (set to %s) is not listed in members %s", raft_id, this.members));
-        }
-        else {
-            if(!members.contains(raft_id))
-                throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
-        }
+        if(!members.contains(raft_id))
+            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
 
         if(log_class == null)
             throw new IllegalStateException("log_class has to be defined");

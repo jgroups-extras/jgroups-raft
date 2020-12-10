@@ -30,6 +30,8 @@ spec:
             value: "jgroups-raft.default.svc.cluster.local"
           - name: DNS_RECORD_TYPE
             value: A
+#          - name: DEBUG
+#            value: "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:8787"
 #          - name: DNS_QUERY
 #            value: "_ping._tcp.jgroups-raft.default.svc.cluster.local"
 #          - name: DNS_RECORD_TYPE
