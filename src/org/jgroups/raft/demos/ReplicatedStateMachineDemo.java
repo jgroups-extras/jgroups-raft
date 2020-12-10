@@ -29,15 +29,13 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     protected ReplicatedStateMachine<String,Object> rsm;
     protected BaseServer                            server; // listens for commands from a remote client
 
-    public enum Command {PUT, GET, REMOVE, SHOW_ALL, DUMP_LOG, SNAPSHOT}
+    public enum Command {PUT, GET, REMOVE, SHOW_ALL, DUMP_LOG, SNAPSHOT, GET_VIEW}
 
 
     public void start(String props, String name, boolean follower, long timeout,
                       InetAddress bind_addr, int port, boolean listen, boolean nohup) throws Exception {
         ch=new JChannel(props).name(name);
-        rsm=new ReplicatedStateMachine<String,Object>(ch).timeout(timeout);
-        if(name != null)
-            rsm.raftId(name);
+        rsm=new ReplicatedStateMachine<String,Object>(ch).raftId(name).timeout(timeout);
         if(follower)
             disableElections(ch);
         ch.setReceiver(new org.jgroups.Receiver() {
@@ -115,6 +113,11 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
 
             case SNAPSHOT:
                 result=(String)snapshot();
+                sendResponse(sender, result);
+                break;
+
+            case GET_VIEW:
+                result=getView();
                 sendResponse(sender, result);
                 break;
         }
@@ -226,6 +229,10 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         catch(Exception e) {
             return String.format("snapshot failed: %s", e);
         }
+    }
+
+    protected String getView() {
+        return String.format("local address: %s\nview: %s", ch.getAddress(), ch.getView());
     }
 
     protected static String read(String name) {

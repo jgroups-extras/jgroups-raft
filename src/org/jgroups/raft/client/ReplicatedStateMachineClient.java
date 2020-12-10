@@ -27,6 +27,7 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
     protected static final byte[] SHOW_ALL_CMD={(byte)Command.SHOW_ALL.ordinal()};
     protected static final byte[] DUMP_CMD={(byte)Command.DUMP_LOG.ordinal()};
     protected static final byte[] SNAPSHOT_CMD={(byte)Command.SNAPSHOT.ordinal()};
+    protected static final byte[] GET_VIEW_CMD={(byte)Command.GET_VIEW.ordinal()};
 
 
     public ReplicatedStateMachineClient(boolean verbose) {
@@ -120,7 +121,8 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
 
     protected void eventLoop() throws Exception {
         while(running) {
-            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [6] snapshot [x] exit\n");
+            int input=Util.keyPress("[1] add [2] get [3] remove [4] show all [5] dump log [6] snapshot " +
+                                      "[v] view [x] exit\n");
             switch(input) {
                 case '1':
                     put(read("key"), read("value"));
@@ -139,6 +141,9 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
                     break;
                 case '6':
                     snapshot();
+                    break;
+                case 'v':
+                    getView();
                     break;
                 case 'x':
                     client.stop();
@@ -180,6 +185,10 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
 
     protected void snapshot() throws Exception {
         client.send(SNAPSHOT_CMD, 0, SNAPSHOT_CMD.length);
+    }
+
+    protected void getView() throws Exception {
+        client.send(GET_VIEW_CMD, 0, GET_VIEW_CMD.length);
     }
 
     protected static String read(String name) {
