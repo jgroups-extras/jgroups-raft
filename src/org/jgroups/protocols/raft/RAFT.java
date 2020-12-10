@@ -450,9 +450,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
         initStateMachineFromLog(false);
         log_size_bytes=logSizeInBytes();
-
-        if(!members.contains(raft_id))
-            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
     }
 
 
