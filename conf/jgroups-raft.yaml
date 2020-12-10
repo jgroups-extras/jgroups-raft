@@ -22,7 +22,7 @@ spec:
       - image: belaban/jgroups-raft
         name: jgroups-raft
         command: ["run.sh"]
-        args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -nohup"]
+        args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -nohup -listen"]
         env:
           - name: raft_members
             value: "jgroups-raft-0,jgroups-raft-1,jgroups-raft-2"
@@ -42,39 +42,29 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-#  annotations:
-#    service.alpha.kubernetes.io/tolerate-unready-endpoints: "true"
   name: jgroups-raft
   labels:
     run: jgroups-raft
 spec:
   publishNotReadyAddresses: true
-  clusterIP: None
-  ports:
-    - name: ping
-      port: 7800
-      protocol: TCP
-      targetPort: 7800
-    - name: probe
-      port: 7500
-      protocol: UDP
-      targetPort: 7500
-    - name: debug
-      port: 8787
-      protocol: TCP
-      targetPort: 8787
-    - name: client
-      port: 1965
-      protocol: TCP
-      targetPort: 1965
-    - name: rsm-service
-      port: 2065
-      protocol: TCP
-      targetPort: 2065
+  type: LoadBalancer
   selector:
-     run: jgroups-raft
+    run: jgroups-raft
+#    statefulset.kubernetes.io/pod-name: jgroups-raft-0
+  ports:
+    - protocol: TCP
+      name: client
+      port: 1965
+      targetPort: 1965 # access CLIENT protocol via client.sh
+    - protocol: TCP
+      name: rsm
+      port: 2065
+      targetPort: 2065 # access rsh service via rsm-client.sh
+    - protocol: TCP
+      name: debug
+      port: 8787
+      targetPort: 8787 # to attach a debugger
   sessionAffinity: None
-  type: ClusterIP
 status:
   loadBalancer: {}
 ---
