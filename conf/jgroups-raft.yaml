@@ -24,6 +24,8 @@ spec:
         command: ["run.sh"]
         args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -nohup"]
         env:
+          - name: raft_members
+            value: "jgroups-raft-0,jgroups-raft-1,jgroups-raft-2"
           - name: DNS_QUERY
             value: "jgroups-raft.default.svc.cluster.local"
           - name: DNS_RECORD_TYPE
