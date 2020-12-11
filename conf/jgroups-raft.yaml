@@ -8,7 +8,7 @@ metadata:
   labels:
     run: jgroups-raft
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       run: jgroups-raft
@@ -23,9 +23,14 @@ spec:
         name: jgroups-raft
         command: ["run.sh"]
         args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -nohup -listen"]
+        volumeMounts:
+          - name: jgroups-raft-data
+            mountPath: /mnt/data
         env:
           - name: raft_members
             value: "jgroups-raft-0,jgroups-raft-1,jgroups-raft-2"
+          - name: log_dir
+            value: /mnt/data
           - name: DNS_QUERY
             value: "jgroups-raft.default.svc.cluster.local"
           - name: DNS_RECORD_TYPE
@@ -40,6 +45,14 @@ spec:
 #            value: 10.96.0.10
 #          - name: DNS_PROBE_TRANSPORT_PORTS
 #            value: "true"
+  volumeClaimTemplates:
+  - metadata:
+      name: jgroups-raft-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
 ---
 apiVersion: v1
 kind: Service

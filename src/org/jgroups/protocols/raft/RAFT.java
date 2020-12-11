@@ -77,6 +77,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @Property(description="Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()")
     protected String                  log_args;
 
+    @Property(description="The directory in which the log and snapshots are stored. Defaults to the temp dir")
+    protected String                  log_dir=Util.checkForMac()?
+      File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
+
     @Property(description="The name of the log. The logical name of the channel (if defined) is used by default. " +
       "Note that logs for different processes on the same host need to be different")
     protected String                  log_name;
@@ -404,10 +408,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             majority=members.size() / 2 + 1;
         }
 
-        if(raft_id == null) {
+        if(raft_id == null)
             raft_id=InetAddress.getLocalHost().getHostName();
-            log.warn("raft_id was not set, defaulting to %s", raft_id);
-        }
 
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         final JChannel ch=stack.getChannel();
@@ -947,14 +949,13 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
 
-    protected static String createLogName(String name, String suffix) {
+    protected String createLogName(String name, String suffix) {
         if(!suffix.startsWith("."))
             suffix="." + suffix;
         boolean needs_suffix=!name.endsWith(suffix);
         String retval=name;
         if(!new File(name).isAbsolute()) {
-            String dir=Util.checkForMac()? File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
-            retval=dir + File.separator + name;
+            retval=log_dir + File.separator + name;
         }
         return needs_suffix? retval + suffix : retval;
     }
