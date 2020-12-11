@@ -28,8 +28,7 @@ COPY --from=build-stage /jgroups-raft /opt/jgroups/jgroups-raft
 COPY --from=build-stage /bin/ping /bin/netstat /bin/nc /bin/
 COPY --from=build-stage /sbin/ifconfig /sbin/
 
-RUN mkdir /mnt/data ; chown -R jgroups.jgroups data
-RUN chown -R jgroups.jgroups $HOME/*
+RUN mkdir /mnt/data ; chown -R jgroups.jgroups /mnt/data $HOME/*
 
 # Run everything below as the jgroups user. Unfortunately, USER is only observed by RUN, *not* by ADD or COPY !!
 USER jgroups

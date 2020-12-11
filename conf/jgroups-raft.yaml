@@ -9,6 +9,7 @@ metadata:
     run: jgroups-raft
 spec:
   replicas: 1
+  podManagementPolicy: OrderedReady ## Parallel
   selector:
     matchLabels:
       run: jgroups-raft
@@ -18,6 +19,7 @@ spec:
       labels:
         run: jgroups-raft
     spec:
+      terminationGracePeriodSeconds: 5
       containers:
       - image: belaban/jgroups-raft
         name: jgroups-raft
