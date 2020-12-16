@@ -1,15 +1,17 @@
+## Builds an image containing jgroups-raft
 
-## The first stage is used to git-clone and build jgroups-raft; this requires a JDK/javac/git/ant
-# Build: docker build --no-cache -f Dockerfile -t belaban/jgroups-raft .
+## ***************************************************************
+## Make sure you have jgroups-raft compiled (ant) before doing so!
+## ***************************************************************
+
+## The first stage is used to prepare/update the OS.
+## The second stage copies the local files (lib:classes) to the image
+# Build: docker build -f Dockerfile -t belaban/jgroups-raft .
 # Push: docker push belaban/jgroups-raft
 
 
-FROM adoptopenjdk/openjdk11 as build-stage
+FROM adoptopenjdk/openjdk11:jre as build-stage
 RUN apt-get update ; apt-get install -y git ant net-tools netcat iputils-ping
-
-## Download and build jgroups-raft src code
-RUN git clone https://github.com/belaban/jgroups-raft.git
-RUN cd jgroups-raft && ant retrieve ; ant compile
 
 # For the runtime, we only need a JRE (smaller footprint)
 FROM adoptopenjdk/openjdk11:jre
@@ -24,9 +26,13 @@ ENV PATH $PATH:$HOME/jgroups-raft/bin
 ENV JGROUPS_RAFT_HOME=$HOME/jgroups-raft
 WORKDIR /opt/jgroups
 
-COPY --from=build-stage /jgroups-raft /opt/jgroups/jgroups-raft
 COPY --from=build-stage /bin/ping /bin/netstat /bin/nc /bin/
 COPY --from=build-stage /sbin/ifconfig /sbin/
+COPY  README.md $JGROUPS_RAFT_HOME/
+COPY ./classes $JGROUPS_RAFT_HOME/classes
+COPY ./lib $JGROUPS_RAFT_HOME/lib
+COPY ./bin $JGROUPS_RAFT_HOME/bin
+COPY ./conf $JGROUPS_RAFT_HOME/conf
 
 RUN mkdir /mnt/data ; chown -R jgroups.jgroups /mnt/data $HOME/*
 
