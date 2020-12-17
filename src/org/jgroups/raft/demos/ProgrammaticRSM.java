@@ -3,6 +3,7 @@ package org.jgroups.raft.demos;
 import org.jgroups.JChannel;
 import org.jgroups.Receiver;
 import org.jgroups.View;
+import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.*;
 import org.jgroups.protocols.dns.DNS_PING;
 import org.jgroups.protocols.pbcast.GMS;
@@ -25,9 +26,13 @@ import java.util.List;
  * @author Bela Ban
  * @since  1.0.0
  */
-public class ReplicatedStateMachineDemoProgrammatic implements Receiver, RAFT.RoleChange {
+public class ProgrammaticRSM implements Receiver, RAFT.RoleChange {
     protected JChannel                              ch;
     protected ReplicatedStateMachine<String,Object> rsm;
+
+    static {
+        LogFactory.useJdkLogger(true);
+    }
 
     protected void start(List<String> members, String name, boolean tcp,
                          InetAddress bind_addr, int bind_port, boolean follower, long timeout) throws Exception {
@@ -282,7 +287,7 @@ public class ReplicatedStateMachineDemoProgrammatic implements Receiver, RAFT.Ro
         if(name == null)
             throw new IllegalArgumentException("-name must be set");
 
-        new ReplicatedStateMachineDemoProgrammatic().start(members, name, tcp, bind_addr, bind_port, follower, timeout);
+        new ProgrammaticRSM().start(members, name, tcp, bind_addr, bind_port, follower, timeout);
     }
 
 
