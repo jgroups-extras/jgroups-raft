@@ -1,0 +1,78 @@
+##
+## Can be used to deploy 3 pods running with raft.xml and a service to Kubernetes
+##
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: jgroups-raft
+  labels:
+    run: jgroups-raft
+spec:
+  replicas: 3
+  podManagementPolicy: OrderedReady ## Parallel
+  selector:
+    matchLabels:
+      run: jgroups-raft
+  serviceName: "jgroups-raft"
+  template:
+    metadata:
+      labels:
+        run: jgroups-raft
+    spec:
+      terminationGracePeriodSeconds: 5
+      containers:
+      - image: belaban/jgroups-raft:blog
+        name: jgroups-raft
+        command: ["run.sh"]
+        args: ["org.jgroups.raft.demos.ReplicatedStateMachineDemo -nohup -listen"]
+        volumeMounts:
+          - name: jgroups-raft-data
+            mountPath: /mnt/data
+        env:
+          - name: raft_members
+            value: "jgroups-raft-0,jgroups-raft-1,jgroups-raft-2"
+          - name: log_dir
+            value: /mnt/data
+          - name: DNS_QUERY
+            value: "jgroups-raft.default.svc.cluster.local"
+          - name: DNS_RECORD_TYPE
+            value: A
+  volumeClaimTemplates:
+  - metadata:
+      name: jgroups-raft-data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jgroups-raft
+  labels:
+    run: jgroups-raft
+spec:
+  publishNotReadyAddresses: true
+  type: LoadBalancer
+  selector:
+    run: jgroups-raft
+  ports:
+    - protocol: TCP
+      name: client
+      port: 1965
+      targetPort: 1965 # access CLIENT protocol via client.sh
+    - protocol: TCP
+      name: rsm
+      port: 2065
+      targetPort: 2065 # access rsh service via rsm-client.sh
+    - protocol: TCP
+      name: debug
+      port: 8787
+      targetPort: 8787 # to attach a debugger
+  sessionAffinity: None
+status:
+  loadBalancer: {}
+---
+
+
