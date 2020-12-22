@@ -2,7 +2,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.jgroups</groupId>
     <artifactId>jgroups-raft</artifactId>
-    <packaging>bundle</packaging>
+    <packaging>jar</packaging>
     <name>jgroups-raft</name>
     <version>1.0.1.Final-SNAPSHOT</version>
     <url>https://github.com/belaban/jgroups-raft</url>
@@ -220,7 +220,7 @@
                     <rules>
                         <requireJavaVersion>
                             <!-- require JDK 1.7 to run the build -->
-                            <version>[1.8,)</version>
+                            <version>[11,)</version>
                         </requireJavaVersion>
                         <requireMavenVersion>
                             <version>3.0.4</version>
@@ -316,15 +316,20 @@
                     </execution>
                 </executions>
             </plugin>
-            <plugin>
+            <!--<plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <configuration>
                     <archive>
-                        <manifestFile>conf/manifest.mf</manifestFile>
+                        <manifest>
+                            <addDefaultEntries>true</addDefaultEntries>
+                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+                            <addBuildEnvironmentEntries>true</addBuildEnvironmentEntries>
+                        </manifest>
                     </archive>
                 </configuration>
-            </plugin>
+            </plugin>-->
+
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -336,27 +341,6 @@
 
             </plugin>
 
-            <plugin>
-                <groupId>org.apache.felix</groupId>
-                <artifactId>maven-bundle-plugin</artifactId>
-                <extensions>true</extensions>
-                <configuration>
-                    <instructions>
-                        <Main-Class>org.jgroups.Version</Main-Class>
-                        <Implementation-Version>${project.version}</Implementation-Version>
-                        <Import-Package>
-                            !org.testng.*,
-                            *
-                        </Import-Package>
-                        <Export-Package>
-                            !org.testng.*,
-                            schema;version=${project.version},
-                            ${project.groupId}.raft.*;version=${project.version},
-                            ${project.groupId}.protocols.raft.*;version=${project.version}
-                        </Export-Package>
-                    </instructions>
-                </configuration>
-            </plugin>
 
             <!-- Disable default tests: they won't run since they are lacking configuration -->
             <plugin>
@@ -374,11 +358,6 @@
         </plugins>
         <pluginManagement>
             <plugins>
-                <plugin>
-                    <groupId>org.apache.felix</groupId>
-                    <artifactId>maven-bundle-plugin</artifactId>
-                    <version>2.5.3</version>
-                </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-antrun-plugin</artifactId>
