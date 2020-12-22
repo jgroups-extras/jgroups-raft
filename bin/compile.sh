@@ -13,6 +13,10 @@ OPTIONS="$OPTIONS -H:+AllowVMInspection -H:TraceClassInitialization=true --no-fa
 
 OPTIONS="$OPTIONS -H:ReflectionConfigurationFiles=$CONF/reflection.json"
 
+OPTIONS="$OPTIONS -H:JNIConfigurationFiles=$CONF/jni.json" #,$CONF/jni-config.json"
+
+OPTIONS="$OPTIONS -H:ConfigurationFileDirectories=conf2/"
+
 # OPTIONS="$OPTIONS -H:+PrintAnalysisCallTree"
 
 
@@ -20,13 +24,15 @@ OPTIONS="$OPTIONS -Dgraal.CompilationFailureAction=Diagnose"
 
 # OPTIONS="$OPTIONS -H:IncludeResources=/home/bela/logging.properties -Dfoo=bar -Dcom.sun.management.jmxremote"
 
-#OPTIONS="$OPTIONS --debug-attach=*:8000"
+#OPTIONS="$OPTIONS --debug-attach=*:5000"
 
 #OPTIONS="$OPTIONS -J-server -J-XX:+UseG1GC -J-XX:+UseAdaptiveSizePolicy -J-XX:MinHeapFreeRatio=20 -J-XX:MaxHeapFreeRatio=20"
 
 OPTIONS="$OPTIONS --initialize-at-build-time="
 
 OPTIONS="$OPTIONS -Dlog4j2.disable.jmx=true" ## Prevents log4j2 from creating an MBeanServer
+
+OPTIONS="$OPTIONS -Djgroups.use.jdk_logger=true" ## prevents log4j2 from being used
 
 #OPTIONS="$OPTIONS -H:GenerateDebugInfo=1"
 
