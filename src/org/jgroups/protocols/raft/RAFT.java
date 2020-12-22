@@ -404,7 +404,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
                 members.clear();
                 members.addAll(tmp);
             }
-
             majority=members.size() / 2 + 1;
         }
 
@@ -417,20 +416,9 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             ExtendedUUID.setPrintFunction(print_function);
             return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
         });
-    }
-
-    @Override public void start() throws Exception {
-        super.start();
-
-        if(!members.contains(raft_id))
-            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
 
         if(log_class == null)
             throw new IllegalStateException("log_class has to be defined");
-
-        if(!(local_addr instanceof ExtendedUUID))
-            throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
-
         Class<?> clazz=Util.loadClass(log_class,getClass());
         log_impl=(Log)clazz.getDeclaredConstructor().newInstance();
         Map<String,String> args;
@@ -444,8 +432,18 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         snapshot_name=log_name;
         log_name=createLogName(log_name, "log");
         snapshot_name=createLogName(snapshot_name, "snapshot");
-
         log_impl.init(log_name, args);
+    }
+
+    @Override public void start() throws Exception {
+        super.start();
+
+        if(!members.contains(raft_id))
+            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
+
+        if(!(local_addr instanceof ExtendedUUID))
+            throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
+
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
         current_term=log_impl.currentTerm();
