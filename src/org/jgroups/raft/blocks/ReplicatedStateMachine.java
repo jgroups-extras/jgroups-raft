@@ -41,7 +41,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         this.raft=new RaftHandle(this.ch, this);
     }
 
-    public      ReplicatedStateMachine<K,V> timeout(long timeout)  {this.repl_timeout=timeout; return this;}
+    public ReplicatedStateMachine<K,V> timeout(long timeout)       {this.repl_timeout=timeout; return this;}
     public void addRoleChangeListener(RAFT.RoleChange listener)    {raft.addRoleListener(listener);}
     public void addNotificationListener(Notification<K,V> n)       {if(n != null) listeners.add(n);}
     public void removeNotificationListener(Notification<K,V> n)    {listeners.remove(n);}

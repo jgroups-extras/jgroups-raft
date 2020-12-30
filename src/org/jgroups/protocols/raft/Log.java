@@ -67,7 +67,7 @@ public interface Log {
 
 
     /**
-     * Delete all entries starting from start_index.
+     * Gets the entry at start_index.
      * Updates current_term and last_appended accordingly
      *
      * @param index The index

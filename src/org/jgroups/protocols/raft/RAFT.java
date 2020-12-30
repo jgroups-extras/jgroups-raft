@@ -417,22 +417,24 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
         });
 
-        if(log_class == null)
-            throw new IllegalStateException("log_class has to be defined");
-        Class<?> clazz=Util.loadClass(log_class,getClass());
-        log_impl=(Log)clazz.getDeclaredConstructor().newInstance();
-        Map<String,String> args;
-        if(log_args != null && !log_args.isEmpty())
-            args=parseCommaDelimitedProps(log_args);
-        else
-            args=new HashMap<>();
+        if(log_impl == null) {
+            if(log_class == null)
+                throw new IllegalStateException("log_class has to be defined");
+            Class<?> clazz=Util.loadClass(log_class, getClass());
+            log_impl=(Log)clazz.getDeclaredConstructor().newInstance();
+            Map<String,String> args;
+            if(log_args != null && !log_args.isEmpty())
+                args=parseCommaDelimitedProps(log_args);
+            else
+                args=new HashMap<>();
 
-        if(log_name == null)
-            log_name=raft_id;
-        snapshot_name=log_name;
-        log_name=createLogName(log_name, "log");
-        snapshot_name=createLogName(snapshot_name, "snapshot");
-        log_impl.init(log_name, args);
+            if(log_name == null)
+                log_name=raft_id;
+            snapshot_name=log_name;
+            log_name=createLogName(log_name, "log");
+            snapshot_name=createLogName(snapshot_name, "snapshot");
+            log_impl.init(log_name, args);
+        }
     }
 
     @Override public void start() throws Exception {
@@ -448,7 +450,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         commit_index=log_impl.commitIndex();
         current_term=log_impl.currentTerm();
         log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
-        initStateMachineFromLog(false);
+        if(snapshot_name != null)
+            initStateMachineFromLog(false);
         log_size_bytes=logSizeInBytes();
     }
 
@@ -630,7 +633,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
      * For each member a next-index and match-index is maintained: next-index is the index of the next message to send to
      * that member (initialized to last-applied) and match-index is the index of the highest message known to have
      * been received by the member.<p/>
-     * Messages are resent to a given member long as that member's match-index is smaller than its next-index. When
+     * Messages are resent to a given member as long as that member's match-index is smaller than its next-index. When
      * match_index == next_index, message resending for that member is stopped. When a new message is appended to the
      * leader's log, next-index for all members is incremented and resending starts again.
      */
@@ -712,10 +715,20 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         return file.exists();
     }
 
-    public boolean deleteSnapshot() {
+    public RAFT deleteSnapshot() {
         File file=new File(snapshot_name);
-        return file.delete();
+        file.delete();
+        return this;
     }
+
+    public RAFT deleteLog() {
+        if(log_impl != null) {
+            log_impl.delete();
+            log_impl=null;
+        }
+        return this;
+    }
+
 
     protected synchronized void sendSnapshotTo(Address dest) throws Exception {
         try {
@@ -787,9 +800,13 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     protected RAFT append(int term, int index, byte[] data, int offset, int length, boolean internal) {
-        LogEntry entry=new LogEntry(term, data, offset, length, internal);
-        log_impl.append(index, true, entry);
-        last_appended=log_impl.lastAppended();
+        synchronized(this) {
+            if(index > last_appended) {
+                LogEntry entry=new LogEntry(term, data, offset, length, internal);
+                log_impl.append(index, true, entry);
+                last_appended=log_impl.lastAppended();
+            }
+        }
         snapshotIfNeeded(length);
         return this;
     }
