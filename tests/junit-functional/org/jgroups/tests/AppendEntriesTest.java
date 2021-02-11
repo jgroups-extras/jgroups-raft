@@ -23,6 +23,7 @@
  import java.util.Objects;
  import java.util.concurrent.TimeUnit;
  import java.util.concurrent.TimeoutException;
+ import java.util.function.Function;
  import java.util.stream.Stream;
 
  import static org.testng.Assert.*;
@@ -317,6 +318,17 @@ public class AppendEntriesTest {
         assertLogIndices(log, 1, 1, 4);
     }
 
+    public void testSendCommitsImmediately() throws Exception {
+        // Force leader to send commit messages immediately
+        init(true, r -> r.resendInterval(1000000000).sendCommitsImmediately(true));
+        as.put(1,1);
+        try {
+            assertSame(as, bs); // if as is not equal to bs, `as` should then be equals to `cs`
+        } catch (AssertionError e) {
+            assertSame(as, cs);
+        }
+    }
+
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Log    01 01 01 04 04 05 05 06 06 06
     // Append                            07 <--- wrong prev_term at index 11
@@ -521,12 +533,20 @@ public class AppendEntriesTest {
     }
 
     protected static JChannel create(String name, boolean follower) throws Exception {
-        return create(name, follower, members);
+        return create(name, follower, r -> r);
+    }
+
+    protected static JChannel create(String name, boolean follower, Function<RAFT, RAFT> config) throws Exception {
+        return create(name, follower, members, config);
     }
 
     protected static JChannel create(String name, boolean follower, final List<String> members) throws Exception {
+        return create(name, follower, members, r -> r);
+    }
+
+    protected static JChannel create(String name, boolean follower, final List<String> members, Function<RAFT, RAFT> config) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
-        RAFT raft=new RAFT().members(members).raftId(name)
+        RAFT raft=config.apply(new RAFT()).members(members).raftId(name)
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
         return new JChannel(Util.getTestStack(election, raft, new REDIRECT())).name(name);
     }
@@ -546,11 +566,15 @@ public class AppendEntriesTest {
     }
 
     protected void init(boolean verbose) throws Exception {
-        c=create("C", true);  // follower
+        init(verbose, r -> r);
+    }
+
+    protected void init(boolean verbose, Function<RAFT, RAFT> config) throws Exception {
+        c=create("C", true, config);  // follower
         cs=new ReplicatedStateMachine<>(c);
-        b=create("B", true);  // follower
+        b=create("B", true, config);  // follower
         bs=new ReplicatedStateMachine<>(b);
-        a=create("A", false); // leader
+        a=create("A", false, config); // leader
         as=new ReplicatedStateMachine<>(a);
         c.connect(CLUSTER);
         b.connect(CLUSTER);
