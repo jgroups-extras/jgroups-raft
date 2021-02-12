@@ -91,6 +91,9 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @Property(description="Interval (ms) at which AppendEntries messages are resent to members which haven't received them yet")
     protected long                    resend_interval=1000;
 
+    @Property(description="Send commit message to followers immediately after leader commits (majority has consensus). Caution : it may generate more traffic than expected")
+    protected boolean                 send_commits_immediately = false;
+
     @Property(description="Max number of bytes a log can have until a snapshot is created")
     protected int                     max_log_size=1_000_000;
 
@@ -151,6 +154,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public RAFT         snapshotName(String name)     {snapshot_name=name; return this;}
     public long         resendInterval()              {return resend_interval;}
     public RAFT         resendInterval(long val)      {resend_interval=val; return this;}
+    public boolean      sendCommitsImmediately()      {return send_commits_immediately;}
+    public RAFT         sendCommitsImmediately(boolean val)      {send_commits_immediately=val; return this;}
     public int          maxLogSize()                  {return max_log_size;}
     public RAFT         maxLogSize(int val)           {max_log_size=val; return this;}
 
