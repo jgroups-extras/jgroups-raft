@@ -26,11 +26,11 @@ public abstract class RaftHeader extends Header {
     }
 
     public void writeTo(DataOutput out) throws IOException {
-        Bits.writeInt(term, out);
+        Bits.writeIntCompressed(term, out);
     }
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
-        term=Bits.readInt(in);
+        term=Bits.readIntCompressed(in);
     }
 
     public String toString() {return getClass().getSimpleName() + ": term=" + term;}

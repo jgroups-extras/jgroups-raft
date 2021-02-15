@@ -55,10 +55,10 @@ public class AppendEntriesRequest extends RaftHeader {
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
-        Bits.writeInt(prev_log_index, out);
-        Bits.writeInt(prev_log_term, out);
-        Bits.writeInt(entry_term, out);
-        Bits.writeInt(leader_commit, out);
+        Bits.writeIntCompressed(prev_log_index, out);
+        Bits.writeIntCompressed(prev_log_term, out);
+        Bits.writeIntCompressed(entry_term, out);
+        Bits.writeIntCompressed(leader_commit, out);
         out.writeBoolean(internal);
     }
 
@@ -66,10 +66,10 @@ public class AppendEntriesRequest extends RaftHeader {
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
-        prev_log_index=Bits.readInt(in);
-        prev_log_term=Bits.readInt(in);
-        entry_term=Bits.readInt(in);
-        leader_commit=Bits.readInt(in);
+        prev_log_index=Bits.readIntCompressed(in);
+        prev_log_term=Bits.readIntCompressed(in);
+        entry_term=Bits.readIntCompressed(in);
+        leader_commit=Bits.readIntCompressed(in);
         internal=in.readBoolean();
     }
 

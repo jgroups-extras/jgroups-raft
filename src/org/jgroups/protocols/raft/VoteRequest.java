@@ -41,14 +41,14 @@ public class VoteRequest extends RaftHeader {
 
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
-        Bits.writeInt(last_log_term, out);
-        Bits.writeInt(last_log_index, out);
+        Bits.writeIntCompressed(last_log_term, out);
+        Bits.writeIntCompressed(last_log_index, out);
     }
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
-        last_log_term=Bits.readInt(in);
-        last_log_index=Bits.readInt(in);
+        last_log_term=Bits.readIntCompressed(in);
+        last_log_index=Bits.readIntCompressed(in);
     }
 
     public String toString() {

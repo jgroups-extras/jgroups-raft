@@ -46,16 +46,16 @@ public class InstallSnapshotRequest extends RaftHeader {
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
-        Bits.writeInt(last_included_index, out);
-        Bits.writeInt(last_included_term, out);
+        Bits.writeIntCompressed(last_included_index, out);
+        Bits.writeIntCompressed(last_included_term, out);
     }
 
     @Override
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
-        last_included_index=Bits.readInt(in);
-        last_included_term=Bits.readInt(in);
+        last_included_index=Bits.readIntCompressed(in);
+        last_included_term=Bits.readIntCompressed(in);
     }
 
     @Override

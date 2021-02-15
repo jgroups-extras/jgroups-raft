@@ -55,16 +55,16 @@ public class AppendResult implements Streamable {
 
     public void writeTo(DataOutput out) throws IOException {
         out.writeBoolean(success);
-        Bits.writeInt(index, out);
-        Bits.writeInt(commit_index, out);
-        Bits.writeInt(non_matching_term, out);
+        Bits.writeIntCompressed(index, out);
+        Bits.writeIntCompressed(commit_index, out);
+        Bits.writeIntCompressed(non_matching_term, out);
     }
 
     public void readFrom(DataInput in) throws IOException {
         success=in.readBoolean();
-        index=Bits.readInt(in);
-        commit_index=Bits.readInt(in);
-        non_matching_term=Bits.readInt(in);
+        index=Bits.readIntCompressed(in);
+        commit_index=Bits.readIntCompressed(in);
+        non_matching_term=Bits.readIntCompressed(in);
     }
 
     public boolean isSuccess() {

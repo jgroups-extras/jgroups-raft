@@ -196,7 +196,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     }
 
     @Override public void readContentFrom(DataInput in) throws Exception {
-        int size=Bits.readInt(in);
+        int size=Bits.readIntCompressed(in);
         Map<K,V> tmp=new HashMap<>(size);
         for(int i=0; i < size; i++) {
             K key=Util.objectFromStream(in);
@@ -211,7 +211,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     @Override public void writeContentTo(DataOutput out) throws Exception {
         synchronized(map) {
             int size=map.size();
-            Bits.writeInt(size, out);
+            Bits.writeIntCompressed(size, out);
             for(Map.Entry<K,V> entry : map.entrySet()) {
                 Util.objectToStream(entry.getKey(), out);
                 Util.objectToStream(entry.getValue(), out);

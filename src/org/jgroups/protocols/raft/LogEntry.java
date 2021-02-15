@@ -47,13 +47,13 @@ public class LogEntry implements Streamable {
     public boolean internal() {return internal;}
 
     public void writeTo(DataOutput out) throws IOException {
-        Bits.writeInt(term, out);
+        Bits.writeIntCompressed(term, out);
         Util.writeByteBuffer(command, offset, length, out);
         out.writeBoolean(internal);
     }
 
     public void readFrom(DataInput in) throws IOException {
-        term=Bits.readInt(in);
+        term=Bits.readIntCompressed(in);
         command=Util.readByteBuffer(in);
         offset=0;
         length=command != null? command.length : 0;

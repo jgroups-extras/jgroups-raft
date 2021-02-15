@@ -947,7 +947,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     // Replace with Util equivalent when switching to JGroups 3.6.2 or when merging this code into JGroups
     public static <T extends Streamable> void write(T[] array, DataOutput out) throws Exception {
-        Bits.writeInt(array != null? array.length : 0, out);
+        Bits.writeIntCompressed(array != null? array.length : 0, out);
         if(array == null)
             return;
         for(T el: array)
@@ -956,7 +956,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     // Replace with Util equivalent when switching to JGroups 3.6.2 or when merging this code into JGroups
     public static <T extends Streamable> T[] read(Class<T> clazz, DataInput in) throws Exception {
-        int size=Bits.readInt(in);
+        int size=Bits.readIntCompressed(in);
         if(size == 0)
             return null;
         T[] retval=(T[])Array.newInstance(clazz, size);

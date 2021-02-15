@@ -138,7 +138,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         long v1, v2, retval;
         switch(command) {
             case create:
-                v1=Bits.readLong(in);
+                v1=Bits.readLongCompressed(in);
                 retval=_create(name, v1);
                 return Util.objectToByteBuffer(retval);
             case delete:
@@ -148,12 +148,12 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                 retval=_get(name);
                 return Util.objectToByteBuffer(retval);
             case set:
-                v1=Bits.readLong(in);
+                v1=Bits.readLongCompressed(in);
                 _set(name, v1);
                 break;
             case compareAndSet:
-                v1=Bits.readLong(in);
-                v2=Bits.readLong(in);
+                v1=Bits.readLongCompressed(in);
+                v2=Bits.readLongCompressed(in);
                 boolean success=_cas(name, v1, v2);
                 return Util.objectToByteBuffer(success);
             case incrementAndGet:
@@ -163,7 +163,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                 retval=_add(name, -1L);
                 return Util.objectToByteBuffer(retval);
             case addAndGet:
-                v1=Bits.readLong(in);
+                v1=Bits.readLongCompressed(in);
                 retval=_add(name, v1);
                 return Util.objectToByteBuffer(retval);
             default:
@@ -182,7 +182,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                 AsciiString name=new AsciiString(entry.getKey());
                 Long value=entry.getValue();
                 Bits.writeAsciiString(name, out);
-                Bits.writeLong(value, out);
+                Bits.writeLongCompressed(value, out);
             }
         }
     }
@@ -192,7 +192,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         int size=in.readInt();
         for(int i=0; i < size; i++) {
             AsciiString name=Bits.readAsciiString(in);
-            Long value=Bits.readLong(in);
+            Long value=Bits.readLongCompressed(in);
             counters.put(name.toString(), value);
         }
     }
@@ -258,10 +258,10 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             out.writeByte(command.ordinal());
             Bits.writeAsciiString(new AsciiString(name), out);
             for(long val: values)
-                Bits.writeLong(val, out);
+                Bits.writeLongCompressed(val, out);
         }
         catch(Exception ex) {
-            throw new Exception("serialization failure (cmd=" + command + ", name=" + name + ")");
+            throw new Exception("serialization failure (cmd=" + command + ", name=" + name + "): " + ex);
         }
 
         byte[] buf=out.buffer();
@@ -273,10 +273,10 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         StringBuilder sb=new StringBuilder(command.toString()).append("(").append(name);
         for(int i=0; i < num_args; i++) {
             try {
-                long val=Bits.readLong(in);
+                long val=Bits.readLongCompressed(in);
                 sb.append(", ").append(val);
             }
-            catch(IOException e) {
+            catch(IOException ignored) {
                 break;
             }
         }

@@ -288,13 +288,13 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
         public void writeTo(DataOutput out) throws IOException {
             out.writeByte((byte)type.ordinal());
-            Bits.writeInt(corr_id, out);
+            Bits.writeIntCompressed(corr_id, out);
             out.writeBoolean(exception);
         }
 
         public void readFrom(DataInput in) throws IOException {
             type=RequestType.values()[in.readByte()];
-            corr_id=Bits.readInt(in);
+            corr_id=Bits.readIntCompressed(in);
             exception=in.readBoolean();
         }
 
