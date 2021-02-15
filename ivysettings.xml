@@ -10,7 +10,7 @@
 
     <property
             name="m2-location"
-            value="${user.home}/.m2/jboss-repository"
+            value="${user.home}/.m2/repository"
             override="false"/>
     <property
             name="m2-pattern"
