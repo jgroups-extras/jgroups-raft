@@ -222,7 +222,7 @@
         <runtest suitename="functional"
                  groups="functional"
                  parallel="${parallel.classes}"
-                 threadcount="20" />
+                 threadcount="2" />
     </target>
 
 
