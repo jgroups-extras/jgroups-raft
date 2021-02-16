@@ -412,15 +412,24 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             majority=members.size() / 2 + 1;
         }
 
-        if(raft_id == null)
-            raft_id=InetAddress.getLocalHost().getHostName();
-
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         final JChannel ch=stack.getChannel();
         ch.addAddressGenerator(() -> {
             ExtendedUUID.setPrintFunction(print_function);
             return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
         });
+
+
+    }
+
+    @Override public void start() throws Exception {
+        super.start();
+
+        if(raft_id == null)
+            raft_id=InetAddress.getLocalHost().getHostName();
+
+        if(!members.contains(raft_id))
+            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
 
         if(log_impl == null) {
             if(log_class == null)
@@ -440,13 +449,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             snapshot_name=createLogName(snapshot_name, "snapshot");
             log_impl.init(log_name, args);
         }
-    }
-
-    @Override public void start() throws Exception {
-        super.start();
-
-        if(!members.contains(raft_id))
-            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
 
         if(!(local_addr instanceof ExtendedUUID))
             throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
