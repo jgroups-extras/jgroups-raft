@@ -12,6 +12,7 @@ import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
 
 import java.util.Arrays;
+import java.util.Iterator;
 
 /**
  * Intercepts JOIN and MERGE requests on the coordinator and rejects members whose addition would lead to members
@@ -45,10 +46,11 @@ public class NO_DUPES extends Protocol {
     }
 
     public void up(MessageBatch batch) {
-        for(Message msg: batch) {
+        for(Iterator<Message> it=batch.iterator(); it.hasNext();) {
+            Message msg=it.next();
             GMS.GmsHeader hdr=msg.getHeader(gms_id);
             if(hdr != null && !handleGmsHeader(hdr, msg.src()))
-                batch.remove(msg);
+                it.remove();
         }
         if(!batch.isEmpty())
             up_prot.up(batch);

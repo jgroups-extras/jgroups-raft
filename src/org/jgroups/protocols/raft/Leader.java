@@ -41,7 +41,7 @@ public class Leader extends RaftImpl {
             throw new IllegalStateException("request table cannot be null in leader");
         ExtendedUUID uuid=(ExtendedUUID)sender;
         String sender_raft_id=Util.bytesToString(uuid.get(RAFT.raft_id_key));
-        raft.getLog().trace("%s: received AppendEntries response from %s for term %d: %s", raft.local_addr, sender, term, result);
+        raft.getLog().trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
         if(result.success) {
             raft.commit_table.update(sender, result.getIndex(), result.getIndex()+1, result.commit_index, false);
             if(reqtab.add(result.index, sender_raft_id, raft.majority())) {
@@ -61,7 +61,7 @@ public class Leader extends RaftImpl {
     private void sendCommitMessageToFollower(Address member, CommitTable.Entry entry) {
         if(raft.commit_index > entry.commitIndex()) {
             Message msg = new EmptyMessage(member)
-                    .putHeader(raft.getId(), new AppendEntriesRequest(raft.current_term, raft.local_addr, 0, 0, 0, raft.commit_index, false))
+                    .putHeader(raft.getId(), new AppendEntriesRequest(raft.current_term, raft.getAddress(), 0, 0, 0, raft.commit_index, false))
                     .setFlag(Message.TransientFlag.DONT_LOOPBACK);
             raft.down(msg);
         }

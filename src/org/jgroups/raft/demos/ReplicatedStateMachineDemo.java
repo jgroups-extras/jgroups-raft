@@ -49,7 +49,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         rsm.addRoleChangeListener(this);
         rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
             @Override public void put(String key, Object val, Object old_val) {
-                System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
+                // System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
             }
 
             @Override public void remove(String key, Object old_val) {

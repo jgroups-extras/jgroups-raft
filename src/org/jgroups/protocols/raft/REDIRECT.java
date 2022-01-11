@@ -12,6 +12,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -44,7 +45,6 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
 
     protected RAFT                raft;
-    protected volatile Address    local_addr;
     protected volatile View       view;
     protected final AtomicInteger request_ids=new AtomicInteger(1);
 
@@ -105,11 +105,6 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
             throw new IllegalStateException("RAFT protocol not found");
     }
 
-    public Object down(Event evt) {
-        if(evt.getType() == Event.SET_LOCAL_ADDRESS)
-            local_addr=evt.getArg();
-        return down_prot.down(evt);
-    }
 
     public Object up(Event evt) {
         if(evt.getType() == Event.VIEW_CHANGE)
@@ -129,10 +124,11 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
     @Override
     public void up(MessageBatch batch) {
-        for(Message msg: batch) {
+        for(Iterator<Message> it=batch.iterator(); it.hasNext();) {
+            Message msg=it.next();
             RedirectHeader hdr=msg.getHeader(id);
             if(hdr != null) {
-                batch.remove(msg);
+                it.remove();
                 handleEvent(msg, hdr);
             }
         }

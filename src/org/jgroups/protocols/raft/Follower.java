@@ -25,7 +25,7 @@ public class Follower extends RaftImpl {
 
         StateMachine sm;
         if((sm=raft.state_machine) == null) {
-            raft.getLog().error("%s: no state machine set, cannot install snapshot", raft.local_addr);
+            raft.getLog().error("%s: no state machine set, cannot install snapshot", raft.getAddress());
             return;
         }
         Address sender=msg.src();
@@ -44,14 +44,15 @@ public class Follower extends RaftImpl {
             log.truncate(last_included_index);
 
             raft.getLog().debug("%s: applied snapshot (%s) from %s; last_appended=%d, commit_index=%d",
-                                raft.local_addr, Util.printBytes(msg.getLength()), msg.src(), raft.lastAppended(), raft.commitIndex());
+                                raft.getAddress(), Util.printBytes(msg.getLength()), msg.src(), raft.lastAppended(),
+                                raft.commitIndex());
 
             AppendResult result=new AppendResult(true, last_included_index).commitIndex(raft.commitIndex());
             Message ack=new EmptyMessage(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
             raft.getDownProtocol().down(ack);
         }
         catch(Exception ex) {
-            raft.getLog().error("%s: failed applying snapshot from %s: %s", raft.local_addr, sender, ex);
+            raft.getLog().error("%s: failed applying snapshot from %s: %s", raft.getAddress(), sender, ex);
         }
     }
 }

@@ -111,7 +111,7 @@ public class ProgrammaticRSM {
         InetAddress diag_addr=Util.getAddress("224.0.75.75", Util.getIpStackType()),
           mcast_addr=Util.getAddress("228.8.8.8", Util.getIpStackType()),
           mping_mcast=Util.getAddress("230.5.6.7", Util.getIpStackType());
-        transport.setBindAddress(ba).setBindPort(bind_port).setDiagnosticsAddr(diag_addr);
+        transport.setBindAddress(ba).setBindPort(bind_port).getDiagnosticsHandler().setMcastAddress(diag_addr);
         if(transport instanceof UDP)
             ((UDP)transport).setMulticastAddress(mcast_addr);
 
@@ -164,9 +164,13 @@ public class ProgrammaticRSM {
 
     protected static JChannel create(boolean udp) throws Exception {
         List<Protocol> prots=new ArrayList<>();
-        TP transport=udp? new UDP().diagEnableUdp(true)
-          : new TCP().diagEnableUdp(false).diagEnableTcp(true).setBindPort(7800);
-        transport.setThreadPoolMaxThreads(200).setDiagnosticsEnabled(true);
+        TP transport=udp? new UDP() : new TCP().setBindPort(7800);
+        if(transport instanceof UDP)
+            transport.getDiagnosticsHandler().enableUdp(true);
+        else
+            transport.getDiagnosticsHandler().enableUdp(false).enableTcp(true);
+        transport.getThreadPool().setMaxThreads(200);
+        transport.getDiagnosticsHandler().setEnabled(true);
         prots.add(transport);
 
         // discovery protocols

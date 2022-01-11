@@ -41,10 +41,11 @@ public class PropsToAsciidoc {
             copy(new FileReader(new File(prot_file)), new FileWriter(f));
             String s = fileToString(f);
 
-            Set<Class<Protocol>> classes = Util.findClassesAssignableFrom("org.jgroups.protocols.raft", Protocol.class);
+            ClassLoader cl=Thread.currentThread().getContextClassLoader();
+            Set<Class<?>> classes=Util.findClassesAssignableFrom("org.jgroups.protocols.raft", Protocol.class, cl);
             // classes.addAll(Util.findClassesAssignableFrom("org.jgroups.protocols.pbcast",Protocol.class));
             Properties props = new Properties();
-            for (Class<Protocol> clazz : classes)
+            for (Class<?> clazz : classes)
                 convertProtocolToAsciidocTable(props,clazz);
             String result = Util.substituteVariable(s, props);
             FileWriter fw = new FileWriter(f, false);
@@ -93,7 +94,7 @@ public class PropsToAsciidoc {
     }
 
 
-    private static void convertProtocolToAsciidocTable(Properties props, Class<Protocol> clazz) throws Exception {
+    private static void convertProtocolToAsciidocTable(Properties props, Class<?> clazz) throws Exception {
         boolean isUnsupported = clazz.isAnnotationPresent(Unsupported.class);
         if (isUnsupported)
             return;

@@ -118,7 +118,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @GuardedBy("impl_lock")
     protected volatile RaftImpl       impl=new Follower(this);
     protected volatile View           view;
-    protected Address                 local_addr;
     protected TimeScheduler           timer;
 
     /** The current leader (can be null if there is currently no leader) */
@@ -140,7 +139,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     protected int                     log_size_bytes; // keeps counts of the bytes added to the log
 
 
-    public Address      address()                     {return local_addr;}
     public String       raftId()                      {return raft_id;}
     public RAFT         raftId(String id)             {if(id != null) this.raft_id=id; return this;}
     public int          majority()                    {synchronized(members) {return majority;}}
@@ -472,9 +470,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     public Object down(Event evt) {
         switch(evt.getType()) {
-            case Event.SET_LOCAL_ADDRESS:
-                local_addr=evt.getArg();
-                break;
             case Event.VIEW_CHANGE:
                 handleView(evt.getArg());
                 break;
@@ -499,10 +494,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     public void up(MessageBatch batch) {
-        for(Message msg: batch) {
+        for(Iterator<Message> it=batch.iterator(); it.hasNext();) {
+            Message msg=it.next();
             RaftHeader hdr=msg.getHeader(id);
             if(hdr != null) {
-                batch.remove(msg);
+                it.remove();
                 handleEvent(msg, hdr);
             }
         }

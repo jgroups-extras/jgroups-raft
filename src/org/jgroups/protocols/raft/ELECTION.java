@@ -9,6 +9,7 @@ import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.TimeScheduler;
 
+import java.util.Iterator;
 import java.util.Objects;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -65,7 +66,6 @@ public class ELECTION extends Protocol {
     protected volatile boolean  heartbeat_received=true;
 
     protected RAFT              raft; // direct ref instead of events
-    protected Address           local_addr;
     protected TimeScheduler     timer;
     protected Future<?>         election_task;
     protected Future<?>         heartbeat_task;
@@ -121,9 +121,6 @@ public class ELECTION extends Protocol {
                 changeRole(Role.Follower);
                 stopElectionTimer();
                 break;
-            case Event.SET_LOCAL_ADDRESS:
-                local_addr=evt.getArg();
-                break;
             case Event.VIEW_CHANGE:
                 handleView(evt.getArg());
                 break;
@@ -148,10 +145,11 @@ public class ELECTION extends Protocol {
     }
 
     public void up(MessageBatch batch) {
-        for(Message msg: batch) {
+        for(Iterator<Message> it=batch.iterator(); it.hasNext();) {
+            Message msg=it.next();
             RaftHeader hdr=msg.getHeader(id);
             if(hdr != null) {
-                batch.remove(msg);
+                it.remove();
                 handleEvent(msg, hdr);
             }
         }
@@ -280,7 +278,7 @@ public class ELECTION extends Protocol {
 
     protected void sendHeartbeat(int term, Address leader) {
         Message req=new EmptyMessage(null).putHeader(id, new HeartbeatRequest(term, leader))
-          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
+          .setFlag(Message.Flag.OOB, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
           .setFlag(Message.TransientFlag.DONT_LOOPBACK);
         down_prot.down(req);
     }
@@ -292,7 +290,7 @@ public class ELECTION extends Protocol {
         VoteRequest req=new VoteRequest(term, last_log_term, last_log_index);
         log.trace("%s: sending %s", local_addr, req);
         Message vote_req=new EmptyMessage(null).putHeader(id, req)
-          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
+          .setFlag(Message.Flag.OOB, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(vote_req);
     }
 
@@ -300,7 +298,7 @@ public class ELECTION extends Protocol {
         VoteResponse rsp=new VoteResponse(term, true);
         log.trace("%s: sending %s",local_addr,rsp);
         Message vote_rsp=new EmptyMessage(dest).putHeader(id, rsp)
-          .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
+          .setFlag(Message.Flag.OOB, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(vote_rsp);
     }
 

@@ -17,8 +17,9 @@
             ucast_send_buf_size="5M"
             mcast_recv_buf_size="5M"
             mcast_send_buf_size="5M"
-            max_bundle_size="64K"
-            enable_diagnostics="true"
+            bundler.max_size="64K"
+            diag.enabled="true"
+
 
             thread_pool.min_threads="2"
             thread_pool.max_threads="100"
@@ -42,10 +43,12 @@
               xmit_table_msgs_per_row="2000"
               xmit_table_max_compaction_time="60000"
               conn_expiry_timeout="0"/>
-    <pbcast.STABLE stability_delay="1000" desired_avg_gossip="50000"
+    <pbcast.STABLE desired_avg_gossip="50000"
                    max_bytes="4M"/>
     <raft.NO_DUPES/>
     <pbcast.GMS print_local_addr="true" join_timeout="2000"/>
+    <BATCH flush_interval="1"
+                max_batch_size="50"  />
     <UFC max_credits="2M"
          min_threshold="0.4"/>
     <MFC max_credits="2M"

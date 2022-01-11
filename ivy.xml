@@ -13,7 +13,7 @@
 
 
     <dependencies>
-        <dependency org="org.jgroups"               name="jgroups"        rev="5.+"/>
+        <dependency org="org.jgroups"               name="jgroups"        rev="5.2.+"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-api"      rev="2.11.+"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-core"     rev="2.11.+"/>
         <dependency org="org.mapdb"                 name="mapdb"          rev="1.0.8"/>
