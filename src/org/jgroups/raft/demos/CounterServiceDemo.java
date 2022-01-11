@@ -1,6 +1,7 @@
 package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
+import org.jgroups.Message;
 import org.jgroups.Receiver;
 import org.jgroups.View;
 import org.jgroups.blocks.atomic.Counter;
@@ -23,6 +24,10 @@ public class CounterServiceDemo {
         if(follower)
             disableElections(ch);
         ch.setReceiver(new Receiver() {
+            public void receive(Message msg) {
+
+            }
+
             public void viewAccepted(View view) {
                 System.out.println("-- view: " + view);
             }

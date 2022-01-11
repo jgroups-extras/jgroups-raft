@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.Header;
+import org.jgroups.raft.util.Bits2;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
 
@@ -55,10 +56,10 @@ public class AppendEntriesRequest extends RaftHeader {
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
-        Bits.writeIntCompressed(prev_log_index, out);
-        Bits.writeIntCompressed(prev_log_term, out);
-        Bits.writeIntCompressed(entry_term, out);
-        Bits.writeIntCompressed(leader_commit, out);
+        Bits2.writeIntCompressed(prev_log_index, out);
+        Bits2.writeIntCompressed(prev_log_term, out);
+        Bits2.writeIntCompressed(entry_term, out);
+        Bits2.writeIntCompressed(leader_commit, out);
         out.writeBoolean(internal);
     }
 
@@ -66,10 +67,10 @@ public class AppendEntriesRequest extends RaftHeader {
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
-        prev_log_index=Bits.readIntCompressed(in);
-        prev_log_term=Bits.readIntCompressed(in);
-        entry_term=Bits.readIntCompressed(in);
-        leader_commit=Bits.readIntCompressed(in);
+        prev_log_index=Bits2.readIntCompressed(in);
+        prev_log_term=Bits2.readIntCompressed(in);
+        entry_term=Bits2.readIntCompressed(in);
+        leader_commit=Bits2.readIntCompressed(in);
         internal=in.readBoolean();
     }
 

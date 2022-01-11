@@ -279,9 +279,9 @@ public class ELECTION extends Protocol {
     }
 
     protected void sendHeartbeat(int term, Address leader) {
-        Message req=new EmptyMessage(null).putHeader(id, new HeartbeatRequest(term, leader))
+        Message req=new Message(null).putHeader(id, new HeartbeatRequest(term, leader))
           .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK);
+          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK);
         down_prot.down(req);
     }
 
@@ -291,7 +291,7 @@ public class ELECTION extends Protocol {
         int last_log_term=entry != null? entry.term() : 0;
         VoteRequest req=new VoteRequest(term, last_log_term, last_log_index);
         log.trace("%s: sending %s", local_addr, req);
-        Message vote_req=new EmptyMessage(null).putHeader(id, req)
+        Message vote_req=new Message(null).putHeader(id, req)
           .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(vote_req);
     }
@@ -299,7 +299,7 @@ public class ELECTION extends Protocol {
     protected void sendVoteResponse(Address dest, int term) {
         VoteResponse rsp=new VoteResponse(term, true);
         log.trace("%s: sending %s",local_addr,rsp);
-        Message vote_rsp=new EmptyMessage(dest).putHeader(id, rsp)
+        Message vote_rsp=new Message(dest).putHeader(id, rsp)
           .setFlag(Message.Flag.OOB, Message.Flag.INTERNAL, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(vote_rsp);
     }

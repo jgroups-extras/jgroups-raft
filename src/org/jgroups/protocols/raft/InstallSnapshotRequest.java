@@ -2,6 +2,7 @@ package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 import org.jgroups.Header;
+import org.jgroups.raft.util.Bits2;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
 
@@ -46,16 +47,16 @@ public class InstallSnapshotRequest extends RaftHeader {
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
-        Bits.writeIntCompressed(last_included_index, out);
-        Bits.writeIntCompressed(last_included_term, out);
+        Bits2.writeIntCompressed(last_included_index, out);
+        Bits2.writeIntCompressed(last_included_term, out);
     }
 
     @Override
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
-        last_included_index=Bits.readIntCompressed(in);
-        last_included_term=Bits.readIntCompressed(in);
+        last_included_index=Bits2.readIntCompressed(in);
+        last_included_term=Bits2.readIntCompressed(in);
     }
 
     @Override

@@ -1,7 +1,6 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
-import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
 
 /**
@@ -97,7 +96,7 @@ public abstract class RaftImpl {
     protected void handleCommitRequest(Address sender, int leader_commit) {
         raft.commitLogTo(leader_commit);
         AppendResult result=new AppendResult(true, raft.lastAppended()).commitIndex(raft.commitIndex());
-        Message msg=new EmptyMessage(sender).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
+        Message msg=new Message(sender).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
         raft.getDownProtocol().down(msg);
     }
 

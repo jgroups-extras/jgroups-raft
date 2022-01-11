@@ -2,6 +2,7 @@ package org.jgroups.raft.demos;
 
 import org.jgroups.Address;
 import org.jgroups.JChannel;
+import org.jgroups.Message;
 import org.jgroups.View;
 import org.jgroups.blocks.cs.BaseServer;
 import org.jgroups.blocks.cs.TcpServer;
@@ -39,6 +40,10 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         if(follower)
             disableElections(ch);
         ch.setReceiver(new org.jgroups.Receiver() {
+            public void receive(Message msg) {
+
+            }
+
             @Override public void viewAccepted(View view) {
                 System.out.println("-- view change: " + view);
             }
@@ -47,7 +52,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         ch.connect("rsm");
         Util.registerChannel(rsm.channel(), "rsm");
         rsm.addRoleChangeListener(this);
-        rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
+        rsm.addNotificationListener(new ReplicatedStateMachine.Notification<String,Object>() {
             @Override public void put(String key, Object val, Object old_val) {
                 System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
             }

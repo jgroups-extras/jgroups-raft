@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Header;
+import org.jgroups.raft.util.Bits2;
 import org.jgroups.util.Bits;
 
 import java.io.DataInput;
@@ -26,11 +27,11 @@ public abstract class RaftHeader extends Header {
     }
 
     public void writeTo(DataOutput out) throws IOException {
-        Bits.writeIntCompressed(term, out);
+        Bits2.writeIntCompressed(term, out);
     }
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
-        term=Bits.readIntCompressed(in);
+        term=Bits2.readIntCompressed(in);
     }
 
     public String toString() {return getClass().getSimpleName() + ": term=" + term;}

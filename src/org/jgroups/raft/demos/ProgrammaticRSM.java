@@ -1,6 +1,7 @@
 package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
+import org.jgroups.Message;
 import org.jgroups.Receiver;
 import org.jgroups.View;
 import org.jgroups.logging.LogFactory;
@@ -35,15 +36,19 @@ public class ProgrammaticRSM {
         LogFactory.useJdkLogger(true);
         // prevents setting default values: GraalVM doesn't accept creation of InetAddresses at build time (in the
         // image), so we have to set the default valiues at run time
-        Configurator.skipSettingDefaultValues(true);
+        // Configurator.skipSettingDefaultValues(true);
 
         boolean use_udp=Boolean.getBoolean("use.udp");
 
         try {
             ch=create(use_udp);
-            Configurator.skipSettingDefaultValues(false);
+            // Configurator.skipSettingDefaultValues(false);
             h=new NonReflectiveProbeHandler(ch).initialize(ch.getProtocolStack().getProtocols());
             ch.setReceiver(new Receiver() {
+                public void receive(Message msg) {
+
+                }
+
                 @Override public void viewAccepted(View view) {
                     System.out.println("-- view change: " + view);
                 }
@@ -111,7 +116,8 @@ public class ProgrammaticRSM {
         InetAddress diag_addr=Util.getAddress("224.0.75.75", Util.getIpStackType()),
           mcast_addr=Util.getAddress("228.8.8.8", Util.getIpStackType()),
           mping_mcast=Util.getAddress("230.5.6.7", Util.getIpStackType());
-        transport.setBindAddress(ba).setBindPort(bind_port).setDiagnosticsAddr(diag_addr);
+        transport.setBindAddress(ba).setBindPort(bind_port);
+        // transport.setDiagnosticsAddr(diag_addr);
         if(transport instanceof UDP)
             ((UDP)transport).setMulticastAddress(mcast_addr);
 
@@ -141,7 +147,7 @@ public class ProgrammaticRSM {
             }
             transport.registerProbeHandler(h);
 
-            rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
+            rsm.addNotificationListener(new ReplicatedStateMachine.Notification<String,Object>() {
                 @Override
                 public void put(String key, Object val, Object old_val) {
                     System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
@@ -191,7 +197,7 @@ public class ProgrammaticRSM {
           new GMS().setJoinTimeout(2000),
           new UFC(),
           new MFC(),
-          new FRAG4(),
+          new FRAG3(),
           new ELECTION(),
           new RAFT(),
           new REDIRECT(),

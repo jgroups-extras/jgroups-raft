@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Header;
+import org.jgroups.raft.util.Bits2;
 import org.jgroups.util.Bits;
 
 import java.io.DataInput;
@@ -41,14 +42,14 @@ public class VoteRequest extends RaftHeader {
 
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
-        Bits.writeIntCompressed(last_log_term, out);
-        Bits.writeIntCompressed(last_log_index, out);
+        Bits2.writeIntCompressed(last_log_term, out);
+        Bits2.writeIntCompressed(last_log_index, out);
     }
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
-        last_log_term=Bits.readIntCompressed(in);
-        last_log_index=Bits.readIntCompressed(in);
+        last_log_term=Bits2.readIntCompressed(in);
+        last_log_index=Bits2.readIntCompressed(in);
     }
 
     public String toString() {

@@ -170,7 +170,7 @@ public class AppendEntriesTest {
         // make B and C drop all traffic; this means A won't be able to commit
         for(JChannel ch: Arrays.asList(b,c)) {
             ProtocolStack stack=ch.getProtocolStack();
-            DISCARD discard=new DISCARD().discardAll(true);
+            DISCARD discard=new DISCARD().setDiscardAll(true);
             stack.insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
         };
 

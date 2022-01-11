@@ -3,7 +3,6 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Global;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.Property;
-import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Util;
@@ -56,11 +55,10 @@ public class CLIENT extends Protocol implements Runnable {
     @Property(description="Max number of threads in the thread pool")
     protected int               max_threads=100;
 
-    @Property(description="Number of ms a thread can be idle before being removed from the thread pool",
-      type=AttributeType.TIME)
+    @Property(description="Number of ms a thread can be idle before being removed from the thread pool")
     protected long              idle_time=5000;
 
-    @Property(description="Number of bytes of the server socket's receive buffer",type=AttributeType.BYTES)
+    @Property(description="Number of bytes of the server socket's receive buffer")
     protected int               recv_buf_size;
 
     protected Settable          settable;
@@ -94,7 +92,7 @@ public class CLIENT extends Protocol implements Runnable {
 
     public void start() throws Exception {
         super.start();
-        sock=Util.createServerSocket(getSocketFactory(), "CLIENR.srv_sock", bind_addr, port, port+50, recv_buf_size);
+        sock=Util.createServerSocket(getSocketFactory(), "CLIENR.srv_sock", bind_addr, port, port+50);
         if(sock == null)
             throw new IllegalStateException(String.format("failed creating server socket at %s:%d", bind_addr, port));
         thread_pool=new ThreadPoolExecutor(min_threads, max_threads, idle_time, TimeUnit.MILLISECONDS,

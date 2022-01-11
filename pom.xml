@@ -9,8 +9,8 @@
     <description>JGroups RAFT implementation</description>
 
     <properties>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
         <!-- nexus-staging-maven-plugin -->
         <autoReleaseAfterClose>true</autoReleaseAfterClose>
         <nexus.server.id>jboss-releases-repository</nexus.server.id>
@@ -18,7 +18,7 @@
         <nexus.snapshot.server.id>jboss-snapshots-repository</nexus.snapshot.server.id>
         <nexus.snapshot.server.url>https://repository.jboss.org/nexus/content/repositories/snapshots/</nexus.snapshot.server.url>
         <testng.version>6.14.3</testng.version>
-        <jgroups.version>5.1.5.Final</jgroups.version>
+        <jgroups.version>4.2.18.Final</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
         <mapdb.version>1.0.8</mapdb.version>
         <commons-io.version>2.7</commons-io.version>
@@ -200,8 +200,8 @@
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <source>8</source>
+                    <target>8</target>
                 </configuration>
             </plugin>
             <plugin>
@@ -220,7 +220,7 @@
                     <rules>
                         <requireJavaVersion>
                             <!-- require JDK 1.7 to run the build -->
-                            <version>[11,)</version>
+                            <version>[8,)</version>
                         </requireJavaVersion>
                         <requireMavenVersion>
                             <version>3.0.4</version>
