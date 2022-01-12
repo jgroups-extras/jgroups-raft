@@ -1,4 +1,5 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.jgroups</groupId>
     <artifactId>jgroups-raft</artifactId>
@@ -23,6 +24,38 @@
         <mapdb.version>1.0.8</mapdb.version>
         <commons-io.version>2.7</commons-io.version>
         <log4j.version>2.17.1</log4j.version>
+
+        <conf.dir>${project.basedir}/conf</conf.dir>
+        <tmp.dir>${project.basedir}/tmp</tmp.dir>
+
+        <!-- test properties -->
+        <ansi.strip/>
+        <jgroups.tests.parallel.threads>2</jgroups.tests.parallel.threads>
+        <defaultTestNGGroups>functional</defaultTestNGGroups>
+        <defaultExcludedTestNGGroups>broken</defaultExcludedTestNGGroups>
+        <testNGListeners>org.jgroups.tests.utils.JUnitXMLReporter</testNGListeners>
+
+        <jgroups.bind_addr>localhost</jgroups.bind_addr>
+        <jgroups.tcpping.initial_hosts>localhost[7800],localhost[7801]</jgroups.tcpping.initial_hosts>
+        <jgroups.tunnel.gossip_router_hosts>localhost[12001]</jgroups.tunnel.gossip_router_hosts>
+        <jgroups.udp.mcast_addr>225.5.5.5</jgroups.udp.mcast_addr>
+        <jgroups.udp.mcast_port>45588</jgroups.udp.mcast_port>
+        <jgroups.udp.ip_ttl>5</jgroups.udp.ip_ttl>
+        <jgroups.useIPv4>true</jgroups.useIPv4>
+        <jgroups.useIPv6>false</jgroups.useIPv6>
+
+        <jgroups.tests.jvmargs>
+            -Djgroups.udp.ip_ttl=0
+            -Djgroups.tcpping.initial_hosts=${jgroups.tcpping.initial_hosts}
+            -Djgroups.tunnel.gossip_router_hosts=${jgroups.tunnel.gossip_router_hosts}
+            -Dtests.tmp.dir=${tmp.dir}
+            -Dlog4j.configuration=file:${conf.dir}/log4j.properties
+            -Dlog4j.configurationFile=${conf.dir}/log4j2.xml
+            -Djava.net.preferIPv4Stack=${jgroups.useIPv4}
+            -Djava.net.preferIPv6Addresses=${jgroups.useIPv6}
+            -Xms400M
+            -Xmx800M
+        </jgroups.tests.jvmargs>
     </properties>
 
     <organization>
@@ -189,6 +222,7 @@
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nexus-staging-maven-plugin</artifactId>
+                <version>1.6.8</version>
                 <extensions>true</extensions>
                 <configuration>
                     <!-- See configuration details at http://books.sonatype.com/nexus-book/reference/staging-deployment.html -->
@@ -265,39 +299,25 @@
                 <executions>
                     <execution>
                         <id>compile</id>
-                        <phase>compile</phase>
+                        <phase>generate-resources</phase>
                         <goals>
                             <goal>run</goal>
                         </goals>
                         <configuration>
                             <tasks>
-                                <property name="compile_classpath" refid="maven.compile.classpath" />
-                                <property name="plugin_classpath" refid="maven.plugin.classpath" />
-                                <delete dir="${project.build.directory}/schema" failonerror="false" />
-                                <mkdir dir="${project.build.directory}/schema" />
+                                <property name="compile_classpath" refid="maven.compile.classpath"/>
+                                <property name="plugin_classpath" refid="maven.plugin.classpath"/>
+                                <delete dir="${project.build.directory}/schema" failonerror="false"/>
+                                <mkdir dir="${project.build.directory}/schema"/>
                                 <java classname="org.jgroups.util.XMLSchemaGenerator">
                                     <classpath>
-                                        <pathelement path="${compile_classpath}" />
-                                        <pathelement path="${plugin_classpath}" />
+                                        <pathelement path="${compile_classpath}"/>
+                                        <pathelement path="${plugin_classpath}"/>
                                     </classpath>
-                                    <arg line="-o ${project.build.directory}/schema" />
+                                    <arg line="-o ${project.build.directory}/schema"/>
                                 </java>
                             </tasks>
                         </configuration>
-                    </execution>
-                    <!-- Run the tests via ant -->
-                    <execution>
-                        <phase>test</phase>
-                        <configuration>
-                            <tasks unless="maven.test.skip">
-                                <ant antfile="${basedir}/build.xml" target="all-tests">
-                                    <property name="build.compiler" value="extJavac" />
-                                </ant>
-                            </tasks>
-                        </configuration>
-                        <goals>
-                            <goal>run</goal>
-                        </goals>
                     </execution>
                 </executions>
             </plugin>
@@ -347,13 +367,33 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <skip>true</skip>
+                    <reportsDirectory>${tmp.dir}/test-results/xml</reportsDirectory>
+                    <parallel>classes</parallel>
+                    <threadCount>${jgroups.tests.parallel.threads}</threadCount>
+                    <forkCount>1</forkCount>
+                    <reuseForks>true</reuseForks>
+                    <groups>${defaultTestNGGroups}</groups>
+                    <excludedGroups>${defaultExcludedTestNGGroups}</excludedGroups>
+                    <useFile>false</useFile>
+                    <systemPropertyVariables>
+                        <INITIAL_MCAST_ADDR>${jgroups.udp.mcast_addr}</INITIAL_MCAST_ADDR>
+                        <INITIAL_MCAST_PORT>23000</INITIAL_MCAST_PORT>
+                        <INITIAL_TCP_PORT>23000</INITIAL_TCP_PORT>
+                        <tcp.recv_buf_size>200000</tcp.recv_buf_size>
+                        <tcp.send_buf_size>64000</tcp.send_buf_size>
+                        <ansi.strip>${ansi.strip}</ansi.strip>
+                    </systemPropertyVariables>
+                    <trimStackTrace>false</trimStackTrace>
+                    <properties>
+                        <usedefaultlisteners>false</usedefaultlisteners>
+                        <listener>${testNGListeners}</listener>
+                    </properties>
+                    <argLine>${jgroups.tests.jvmargs} -Djdk.attach.allowAttachSelf=true</argLine>
+                    <!-- Use TCP for plugin <-> fork JVM communication -->
+                    <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory"/>
+                    <!-- Disable modular classpath -->
+                    <useModulePath>false</useModulePath>
                 </configuration>
-                <executions>
-                    <execution>
-                        <phase>test</phase>
-                    </execution>
-                </executions>
             </plugin>
         </plugins>
         <pluginManagement>
@@ -406,7 +446,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>2.12.4</version>
+                    <version>3.0.0-M5</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -446,7 +486,7 @@
                                         </goals>
                                     </pluginExecutionFilter>
                                     <action>
-                                        <ignore />
+                                        <ignore/>
                                     </action>
                                 </pluginExecution>
                             </pluginExecutions>
