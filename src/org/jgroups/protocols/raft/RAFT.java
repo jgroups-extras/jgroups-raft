@@ -35,7 +35,7 @@ import java.util.regex.Pattern;
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol implements Runnable, Settable, DynamicMembership {
     // When moving to JGroups -> add to jg-protocol-ids.xml
-    protected static final byte[] raft_id_key          = Util.stringToBytes("raft-id");
+    public static final byte[] raft_id_key             = Util.stringToBytes("raft-id");
     protected static final short  RAFT_ID              = 521;
 
     protected static final Function<ExtendedUUID,String> print_function=uuid -> {
