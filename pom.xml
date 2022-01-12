@@ -4,7 +4,7 @@
     <artifactId>jgroups-raft</artifactId>
     <packaging>jar</packaging>
     <name>jgroups-raft</name>
-    <version>1.0.5.Final-SNAPSHOT</version>
+    <version>0.5.4.Final-SNAPSHOT</version>
     <url>https://github.com/belaban/jgroups-raft</url>
     <description>JGroups RAFT implementation</description>
 
