@@ -21,5 +21,6 @@
         <dependency org="org.testng"                name="testng"         rev="6.14.+"/>
         <dependency org="com.beust"                 name="jcommander"     rev="1.+"/>
         <dependency org="commons-io"                name="commons-io"     rev="2.5"/>
+        <dependency org="net.jcip"                  name="jcip-annotations" rev="1.0"/>
     </dependencies>
 </ivy-module>

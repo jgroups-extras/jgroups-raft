@@ -158,13 +158,14 @@ public class ELECTION extends Protocol {
     }
 
     protected void handleView(View v) {
-        if(role == Role.Leader) {
-            if(v != null && v.size() < raft.majority())
-                changeRole(Role.Candidate);
+        if (v == null || v.size() >= raft.majority()) {
+            return;
         }
-        else { // follower or candidate
-            if(v != null && v.size() < raft.majority())
-                raft.leader(null);
+        if (role == Role.Leader) {
+            changeRole(Role.Candidate);
+        } else {
+            // follower or candidate
+            raft.leader(null);
         }
     }
 
@@ -233,10 +234,11 @@ public class ELECTION extends Protocol {
 
     protected synchronized void handleVoteResponse(int term) {
         if(role == Role.Candidate && term == raft.current_term) {
-            if(++current_votes >= raft.majority) {
+            int majority = raft.majority();
+            if(++current_votes >= majority) {
                 // we've got the majority: become leader
                 log.trace("%s: collected %d votes (majority=%d) in term %d -> becoming leader",
-                          local_addr, current_votes, raft.majority, term);
+                          local_addr, current_votes, majority, term);
                 changeRole(Role.Leader);
             }
         }
