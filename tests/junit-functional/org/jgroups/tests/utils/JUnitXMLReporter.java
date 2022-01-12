@@ -42,7 +42,8 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
 
     /** Invoked at the start of the test, before any of the classes in the test are run */
     public void onStart(ITestContext context) {
-        output_dir=context.getOutputDirectory();
+        // store tests reports inside "functional" folder
+        output_dir=context.getOutputDirectory().replace("Surefire suite", "functional");
         // Uncomment to delete dir created by previous run of this testsuite
         File dir=new File(output_dir);
         if(dir.exists())
