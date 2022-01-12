@@ -1,20 +1,28 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.*;
-import org.jgroups.annotations.*;
-import org.jgroups.conf.ClassConfigurator;
-import org.jgroups.raft.util.CommitTable;
-import org.jgroups.raft.util.RequestTable;
-import org.jgroups.stack.Protocol;
-import org.jgroups.util.Bits;
-import org.jgroups.util.*;
-
-import java.io.*;
+import java.io.DataInput;
+import java.io.DataInputStream;
+import java.io.DataOutput;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Array;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -24,6 +32,30 @@ import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import org.jgroups.Address;
+import org.jgroups.BytesMessage;
+import org.jgroups.EmptyMessage;
+import org.jgroups.Event;
+import org.jgroups.JChannel;
+import org.jgroups.Message;
+import org.jgroups.View;
+import org.jgroups.annotations.MBean;
+import org.jgroups.annotations.ManagedAttribute;
+import org.jgroups.annotations.ManagedOperation;
+import org.jgroups.annotations.Property;
+import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.raft.util.CommitTable;
+import org.jgroups.raft.util.RequestTable;
+import org.jgroups.stack.Protocol;
+import org.jgroups.util.Bits;
+import org.jgroups.util.ExtendedUUID;
+import org.jgroups.util.MessageBatch;
+import org.jgroups.util.Streamable;
+import org.jgroups.util.TimeScheduler;
+import org.jgroups.util.Util;
+
+import net.jcip.annotations.GuardedBy;
 
 
 /**
@@ -62,9 +94,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     protected String                  raft_id;
 
     /** The set of members defining the Raft cluster */
+    @GuardedBy("members")
     protected final List<String>      members=new ArrayList<>();
 
     @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)")
+    @GuardedBy("members")
     protected int                     majority=-1;
 
     @ManagedAttribute(description="If true, we can change 'members' at runtime")
@@ -115,7 +149,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     protected final AtomicBoolean     members_being_changed = new AtomicBoolean(false);
 
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
-    @GuardedBy("impl_lock")
     protected volatile RaftImpl       impl=new Follower(this);
     protected volatile View           view;
     protected TimeScheduler           timer;
@@ -177,18 +210,14 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     @Property(description="List of members (logical names); majority is computed from it")
     public void setMembers(String list) {
-        synchronized(members) {
-            this.members.clear();
-            this.members.addAll(new HashSet<>(Util.parseCommaDelimitedStrings(list)));
-            majority=members.size() / 2 +1;
-        }
+        members(Util.parseCommaDelimitedStrings(list));
     }
 
-    public RAFT members(List<String> list) {
+    public RAFT members(Collection<String> list) {
         synchronized(members) {
             this.members.clear();
             this.members.addAll(new HashSet<>(list));
-            majority=members.size() / 2 +1;
+            computeMajority();
         }
         return this;
     }
@@ -319,7 +348,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         synchronized(members) {
             if(!members.contains(name)) {
                 members.add(name);
-                majority=members.size() / 2 +1;
+                computeMajority();
             }
         }
     }
@@ -328,7 +357,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         if(name == null) return;
         synchronized(members) {
             if(members.remove(name))
-                majority=members.size() / 2 +1;
+                computeMajority();
         }
     }
 
@@ -407,7 +436,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
                 members.clear();
                 members.addAll(tmp);
             }
-            majority=members.size() / 2 + 1;
+            computeMajority();
         }
 
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
@@ -426,8 +455,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         if(raft_id == null)
             raft_id=InetAddress.getLocalHost().getHostName();
 
-        if(!members.contains(raft_id))
-            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
+        synchronized (members) {
+            if (!members.contains(raft_id))
+                throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, this.members));
+        }
 
         if(log_impl == null) {
             if(log_class == null)
@@ -494,7 +525,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     public void up(MessageBatch batch) {
-        for(Iterator<Message> it=batch.iterator(); it.hasNext();) {
+        for(Iterator<Message> it = batch.iterator(); it.hasNext();) {
             Message msg=it.next();
             RaftHeader hdr=msg.getHeader(id);
             if(hdr != null) {
@@ -1029,5 +1060,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     public interface RoleChange {
         void roleChanged(Role role);
+    }
+
+    @GuardedBy("members")
+    private void computeMajority() {
+        majority = (members.size() / 2) + 1;
     }
 }
