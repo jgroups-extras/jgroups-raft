@@ -1,29 +1,24 @@
 package org.jgroups.protocols.raft;
 
-import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
+import net.jcip.annotations.GuardedBy;
+import org.jgroups.*;
+import org.jgroups.annotations.MBean;
+import org.jgroups.annotations.ManagedAttribute;
+import org.jgroups.annotations.ManagedOperation;
+import org.jgroups.annotations.Property;
+import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.raft.util.Bits2;
+import org.jgroups.raft.util.CommitTable;
+import org.jgroups.raft.util.RequestTable;
+import org.jgroups.stack.Protocol;
+import org.jgroups.util.*;
 
-import java.io.DataInput;
-import java.io.DataInputStream;
-import java.io.DataOutput;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.lang.reflect.Array;
 import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -34,27 +29,7 @@ import java.util.function.ObjIntConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import org.jgroups.Address;
-import org.jgroups.Event;
-import org.jgroups.JChannel;
-import org.jgroups.Message;
-import org.jgroups.View;
-import org.jgroups.annotations.MBean;
-import org.jgroups.annotations.ManagedAttribute;
-import org.jgroups.annotations.ManagedOperation;
-import org.jgroups.annotations.Property;
-import org.jgroups.conf.ClassConfigurator;
-import org.jgroups.raft.util.Bits2;
-import org.jgroups.raft.util.CommitTable;
-import org.jgroups.raft.util.RequestTable;
-import org.jgroups.stack.Protocol;
-import org.jgroups.util.ExtendedUUID;
-import org.jgroups.util.MessageBatch;
-import org.jgroups.util.Streamable;
-import org.jgroups.util.TimeScheduler;
-import org.jgroups.util.Util;
-
-import net.jcip.annotations.GuardedBy;
+import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
 
 
 /**
@@ -748,11 +723,15 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     protected boolean snapshotExists() {
+        if(snapshot_name == null)
+            return false;
         File file=new File(snapshot_name);
         return file.exists();
     }
 
     public RAFT deleteSnapshot() {
+        if(snapshot_name == null)
+            return this;
         File file=new File(snapshot_name);
         file.delete();
         return this;
