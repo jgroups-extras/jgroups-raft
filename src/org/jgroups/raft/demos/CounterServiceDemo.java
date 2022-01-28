@@ -93,7 +93,7 @@ public class CounterServiceDemo {
                                 System.out.println("-- count=" + retval);
                         }
                         long diff=System.currentTimeMillis() - start;
-                        System.out.println("\n" + NUM + " incrs took " + diff + " ms; " + (NUM / (diff / 1000.0)) + " ops /sec\n");
+                        System.out.printf("\n%d incrs took %d ms; %.2f ops /sec\n", NUM, diff, (NUM / (diff / 1000.0)));
                         break;
                     case 'x':
                         looping=false;
