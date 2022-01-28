@@ -6,6 +6,7 @@ import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.stack.Protocol;
+import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
 
 import java.io.DataInputStream;
@@ -123,7 +124,7 @@ public class CLIENT extends Protocol implements Runnable {
                 Socket client_sock=sock.accept();
                 thread_pool.execute(new RequestHandler(client_sock));
             }
-            catch(IOException e) {
+            catch(IOException ignored) {
                 if(sock.isClosed())
                     return;
             }
@@ -133,6 +134,9 @@ public class CLIENT extends Protocol implements Runnable {
         }
     }
 
+    public void up(MessageBatch batch) {
+        up_prot.up(batch);
+    }
 
     protected class RequestHandler implements Runnable {
         protected final Socket client_sock;
