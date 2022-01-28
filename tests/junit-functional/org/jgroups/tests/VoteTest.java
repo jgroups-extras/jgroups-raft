@@ -104,6 +104,19 @@ public class VoteTest {
                        () -> Stream.of(channels).filter(JChannel::isConnected)
                          .anyMatch(c -> ((RAFT)c.getProtocolStack().findProtocol(RAFT.class)).isLeader()));
 
+        // need to set this again, as the leader might have changed
+        raft=null;
+        for(JChannel c: channels) {
+            if(!c.isConnected())
+                continue;
+            RAFT r=c.getProtocolStack().findProtocol(RAFT.class);
+            if(r.isLeader()) {
+                raft=r;
+                break;
+            }
+        }
+        assert raft != null;
+
         // This time, we should succeed
         raft.set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
 
