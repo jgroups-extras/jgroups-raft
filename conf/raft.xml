@@ -47,8 +47,8 @@
                    max_bytes="4M"/>
     <raft.NO_DUPES/>
     <pbcast.GMS print_local_addr="true" join_timeout="2000"/>
-    <BATCH flush_interval="1"
-                max_batch_size="50"  />
+    <!--BATCH flush_interval="1"
+                max_batch_size="50"  /-->
     <UFC max_credits="2M"
          min_threshold="0.4"/>
     <MFC max_credits="2M"

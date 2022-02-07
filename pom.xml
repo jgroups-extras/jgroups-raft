@@ -19,7 +19,7 @@
         <nexus.snapshot.server.id>jboss-snapshots-repository</nexus.snapshot.server.id>
         <nexus.snapshot.server.url>https://repository.jboss.org/nexus/content/repositories/snapshots/</nexus.snapshot.server.url>
         <testng.version>6.14.3</testng.version>
-        <jgroups.version>5.2.0.Final</jgroups.version>
+        <jgroups.version>5.2.1.Final-SNAPSHOT</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
         <mapdb.version>1.0.8</mapdb.version>
         <commons-io.version>2.7</commons-io.version>
