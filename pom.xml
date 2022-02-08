@@ -21,6 +21,7 @@
         <testng.version>6.14.3</testng.version>
         <jgroups.version>5.2.1.Final-SNAPSHOT</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
+        <rocksdb.version>6.27.3</rocksdb.version>
         <mapdb.version>1.0.8</mapdb.version>
         <commons-io.version>2.7</commons-io.version>
         <log4j.version>2.17.1</log4j.version>
@@ -156,6 +157,12 @@
             <groupId>org.fusesource.leveldbjni</groupId>
             <artifactId>leveldbjni-all</artifactId>
             <version>${leveldbjni.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.rocksdb</groupId>
+            <artifactId>rocksdbjni</artifactId>
+            <version>${rocksdb.version}</version>
+            <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.mapdb</groupId>
