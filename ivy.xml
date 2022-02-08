@@ -22,5 +22,6 @@
         <dependency org="com.beust"                 name="jcommander"     rev="1.+"/>
         <dependency org="commons-io"                name="commons-io"     rev="2.5"/>
         <dependency org="net.jcip"                  name="jcip-annotations" rev="1.0"/>
+        <dependency org="org.rocksdb"               name="rocksdbjni"     rev="6.27.+"/>
     </dependencies>
 </ivy-module>
