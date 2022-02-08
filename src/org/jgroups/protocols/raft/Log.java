@@ -10,7 +10,7 @@ import java.util.function.ObjIntConsumer;
  * @author Bela Ban
  * @since  0.1
  */
-public interface Log {
+public interface Log extends AutoCloseable {
 
     /** Called after the instance has been created
      * @param log_name The name of the log. Implementations can create a DB or file named after this, e.g.
@@ -19,8 +19,8 @@ public interface Log {
      */
     void init(String log_name, Map<String,String> args) throws Exception;
 
-    /** Called when the instance is closed. Should release resource, ie. close a DB connection */
-    void close();
+   // /** Called when the instance is closed. Should release resource, ie. close a DB connection */
+    // void close();
 
     /** Remove the persistent store, e.g. DB table, or file */
     void delete();
