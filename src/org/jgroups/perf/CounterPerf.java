@@ -52,7 +52,7 @@ public class CounterPerf implements Receiver {
     @Property protected int     time=30; // in seconds
     @Property protected boolean print_incrementers;
     @Property protected boolean print_details;
-    @Property protected long    timeout=20000;
+    @Property protected long    timeout=60000; // ms
     // ... add your own here, just don't forget to annotate them with @Property
     // =======================================================
 
@@ -67,7 +67,7 @@ public class CounterPerf implements Receiver {
 
     protected static final String format=
       "[1] Start test [2] View [4] Threads (%d) [6] Time (%,ds)" +
-        "\n[t] incr timeout (%,dms)" +
+        "\n[t] incr timeout (%,dms) [p] print counter" +
         "\n[d] print details (%b)  [i] print incrementers (%b)" +
         "\n[v] Version [x] Exit [X] Exit all\n";
 
@@ -271,6 +271,12 @@ public class CounterPerf implements Receiver {
                     case 'v':
                         System.out.printf("Version: %s, Java version: %s\n", Version.printVersion(),
                                           System.getProperty("java.vm.version", "n/a"));
+                        break;
+                    case 'p':
+                        if(counter == null)
+                            counter=counter_service.getOrCreateCounter("counter", 0);
+                        long cnt=counter.get();
+                        System.out.printf("current count: %d\n", cnt);
                         break;
                     case 'x':
                     case -1:

@@ -370,9 +370,7 @@ public class LevelDBLog implements Log {
         assert (lastAppended == loggedLastAppended);
         assert (currentTerm == loggedCurrentTerm);
         assert (commitIndex == loggedCommitIndex);
-        if (votedFor != null) {
-            assert (votedFor.equals(loggedVotedForAddress));
-        }
+        assert votedFor == null || (votedFor.equals(loggedVotedForAddress));
 
         LogEntry lastAppendedEntry = getLogEntry(lastAppended);
         assert (lastAppendedEntry==null || lastAppendedEntry.term <= currentTerm);
