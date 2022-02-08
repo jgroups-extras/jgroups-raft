@@ -20,9 +20,13 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
+import static org.jgroups.util.Util.printTime;
 
 
 /**
@@ -330,7 +334,7 @@ public class CounterPerf implements Receiver {
         double total_reqs_sec=total_incrs / ( total_time/ 1000.0);
         System.out.println("\n");
         System.out.println(Util.bold(String.format("Throughput: %,.2f increments/sec/node\n" +
-                                                   "Average:  increments %s\n",
+                                                   "Time:       %s / increment\n",
                                                    total_reqs_sec, print(avg_incrs, print_details))));
         System.out.println("\n\n");
     }
@@ -351,9 +355,8 @@ public class CounterPerf implements Receiver {
     }
 
     protected static String print(AverageMinMax avg, boolean details) {
-        return details? String.format("min/avg/max = %,.2f/%,.2f/%,.2f us",
-                                      avg.min() / 1000.0, avg.average() / 1000.0, avg.max() / 1000.0) :
-          String.format("avg = %,.2f us", avg.average() / 1000.0);
+        return details? String.format("min/avg/max = %s", avg.toString(TimeUnit.NANOSECONDS)) :
+          String.format("%s", Util.printTime(avg.average(), TimeUnit.NANOSECONDS));
     }
 
 
@@ -428,9 +431,100 @@ public class CounterPerf implements Receiver {
 
         public String toString() {
             double total_reqs_per_sec=num_increments / (total_time / 1000.0);
-            return String.format("%,.2f increments/sec (%,d increments, %,.2f us / increment)",
-                                 total_reqs_per_sec, num_increments, avg_increments.average() / 1000.0);
+            return String.format("%,.2f increments/sec (%,d increments, %s / increment)",
+                                 total_reqs_per_sec, num_increments,
+                                 Util.printTime(avg_increments.average(), TimeUnit.NANOSECONDS));
         }
+    }
+
+    // todo: copied from JGroups; remove when 5.2.1.Final is used
+    public static class AverageMinMax extends Average {
+        protected long       min=Long.MAX_VALUE, max=0;
+        protected List<Long> values;
+
+        public long          min()                        {return min;}
+        public long          max()                        {return max;}
+        public boolean       usePercentiles()             {return values != null;}
+        public AverageMinMax usePercentiles(int capacity) {values=capacity > 0? new ArrayList<>(capacity) : null; return this;}
+
+        public <T extends Average> T add(long num) {
+            super.add(num);
+            min=Math.min(min, num);
+            max=Math.max(max, num);
+            if(values != null)
+                values.add(num);
+            return (T)this;
+        }
+
+        public <T extends Average> T merge(T other) {
+            if(other.count() == 0)
+                return (T)this;
+            super.merge(other);
+            if(other instanceof AverageMinMax) {
+                AverageMinMax o=(AverageMinMax)other;
+                this.min=Math.min(min, o.min());
+                this.max=Math.max(max, o.max());
+                if(this.values != null)
+                    this.values.addAll(o.values);
+            }
+            return (T)this;
+        }
+
+        public void clear() {
+            super.clear();
+            if(values != null)
+                values.clear();
+            min=Long.MAX_VALUE; max=0;
+        }
+
+        public String percentiles() {
+            if(values == null) return "n/a";
+            Collections.sort(values);
+            double stddev=stddev();
+            return String.format("stddev: %.2f, 50: %d, 90: %d, 99: %d, 99.9: %d, 99.99: %d, 99.999: %d, 100: %d\n",
+                                 stddev, p(50), p(90), p(99), p(99.9), p(99.99), p(99.999), p(100));
+        }
+
+        public String toString() {
+            return count == 0? "n/a" : String.format("min/avg/max=%,d/%,.2f/%,d", min, getAverage(), max);
+        }
+
+        public String toString(TimeUnit u) {
+            if(count == 0)
+                return "n/a";
+            return String.format("%s/%s/%s", printTime(min, u), printTime(getAverage(), u), printTime(max, u));
+        }
+
+        public void writeTo(DataOutput out) throws IOException {
+            super.writeTo(out);
+            Bits.writeLongCompressed(min, out);
+            Bits.writeLongCompressed(max, out);
+        }
+
+        public void readFrom(DataInput in) throws IOException {
+            super.readFrom(in);
+            min=Bits.readLongCompressed(in);
+            max=Bits.readLongCompressed(in);
+        }
+
+
+        protected long p(double percentile) {
+            if(values == null)
+                return -1;
+            int size=values.size();
+            int index=(int)(size * (percentile/100.0));
+            return values.get(index-1);
+        }
+
+        protected double stddev() {
+            if(values == null) return -1.0;
+            double av=average();
+            int size=values.size();
+            double variance=values.stream().map(v -> (v - av)*(v - av)).reduce(0.0, Double::sum) / size;
+            return Math.sqrt(variance);
+        }
+
+
     }
 
 
