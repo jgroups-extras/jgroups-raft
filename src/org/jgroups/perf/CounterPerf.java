@@ -7,6 +7,7 @@ import org.jgroups.blocks.RequestOptions;
 import org.jgroups.blocks.ResponseMode;
 import org.jgroups.blocks.RpcDispatcher;
 import org.jgroups.blocks.atomic.Counter;
+import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.TP;
 import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.tests.perf.PerfUtil;
@@ -22,7 +23,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.LongAdder;
 
 
 /**
@@ -38,7 +38,6 @@ public class CounterPerf implements Receiver {
     protected final List<Address>  members=new ArrayList<>();
     protected volatile View        view;
     protected volatile boolean     looping=true;
-    protected final LongAdder      num_increments=new LongAdder();
     protected ThreadFactory        thread_factory;
 
     protected CounterService       counter_service;
@@ -82,6 +81,7 @@ public class CounterPerf implements Receiver {
             PRINT_INVOKERS=Util.getField(CounterPerf.class, "print_incrementers", true);
             PRINT_DETAILS=Util.getField(CounterPerf.class, "print_details", true);
             PerfUtil.init();
+            ClassConfigurator.addIfAbsent((short)1050, IncrementResult.class);
         }
         catch(Exception e) {
             throw new RuntimeException(e);
@@ -102,9 +102,7 @@ public class CounterPerf implements Receiver {
         }
 
         disp=new RpcDispatcher(channel, this).setReceiver(this).setMethodLookup(id -> METHODS[id]);
-
         counter_service=new CounterService(channel).raftId(name).replTimeout(this.timeout);
-
         channel.connect(groupname);
         local_addr=channel.getAddress();
 
@@ -140,11 +138,9 @@ public class CounterPerf implements Receiver {
 
     // =================================== callbacks ======================================
 
-    public Results startTest() throws Throwable {
+    public IncrementResult startTest() throws Throwable {
         System.out.printf("running for %d seconds\n", time);
         final CountDownLatch latch=new CountDownLatch(1);
-        num_increments.reset();
-
         counter=counter_service.getOrCreateCounter("counter", 0);
 
         Incrementer[] incrementers=new Incrementer[num_threads];
@@ -161,7 +157,7 @@ public class CounterPerf implements Receiver {
         long interval=(long)((time * 1000.0) / 10.0);
         for(int i=1; i <= 10; i++) {
             Util.sleep(interval);
-            System.out.printf("%d: %s\n", i, printAverage(start));
+            System.out.printf("%d: %s\n", i, printAverage(start, incrementers));
         }
 
         for(Incrementer incrementer: incrementers)
@@ -183,10 +179,10 @@ public class CounterPerf implements Receiver {
                 avg_incrs.merge(incrementer.avgIncrementTime());
         }
         if(print_incrementers)
-            System.out.printf("\navg over all incrementers: gets %s\n", print(avg_incrs, print_details));
+            System.out.printf("\navg over all incrementers: %s\n", print(avg_incrs, print_details));
 
         System.out.printf("\ndone (in %s ms)\n", total_time);
-        return new Results((int)num_increments.sum(), total_time, avg_incrs);
+        return new IncrementResult(getTotalIncrements(incrementers), total_time, avg_incrs);
     }
 
     public void quitAll() {
@@ -195,11 +191,19 @@ public class CounterPerf implements Receiver {
         System.exit(0);
     }
 
-    protected String printAverage(long start_time) {
+    protected String printAverage(long start_time, Incrementer[] incrementers) {
         long tmp_time=System.currentTimeMillis() - start_time;
-        long incrs=num_increments.sum();
-        double reqs_sec=(incrs) / (tmp_time / 1000.0);
-        return String.format("%,.0f reqs/sec (%,d increments)", reqs_sec, incrs);
+        long incrs=getTotalIncrements(incrementers);
+        double incrs_sec=incrs / (tmp_time / 1000.0);
+        return String.format("%,.0f increments/sec (%,d increments)", incrs_sec, incrs);
+    }
+
+    protected long getTotalIncrements(Incrementer[] incrementers) {
+        long total=0;
+        if(incrementers != null)
+            for(Incrementer incr: incrementers)
+                total+=incr.numIncrements();
+        return total;
     }
 
 
@@ -246,7 +250,7 @@ public class CounterPerf implements Receiver {
                         printView();
                         break;
                     case '4':
-                        changeFieldAcrossCluster(NUM_THREADS, Util.readIntFromStdin("Number of sender threads: "));
+                        changeFieldAcrossCluster(NUM_THREADS, Util.readIntFromStdin("Number of incrementer threads: "));
                         break;
                     case '6':
                         changeFieldAcrossCluster(TIME, Util.readIntFromStdin("Time (secs): "));
@@ -293,7 +297,7 @@ public class CounterPerf implements Receiver {
 
     /** Kicks off the benchmark on all cluster nodes */
     void startBenchmark() throws Exception {
-        RspList<Results> responses=null;
+        RspList<IncrementResult> responses=null;
         try {
             RequestOptions options=new RequestOptions(ResponseMode.GET_ALL, 0)
               .flags(Message.Flag.OOB, Message.Flag.DONT_BUNDLE, Message.Flag.NO_FC);
@@ -309,10 +313,10 @@ public class CounterPerf implements Receiver {
         AverageMinMax avg_incrs=null;
 
         System.out.println("\n======================= Results: ===========================");
-        for(Map.Entry<Address,Rsp<Results>> entry: responses.entrySet()) {
+        for(Map.Entry<Address,Rsp<IncrementResult>> entry: responses.entrySet()) {
             Address mbr=entry.getKey();
-            Rsp<Results> rsp=entry.getValue();
-            Results result=rsp.getValue();
+            Rsp<IncrementResult> rsp=entry.getValue();
+            IncrementResult result=rsp.getValue();
             if(result != null) {
                 total_incrs+=result.num_increments;
                 total_time+=result.total_time;
@@ -326,32 +330,11 @@ public class CounterPerf implements Receiver {
         double total_reqs_sec=total_incrs / ( total_time/ 1000.0);
         System.out.println("\n");
         System.out.println(Util.bold(String.format("Throughput: %,.2f increments/sec/node\n" +
-                                                   "Roundtrip:  gets %s\n",
+                                                   "Average:  increments %s\n",
                                                    total_reqs_sec, print(avg_incrs, print_details))));
         System.out.println("\n\n");
     }
     
-
-
-    static double getReadPercentage() throws Exception {
-        double tmp=Util.readDoubleFromStdin("Read percentage: ");
-        if(tmp < 0 || tmp > 1.0) {
-            System.err.println("read percentage must be >= 0 or <= 1.0");
-            return -1;
-        }
-        return tmp;
-    }
-
-    int getAnycastCount() throws Exception {
-        int tmp=Util.readIntFromStdin("Anycast count: ");
-        View tmp_view=channel.getView();
-        if(tmp > tmp_view.size()) {
-            System.err.println("anycast count must be smaller or equal to the view size (" + tmp_view + ")\n");
-            return -1;
-        }
-        return tmp;
-    }
-
 
     protected void changeFieldAcrossCluster(Field field, Object value) throws Exception {
         disp.callRemoteMethods(null, new MethodCall(SET, field.getName(), value), RequestOptions.SYNC());
@@ -377,6 +360,7 @@ public class CounterPerf implements Receiver {
 
     protected class Incrementer implements Runnable {
         private final CountDownLatch latch;
+        private long                 num_increments;
         private final AverageMinMax  avg_incrtime=new AverageMinMax(); // in ns
         private volatile boolean     running=true;
 
@@ -385,9 +369,9 @@ public class CounterPerf implements Receiver {
             this.latch=latch;
         }
 
-        
+        public long          numIncrements()    {return num_increments;}
         public AverageMinMax avgIncrementTime() {return avg_incrtime;}
-        public void          stop()    {running=false;}
+        public void          stop()             {running=false;}
 
         public void run() {
             try {
@@ -403,7 +387,7 @@ public class CounterPerf implements Receiver {
                     counter.incrementAndGet();
                     long incr_time=System.nanoTime()-start;
                     avg_incrtime.add(incr_time);
-                    num_increments.increment();
+                    num_increments++;
                 }
                 catch(Throwable t) {
                     if(running)
@@ -414,15 +398,15 @@ public class CounterPerf implements Receiver {
 
     }
 
-    protected static class Results implements Streamable {
+    protected static class IncrementResult implements Streamable {
         protected long          num_increments;
         protected long          total_time;     // in ms
         protected AverageMinMax avg_increments; // in ns
 
-        public Results() {
+        public IncrementResult() {
         }
 
-        public Results(int num_increments, long total_time, AverageMinMax avg_increments) {
+        public IncrementResult(long num_increments, long total_time, AverageMinMax avg_increments) {
             this.num_increments=num_increments;
             this.total_time=total_time;
             this.avg_increments=avg_increments;
@@ -444,7 +428,7 @@ public class CounterPerf implements Receiver {
 
         public String toString() {
             double total_reqs_per_sec=num_increments / (total_time / 1000.0);
-            return String.format("%,.2f reqs/sec (%,d increments, increment avg %,.2f us)",
+            return String.format("%,.2f increments/sec (%,d increments, %,.2f us / increment)",
                                  total_reqs_per_sec, num_increments, avg_increments.average() / 1000.0);
         }
     }

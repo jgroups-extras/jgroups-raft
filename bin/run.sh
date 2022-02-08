@@ -5,7 +5,7 @@
 ## bind address, set the network interface to use for clustering traffic
 #BIND_ADDR=192.168.1.5
 #BIND_ADDR=match-interface:en.*
-BIND_ADDR=site_local
+#BIND_ADDR=site_local
 
 ################# CHANGE THIS ##############################
 #BIND_ADDR=match-address:192.168.1.*
@@ -34,7 +34,7 @@ FLAGS="$FLAGS -Xshare:off"
 #GC="-XX:+UseParNewGC -XX:+UseConcMarkSweepGC" ## concurrent mark and sweep (CMS) collector
 
 JMX="-Dcom.sun.management.jmxremote"
-EXPERIMENTAL="$EXPERIMENTAL -XX:+EliminateLocks -XX:+UseBiasedLocking"
+EXPERIMENTAL="$EXPERIMENTAL -XX:+EliminateLocks"
 #JMC="-XX:+UnlockCommercialFeatures -XX:+FlightRecorder"
 # DEBUG="-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:8787"
 
