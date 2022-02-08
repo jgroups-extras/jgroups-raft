@@ -6,6 +6,7 @@ import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RocksDBLog;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
@@ -30,6 +31,7 @@ public class LogTest {
         return new Object[][] {
           /*{new MapDBLog()},*/
           {new LevelDBLog()},
+          {new RocksDBLog()},
           {new InMemoryLog()}
         };
     }
