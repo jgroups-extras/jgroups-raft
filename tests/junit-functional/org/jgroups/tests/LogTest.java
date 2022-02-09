@@ -1,7 +1,14 @@
 package org.jgroups.tests;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
+import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
@@ -11,10 +18,6 @@ import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.testng.Assert.*;
 
 /**
  * Tests all {@link org.jgroups.protocols.raft.Log} implementations for correctness
@@ -32,7 +35,8 @@ public class LogTest {
           /*{new MapDBLog()},*/
           {new LevelDBLog()},
           {new RocksDBLog()},
-          {new InMemoryLog()}
+          {new InMemoryLog()},
+          {new FileBasedLog()}
         };
     }
 
@@ -135,9 +139,9 @@ public class LogTest {
         log.init(filename, null);
         byte[] buf=new byte[10];
         for(int i=0; i < 30; i++) {
-            log.append(i, false, new LogEntry(i, buf));
+            log.append(i + 1, false, new LogEntry(i+1, buf));
         }
-        assertIndices(0,29,0,29);
+        assertIndices(0,30,0,30);
     }
 
     public void testDeleteEntriesInTheMiddle(Log log) throws Exception {
@@ -145,7 +149,7 @@ public class LogTest {
         log.init(filename, null);
         byte[] buf=new byte[10];
         append(log, 1, false, buf, 1,1,1, 2,2,2, 3,3,3,3,3);
-        log.commitIndex(11);
+        log.commitIndex(5);
 
         log.deleteAllEntriesStartingFrom(6);
         assertIndices(0,5,5,2);
@@ -162,7 +166,8 @@ public class LogTest {
         log.init(filename, null);
         byte[] buf=new byte[10];
         append(log, 1, false, buf, 1,1,1, 2,2,2, 3,3,3,3,3);
-        log.commitIndex(11);
+        // RAFT does not allow rollback
+        // log.commitIndex(11);
 
         log.deleteAllEntriesStartingFrom(1);
         assertIndices(0,0,0,0);
@@ -175,7 +180,7 @@ public class LogTest {
         log.init(filename, null);
         byte[] buf=new byte[10];
         append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
-        log.commitIndex(11);
+        log.commitIndex(10);
 
         log.deleteAllEntriesStartingFrom(11);
         assertIndices(0, 10, 10, 3);
@@ -273,18 +278,18 @@ public class LogTest {
 
         final AtomicInteger cnt=new AtomicInteger(0);
         log.forEach((entry,index) -> cnt.incrementAndGet());
-        assert cnt.get() == 10;
+        assertEquals(cnt.get(), 10);
 
         cnt.set(0);
         log.truncate(8);
 
         append(log, 11, false, buf, 6,6,6, 7,7,7, 8,8,8,8);
         log.forEach((entry,index) -> cnt.incrementAndGet());
-        assert cnt.get() == 13;
+        assertEquals(cnt.get(), 13);
 
         cnt.set(0);
         log.forEach((entry,index) -> cnt.incrementAndGet(), 0, 25);
-        assert cnt.get() == 13;
+        assertEquals(cnt.get(), 13);
     }
 
 
@@ -298,10 +303,10 @@ public class LogTest {
     }
 
     protected void assertIndices(int first_applied, int last_applied, int commit_index, int current_term) {
-        assertEquals(log.firstAppended(), first_applied);
-        assertEquals(log.lastAppended(),  last_applied);
-        assertEquals(log.commitIndex(),  commit_index);
-        assertEquals(log.currentTerm(),  current_term);
+        assertEquals(log.firstAppended(), first_applied, "Incorrect first appended");
+        assertEquals(log.lastAppended(),  last_applied, "Incorrect last appended");
+        assertEquals(log.commitIndex(),  commit_index, "Incorrect commit index");
+        assertEquals(log.currentTerm(),  current_term, "Incorrect current term");
     }
 
 }

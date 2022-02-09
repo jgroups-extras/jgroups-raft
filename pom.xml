@@ -25,6 +25,8 @@
         <mapdb.version>1.0.8</mapdb.version>
         <commons-io.version>2.7</commons-io.version>
         <log4j.version>2.17.1</log4j.version>
+        <jmh.version>1.34</jmh.version>
+        <mashona.version>1.1.0</mashona.version>
 
         <conf.dir>${project.basedir}/conf</conf.dir>
         <tmp.dir>${project.basedir}/tmp</tmp.dir>
@@ -192,11 +194,30 @@
             <version>1.0</version>
             <optional>true</optional>
         </dependency>
+        <dependency>
+            <groupId>io.mashona</groupId>
+            <artifactId>mashona-logwriting</artifactId>
+            <version>${mashona.version}</version>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Test dependencies -->
         <dependency>
             <groupId>org.testng</groupId>
             <artifactId>testng</artifactId>
             <version>${testng.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openjdk.jmh</groupId>
+            <artifactId>jmh-core</artifactId>
+            <version>${jmh.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openjdk.jmh</groupId>
+            <artifactId>jmh-generator-annprocess</artifactId>
+            <version>${jmh.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -407,6 +428,24 @@
                     <!-- Disable modular classpath -->
                     <useModulePath>false</useModulePath>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-dependencies</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy-dependencies</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/libs</outputDirectory>
+                            <includeScope>test</includeScope>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
         <pluginManagement>
