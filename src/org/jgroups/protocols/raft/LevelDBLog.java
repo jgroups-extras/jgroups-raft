@@ -193,10 +193,11 @@ public class LevelDBLog implements Log {
 
     @Override
     public void truncate(int upto_index) {
-        if ((upto_index< firstAppended) || (upto_index> lastAppended)) {
-            //@todo wrong index, must throw runtime exception
+        if ((upto_index< firstAppended) || (upto_index> lastAppended))
             return;
-        }
+
+        if(upto_index > commitIndex)
+            upto_index=commitIndex;
 
         WriteBatch batch=null;
         try {
@@ -216,11 +217,9 @@ public class LevelDBLog implements Log {
 
     @Override
     public void deleteAllEntriesStartingFrom(int start_index) {
-
-        if ((start_index< firstAppended) || (start_index> lastAppended)) {
-            //@todo wrong index, must throw runtime exception
+        if ((start_index< firstAppended) || (start_index> lastAppended))
             return;
-        }
+
         WriteBatch batch=null;
         try {
             batch = db.createWriteBatch();
@@ -271,7 +270,8 @@ public class LevelDBLog implements Log {
 
     @Override
     public String toString() {
-        return "firstAppended=" + firstAppended + ", lastAppended=" + lastAppended + ", commitIndex=" + commitIndex + ", currentTerm=" + currentTerm;
+        return String.format("first=%d, last=%d, commit=%d, term=%d (size=%d)",
+                             firstAppended, lastAppended, commitIndex, currentTerm, size());
     }
 
     private LogEntry getLogEntry(int index) {

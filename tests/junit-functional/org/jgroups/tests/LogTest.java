@@ -285,9 +285,26 @@ public class LogTest {
         assert cnt.get() == 13;
     }
 
+    public void testSize(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        assert log.size() == 0;
+        log.append(1, false, new LogEntry(5, buf));
+        assert log.size() == 1;
+        log.append(2, false, new LogEntry(5, buf));
+        assert log.size() == 2;
+
+        for(int i=3; i <= 8; i++)
+            log.append(i, false, new LogEntry(5, buf));
+        assert log.size() == 8;
+        log.commitIndex(3);
+        log.truncate(3); // excluding 3
+        assert log.size() == 6;
+    }
 
 
-    protected void append(final Log log, int start_index, boolean overwrite, final byte[] buf, int ... terms) {
+    protected static void append(final Log log, int start_index, boolean overwrite, final byte[] buf, int... terms) {
         int index=start_index;
         for(int term: terms) {
             log.append(index, overwrite, new LogEntry(term, buf));

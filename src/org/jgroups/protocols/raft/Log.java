@@ -101,4 +101,9 @@ public interface Log extends AutoCloseable {
 
     /** Applies a function to all elements in range [first_appended .. last_appended] */
     void forEach(ObjIntConsumer<LogEntry> function);
+
+    default int size() {
+        int last=lastAppended(), first=firstAppended();
+        return first == 0? last : last-first+1;
+    }
 }

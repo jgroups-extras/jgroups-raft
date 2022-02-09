@@ -1,45 +1,7 @@
 package org.jgroups.protocols.raft;
 
-import java.io.DataInput;
-import java.io.DataInputStream;
-import java.io.DataOutput;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.lang.reflect.Array;
-import java.net.InetAddress;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
-import java.util.function.ObjIntConsumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
-import org.jgroups.Address;
-import org.jgroups.BytesMessage;
-import org.jgroups.EmptyMessage;
-import org.jgroups.Event;
-import org.jgroups.JChannel;
-import org.jgroups.Message;
-import org.jgroups.View;
+import net.jcip.annotations.GuardedBy;
+import org.jgroups.*;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.ManagedOperation;
@@ -49,13 +11,23 @@ import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
-import org.jgroups.util.ExtendedUUID;
-import org.jgroups.util.MessageBatch;
-import org.jgroups.util.Streamable;
-import org.jgroups.util.TimeScheduler;
-import org.jgroups.util.Util;
+import org.jgroups.util.*;
 
-import net.jcip.annotations.GuardedBy;
+import java.io.*;
+import java.lang.reflect.Array;
+import java.net.InetAddress;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.function.ObjIntConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 /**
@@ -166,7 +138,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @ManagedAttribute(description="Index of the highest committed log entry")
     protected int                     commit_index;
 
-    @ManagedAttribute(description="Is a snapshot in progress")
+    @ManagedAttribute(description="The number of snapshots performed")
+    protected int                     num_snapshots;
     protected boolean                 snapshotting;
 
     protected int                     log_size_bytes; // keeps counts of the bytes added to the log
@@ -207,6 +180,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public RAFT         remRoleListener(RoleChange c) {this.role_change_listeners.remove(c); return this;}
     @ManagedAttribute(description="Is the resend task running")
     public boolean      resendTaskRunning() {return resend_task != null && !resend_task.isDone();}
+
+    public void resetStats() {
+        super.resetStats();
+        num_snapshots=0;
+    }
 
     @Property(description="List of members (logical names); majority is computed from it")
     public void setMembers(String list) {
@@ -259,11 +237,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     @ManagedAttribute(description="Number of log entries in the log")
-    public int logSize() {
-        final AtomicInteger count=new AtomicInteger(0);
-        log_impl.forEach((entry,index) -> count.incrementAndGet());
-        return count.intValue();
-    }
+    public int logSize() {return log_impl.size();}
 
 
     @ManagedAttribute(description="Number of bytes in the log")
@@ -375,6 +349,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         try {
             snapshotting=true;
             doSnapshot();
+            num_snapshots++;
         }
         finally {
             snapshotting=false;
