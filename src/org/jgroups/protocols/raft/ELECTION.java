@@ -56,7 +56,7 @@ public class ELECTION extends Protocol {
     @ManagedAttribute(description="Number of votes this candidate received in the current term")
     protected int               current_votes;
 
-    @ManagedAttribute(description="No election will ever be started if true; this node will always be a follower. " +
+    @Property(description="No election will ever be started if true; this node will always be a follower. " +
       "Used only for testing and may get removed. Don't use !")
     protected boolean           no_elections;
 

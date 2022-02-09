@@ -1,7 +1,10 @@
 package org.jgroups.protocols.raft;
 
 import org.apache.commons.io.FileUtils;
-import org.iq80.leveldb.*;
+import org.iq80.leveldb.DB;
+import org.iq80.leveldb.DBIterator;
+import org.iq80.leveldb.Options;
+import org.iq80.leveldb.WriteBatch;
 import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.util.Util;
@@ -9,9 +12,10 @@ import org.jgroups.util.Util;
 import java.io.File;
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.ObjIntConsumer;
 
-import static org.fusesource.leveldbjni.JniDBFactory.*;
+import static org.fusesource.leveldbjni.JniDBFactory.factory;
 import static org.jgroups.raft.util.IntegerHelper.fromByteArrayToInt;
 import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
 
@@ -21,7 +25,7 @@ import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
  */
 public class LevelDBLog implements Log {
 
-    protected final org.jgroups.logging.Log log= LogFactory.getLog(this.getClass());
+    protected final org.jgroups.logging.Log log=LogFactory.getLog(this.getClass());
 
     private static final byte[] FIRSTAPPENDED = "FA".getBytes();
     private static final byte[] LASTAPPENDED  = "LA".getBytes();
@@ -29,22 +33,18 @@ public class LevelDBLog implements Log {
     private static final byte[] COMMITINDEX   = "CX".getBytes();
     private static final byte[] VOTEDFOR      = "VF".getBytes();
 
-    private DB db;
-    private File dbFileName;
+    private DB      db;
+    private File    dbFileName;
+    private int     currentTerm;
+    private Address votedFor;
+    private int     firstAppended; // always: firstAppened <= commitIndex <= lastAppened
+    private int     commitIndex;
+    private int     lastAppended;
 
-    private int currentTerm = 0;
-    private Address votedFor = null;
-
-    private int commitIndex   = 0;
-    private int lastAppended  = 0;
-    private int firstAppended = 0;
 
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
-
-        Options options = new Options();
-        options.createIfMissing(true);
-
+        Options options = new Options().createIfMissing(true);
         this.dbFileName = new File(log_name);
         db = factory.open(dbFileName, options);
         log.trace("opened %s", db);
@@ -60,104 +60,84 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void close() {
-        try {
-            log.trace("closing DB: %s", db);
-
-            if (db!= null) db.close();
-            currentTerm = 0;
-            votedFor = null;
-            commitIndex = 0;
-            lastAppended= 0;
-            firstAppended= 0;
-        } catch (IOException e) {
-            //@todo proper logging, etc
-            e.printStackTrace();
-        }
+    public void close() throws IOException {
+        log.trace("closing DB: %s", db);
+        if (db != null) db.close();
+        currentTerm = 0;
+        votedFor = null;
+        commitIndex = 0;
+        lastAppended= 0;
+        firstAppended= 0;
     }
 
     @Override
-    public void delete() {
-        this.close();
-        try {
-            log.trace("deleting DB directory: %s", dbFileName);
-            FileUtils.deleteDirectory(dbFileName);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+    public void delete() throws IOException {
+        Util.close(this);
+        log.trace("deleting DB directory: %s", dbFileName);
+        FileUtils.deleteDirectory(dbFileName);
     }
 
 
-    @Override
-    public int currentTerm() {
-        return currentTerm;
-    }
 
-    @Override
-    public Log currentTerm(int new_term) {
-        currentTerm = new_term;
-        log.trace("Updating current term: %d", currentTerm);
-        db.put(CURRENTTERM, fromIntToByteArray(currentTerm));
-        return this;
-    }
 
-    @Override
-    public Address votedFor() {
-        return votedFor;
-    }
 
-    @Override
-    public Log votedFor(Address member) {
-        votedFor = member;
-        try {
-            log.debug("Updating Voted for: %s", votedFor);
-            db.put(VOTEDFOR, Util.objectToByteBuffer(member));
-        } catch (Exception e) {
-            e.printStackTrace(); // todo: better error handling
-        }
-        return this;
-    }
+    @Override public int     firstAppended() {return firstAppended;}
+    @Override public int     commitIndex()   {return commitIndex;}
+    @Override public int     lastAppended()  {return lastAppended;}
+    @Override public int     currentTerm()   {return currentTerm;}
+    @Override public Address votedFor()      {return votedFor;}
 
-    @Override
-    public int firstAppended() {
-        return firstAppended;
-    }
-
-    @Override
-    public int commitIndex() {
-        return commitIndex;
-    }
 
     @Override
     public Log commitIndex(int new_index) {
-        commitIndex = new_index;
-        log.trace("Updating commit index: %d", commitIndex);
-        db.put(COMMITINDEX, fromIntToByteArray(commitIndex));
+        if(new_index == commitIndex)
+            return this;
+        log.trace("Updating commit index: %d", new_index);
+        db.put(COMMITINDEX, fromIntToByteArray(new_index));
+        commitIndex=new_index;
         return this;
     }
 
+
     @Override
-    public int lastAppended() {
-        return lastAppended;
+    public Log currentTerm(int new_term) {
+        if(new_term == currentTerm)
+            return this;
+        log.trace("Updating current term: %d", new_term);
+        db.put(CURRENTTERM, fromIntToByteArray(new_term));
+        currentTerm = new_term;
+        return this;
     }
+
+
+
+    @Override
+    public Log votedFor(Address member) {
+        if(Objects.equals(member,votedFor))
+            return this;
+        try {
+            log.debug("Updating voted for: %s", member);
+            db.put(VOTEDFOR, Util.objectToByteBuffer(member));
+            votedFor=member;
+        }
+        catch (Exception ignored) {
+        }
+        return this;
+    }
+
 
     @Override
     public void append(int index, boolean overwrite, LogEntry... entries) {
-
         log.trace("Appending %d entries", entries.length);
-        try (WriteBatch batch = db.createWriteBatch()){
+        try (WriteBatch batch = db.createWriteBatch()) {
             for(LogEntry entry : entries) {
-                if(overwrite) {
+                if(overwrite)
                     appendEntry(index, entry, batch);
-                }
-                else {
+                else
                     appendEntryIfAbsent(index, entry, batch);
-                }
 
                 updateLastAppended(index, batch);
-                if(entry.term != currentTerm) {
-                	updateCurrentTerm(entry.term, batch);
-                }
+                updateCurrentTerm(entry.term, batch);
 
                 log.trace("Flushing batch to DB: %s", batch);
                 db.write(batch);
@@ -165,24 +145,36 @@ public class LevelDBLog implements Log {
             }
         }
         catch(Exception ex) {
-            ex.printStackTrace(); // todo: better error handling
         }
 
     }
 
     @Override
     public LogEntry get(int index) {
-        return getLogEntry(index);
+        byte[] entryBytes=db.get(fromIntToByteArray(index));
+        try {
+            return entryBytes != null? Util.streamableFromByteBuffer(LogEntry.class, entryBytes) : null;
+        }
+        catch (Exception ex) {
+            throw new RuntimeException(String.format("getting log entry at index %d failed", index), ex);
+        }
     }
 
     @Override
     public void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
-        start_index = Math.max(start_index, Math.max(firstAppended,1));
-        end_index = Math.min(end_index, lastAppended);
-
-        for (int i=start_index; i<=end_index; i++) {
-            LogEntry entry = getLogEntry(i);
-            function.accept(entry, i);
+        start_index=Math.max(start_index, Math.max(firstAppended,1));
+        end_index=Math.min(end_index, lastAppended);
+        DBIterator it=db.iterator();  // ((DBIterator)it).seekToFirst();
+        it.seek(fromIntToByteArray(start_index));
+        for(int i=start_index; i <= end_index && it.hasNext(); i++) {
+            Map.Entry<byte[],byte[]> e=it.next();
+            try {
+                LogEntry l=Util.streamableFromByteBuffer(LogEntry.class, e.getValue());
+                function.accept(l, i);
+            }
+            catch(Exception ex) {
+                throw new RuntimeException("failed deserializing LogRecord", ex);
+            }
         }
     }
 
@@ -193,21 +185,21 @@ public class LevelDBLog implements Log {
 
     @Override
     public void truncate(int upto_index) {
-        if ((upto_index< firstAppended) || (upto_index> lastAppended)) {
-            //@todo wrong index, must throw runtime exception
+        if (upto_index< firstAppended|| upto_index> lastAppended)
             return;
-        }
+
+        if(upto_index > commitIndex)
+            upto_index=commitIndex;
 
         WriteBatch batch=null;
         try {
             batch = db.createWriteBatch();
-            for (int index =firstAppended; index < upto_index; index++) {
+            for (int index=firstAppended; index < upto_index; index++) {
                 batch.delete(fromIntToByteArray(index));
             }
-
-            firstAppended= upto_index;
             batch.put(FIRSTAPPENDED, fromIntToByteArray(upto_index));
             db.write(batch);
+            firstAppended=upto_index;
         }
         finally {
             Util.close(batch);
@@ -215,19 +207,17 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void deleteAllEntriesStartingFrom(int start_index) {
-
-        if ((start_index< firstAppended) || (start_index> lastAppended)) {
-            //@todo wrong index, must throw runtime exception
+    public void deleteAllEntriesStartingFrom(final int start_index) {
+        if (start_index< firstAppended || start_index> lastAppended)
             return;
-        }
+
         WriteBatch batch=null;
         try {
             batch = db.createWriteBatch();
             for (int index = start_index; index <= lastAppended; index++) {
                 batch.delete(fromIntToByteArray(index));
             }
-            LogEntry last = getLogEntry(start_index-1);
+            LogEntry last = get(start_index-1);
 
             if (last == null) {
                 updateCurrentTerm(0, batch);
@@ -271,18 +261,8 @@ public class LevelDBLog implements Log {
 
     @Override
     public String toString() {
-        return "firstAppended=" + firstAppended + ", lastAppended=" + lastAppended + ", commitIndex=" + commitIndex + ", currentTerm=" + currentTerm;
-    }
-
-    private LogEntry getLogEntry(int index) {
-        byte[] entryBytes = db.get(fromIntToByteArray(index));
-        LogEntry entry = null;
-        try {
-            if (entryBytes != null) entry =Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return entry;
+        return String.format("first=%d, last=%d, commit=%d, term=%d (size=%d)",
+                             firstAppended, lastAppended, commitIndex, currentTerm, size());
     }
 
     private void appendEntryIfAbsent(int index, LogEntry entry, WriteBatch batch) throws Exception {
@@ -300,16 +280,20 @@ public class LevelDBLog implements Log {
     }
 
 
-    private void updateCurrentTerm(int updatedCurrentTerm, WriteBatch batch) {
-        currentTerm = updatedCurrentTerm;
-        log.trace("Updating currentTerm: %d", updatedCurrentTerm);
-        batch.put(CURRENTTERM, fromIntToByteArray(currentTerm));
+    private void updateCurrentTerm(int new_term, WriteBatch batch) {
+        if(new_term == currentTerm)
+            return;
+        log.trace("Updating currentTerm: %d", new_term);
+        batch.put(CURRENTTERM, fromIntToByteArray(new_term));
+        currentTerm = new_term;
     }
 
-    private void updateLastAppended(int updatedLastAppended, WriteBatch batch) {
-        lastAppended = updatedLastAppended;
-        log.trace("Updating lastAppended: %d", updatedLastAppended);
-        batch.put(LASTAPPENDED, fromIntToByteArray(lastAppended));
+    private void updateLastAppended(int new_last_appended, WriteBatch batch) {
+        if(new_last_appended == lastAppended)
+            return;
+        log.trace("Updating lastAppended: %d", new_last_appended);
+        batch.put(LASTAPPENDED, fromIntToByteArray(new_last_appended));
+        lastAppended = new_last_appended;
     }
 
 
@@ -372,7 +356,7 @@ public class LevelDBLog implements Log {
         assert (commitIndex == loggedCommitIndex);
         assert votedFor == null || (votedFor.equals(loggedVotedForAddress));
 
-        LogEntry lastAppendedEntry = getLogEntry(lastAppended);
+        LogEntry lastAppendedEntry = get(lastAppended);
         assert (lastAppendedEntry==null || lastAppendedEntry.term <= currentTerm);
 
     }

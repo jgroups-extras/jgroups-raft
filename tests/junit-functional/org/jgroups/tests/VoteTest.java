@@ -47,7 +47,7 @@ public class VoteTest {
             assert false : "Starting a non-member should throw an exception";
         }
         catch(Exception e) {
-            System.out.println("received exception as expected: " + e.toString());
+            System.out.println("received exception as expected: " + e);
         }
         finally {
             close(true, true, non_member);
@@ -305,8 +305,12 @@ public class VoteTest {
             ProtocolStack stack=ch.getProtocolStack();
             stack.removeProtocol(DISCARD.class);
             RAFT raft=stack.findProtocol(RAFT.class);
-            if(remove_log)
-                raft.log().delete(); // remove log files after the run
+            if(remove_log) {
+                try {
+                    raft.log().delete(); // remove log files after the run
+                }
+                catch(Exception ignored) {}
+            }
             if(remove_snapshot)
                 raft.deleteSnapshot();
             Util.close(ch);

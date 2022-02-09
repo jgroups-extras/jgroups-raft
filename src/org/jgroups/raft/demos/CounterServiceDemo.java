@@ -49,7 +49,7 @@ public class CounterServiceDemo {
                         "first-applied=" + firstApplied() +
                         ", last-applied=" + counter_service.lastApplied() +
                         ", commit-index=" + counter_service.commitIndex() +
-                        ", log size=" + Util.printBytes(logSize()) + "\n");
+                        ", log size=" + logSize() + "\n");
 
                 switch(key) {
                     case '0':

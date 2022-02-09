@@ -58,7 +58,6 @@ public class RaftHandle implements Settable {
     public void         snapshot() throws Exception                  {raft.snapshot();}
     public Log          log()                                        {return raft.log();}
     public int          logSize()                                    {return raft.logSize();}
-    public int          logSizeInBytes()                             {return raft.logSizeInBytes();}
 
     public void logEntries(ObjIntConsumer<LogEntry> func) {
         raft.logEntries(func);

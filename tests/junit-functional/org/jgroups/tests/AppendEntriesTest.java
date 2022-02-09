@@ -39,7 +39,7 @@ public class AppendEntriesTest {
     protected ReplicatedStateMachine<Integer,Integer> as, bs, cs;
     protected static final Method                     handleAppendEntriesRequest;
     protected static final String                     CLUSTER="AppendEntriesTest";
-    protected static final List<String>               members=Arrays.asList("A", "B", "C");
+    protected final List<String>                      members=Arrays.asList("A", "B", "C");
 
     static {
         try {
@@ -291,7 +291,8 @@ public class AppendEntriesTest {
         assertLogIndices(log, 2, 1, 4);
     }
 
-    public void testIncorrectAppend() throws Exception {
+    /** Tests append _after_ the last appended index; returns an AppendResult with index=last_appended */
+    public void testAppendAfterLastAppened() throws Exception {
         Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
@@ -326,6 +327,7 @@ public class AppendEntriesTest {
             assertSame(as, bs); // if as is not equal to bs, `as` should then be equals to `cs`
         } catch (AssertionError e) {
             assertSame(as, cs);
+            throw e;
         }
     }
 
@@ -350,7 +352,7 @@ public class AppendEntriesTest {
         append(impl,  9, 6, new LogEntry(6, buf), leader, 1);
         append(impl, 10, 6, new LogEntry(6, buf), leader, 1);
 
-        // now append(index=11,term=5) -> should return false result with index=8
+        // now append(index=11,term=7) -> should return false result with index=8
         AppendResult result=append(impl, 11, 7, new LogEntry(6, buf), leader, 1);
         assert !result.success();
         assertEquals(result.index(), 8);
@@ -378,8 +380,8 @@ public class AppendEntriesTest {
         append(impl,  9, 6, new LogEntry(6, buf), leader, 1);
         append(impl, 10, 6, new LogEntry(6, buf), leader, 10);
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 1);
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
+        assertTrue(result.success());
+        assertEquals(result.index(), 11);
         assertLogIndices(log, 11, 10, 6);
     }
 
@@ -402,8 +404,8 @@ public class AppendEntriesTest {
         append(impl,  8, 5, new LogEntry(6, buf), leader, 1);
         append(impl,  9, 6, new LogEntry(6, buf), leader, 9);
         AppendResult result = append(impl, 11, 6, new LogEntry(6, buf), leader, 9);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 9);
+        assertFalse(result.success());
+        assertEquals(result.index(), 9);
         assertLogIndices(log, 9, 9, 6);
     }
 
@@ -422,8 +424,8 @@ public class AppendEntriesTest {
         append(impl, 3, 1, new LogEntry(1, buf), leader, 1);
         append(impl, 4, 1, new LogEntry(4, buf), leader, 4);
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 4);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 4);
+        assertFalse(result.success());
+        assertEquals(result.index(), 4);
         assertLogIndices(log, 4, 4, 4);
     }
 
@@ -449,8 +451,8 @@ public class AppendEntriesTest {
         append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
         // Overwrites existing entry; does *not* advance last_applied in log
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
+        assertTrue(result.success());
+        assertEquals(result.index(), 11);
         assertLogIndices(log, 11, 11, 6);
     }
 
@@ -478,8 +480,8 @@ public class AppendEntriesTest {
         append(impl, 12, 7, new LogEntry(7, buf), leader, 12);
 
         AppendResult result=append(impl, buf, leader, 10, 6, 8, 12);
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
+        assertTrue(result.success());
+        assertEquals(result.index(), 11);
         assertLogIndices(log, 11, 11, 8);
     }
 
@@ -500,8 +502,8 @@ public class AppendEntriesTest {
         append(impl,  6, 4, new LogEntry(4, buf), leader, 1);
         append(impl,  7, 4, new LogEntry(4, buf), leader, 7);
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 7);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 7);
+        assertFalse(result.success());
+        assertEquals(result.index(), 7);
         assertLogIndices(log, 7, 7, 4);
     }
 
@@ -527,16 +529,16 @@ public class AppendEntriesTest {
         append(impl, 11, 3, new LogEntry(3, buf), leader, 11);
 
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 7);
+        assertFalse(result.success());
+        assertEquals(result.index(), 7);
         assertLogIndices(log, 11, 11, 3);
     }
 
-    protected static JChannel create(String name, boolean follower) throws Exception {
+    protected JChannel create(String name, boolean follower) throws Exception {
         return create(name, follower, r -> r);
     }
 
-    protected static JChannel create(String name, boolean follower, Function<RAFT, RAFT> config) throws Exception {
+    protected JChannel create(String name, boolean follower, Function<RAFT, RAFT> config) throws Exception {
         return create(name, follower, members, config);
     }
 
@@ -557,8 +559,12 @@ public class AppendEntriesTest {
             if(ch == null)
                 continue;
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            if(remove_log)
-                raft.log().delete(); // remove log files after the run
+            if(remove_log) {
+                try {
+                    raft.log().delete(); // remove log files after the run
+                }
+                catch(Exception ignored) {}
+            }
             if(remove_snapshot)
                 raft.deleteSnapshot();
             Util.close(ch);

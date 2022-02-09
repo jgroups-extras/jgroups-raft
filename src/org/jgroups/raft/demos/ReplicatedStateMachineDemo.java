@@ -147,7 +147,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                                       "first-applied=" + firstApplied() +
                                       ", last-applied=" + rsm.lastApplied() +
                                       ", commit-index=" + rsm.commitIndex() +
-                                      ", log size=" + Util.printBytes(logSize()) + "\n");
+                                      ", log size=" + logSize() + "\n");
             switch(input) {
                 case '1':
                     put(read("key"), read("value"));
@@ -170,7 +170,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                 case '7':
                     try {
                         int num=Util.readIntFromStdin("num: ");
-                        System.out.println("");
+                        System.out.println();
                         String value="hello world #";
                         int print=num / 10;
                         long start=System.currentTimeMillis();

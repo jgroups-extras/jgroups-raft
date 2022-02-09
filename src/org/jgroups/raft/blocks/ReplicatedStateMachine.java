@@ -50,7 +50,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public int  commitIndex()                                      {return raft.commitIndex();}
     public JChannel channel()                                      {return ch;}
     public void snapshot() throws Exception                        {if(raft != null) raft.snapshot();}
-    public int  logSize()                                          {return raft != null? raft.logSizeInBytes() : 0;}
+    public int  logSize()                                          {return raft != null? raft.logSize() : 0;}
     public String raftId()                                         {return raft.raftId();}
     public ReplicatedStateMachine<K,V> raftId(String id)           {raft.raftId(id); return this;}
 
