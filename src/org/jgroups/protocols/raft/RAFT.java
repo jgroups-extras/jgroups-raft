@@ -240,7 +240,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public int logSize() {return log_impl.size();}
 
 
-    @ManagedAttribute(description="Number of bytes in the log")
+    /** This is a managed operation because it should invoked sparingly (costly) */
+    @ManagedOperation(description="Number of bytes in the log")
     public int logSizeInBytes() {
         final AtomicInteger count=new AtomicInteger(0);
         log_impl.forEach((entry,index) -> count.addAndGet(entry.length()));

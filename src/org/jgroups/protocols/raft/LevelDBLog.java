@@ -278,7 +278,7 @@ public class LevelDBLog implements Log {
         byte[] entryBytes = db.get(fromIntToByteArray(index));
         LogEntry entry = null;
         try {
-            if (entryBytes != null) entry =Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
+            if (entryBytes != null) entry=Util.streamableFromByteBuffer(LogEntry.class, entryBytes);
         } catch (Exception e) {
             e.printStackTrace();
         }

@@ -66,8 +66,8 @@ public class CounterPerf implements Receiver {
 
 
     protected static final String format=
-      "[1] Start test [2] View [4] Threads (%d) [6] Time (%,ds)" +
-        "\n[t] incr timeout (%,dms) [p] print counter" +
+      "[1] Start test [2] View [4] Threads (%d) [6] Time (%s)" +
+        "\n[t] incr timeout (%s) [p] print counter" +
         "\n[d] print details (%b)  [i] print incrementers (%b)" +
         "\n[v] Version [x] Exit [X] Exit all\n";
 
@@ -245,7 +245,9 @@ public class CounterPerf implements Receiver {
     public void eventLoop() {
         while(looping) {
             try {
-                int c=Util.keyPress(String.format(format, num_threads, time, timeout, print_details, print_incrementers));
+                int c=Util.keyPress(String.format(format, num_threads, Util.printTime(time, TimeUnit.MILLISECONDS),
+                                                  Util.printTime(timeout, TimeUnit.MILLISECONDS),
+                                                  print_details, print_incrementers));
                 switch(c) {
                     case '1':
                         startBenchmark();

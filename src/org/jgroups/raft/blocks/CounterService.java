@@ -53,7 +53,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public int            lastApplied()                 {return raft.lastApplied();}
     public int            commitIndex()                 {return raft.commitIndex();}
     public void           snapshot() throws Exception   {raft.snapshot();}
-    public int            logSize()                     {return raft.logSizeInBytes();}
+    public int            logSize()                     {return raft.logSize();}
     public String         raftId()                      {return raft.raftId();}
     public CounterService raftId(String id)             {raft.raftId(id); return this;}
 
