@@ -27,15 +27,15 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class DynamicMembershipTest {
-    protected JChannel[]                channels;
-    protected RAFT[]                    rafts;
-    protected Address                   leader;
-    protected static final String       CLUSTER=DynamicMembershipTest.class.getSimpleName();
-    protected static final List<String> mbrs  = Arrays.asList("A", "B", "C");
-    protected static final List<String> mbrs2 = Arrays.asList("A", "B", "C", "D");
-    protected static final List<String> mbrs3 = Arrays.asList("A", "B", "C", "D", "E");
+    protected JChannel[]           channels;
+    protected RAFT[]               rafts;
+    protected Address              leader;
+    protected static final String  CLUSTER=DynamicMembershipTest.class.getSimpleName();
+    protected final List<String>   mbrs  = Arrays.asList("A", "B", "C");
+    protected final List<String>   mbrs2 = Arrays.asList("A", "B", "C", "D");
+    protected final List<String>   mbrs3 = Arrays.asList("A", "B", "C", "D", "E");
 
-    @AfterMethod protected void destroy() {
+    @AfterMethod protected void destroy() throws Exception {
         close(true, true, channels);
     }
 
@@ -50,7 +50,7 @@ public class DynamicMembershipTest {
             assert false : "Starting a non-member should throw an exception";
         }
         catch(Exception e) {
-            System.out.println("received exception as expected: " + e.toString());
+            System.out.println("received exception as expected: " + e);
         }
         finally {
             close(true, true, non_member);
@@ -201,7 +201,7 @@ public class DynamicMembershipTest {
         }
     }
 
-    protected static JChannel create(String name) throws Exception {
+    protected JChannel create(String name) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
@@ -312,8 +312,12 @@ public class DynamicMembershipTest {
             if(ch == null)
                 continue;
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            if(remove_log)
-                raft.log().delete(); // remove log files after the run
+            if(remove_log) {
+                try {
+                    raft.log().delete(); // remove log files after the run
+                }
+                catch(Exception ignored) {}
+            }
             if(remove_snapshot)
                 raft.deleteSnapshot();
             Util.close(ch);

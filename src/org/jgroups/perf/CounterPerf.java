@@ -67,9 +67,8 @@ public class CounterPerf implements Receiver {
 
     protected static final String format=
       "[1] Start test [2] View [4] Threads (%d) [6] Time (%s)" +
-        "\n[t] incr timeout (%s) [p] print counter" +
-        "\n[d] print details (%b)  [i] print incrementers (%b)" +
-        "\n[v] Version [x] Exit [X] Exit all\n";
+        "\n[t] incr timeout (%s) [d] details (%b)  [i] print incrementers (%b)" +
+        "\n[v] Version [x] Exit [X] Exit all %s";
 
 
     static {
@@ -245,9 +244,11 @@ public class CounterPerf implements Receiver {
     public void eventLoop() {
         while(looping) {
             try {
+                long cnt=getCounter();
                 int c=Util.keyPress(String.format(format, num_threads, Util.printTime(time, TimeUnit.MILLISECONDS),
                                                   Util.printTime(timeout, TimeUnit.MILLISECONDS),
-                                                  print_details, print_incrementers));
+                                                  print_details, print_incrementers,
+                                                  cnt < 0? "\n" : String.format(" (counter=%d)\n", cnt)));
                 switch(c) {
                     case '1':
                         startBenchmark();
@@ -273,12 +274,6 @@ public class CounterPerf implements Receiver {
                     case 'v':
                         System.out.printf("Version: %s, Java version: %s\n", Version.printVersion(),
                                           System.getProperty("java.vm.version", "n/a"));
-                        break;
-                    case 'p':
-                        if(counter == null)
-                            counter=counter_service.getOrCreateCounter("counter", 0);
-                        long cnt=counter.get();
-                        System.out.printf("current count: %d\n", cnt);
                         break;
                     case 'x':
                     case -1:
@@ -365,6 +360,17 @@ public class CounterPerf implements Receiver {
     protected static String print(AverageMinMax avg, boolean details) {
         return details? String.format("min/avg/max = %s", avg.toString(TimeUnit.NANOSECONDS)) :
           String.format("%s", Util.printTime(avg.average(), TimeUnit.NANOSECONDS));
+    }
+
+    protected long getCounter() {
+        try {
+            if(counter == null)
+                counter=counter_service.getOrCreateCounter("counter", 0);
+            return counter.get();
+        }
+        catch(Exception ignored) {
+            return -1;
+        }
     }
 
 

@@ -23,7 +23,7 @@ public class TimeoutTest {
     protected ReplicatedStateMachine<Integer,Integer>[] rsms;
 
 
-    @AfterMethod protected void destroy() {
+    @AfterMethod protected void destroy() throws Exception {
         for(JChannel ch: channels) {
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
             raft.deleteLog().deleteSnapshot();
@@ -80,8 +80,7 @@ public class TimeoutTest {
         System.out.printf("-- it took %d member(s) %d ms to get consistent caches\n", rsms.length, time);
 
         System.out.printf("-- contents:\n%s\n\n",
-                          Stream.of(rsms)
-                            .map(r -> String.format("%s: %s", r.channel().getName(), r.toString()))
+                          Stream.of(rsms).map(r -> String.format("%s: %s", r.channel().getName(), r))
                             .collect(Collectors.joining("\n")));
 
         System.out.print("-- verifying contents of state machines:\n");
@@ -96,7 +95,7 @@ public class TimeoutTest {
     protected static JChannel createRaftChannel(List<String> members, String name) throws Exception {
         Protocol[] protocols=Util.getTestStack(
           new ELECTION(),
-          new RAFT().members(members).raftId(name).resendInterval(1000),
+          new RAFT().members(members).raftId(name).resendInterval(1000).logClass("org.jgroups.protocols.raft.InMemoryLog"),
           new REDIRECT());
         return new JChannel(protocols).name(name);
     }

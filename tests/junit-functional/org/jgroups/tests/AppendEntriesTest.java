@@ -39,7 +39,7 @@ public class AppendEntriesTest {
     protected ReplicatedStateMachine<Integer,Integer> as, bs, cs;
     protected static final Method                     handleAppendEntriesRequest;
     protected static final String                     CLUSTER="AppendEntriesTest";
-    protected static final List<String>               members=Arrays.asList("A", "B", "C");
+    protected final List<String>                      members=Arrays.asList("A", "B", "C");
 
     static {
         try {
@@ -326,6 +326,7 @@ public class AppendEntriesTest {
             assertSame(as, bs); // if as is not equal to bs, `as` should then be equals to `cs`
         } catch (AssertionError e) {
             assertSame(as, cs);
+            throw e;
         }
     }
 
@@ -532,11 +533,11 @@ public class AppendEntriesTest {
         assertLogIndices(log, 11, 11, 3);
     }
 
-    protected static JChannel create(String name, boolean follower) throws Exception {
+    protected JChannel create(String name, boolean follower) throws Exception {
         return create(name, follower, r -> r);
     }
 
-    protected static JChannel create(String name, boolean follower, Function<RAFT, RAFT> config) throws Exception {
+    protected JChannel create(String name, boolean follower, Function<RAFT, RAFT> config) throws Exception {
         return create(name, follower, members, config);
     }
 
@@ -557,8 +558,12 @@ public class AppendEntriesTest {
             if(ch == null)
                 continue;
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            if(remove_log)
-                raft.log().delete(); // remove log files after the run
+            if(remove_log) {
+                try {
+                    raft.log().delete(); // remove log files after the run
+                }
+                catch(Exception ignored) {}
+            }
             if(remove_snapshot)
                 raft.deleteSnapshot();
             Util.close(ch);

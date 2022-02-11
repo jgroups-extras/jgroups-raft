@@ -24,11 +24,11 @@
   */
  @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
  public class ElectionsTest {
-     protected JChannel                  a,b,c;
-     protected static final String       CLUSTER="ElectionsTest";
-     protected static final List<String> members=Arrays.asList("A", "B", "C");
-     protected static final Method       startElectionTimer;
-     protected static final byte[]       BUF={};
+     protected JChannel            a,b,c;
+     protected static final String CLUSTER="ElectionsTest";
+     protected final List<String>  members=Arrays.asList("A", "B", "C");
+     protected static final Method startElectionTimer;
+     protected static final byte[] BUF={};
 
      static {
          try {
@@ -113,15 +113,15 @@
          c.connect(CLUSTER);
      }
 
-     protected static JChannel createWithRAFTSubclass(String name) throws Exception {
+     protected JChannel createWithRAFTSubclass(String name) throws Exception {
          return create(name, () -> new RAFT(){});
      }
 
-     protected static JChannel create(String name) throws Exception {
+     protected JChannel create(String name) throws Exception {
          return create(name, RAFT::new);
      }
 
-     protected static JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
+     protected JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
          ELECTION election=new ELECTION().noElections(true);
          RAFT raft=raftSupplier.get().members(members).raftId(name)
            .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
@@ -142,8 +142,12 @@
          if(ch == null)
              return;
          RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-         if(remove_log)
-             raft.log().delete(); // remove log files after the run
+         if(remove_log) {
+             try {
+                 raft.log().delete(); // remove log files after the run
+             }
+             catch(Exception ignored) {}
+         }
          if(remove_snapshot)
              raft.deleteSnapshot();
          Util.close(ch);

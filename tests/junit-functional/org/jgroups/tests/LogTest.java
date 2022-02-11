@@ -34,7 +34,7 @@ public class LogTest {
         };
     }
 
-    @AfterMethod protected void destroy() {
+    @AfterMethod protected void destroy() throws Exception {
         if(log != null) {
             log.delete();
             log=null;
@@ -243,6 +243,24 @@ public class LogTest {
     }
 
 
+    public void testTruncateAtCommitIndexAndReopen(Log log) throws Exception {
+        this.log = log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        append(log, 1, false, buf, 1, 1, 1, 2, 2,2,2,3,4,5);
+        int last_appended=log.lastAppended();
+        log.commitIndex(last_appended);
+        log.truncate(log.commitIndex());
+        log.close();
+        log.init(filename, null);
+        assert log.firstAppended() == 10;
+        assert log.lastAppended() == 10;
+        assert log.commitIndex() == 10;
+        for(int i=1; i < 10; i++)
+            assert log.get(i) == null;
+        assert log.get(10) != null;
+    }
+
     public void testTruncateTwice(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
@@ -266,7 +284,7 @@ public class LogTest {
         log.init(filename, null);
         byte[] buf=new byte[10];
         for(int i=1; i <= 10; i++)
-            log.append(i, false, new LogEntry(5, buf));
+            log.append(i, false, new LogEntry(i, buf));
         log.commitIndex(8);
 
         final AtomicInteger cnt=new AtomicInteger(0);
