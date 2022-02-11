@@ -795,7 +795,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
      */
     protected synchronized void handleCommit(int index) {
         try {
-            for(int i=commit_index + 1; i <= index; i++) {
+            for(int i=commit_index + 1; i <= Math.min(index, last_appended); i++) {
                 if(request_table.isCommitted(i)) {
                     applyCommit(i);
                     commit_index=Math.max(commit_index, i);
@@ -881,11 +881,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         else
             rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
 
+        log_impl.commitIndex(index);
+
         // Notify the client's CompletableFuture and then remove the entry in the client request table
         if(request_table != null)
             request_table.notifyAndRemove(index, rsp);
-
-        log_impl.commitIndex(index);
     }
 
     protected void handleView(View view) {
