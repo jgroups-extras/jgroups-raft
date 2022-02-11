@@ -41,7 +41,6 @@ public abstract class RaftImpl {
     protected AppendResult handleAppendEntriesRequest(byte[] data, int offset, int length, Address leader,
                                                       int prev_log_index, int prev_log_term, int entry_term,
                                                       int leader_commit, boolean internal) {
-        // todo: synchronize
         raft.leader(leader);
 
         if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit

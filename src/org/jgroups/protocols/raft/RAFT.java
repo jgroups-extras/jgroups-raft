@@ -6,6 +6,7 @@ import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
+import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.RequestTable;
@@ -94,13 +95,14 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @Property(description="The name of the snapshot. By default, <log_name>.snapshot will be used")
     protected String                  snapshot_name;
 
-    @Property(description="Interval (ms) at which AppendEntries messages are resent to members which haven't received them yet")
+    @Property(description="Interval (ms) at which AppendEntries messages are resent to members which haven't received them yet",
+      type=AttributeType.TIME)
     protected long                    resend_interval=1000;
 
     @Property(description="Send commit message to followers immediately after leader commits (majority has consensus). Caution : it may generate more traffic than expected")
     protected boolean                 send_commits_immediately = false;
 
-    @Property(description="Max number of bytes a log can have until a snapshot is created")
+    @Property(description="Max number of bytes a log can have until a snapshot is created",type=AttributeType.BYTES)
     protected int                     max_log_size=1_000_000;
 
     /** task firing every resend_interval ms to send AppendEntries msgs to mbrs which are missing them */
@@ -132,14 +134,18 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @ManagedAttribute(description="The current term")
     protected int                     current_term;
 
-    @ManagedAttribute(description="Index of the highest log entry appended to the log")
+    @ManagedAttribute(description="Index of the highest log entry appended to the log",type=AttributeType.SCALAR)
     protected int                     last_appended;
 
-    @ManagedAttribute(description="Index of the highest committed log entry")
+    @ManagedAttribute(description="Index of the highest committed log entry",type=AttributeType.SCALAR)
     protected int                     commit_index;
 
     @ManagedAttribute(description="The number of snapshots performed")
     protected int                     num_snapshots;
+
+    @ManagedAttribute(description="The number of times AppendEntriesRequests were resent")
+    protected int                     num_resends=0;
+
     protected boolean                 snapshotting;
 
     protected int                     log_size_bytes; // keeps counts of the bytes added to the log
@@ -183,7 +189,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
     public void resetStats() {
         super.resetStats();
-        num_snapshots=0;
+        num_snapshots=num_resends=0;
     }
 
     @Property(description="List of members (logical names); majority is computed from it")
@@ -280,7 +286,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     protected void createCommitTable() {
-        commit_table=new CommitTable(view.getMembers(), last_appended +1);
+        List<Address> jg_mbrs=view != null? view.getMembers() : new ArrayList<>();
+        List<Address> mbrs=new ArrayList<>(jg_mbrs);
+        mbrs.remove(local_addr);
+        commit_table=new CommitTable(mbrs, last_appended +1);
     }
 
     public synchronized boolean updateTermAndLeader(int term, Address new_leader) {
@@ -594,12 +603,17 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             Message msg=new BytesMessage(null, buf, offset, length)
               .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
               .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
-            down_prot.down(msg);
-        }
 
-        snapshotIfNeeded(length);
-        if(reqtab.isCommitted(curr_index))
-            handleCommit(curr_index);
+            // the message needs to be sent inside the synchronized scope (and hit NAKACK2 in the correct order):
+            // updates (prev-index:current-index) 4:5 and 5:6 would fail if 5:6 was applied first, as 5 would not exist
+            // in the 5:6 AppendEntriesRequest
+            down_prot.down(msg); // *** don't move outside the synchronized scope! ****
+
+            // needs to be synchronized, too, as commits might diverge from the snapshot below...
+            snapshotIfNeeded(length);
+            if(reqtab.isCommitted(curr_index))
+                handleCommit(curr_index);
+        }
 
         // 4. Return CompletableFuture
         return retval;
@@ -648,7 +662,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
      * leader's log, next-index for all members is incremented and resending starts again.
      */
     @Override public void run() {
-        commit_table.forEach(this::sendAppendEntriesMessage);
+        if(commit_table != null)
+            commit_table.forEach(this::sendAppendEntriesMessage);
     }
 
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
@@ -709,6 +724,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         Message msg=new BytesMessage(target).setArray(entry.command, entry.offset, entry.length)
           .putHeader(id, new AppendEntriesRequest(current_term, this.local_addr, index - 1, prev_term, entry.term, commit_index, entry.internal));
         down_prot.down(msg);
+        num_resends++;
     }
 
     protected void doSnapshot() throws Exception {
@@ -731,7 +747,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         return this;
     }
 
-    public RAFT deleteLog() {
+    public RAFT deleteLog() throws Exception {
         if(log_impl != null) {
             log_impl.delete();
             log_impl=null;
@@ -750,7 +766,6 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             int last_index=commit_index, last_term=last_committed_entry.term;
             doSnapshot();
 
-            // todo: use streaming approach (STATE$StateOutputStream, BlockingInputStream from JGroups)
             byte[] data=Files.readAllBytes(Paths.get(snapshot_name));
             log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.length), dest);
             Message msg=new BytesMessage(dest, data)
@@ -809,13 +824,11 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
         return this;
     }
 
-    protected RAFT append(int term, int index, byte[] data, int offset, int length, boolean internal) {
-        synchronized(this) {
-            if(index > last_appended) {
-                LogEntry entry=new LogEntry(term, data, offset, length, internal);
-                log_impl.append(index, true, entry);
-                last_appended=log_impl.lastAppended();
-            }
+    protected synchronized RAFT append(int term, int index, byte[] data, int offset, int length, boolean internal) {
+        if(index > last_appended) {
+            LogEntry entry=new LogEntry(term, data, offset, length, internal);
+            log_impl.append(index, true, entry);
+            last_appended=log_impl.lastAppended();
         }
         snapshotIfNeeded(length);
         return this;
