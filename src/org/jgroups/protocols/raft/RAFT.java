@@ -604,10 +604,10 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
               .putHeader(id, new AppendEntriesRequest(curr_term, this.local_addr, prev_index, prev_term, curr_term, commit_idx, cmd != null))
               .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
 
-            // the message needs to be sent inside the synchronized scope (and hit NAKACK2 in the correct order):
+            // the message needs to be sent inside the synchronized block (and hit NAKACK2 in the correct order):
             // updates (prev-index:current-index) 4:5 and 5:6 would fail if 5:6 was applied first, as 5 would not exist
             // in the 5:6 AppendEntriesRequest
-            down_prot.down(msg); // *** don't move outside the synchronized scope! ****
+            down_prot.down(msg); // *** don't move outside the synchronized block! ****
 
             // needs to be synchronized, too, as commits might diverge from the snapshot below...
             snapshotIfNeeded(length);
