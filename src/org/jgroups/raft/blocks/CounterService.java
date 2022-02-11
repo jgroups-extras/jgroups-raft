@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * Provides a consensus based distributed counter (similar to AtomicLong) which can be atomically updated across a cluster.
@@ -93,10 +94,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
 
     public String printCounters() {
-        return counters.entrySet()
-          .stream().collect(StringBuilder::new,
-                            (sb,entry) -> sb.append(entry.getKey()).append(" = ").append(entry.getValue()).append("\n"),
-                            (l,r) -> {}).toString();
+        return counters.entrySet().stream().map(e -> String.format("%s = %d", e.getKey(), e.getValue()))
+          .collect(Collectors.joining("\n"));
     }
 
 
