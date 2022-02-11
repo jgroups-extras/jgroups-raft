@@ -2,6 +2,7 @@ package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 
+import java.io.Closeable;
 import java.util.Map;
 import java.util.function.ObjIntConsumer;
 
@@ -10,7 +11,7 @@ import java.util.function.ObjIntConsumer;
  * @author Bela Ban
  * @since  0.1
  */
-public interface Log extends AutoCloseable {
+public interface Log extends Closeable {
 
     /** Called after the instance has been created
      * @param log_name The name of the log. Implementations can create a DB or file named after this, e.g.
@@ -23,7 +24,7 @@ public interface Log extends AutoCloseable {
     // void close();
 
     /** Remove the persistent store, e.g. DB table, or file */
-    void delete();
+    void delete() throws Exception;
 
     /** Returns the current term */
     int currentTerm();
