@@ -42,6 +42,10 @@ public abstract class RaftImpl {
                                                       int prev_log_index, int prev_log_term, int entry_term,
                                                       int leader_commit, boolean internal) {
         raft.leader(leader);
+        int curr_index=prev_log_index+1;
+
+        if(leader_commit > curr_index || leader_commit > raft.last_appended)
+            System.out.printf("***** leader_commit=%d, curr_index=%d, last_appended=%d\n", leader_commit, curr_index, raft.last_appended);
 
         if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit
             handleCommitRequest(leader, leader_commit);
@@ -49,7 +53,7 @@ public abstract class RaftImpl {
         }
 
         LogEntry prev=raft.log_impl.get(prev_log_index);
-        int curr_index=prev_log_index+1;
+
 
         if(prev == null && prev_log_index > 0) // didn't find entry
             return new AppendResult(false, raft.lastAppended());
@@ -59,6 +63,9 @@ public abstract class RaftImpl {
             LogEntry existing=raft.log_impl.get(curr_index);
             if(existing != null && existing.term != entry_term) {
                 // delete this and all subsequent entries and overwrite with received entry
+
+                System.out.printf("**** deleting all entries from %s\n", curr_index);
+
                 raft.deleteAllLogEntriesStartingFrom(curr_index);
             }
             raft.append(entry_term, curr_index, data, offset, length, internal).commitLogTo(leader_commit);
