@@ -207,7 +207,7 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void deleteAllEntriesStartingFrom(int start_index) {
+    public void deleteAllEntriesStartingFrom(final int start_index) {
         if (start_index< firstAppended || start_index> lastAppended)
             return;
 
