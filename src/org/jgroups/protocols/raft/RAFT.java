@@ -498,11 +498,8 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
 
     public Object down(Event evt) {
-        switch(evt.getType()) {
-            case Event.VIEW_CHANGE:
-                handleView(evt.getArg());
-                break;
-        }
+        if(evt.getType() == Event.VIEW_CHANGE)
+            handleView(evt.getArg());
         return down_prot.down(evt);
     }
 
@@ -683,11 +680,17 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
 
     protected void processQueue() {
+        boolean timed_out=_processQueue();
+        if(timed_out && commit_table != null)
+            commit_table.forEach(this::sendAppendEntriesMessage);
+    }
+
+    protected boolean _processQueue() {
         Request first_req;
         try {
-            first_req=processing_queue.take();
+            first_req=processing_queue.poll(resend_interval, TimeUnit.MILLISECONDS);
             if(first_req == null)
-                return;
+                return true;
 
             for(;;) {
                 remove_queue.clear();
@@ -698,14 +701,15 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
 
                 processing_queue.drainTo(remove_queue);
                 if(remove_queue.isEmpty())
-                    return;
+                    return false;
                 else
                     process(remove_queue);
             }
         }
-        catch(InterruptedException e) {
+        catch(InterruptedException ignored) {
 
         }
+        return false;
     }
 
     protected void add(Request r) {
@@ -723,6 +727,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     @ManagedAttribute
     protected final LongAdder num_down_requests=new LongAdder();
 
+    // todo: process responses *before* requests
     protected void process (List<Request> q) {
         for(Request r: q) {
             try {
@@ -1067,15 +1072,15 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     }
 
     protected synchronized void startResendTask() {
-        if(resend_task == null || resend_task.isDone())
-            resend_task=timer.scheduleWithFixedDelay(this, resend_interval, resend_interval, TimeUnit.MILLISECONDS);
+        //if(resend_task == null || resend_task.isDone())
+          //  resend_task=timer.scheduleWithFixedDelay(this, resend_interval, resend_interval, TimeUnit.MILLISECONDS);
     }
 
     protected synchronized void stopResendTask() {
-        if(resend_task != null) {
-            resend_task.cancel(false);
-            resend_task=null;
-        }
+       // if(resend_task != null) {
+         //   resend_task.cancel(false);
+           // resend_task=null;
+       // }
     }
 
     public static <T> T findProtocol(Class<T> clazz, final Protocol start, boolean down) {
