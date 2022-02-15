@@ -109,6 +109,39 @@ public class RaftTest {
         assertIndices(3, 3, 0, raft_a);
         assertIndices(3, 2, 0, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 2, 3, 4);
+
+        prev_value=add(rha, -3);
+        assert prev_value == 6;
+        assert sma.counter() == 3;
+        assert smb.counter() == 6; // previous value; B is always lagging one commit behind
+        assertIndices(4, 4, 0, raft_a);
+        assertIndices(4, 3, 0, raft_b);
+        assertCommitTableIndeces(b.getAddress(), raft_a, 3, 4, 5);
+
+        for(int i=1,prev=3; i <= 1000; i++) {
+            prev_value=add(rha, 5);
+            assert prev_value == prev;
+            prev+=5;
+        }
+        assert sma.counter() == 5000 + 3;
+        assert smb.counter() == sma.counter() - 5;
+
+        assertIndices(1004, 1004, 0, raft_a);
+        assertIndices(1004, 1003, 0, raft_b);
+        assertCommitTableIndeces(b.getAddress(), raft_a, 1003, 1004, 1005);
+
+        int current_term=raft_a.currentTerm(), expected_term;
+        raft_a.currentTerm(expected_term=current_term + 10);
+
+        for(int i=1; i <= 7; i++)
+            add(rha, 1);
+
+        assert sma.counter() == 5010;
+        assert smb.counter() == sma.counter() - 1;
+
+        assertIndices(1011, 1011, expected_term, raft_a);
+        assertIndices(1011, 1010, expected_term, raft_b);
+        assertCommitTableIndeces(b.getAddress(), raft_a, 1010, 1011, 1012);
     }
 
     protected static void assertIndices(int expected_last, int expected_commit, int expected_term, RAFT... rafts) {
