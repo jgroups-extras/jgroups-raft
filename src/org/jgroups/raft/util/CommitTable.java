@@ -24,7 +24,8 @@ public class CommitTable {
         adjust(members, next_index);
     }
 
-    public Set<Address> keys() {return map.keySet();}
+    public Set<Address> keys()         {return map.keySet();}
+    public Entry        get(Address a) {return map.get(a);}
 
     public void adjust(List<Address> members, int next_index) {
         map.keySet().retainAll(members);
@@ -69,17 +70,13 @@ public class CommitTable {
 
 
     public static class Entry {
-        // the next index to send; initialized to last_appended +1
-        protected int     next_index;
+        protected int     commit_index; // the commit index of the given member
 
-        // the index of the highest entry known to be replicated to the member
-        protected int     match_index;
+        protected int     match_index;  // the index of the highest entry known to be replicated to the member
 
-        // the commit index of the given member
-        protected int     commit_index;
+        protected int     next_index;   // the next index to send; initialized to last_appended +1
 
-        // set when a snapshot is being installed
-        protected boolean snapshot_in_progress;
+        protected boolean snapshot_in_progress; // set when a snapshot is being installed
 
         // set to true when next_index was decremented, so we only send a single entry on the next resend interval;
         // set to false when we receive an AppendEntries(true) response
@@ -87,12 +84,13 @@ public class CommitTable {
 
         public Entry(int next_index) {this.next_index=next_index;}
 
-        public int     nextIndex()                     {return next_index;}
-        public Entry   nextIndex(int idx)              {next_index=idx; return this;}
-        public int     matchIndex()                    {return match_index;}
-        public Entry   matchIndex(int idx)             {this.match_index=idx; return this;}
         public int     commitIndex()                   {return commit_index;}
         public Entry   commitIndex(int idx)            {this.commit_index=idx; return this;}
+        public int     matchIndex()                    {return match_index;}
+        public Entry   matchIndex(int idx)             {this.match_index=idx; return this;}
+        public int     nextIndex()                     {return next_index;}
+        public Entry   nextIndex(int idx)              {next_index=idx; return this;}
+
         public boolean sendSingleMessage()             {return send_single_msg;}
         public Entry   sendSingleMessage(boolean flag) {this.send_single_msg=flag; return this;}
 
@@ -104,8 +102,8 @@ public class CommitTable {
         }
 
         @Override public String toString() {
-            StringBuilder sb=new StringBuilder().append("match-index=").append(match_index);
-            sb.append(", next-index=").append(next_index).append(", commit-index=").append(commit_index);
+            StringBuilder sb=new StringBuilder("commit-index=").append(commit_index)
+              .append(", match-index=").append(match_index).append(", next-index=").append(next_index);
             if(snapshot_in_progress)
                 sb.append(" [snapshotting]");
             if(send_single_msg)

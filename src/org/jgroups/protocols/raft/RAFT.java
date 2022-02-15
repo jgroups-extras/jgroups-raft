@@ -185,6 +185,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
     public org.jgroups.logging.Log getLog()           {return this.log;}
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
+    public CommitTable  commitTable()                 {return commit_table;}
     public int          currentTerm()                 {return current_term;}
     public int          lastAppended()                {return last_appended;}
     public int          commitIndex()                 {return commit_index;}
@@ -1032,7 +1033,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
             log.error("view contains duplicate raft-ids: %s", view);
     }
 
-    protected void changeRole(Role new_role) {
+    public RAFT changeRole(Role new_role) {
         RaftImpl new_impl=new_role == Role.Follower? new Follower(this) : new_role == Role.Candidate? new Candidate(this) : new Leader(this);
         RaftImpl old_impl=impl;
         if(old_impl == null || !old_impl.getClass().equals(new_impl.getClass())) {
@@ -1046,6 +1047,7 @@ public class RAFT extends Protocol implements Runnable, Settable, DynamicMembers
               old_impl.getClass().getSimpleName(), new_impl.getClass().getSimpleName());
             notifyRoleChangeListeners(new_role);
         }
+        return this;
     }
 
 
