@@ -15,8 +15,8 @@ public class Follower extends RaftImpl {
     public Follower(RAFT raft) {super(raft);}
 
     @Override
-    protected void handleInstallSnapshotRequest(Message msg, int term, Address leader,
-                                                int last_included_index, int last_included_term) {
+    public void handleInstallSnapshotRequest(Message msg, int term, Address leader,
+                                             int last_included_index, int last_included_term) {
         // 1. read the state (in the message's buffer) and apply it to the state machine (clear the SM before?)
 
         // 2. Delete the log (if it exists) and create a new log. Append a dummy entry at last_included_index with an

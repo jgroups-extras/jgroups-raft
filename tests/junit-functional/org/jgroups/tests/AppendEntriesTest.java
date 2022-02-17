@@ -291,7 +291,8 @@ public class AppendEntriesTest {
         assertLogIndices(log, 2, 1, 4);
     }
 
-    public void testIncorrectAppend() throws Exception {
+    /** Tests append _after_ the last appended index; returns an AppendResult with index=last_appended */
+    public void testAppendAfterLastAppened() throws Exception {
         Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
@@ -351,7 +352,7 @@ public class AppendEntriesTest {
         append(impl,  9, 6, new LogEntry(6, buf), leader, 1);
         append(impl, 10, 6, new LogEntry(6, buf), leader, 1);
 
-        // now append(index=11,term=5) -> should return false result with index=8
+        // now append(index=11,term=7) -> should return false result with index=8
         AppendResult result=append(impl, 11, 7, new LogEntry(6, buf), leader, 1);
         assert !result.success();
         assertEquals(result.index(), 8);
