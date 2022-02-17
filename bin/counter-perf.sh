@@ -1,5 +1,5 @@
 #!/bin/bash
 
 
-`dirname $0`/run.sh org.jgroups.perf.CounterPerf -props raft.xml  $*
+`dirname $0`/run.sh -ea org.jgroups.perf.CounterPerf -props raft.xml  $*
 
