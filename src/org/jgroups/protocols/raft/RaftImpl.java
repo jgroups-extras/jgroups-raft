@@ -38,19 +38,21 @@ public abstract class RaftImpl {
      * @param internal True if the command is an internal command
      * @return AppendResult A result (true or false), or null if the request was ignored (e.g. due to lower term)
      */
-    protected AppendResult handleAppendEntriesRequest(byte[] data, int offset, int length, Address leader,
-                                                      int prev_log_index, int prev_log_term, int entry_term,
-                                                      int leader_commit, boolean internal) {
+    public AppendResult handleAppendEntriesRequest(byte[] data, int offset, int length, Address leader,
+                                                   int prev_log_index, int prev_log_term, int entry_term,
+                                                   int leader_commit, boolean internal) {
         raft.leader(leader);
-        int curr_index=prev_log_index+1;
         if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit
             handleCommitRequest(leader, leader_commit);
             return null;
         }
 
+        int curr_index=prev_log_index+1;
         LogEntry prev=raft.log_impl.get(prev_log_index);
-        if(prev == null && prev_log_index > 0) // didn't find entry
-            return new AppendResult(false, raft.lastAppended());
+        if(prev == null && prev_log_index > 0) { // didn't find entry
+            raft.num_failed_append_requests_not_found++;
+            return new AppendResult(false, raft.lastAppended()); // required, e.g. when catching up as a new mbr
+        }
 
         // if the term at prev_log_index != prev_term -> return false and the start index of the conflicting term
         if(prev_log_index == 0 || prev.term == prev_log_term) {
@@ -64,15 +66,16 @@ public abstract class RaftImpl {
                 raft.executeInternalCommand(null, data, offset, length);
             return new AppendResult(true, curr_index).commitIndex(raft.commitIndex());
         }
+        raft.num_failed_append_requests_wrong_term++;
         return new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term), prev.term);
     }
 
 
-    protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
+    public void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
     }
 
-    protected void handleInstallSnapshotRequest(Message msg, int term, Address leader,
-                                                int last_included_index, int last_included_term) {
+    public void handleInstallSnapshotRequest(Message msg, int term, Address leader,
+                                             int last_included_index, int last_included_term) {
 
     }
 
