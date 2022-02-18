@@ -35,7 +35,7 @@ public class Leader extends RaftImpl {
 
 
     @Override
-    protected void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
+    public void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
         RequestTable<String> reqtab=raft.request_table;
         if(reqtab == null)
             throw new IllegalStateException("request table cannot be null in leader");
@@ -43,7 +43,7 @@ public class Leader extends RaftImpl {
         String sender_raft_id=Util.bytesToString(uuid.get(RAFT.raft_id_key));
         raft.getLog().trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
         if(result.success) {
-            raft.commit_table.update(sender, result.getIndex(), result.getIndex()+1, result.commit_index, false);
+            raft.commit_table.update(sender, result.index(), result.index()+1, result.commit_index, false);
             if(reqtab.add(result.index, sender_raft_id, raft.majority())) {
                 raft.handleCommit(result.index);
                 if (raft.send_commits_immediately)
@@ -51,7 +51,7 @@ public class Leader extends RaftImpl {
             }
         }
         else
-            raft.commit_table.update(sender, 0, result.getIndex(), result.commit_index, true);
+            raft.commit_table.update(sender, 0, result.index(), result.commit_index, true);
     }
 
     private void sendCommitMessageToFollowers() {
@@ -60,9 +60,8 @@ public class Leader extends RaftImpl {
 
     private void sendCommitMessageToFollower(Address member, CommitTable.Entry entry) {
         if(raft.commit_index > entry.commitIndex()) {
-            Message msg = new EmptyMessage(member)
-                    .putHeader(raft.getId(), new AppendEntriesRequest(raft.current_term, raft.getAddress(), 0, 0, 0, raft.commit_index, false))
-                    .setFlag(Message.TransientFlag.DONT_LOOPBACK);
+            Message msg=new EmptyMessage(member)
+              .putHeader(raft.getId(), new AppendEntriesRequest(raft.getAddress(), 0, 0, raft.currentTerm(), raft.commit_index, false));
             raft.down(msg);
         }
     }
