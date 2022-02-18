@@ -41,12 +41,10 @@ public class AppendResult implements Streamable {
         this.non_matching_term = non_matching_term;
     }
 
-    public boolean success()         {return success;}
-    public int     index()           {return index;}
-    public int     commitIndex()     {return commit_index;}
-    public int     nonMatchingTerm() {return non_matching_term;}
-
-
+    public boolean      success()           {return success;}
+    public int          index()             {return index;}
+    public int          commitIndex()       {return commit_index;}
+    public int          nonMatchingTerm()   {return non_matching_term;}
     public AppendResult commitIndex(int ci) {this.commit_index=ci; return this;}
 
     public int size() {
@@ -67,17 +65,6 @@ public class AppendResult implements Streamable {
         non_matching_term=Bits.readIntCompressed(in);
     }
 
-    public boolean isSuccess() {
-        return success;
-    }
-
-    public int getIndex() {
-        return index;
-    }
-
-    public int getMatchingTerm() {
-        return non_matching_term;
-    }
 
     public String toString() {
         return success + ", index=" + index + ", commit-index=" + commit_index;
