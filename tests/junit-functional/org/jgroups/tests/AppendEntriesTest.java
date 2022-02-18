@@ -380,8 +380,8 @@ public class AppendEntriesTest {
         append(impl,  9, 6, new LogEntry(6, buf), leader, 1);
         append(impl, 10, 6, new LogEntry(6, buf), leader, 10);
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 1);
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
+        assertTrue(result.success());
+        assertEquals(result.index(), 11);
         assertLogIndices(log, 11, 10, 6);
     }
 
@@ -404,8 +404,8 @@ public class AppendEntriesTest {
         append(impl,  8, 5, new LogEntry(6, buf), leader, 1);
         append(impl,  9, 6, new LogEntry(6, buf), leader, 9);
         AppendResult result = append(impl, 11, 6, new LogEntry(6, buf), leader, 9);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 9);
+        assertFalse(result.success());
+        assertEquals(result.index(), 9);
         assertLogIndices(log, 9, 9, 6);
     }
 
@@ -424,8 +424,8 @@ public class AppendEntriesTest {
         append(impl, 3, 1, new LogEntry(1, buf), leader, 1);
         append(impl, 4, 1, new LogEntry(4, buf), leader, 4);
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 4);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 4);
+        assertFalse(result.success());
+        assertEquals(result.index(), 4);
         assertLogIndices(log, 4, 4, 4);
     }
 
@@ -451,8 +451,8 @@ public class AppendEntriesTest {
         append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
         // Overwrites existing entry; does *not* advance last_applied in log
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
+        assertTrue(result.success());
+        assertEquals(result.index(), 11);
         assertLogIndices(log, 11, 11, 6);
     }
 
@@ -480,8 +480,8 @@ public class AppendEntriesTest {
         append(impl, 12, 7, new LogEntry(7, buf), leader, 12);
 
         AppendResult result=append(impl, buf, leader, 10, 6, 8, 12);
-        assertTrue(result.isSuccess());
-        assertEquals(result.getIndex(), 11);
+        assertTrue(result.success());
+        assertEquals(result.index(), 11);
         assertLogIndices(log, 11, 11, 8);
     }
 
@@ -502,8 +502,8 @@ public class AppendEntriesTest {
         append(impl,  6, 4, new LogEntry(4, buf), leader, 1);
         append(impl,  7, 4, new LogEntry(4, buf), leader, 7);
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 7);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 7);
+        assertFalse(result.success());
+        assertEquals(result.index(), 7);
         assertLogIndices(log, 7, 7, 4);
     }
 
@@ -529,8 +529,8 @@ public class AppendEntriesTest {
         append(impl, 11, 3, new LogEntry(3, buf), leader, 11);
 
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
-        assertFalse(result.isSuccess());
-        assertEquals(result.getIndex(), 7);
+        assertFalse(result.success());
+        assertEquals(result.index(), 7);
         assertLogIndices(log, 11, 11, 3);
     }
 
