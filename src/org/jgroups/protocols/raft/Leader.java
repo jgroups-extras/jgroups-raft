@@ -23,12 +23,10 @@ public class Leader extends RaftImpl {
         super.init();
         raft.createRequestTable();
         raft.createCommitTable();
-        raft.startResendTask();
     }
 
     public void destroy() {
         super.destroy();
-        raft.stopResendTask();
         raft.request_table=null;
         raft.commit_table=null;
     }

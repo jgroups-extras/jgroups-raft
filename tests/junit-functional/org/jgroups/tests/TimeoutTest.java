@@ -56,7 +56,7 @@ public class TimeoutTest {
             RAFT raft=channels[i].getProtocolStack().findProtocol(RAFT.class);
             if(raft.isLeader()) {
                 sm=rsms[i];
-                System.out.printf("-- found leader: %s\n", raft.getLeader());
+                System.out.printf("-- found leader: %s\n", raft.leader());
                 break;
             }
         }
