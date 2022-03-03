@@ -173,7 +173,7 @@ public class ELECTION extends Protocol {
     protected void handleEvent(Message msg, RaftHeader hdr) {
         // drop the message if hdr.term < raft.current_term, else accept
         // if hdr.term > raft.current_term -> change to follower
-        int rc=raft.currentTerm(hdr.term);
+        int rc=raft.currentTerm(hdr.curr_term);
         if(rc < 0)
             return;
         if(rc > 0) { // a new term was set
@@ -187,16 +187,16 @@ public class ELECTION extends Protocol {
 
         if(hdr instanceof HeartbeatRequest) {
             HeartbeatRequest hb=(HeartbeatRequest)hdr;
-            handleHeartbeat(hb.term(), hb.leader);
+            handleHeartbeat(hb.currTerm(), hb.leader);
         }
         else if(hdr instanceof VoteRequest) {
             VoteRequest header=(VoteRequest)hdr;
-            handleVoteRequest(msg.src(), header.term(), header.lastLogTerm(), header.lastLogIndex());
+            handleVoteRequest(msg.src(), header.currTerm(), header.lastLogTerm(), header.lastLogIndex());
         }
         else if(hdr instanceof VoteResponse) {
             VoteResponse rsp=(VoteResponse)hdr;
             if(rsp.result()) {
-            	handleVoteResponse(rsp.term());
+            	handleVoteResponse(rsp.currTerm());
             }
         }
     }

@@ -31,22 +31,21 @@ import java.util.concurrent.TimeUnit;
  */
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class RaftTest {
-    protected JChannel            a, b, c;
+    protected JChannel            a, b;
     protected RaftHandle          rha, rhb;
-    protected RAFT                raft_a, raft_b, raft_c;
-    protected final SampleStateMachine  sma=new SampleStateMachine(),
-      smb=new SampleStateMachine(), smc=new SampleStateMachine();
+    protected RAFT                raft_a, raft_b;
+    protected SampleStateMachine  sma, smb;
     protected static final String GRP="RaftTest";
 
     @BeforeMethod
     protected void create() throws Exception {
         a=create("A", 600_000, 1_000_000);
-        rha=new RaftHandle(a, sma);
+        rha=new RaftHandle(a, sma=new SampleStateMachine());
         a.connect(GRP);
         raft_a=raft(a).leader(a.getAddress()).changeRole(Role.Leader);
 
         b=create("B", 600_000, 1_000_000);
-        rhb=new RaftHandle(b, smb);
+        rhb=new RaftHandle(b, smb=new SampleStateMachine());
         b.connect(GRP);
         raft_b=raft(b).leader(a.getAddress()).changeRole(Role.Follower);
         Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b);
@@ -55,7 +54,7 @@ public class RaftTest {
     }
 
     @AfterMethod protected void destroy() throws Exception {
-        for(JChannel ch: Arrays.asList(c, b, a)) {
+        for(JChannel ch: Arrays.asList(b, a)) {
             if(ch == null)
                 continue;
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
@@ -65,10 +64,9 @@ public class RaftTest {
     }
 
 
-
     public void testRegularAppend() throws Exception {
         int prev_value=add(rha, 1);
-        assert prev_value == 0;
+        expect(0, prev_value);
         assert sma.counter() == 1;
         assert smb.counter() == 0; // resend_interval is big, so the commit index on B won't get updated
         assertIndices(1, 1, 0, raft_a);
@@ -131,8 +129,8 @@ public class RaftTest {
         assertIndices(5, 5, 20, raft_a);
         assertIndices(5, 4, 20, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 4, 5, 6);
-        assert sma.counter() == 5;
-        assert smb.counter() == 4;
+        expect(5, sma.counter());
+        expect(4, smb.counter());
 
         // this will append the same entry, but because index 4 is < last_appended (5), it will not get appended
         // Note though that the commit-index will be updated
@@ -170,23 +168,54 @@ public class RaftTest {
                 raft_a.currentTerm(raft_a.currentTerm()+1);
             add(rha, 1);
         }
-        assert sma.counter() == 15;
+        expect(15, sma.counter());
         assert smb.counter() == 14; // resend_interval is big, so the commit index on B won't get updated
         assertIndices(15, 15, 25, raft_a);
         assertIndices(15, 14, 25, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 14, 15, 16);
 
-        // now append beyond the end
-        byte[] val=new byte[Integer.BYTES];
-        Bits.writeInt(1, val, 0);
+        // now append entries 16,17 and 18 (all with term=25), but *don't* advance the commit index
+        for(int i=16; i <= 18; i++)
+            sendAppendEntriesRequest(raft_a, i-1, 25, 25, 14);
+        Util.waitUntil(5000, 100, () -> raft_b.lastAppended() == 18);
+        assert sma.counter() == 15;
+        assert smb.counter() == 14; // resend_interval is big, so the commit index on B won't get updated
+        assertIndices(15, 15, 25, raft_a);
+        assertIndices(18, 14, 25, raft_b);
+        assertCommitTableIndeces(b.getAddress(), raft_a, 14, 18, 19);
+
 
         // send a correct index, but incorrect prev_term:
         int incorrect_prev_term=24;
-        int commit_index=raft_a.commitIndex(), prev_index=14;
+        int commit_index=raft_a.commitIndex(), prev_index=18;
 
         sendAppendEntriesRequest(raft_a, prev_index, incorrect_prev_term, 30, commit_index);
-        Util.sleep(2000);
-        assertCommitTableIndeces(b.getAddress(), raft_a, 4, 5, 6);
+        Util.sleep(1000); // nothing changed
+        assertCommitTableIndeces(b.getAddress(), raft_a, 14, 14, 15);
+
+        // now apply the updates on the leader
+        raft_a.currentTerm(30);
+        raft_a.resendInterval(1000);
+        for(int i=16; i <= 18; i++)
+            add(rha, 1);
+        Util.waitUntil(5000, 100, () -> raft_b.lastAppended() == 18);
+        assertCommitTableIndeces(b.getAddress(), raft_a, 17, 18, 19);
+
+        raft_a.flushCommitTable();
+        Util.waitUntil(5000, 100, () -> raft_b.commitIndex() == 18);
+
+        assertCommitTableIndeces(b.getAddress(), raft_a, 18, 18, 19);
+
+        // compare the log entries from 1-18
+        for(int i=0; i <= raft_a.lastAppended(); i++) {
+            LogEntry la=raft_a.log().get(i), lb=raft_b.log().get(i);
+            if(i == 0)
+                assert la == null && lb == null;
+            else {
+                System.out.printf("%d: A=%s, B=%s\n", i, la, lb);
+                assert la.term() == lb.term();
+            }
+        }
     }
 
 
@@ -250,13 +279,16 @@ public class RaftTest {
 
 
 
-    /** Tests appding with correct prev_index, but incorrect term */
+    /** Tests appending with correct prev_index, but incorrect term */
     public void testAppendWrongTermOnlyOneTerm() throws Exception {
+
+        raft_a.resendInterval(1000);
+
         raft_a.currentTerm(22);
         for(int i=1; i <= 5; i++)
             add(rha, 1);
-        assert sma.counter() == 5;
-        assert smb.counter() == 4; // resend_interval is big, so the commit index on B won't get updated
+        expect(5, sma.counter());
+        expect(4, smb.counter()); // resend_interval is big, so the commit index on B won't get updated
         assertIndices(5, 5, 22, raft_a);
         assertIndices(5, 4, 22, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 4, 5, 6);
@@ -265,23 +297,19 @@ public class RaftTest {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
-        int prev_index=9; // index == 10
-        int term=raft_a.currentTerm(), commit_index=raft_a.commitIndex();
-
-
-
         // send a correct index, but incorrect prev_term:
-        prev_index=5; // index == 6
-        commit_index=raft_a.commitIndex();
-
-        // send an AppendEntriesRequest with in incorrect index
+        // does this ever happen?
         Message msg=new BytesMessage(null, val, 0, val.length)
-          .putHeader(raft_a.getId(), new AppendEntriesRequest(raft_a.getAddress(),
-                                                              prev_index, 23, 25, commit_index, false))
+          .putHeader(raft_a.getId(), new AppendEntriesRequest(raft_a.getAddress(), 22,
+                                                              5, 23, 25, 0, false))
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         raft_a.getDownProtocol().down(msg);
-        Util.sleep(2000);
-        assertCommitTableIndeces(b.getAddress(), raft_a, 4, 5, 6);
+        Util.waitUntilTrue(5000, 200, () -> raft_b.commitIndex() == 5);
+        expect(5, sma.counter());
+        expect(5, smb.counter()); // resend_interval is big, so the commit index on B won't get updated
+        assertIndices(5, 5, 22, raft_a);
+        assertIndices(5, 5, 22, raft_b);
+        assertCommitTableIndeces(b.getAddress(), raft_a, 5, 5, 6);
 
     }
 
@@ -290,7 +318,7 @@ public class RaftTest {
         Bits.writeInt(1, val, 0);
 
         Message msg=new BytesMessage(null, val, 0, val.length)
-          .putHeader(r.getId(), new AppendEntriesRequest(r.getAddress(),
+          .putHeader(r.getId(), new AppendEntriesRequest(r.getAddress(), curr_term,
                                                          prev_index, prev_term, curr_term, commit_index, false))
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         r.getDownProtocol().down(msg);
@@ -320,6 +348,9 @@ public class RaftTest {
         CommitTable table=r.commitTable();
         assert table != null;
         CommitTable.Entry e=table.get(member);
+        assert e != null;
+        Util.waitUntilTrue(2000, 100,
+                           () -> e.commitIndex() == commit_index && e.matchIndex() == match_index && e.nextIndex() == next_index);
         assert e.commitIndex() == commit_index : String.format("expected commit_index=%d, entry=%s", commit_index, e);
         assert e.matchIndex() == match_index : String.format("expected match_index=%d, entry=%s", match_index, e);
         assert e.nextIndex() == next_index : String.format("expected next_index=%d, entry=%s", next_index, e);
@@ -328,7 +359,7 @@ public class RaftTest {
     protected static int add(RaftHandle rh, int delta) throws Exception {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(delta, val, 0);
-        byte[] retval=rh.set(val, 0, val.length, 5, TimeUnit.MINUTES); // todo: change to 5 seconds
+        byte[] retval=rh.set(val, 0, val.length, 5, TimeUnit.SECONDS);
         return Bits.readInt(retval, 0);
     }
 
@@ -352,5 +383,9 @@ public class RaftTest {
 
     protected static RAFT raft(JChannel ch) {
         return ch.getProtocolStack().findProtocol(RAFT.class);
+    }
+
+    protected static void expect(int expected_value, int actual_value) {
+        assert actual_value == expected_value : String.format("expected=%d actual=%d", expected_value, actual_value);
     }
 }

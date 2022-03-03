@@ -40,16 +40,23 @@ public class Leader extends RaftImpl {
         ExtendedUUID uuid=(ExtendedUUID)sender;
         String sender_raft_id=Util.bytesToString(uuid.get(RAFT.raft_id_key));
         raft.getLog().trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
-        if(result.success) {
-            raft.commit_table.update(sender, result.index(), result.index()+1, result.commit_index, false);
-            if(reqtab.add(result.index, sender_raft_id, raft.majority())) {
-                raft.handleCommit(result.index);
-                if (raft.send_commits_immediately)
-                    sendCommitMessageToFollowers();
-            }
+        switch(result.result) {
+            case OK:
+                raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
+                if(reqtab.add(result.index, sender_raft_id, raft.majority())) {
+                    raft.handleCommit(result.index);
+                    if(raft.send_commits_immediately)
+                        sendCommitMessageToFollowers();
+                }
+                break;
+                // todo: change
+            case FAIL_ENTRY_NOT_FOUND:
+                raft.commit_table.update(sender, result.index(), result.index()+1, result.commit_index, true);
+                break;
+            case FAIL_CONFLICTING_PREV_TERM:
+                raft.commit_table.update(sender, result.index()-1, result.index(), result.commit_index, true, true);
+                break;
         }
-        else
-            raft.commit_table.update(sender, 0, result.index(), result.commit_index, true);
     }
 
     private void sendCommitMessageToFollowers() {
@@ -58,8 +65,9 @@ public class Leader extends RaftImpl {
 
     private void sendCommitMessageToFollower(Address member, CommitTable.Entry entry) {
         if(raft.commit_index > entry.commitIndex()) {
+            int cterm=raft.currentTerm();
             Message msg=new EmptyMessage(member)
-              .putHeader(raft.getId(), new AppendEntriesRequest(raft.getAddress(), 0, 0, raft.currentTerm(), raft.commit_index, false));
+              .putHeader(raft.getId(), new AppendEntriesRequest(raft.getAddress(), cterm, 0, 0, cterm, raft.commit_index, false));
             raft.down(msg);
         }
     }

@@ -34,13 +34,19 @@ public class CommitTable {
     }
 
     public CommitTable update(Address member, int match_index, int next_index, int commit_index, boolean single_resend) {
-        Entry entry=map.get(member);
-        if(entry == null)
+        return update(member, match_index, next_index, commit_index, single_resend, false);
+    }
+
+    public CommitTable update(Address member, int match_index, int next_index, int commit_index,
+                              boolean single_resend, boolean overwrite) {
+        Entry e=map.get(member);
+        if(e == null)
             return this;
-        entry.match_index=Math.max(match_index, entry.match_index);
-        entry.next_index=Math.max(1, next_index);
-        entry.commit_index=Math.max(entry.commit_index, commit_index);
-        entry.send_single_msg=single_resend;
+        e.match_index=overwrite? match_index : Math.max(match_index, e.match_index);
+        e.next_index=Math.max(1, next_index);
+        e.commit_index=Math.max(e.commit_index, commit_index);
+        e.send_single_msg=single_resend;
+        e.assertInvariant();
         return this;
     }
 
@@ -99,6 +105,10 @@ public class CommitTable {
                 return false;
             snapshot_in_progress=flag;
             return true;
+        }
+
+        public void assertInvariant() {
+            assert commit_index <= match_index && match_index <= next_index : this;
         }
 
         @Override public String toString() {

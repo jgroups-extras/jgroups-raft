@@ -19,16 +19,20 @@ import java.util.function.Supplier;
  */
 public class AppendEntriesRequest extends RaftHeader {
     protected Address    leader;         // probably not needed as msg.src() contains the leader's address already
+
+    // the term of the entry; this differs from term, e.g. when a LogEntry is resent with entry_term=25 and term=30
+    protected int        entry_term;
     protected int        prev_log_index;
     protected int        prev_log_term;
     protected int        leader_commit;  // the commit_index of the leader
     protected boolean    internal;
 
     public AppendEntriesRequest() {}
-    public AppendEntriesRequest(Address leader, int prev_log_index, int prev_log_term, int term,
+    public AppendEntriesRequest(Address leader, int current_term, int prev_log_index, int prev_log_term, int entry_term,
                                 int leader_commit, boolean internal) {
-        super(term);
+        super(current_term);
         this.leader=leader;
+        this.entry_term=entry_term;
         this.prev_log_index=prev_log_index;
         this.prev_log_term=prev_log_term;
         this.leader_commit=leader_commit;
@@ -45,14 +49,15 @@ public class AppendEntriesRequest extends RaftHeader {
 
     @Override
     public int serializedSize() {
-        return super.serializedSize() + Util.size(leader) + Bits.size(prev_log_index) + Bits.size(prev_log_term) +
-          Bits.size(leader_commit) + Global.BYTE_SIZE;
+        return super.serializedSize() + Util.size(leader) + Bits.size(entry_term) + Bits.size(prev_log_index)
+          + Bits.size(prev_log_term) + Bits.size(leader_commit) + Global.BYTE_SIZE;
     }
 
     @Override
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
+        Bits.writeIntCompressed(entry_term, out);
         Bits.writeIntCompressed(prev_log_index, out);
         Bits.writeIntCompressed(prev_log_term, out);
         Bits.writeIntCompressed(leader_commit, out);
@@ -63,6 +68,7 @@ public class AppendEntriesRequest extends RaftHeader {
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
+        entry_term=Bits.readIntCompressed(in);
         prev_log_index=Bits.readIntCompressed(in);
         prev_log_term=Bits.readIntCompressed(in);
         leader_commit=Bits.readIntCompressed(in);
@@ -70,7 +76,7 @@ public class AppendEntriesRequest extends RaftHeader {
     }
 
     @Override public String toString() {
-        return String.format("%s, leader=%s, prev_log_index=%d, prev_log_term=%d, leader_commit=%d, internal=%b",
-                             super.toString(), leader, prev_log_index, prev_log_term, leader_commit, internal);
+        return String.format("%s, leader=%s, entry_term=%d, prev_log_index=%d, prev_log_term=%d, leader_commit=%d, internal=%b",
+                             super.toString(), leader, entry_term, prev_log_index, prev_log_term, leader_commit, internal);
     }
 }

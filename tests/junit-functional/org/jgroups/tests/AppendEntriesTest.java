@@ -1,32 +1,30 @@
  package org.jgroups.tests;
 
  import org.jgroups.Address;
- import org.jgroups.Global;
- import org.jgroups.JChannel;
- import org.jgroups.protocols.DISCARD;
- import org.jgroups.protocols.TP;
- import org.jgroups.protocols.raft.*;
- import org.jgroups.raft.RaftHandle;
- import org.jgroups.raft.blocks.ReplicatedStateMachine;
- import org.jgroups.stack.ProtocolStack;
- import org.jgroups.util.Util;
- import org.testng.annotations.AfterMethod;
- import org.testng.annotations.Test;
+import org.jgroups.Global;
+import org.jgroups.JChannel;
+import org.jgroups.protocols.DISCARD;
+import org.jgroups.protocols.TP;
+import org.jgroups.protocols.raft.*;
+import org.jgroups.raft.RaftHandle;
+import org.jgroups.raft.blocks.ReplicatedStateMachine;
+import org.jgroups.stack.ProtocolStack;
+import org.jgroups.util.Util;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.Test;
 
- import java.io.DataInput;
- import java.io.DataOutput;
- import java.lang.reflect.Field;
- import java.lang.reflect.Method;
- import java.util.Arrays;
- import java.util.Collections;
- import java.util.List;
- import java.util.Objects;
- import java.util.concurrent.TimeUnit;
- import java.util.concurrent.TimeoutException;
- import java.util.function.Function;
- import java.util.stream.Stream;
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
- import static org.testng.Assert.*;
+import static org.testng.Assert.*;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc
@@ -37,21 +35,12 @@
 public class AppendEntriesTest {
     protected JChannel                                a,  b,  c;  // A is always the leader
     protected ReplicatedStateMachine<Integer,Integer> as, bs, cs;
-    protected static final Method                     handleAppendEntriesRequest;
     protected static final String                     CLUSTER="AppendEntriesTest";
     protected final List<String>                      members=Arrays.asList("A", "B", "C");
-
-    static {
-        try {
-            handleAppendEntriesRequest=RaftImpl.class.getDeclaredMethod("handleAppendEntriesRequest",
-                                                                        byte[].class, int.class, int.class, Address.class,
-                                                                        int.class, int.class, int.class, int.class, boolean.class);
-            handleAppendEntriesRequest.setAccessible(true);
-        }
-        catch(NoSuchMethodException e) {
-            throw new RuntimeException(e);
-        }
-    }
+    protected static final long                       TIMEOUT=5000, INTERVAL=100;
+    protected static final Address                    leader=Util.createRandomAddress("A");
+    protected static final byte[]                     buf=new byte[10];
+    protected static final int[]                      terms={0,1,1,1,4,4,5,5,6,6,6};
 
 
     @AfterMethod
@@ -170,7 +159,7 @@ public class AppendEntriesTest {
         // make B and C drop all traffic; this means A won't be able to commit
         for(JChannel ch: Arrays.asList(b,c)) {
             ProtocolStack stack=ch.getProtocolStack();
-            DISCARD discard=new DISCARD().discardAll(true);
+            DISCARD discard=new DISCARD().discardAll(true).setAddress(ch.getAddress());
             stack.insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
         };
 
@@ -199,12 +188,13 @@ public class AppendEntriesTest {
             assert raft.lastAppended() == 1;
             assert raft.commitIndex() == 1;
         }
-        assertSame(as, bs);
+        assertSame(as, bs, cs);
     }
 
     /**
      * Tests https://github.com/belaban/jgroups-raft/issues/30-31: correct commit_index after leader restart, and
-     * populating request table in RAFT on leader change
+     * populating request table in RAFT on leader change. Note that the commit index should still be 0, as the change
+     * on the leader should throw an exception!
      */
     public void testLeaderRestart() throws Exception {
         a=create("A", false);
@@ -272,12 +262,10 @@ public class AppendEntriesTest {
 
     /** Tests an append at index 1 with prev_index 0 and index=2 with prev_index=1*/
     public void testInitialAppends() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
 
-        byte[] buf=new byte[10];
         AppendResult result=append(impl, 1, 0, new LogEntry(4, buf), leader, 1);
         assert result.success();
         assertEquals(result.index(), 1);
@@ -289,16 +277,19 @@ public class AppendEntriesTest {
         assertEquals(result.index(), 2);
         assertEquals(result.commitIndex(), 1);
         assertLogIndices(log, 2, 1, 4);
+
+        result=append(impl, 2, 4, new LogEntry(4, null), leader, 2);
+        assert result.success();
+        assertEquals(result.index(), 2);
+        assertEquals(result.commitIndex(), 2);
+        assertLogIndices(log, 2, 2, 4);
     }
 
     /** Tests append _after_ the last appended index; returns an AppendResult with index=last_appended */
     public void testAppendAfterLastAppened() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-
-        byte[] buf=new byte[10];
 
         // initial append at index 1
         AppendResult result=append(impl, 1, 0, new LogEntry(4, buf), leader, 1);
@@ -311,13 +302,9 @@ public class AppendEntriesTest {
         assert !result.success();
         assertEquals(result.index(), 1);
         assertLogIndices(log, 1, 1, 4);
-
-        // append at index 2 with term 3 fails as prev-term is 4
-        result=append(impl, 2, 3, new LogEntry(4, buf), leader, 1);
-        assert !result.success();
-        assertEquals(result.index(), 1);
-        assertLogIndices(log, 1, 1, 4);
     }
+
+
 
     public void testSendCommitsImmediately() throws Exception {
         // Force leader to send commit messages immediately
@@ -335,40 +322,69 @@ public class AppendEntriesTest {
     // Log    01 01 01 04 04 05 05 06 06 06
     // Append                            07 <--- wrong prev_term at index 11
     public void testAppendWithConflictingTerm() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
 
-        byte[] buf=new byte[10];
-        append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
-        append(impl,  2, 1, new LogEntry(1, buf), leader, 1);
-        append(impl,  3, 1, new LogEntry(1, buf), leader, 1);
-        append(impl,  4, 1, new LogEntry(4, buf), leader, 1);
-        append(impl,  5, 4, new LogEntry(4, buf), leader, 1);
-        append(impl,  6, 4, new LogEntry(5, buf), leader, 1);
-        append(impl,  7, 5, new LogEntry(5, buf), leader, 1);
-        append(impl,  8, 5, new LogEntry(6, buf), leader, 1);
-        append(impl,  9, 6, new LogEntry(6, buf), leader, 1);
-        append(impl, 10, 6, new LogEntry(6, buf), leader, 1);
+        for(int i=1; i <= 10; i++)
+            append(impl,  i, terms[i-1], new LogEntry(terms[i], buf), leader, 1);
 
         // now append(index=11,term=7) -> should return false result with index=8
         AppendResult result=append(impl, 11, 7, new LogEntry(6, buf), leader, 1);
         assert !result.success();
         assertEquals(result.index(), 8);
         assertEquals(result.nonMatchingTerm(), 6);
-        assertLogIndices(log, 10, 1, 6);
+        assertLogIndices(log, 7, 1, 5);
+    }
+
+
+    // Index  01 02 03 04 05 06 07 08 09 10 11 12
+    // Log    01
+    // Append    07 <--- wrong prev_term at index 1
+    public void testAppendWithConflictingTerm2() throws Exception {
+        initB();
+        RaftImpl impl=getImpl(b);
+        Log log=impl.raft().log();
+
+        append(impl,  1, 0, new LogEntry(1, buf), leader, 0);
+
+        // now append(index=2,term=7) -> should return false result with index=1
+        AppendResult result=append(impl, 2, 7, new LogEntry(7, buf), leader, 1);
+        assert !result.success();
+        assertEquals(result.index(), 1);
+        assertEquals(result.nonMatchingTerm(), 1);
+        assertLogIndices(log, 0, 0, 0);
+    }
+
+
+    // Index  01 02 03 04 05 06 07 08 09 10 11 12
+    // Log    01 03 05
+    // Append          07 <--- wrong prev_term at index 3
+    public void testAppendWithConflictingTerm3() throws Exception {
+        initB();
+        RaftImpl impl=getImpl(b);
+        Log log=impl.raft().log();
+
+        append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
+        append(impl,  2, 1, new LogEntry(3, buf), leader, 1);
+        append(impl,  3, 3, new LogEntry(5, buf), leader, 1);
+
+        // now append(index=2,term=7) -> should return false result with index=1
+        AppendResult result=append(impl, 4, 7, new LogEntry(7, buf), leader, 1);
+        assert !result.success();
+        assertEquals(result.index(), 3);
+        assertEquals(result.nonMatchingTerm(), 5);
+        assertLogIndices(log, 2, 1, 3);
     }
 
 
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     public void testRAFTPaperAppendOnLeader() throws Exception {
-        Address leader=Util.createRandomAddress("A");
+
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-        byte[] buf=new byte[10];
         append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
         append(impl,  2, 1, new LogEntry(1, buf), leader, 1);
         append(impl,  3, 1, new LogEntry(1, buf), leader, 1);
@@ -385,15 +401,14 @@ public class AppendEntriesTest {
         assertLogIndices(log, 11, 10, 6);
     }
 
+    // 5.3, fig. 7
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     // Flwr A 01 01 01 04 04 05 05 06 06    06 <-- add
     public void testRAFTPaperScenarioA() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-        byte[] buf=new byte[10];
         append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
         append(impl,  2, 1, new LogEntry(1, buf), leader, 1);
         append(impl,  3, 1, new LogEntry(1, buf), leader, 1);
@@ -403,22 +418,21 @@ public class AppendEntriesTest {
         append(impl,  7, 5, new LogEntry(5, buf), leader, 1);
         append(impl,  8, 5, new LogEntry(6, buf), leader, 1);
         append(impl,  9, 6, new LogEntry(6, buf), leader, 9);
-        AppendResult result = append(impl, 11, 6, new LogEntry(6, buf), leader, 9);
+        AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 9);
         assertFalse(result.success());
         assertEquals(result.index(), 9);
         assertLogIndices(log, 9, 9, 6);
     }
 
 
+    // 5.3, fig. 7
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     // Flwr A 01 01 01 04                   06 <-- add
     public void testRAFTPaperScenarioB() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-        byte[] buf=new byte[10];
         append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
         append(impl, 2, 1, new LogEntry(1, buf), leader, 1);
         append(impl, 3, 1, new LogEntry(1, buf), leader, 1);
@@ -429,15 +443,14 @@ public class AppendEntriesTest {
         assertLogIndices(log, 4, 4, 4);
     }
 
+    // 5.3, fig. 7
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     // Flwr A 01 01 01 04 04 05 05 06 06 06 06
     public void testRAFTPaperScenarioC() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-        byte[] buf=new byte[10];
         append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
         append(impl,  2, 1, new LogEntry(1, buf), leader, 1);
         append(impl,  3, 1, new LogEntry(1, buf), leader, 1);
@@ -448,24 +461,23 @@ public class AppendEntriesTest {
         append(impl,  8, 5, new LogEntry(6, buf), leader, 1);
         append(impl,  9, 6, new LogEntry(6, buf), leader, 1);
         append(impl, 10, 6, new LogEntry(6, buf), leader, 1);
-        append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
+        append(impl, 11, 6, new LogEntry(6, buf), leader, 10);
         // Overwrites existing entry; does *not* advance last_applied in log
-        AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
+        AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 10);
         assertTrue(result.success());
         assertEquals(result.index(), 11);
-        assertLogIndices(log, 11, 11, 6);
+        assertLogIndices(log, 11, 10, 6);
     }
 
 
+    // 5.3, fig. 7
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     // Flwr A 01 01 01 04 04 05 05 06 06 06 07 07
     public void testRAFTPaperScenarioD() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-        byte[] buf=new byte[10];
         append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
         append(impl,  2, 1, new LogEntry(1, buf), leader, 1);
         append(impl,  3, 1, new LogEntry(1, buf), leader, 1);
@@ -477,62 +489,116 @@ public class AppendEntriesTest {
         append(impl,  9, 6, new LogEntry(6, buf), leader, 1);
         append(impl, 10, 6, new LogEntry(6, buf), leader, 1);
         append(impl, 11, 6, new LogEntry(7, buf), leader, 1);
-        append(impl, 12, 7, new LogEntry(7, buf), leader, 12);
+        append(impl, 12, 7, new LogEntry(7, buf), leader, 10);
 
-        AppendResult result=append(impl, buf, leader, 10, 6, 8, 12);
+        // add 11
+        AppendResult result=append(impl, buf, leader, 10, 6, 8, 10);
         assertTrue(result.success());
         assertEquals(result.index(), 11);
-        assertLogIndices(log, 11, 11, 8);
+        assertLogIndices(log, 11, 10, 8);
+
+        // add 12
+        result=append(impl, buf, leader, 11, 8, 8, 10);
+        assertTrue(result.success());
+        assertEquals(result.index(), 12);
+        assertLogIndices(log, 12, 10, 8);
+
+        // commit 12
+        result=append(impl, null, leader, 0, 0, 0, 12);
+        assertTrue(result.success());
+        assertEquals(result.index(), 12);
+        assertLogIndices(log, 12, 12, 8);
     }
 
+    // 5.3, fig. 7
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     // Flwr A 01 01 01 04 04 04 04
     public void testRAFTPaperScenarioE() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-        byte[] buf=new byte[10];
         append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
         append(impl,  2, 1, new LogEntry(1, buf), leader, 1);
         append(impl,  3, 1, new LogEntry(1, buf), leader, 1);
         append(impl,  4, 1, new LogEntry(4, buf), leader, 1);
         append(impl,  5, 4, new LogEntry(4, buf), leader, 1);
         append(impl,  6, 4, new LogEntry(4, buf), leader, 1);
-        append(impl,  7, 4, new LogEntry(4, buf), leader, 7);
-        AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 7);
+        append(impl,  7, 4, new LogEntry(4, buf), leader, 3);
+
+        System.out.printf("log entries of follower before fix:\n%s", printLog(log));
+
+        AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 10);
         assertFalse(result.success());
         assertEquals(result.index(), 7);
-        assertLogIndices(log, 7, 7, 4);
+        assertLogIndices(log, 7, 3, 4);
+
+        // now try to append 8 (fails because of wrong term)
+        result=append(impl, 8, 5, new LogEntry(6, buf), leader, 10);
+        assert !result.success();
+        assertEquals(result.index(), 4);
+        assert result.commitIndex() == 3;
+        assertLogIndices(log, 3, 3, 1);
+
+        // now append 4-10
+        for(int i=4; i <= 10; i++) {
+            result=append(impl, i, terms[i-1], new LogEntry(terms[i], buf), leader, 10);
+            assert result.success();
+            assertEquals(result.index(), i);
+            assert result.commitIndex() == i;
+            assertLogIndices(log, i, i, terms[i]);
+        }
+        System.out.printf("log entries of follower after fix:\n%s", printLog(log));
+        for(int i=0; i < terms.length; i++) {
+            LogEntry entry=log.get(i);
+            assert entry == null && i == 0 || entry.term() == terms[i];
+        }
     }
 
+
+    // 5.3, fig. 7
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     // Flwr A 01 01 01 02 02 02 03 03 03 03 03
     public void testRAFTPaperScenarioF() throws Exception {
-        Address leader=Util.createRandomAddress("A");
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
-        byte[] buf=new byte[10];
-        append(impl,  1, 0, new LogEntry(1, buf), leader, 1);
-        append(impl,  2, 1, new LogEntry(1, buf), leader, 1);
-        append(impl,  3, 1, new LogEntry(1, buf), leader, 1);
-        append(impl,  4, 1, new LogEntry(2, buf), leader, 1);
-        append(impl,  5, 2, new LogEntry(2, buf), leader, 1);
-        append(impl,  6, 2, new LogEntry(2, buf), leader, 1);
-        append(impl,  7, 2, new LogEntry(3, buf), leader, 1);
-        append(impl,  8, 3, new LogEntry(3, buf), leader, 1);
-        append(impl,  9, 3, new LogEntry(3, buf), leader, 1);
-        append(impl, 10, 3, new LogEntry(3, buf), leader, 1);
-        append(impl, 11, 3, new LogEntry(3, buf), leader, 11);
+        int[] incorrect_terms={0,1,1,1,2,2,2,3,3,3,3,3};
+        for(int i=1; i < incorrect_terms.length; i++)
+            append(impl, i, incorrect_terms[i-1], new LogEntry(incorrect_terms[i], buf), leader, 3);
 
-        AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 11);
-        assertFalse(result.success());
-        assertEquals(result.index(), 7);
-        assertLogIndices(log, 11, 11, 3);
+        System.out.printf("log entries of follower before fix:\n%s", printLog(log));
+
+        AppendResult result=append(impl, 10, 6, new LogEntry(6, buf), leader, 10);
+        assert !result.success();
+        assert result.index() == 7;
+        assertLogIndices(log, 6, 3, 2);
+
+        System.out.printf("log entries of follower after first fix:\n%s", printLog(log));
+
+        result=append(impl, 7, 5, new LogEntry(5, buf), leader, 10);
+        assert !result.success();
+        assert result.index() == 4;
+        assertLogIndices(log, 3, 3, 1);
+
+        System.out.printf("log entries of follower after second fix:\n%s", printLog(log));
+
+        // now append 4-10:
+        for(int i=4; i <= 10; i++) {
+            result=append(impl, i, terms[i-1], new LogEntry(terms[i], buf), leader, 10);
+            assert result.success();
+            assertEquals(result.index(), i);
+            assert result.commitIndex() == i;
+            assertLogIndices(log, i, i, terms[i]);
+        }
+        System.out.printf("log entries of follower after final fix:\n%s", printLog(log));
+        for(int i=0; i < terms.length; i++) {
+            LogEntry entry=log.get(i);
+            assert entry == null && i == 0 || entry.term() == terms[i];
+        }
     }
+
 
     protected JChannel create(String name, boolean follower) throws Exception {
         return create(name, follower, r -> r);
@@ -615,8 +681,13 @@ public class AppendEntriesTest {
 
     protected static RaftImpl getImpl(JChannel ch) {
         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-        Field impl=Util.getField(RAFT.class, "impl");
-        return (RaftImpl)Util.getField(impl, raft);
+        return raft.impl();
+    }
+
+    protected static String printLog(Log l) {
+        StringBuilder sb=new StringBuilder();
+        l.forEach((e,i) -> sb.append(String.format("%d: term=%d\n", i, e.term())));
+        return sb.toString();
     }
 
     protected static void assertLeader(JChannel ch, long timeout, long interval) {
@@ -656,32 +727,23 @@ public class AppendEntriesTest {
 
     @SafeVarargs
     protected final void assertSame(ReplicatedStateMachine<Integer,Integer>... rsms) {
-        ReplicatedStateMachine<Integer,Integer> first=rsms[0];
-        for(int i=0; i < 10; i++) {
-            boolean same=true;
-            for(int j=1; j < rsms.length; j++) {
-                ReplicatedStateMachine<Integer,Integer> rsm=rsms[j];
-                if(!rsm.equals(first)) {
-                    same=false;
-                    break;
-                }
-            }
-            if(same)
-                break;
-            Util.sleep(500);
-        }
+        assertSame(TIMEOUT, INTERVAL, rsms);
+    }
+
+
+    @SafeVarargs
+    protected final void assertSame(long timeout, long interval, ReplicatedStateMachine<Integer,Integer>... rsms) {
+        Util.waitUntilTrue(timeout, interval, () -> Stream.of(rsms).allMatch(r -> r.equals(rsms[0])));
         for(ReplicatedStateMachine<Integer,Integer> rsm: rsms)
             System.out.println(rsm.channel().getName() + ": " + rsm);
-
-        for(int j=1; j < rsms.length; j++) {
-            ReplicatedStateMachine<Integer,Integer> rsm=rsms[j];
-            assert rsm.equals(first) : String.format("commit-table of A: %s",
-                                                     ((RAFT)a.getProtocolStack().findProtocol(RAFT.class)).dumpCommitTable());
+        for(int i=1; i < rsms.length; i++) {
+            assert rsms[i].equals(rsms[0])
+              : String.format("commit-table of A: %s", ((RAFT)a.getProtocolStack().findProtocol(RAFT.class)).dumpCommitTable());
         }
     }
 
-    protected static void assertLogIndices(Log log, int last_applied, int commit_index, int term) {
-        assertEquals(log.lastAppended(), last_applied);
+    protected static void assertLogIndices(Log log, int last_appended, int commit_index, int term) {
+        assertEquals(log.lastAppended(), last_appended);
         assertEquals(log.commitIndex(), commit_index);
         assertEquals(log.currentTerm(), term);
     }
@@ -717,8 +779,9 @@ public class AppendEntriesTest {
 
     protected static AppendResult append(RaftImpl impl, byte[] data, Address leader,
                                          int prev_log_index, int prev_log_term, int entry_term, int leader_commit) throws Exception {
-        return (AppendResult)handleAppendEntriesRequest.invoke(impl, data, 0, data.length, leader,
-                                                               prev_log_index, prev_log_term, entry_term, leader_commit, false);
+        int len=data != null? data.length : 0;
+        return impl.handleAppendEntriesRequest(data, 0, len, leader,
+                                               prev_log_index, prev_log_term, entry_term, leader_commit, false);
     }
 
 

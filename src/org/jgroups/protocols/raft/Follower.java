@@ -47,7 +47,7 @@ public class Follower extends RaftImpl {
                                 raft.getAddress(), Util.printBytes(msg.getLength()), msg.src(), raft.lastAppended(),
                                 raft.commitIndex());
 
-            AppendResult result=new AppendResult(true, last_included_index).commitIndex(raft.commitIndex());
+            AppendResult result=new AppendResult(AppendResult.Result.OK, last_included_index).commitIndex(raft.commitIndex());
             Message ack=new EmptyMessage(leader).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
             raft.getDownProtocol().down(ack);
         }

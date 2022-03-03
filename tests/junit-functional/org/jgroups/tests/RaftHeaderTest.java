@@ -6,6 +6,8 @@ import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 import org.testng.annotations.Test;
 
+import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_ENTRY_NOT_FOUND;
+
 /**
  * @author Bela Ban
  * @since  0.1
@@ -29,12 +31,12 @@ public class RaftHeaderTest {
     }
 
     public void testAppendEntriesRequest() throws Exception {
-        AppendEntriesRequest req=new AppendEntriesRequest(Util.createRandomAddress("A"), 4, 21, 22, 18, true);
+        AppendEntriesRequest req=new AppendEntriesRequest(Util.createRandomAddress("A"), 22, 4, 21, 22, 18, true);
         _testSize(req, AppendEntriesRequest.class);
     }
 
     public void testAppendEntriesResponse() throws Exception {
-        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(false, 22, 5));
+        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(FAIL_ENTRY_NOT_FOUND, 22, 5));
         _testSize(rsp, AppendEntriesResponse.class);
     }
 
@@ -64,7 +66,7 @@ public class RaftHeaderTest {
 
         RaftHeader hdr2=Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
         assert hdr2 != null;
-        assert hdr.term() == hdr2.term();
+        assert hdr.currTerm() == hdr2.currTerm();
     }
 
 

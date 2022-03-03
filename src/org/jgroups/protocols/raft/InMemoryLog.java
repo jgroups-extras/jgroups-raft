@@ -135,6 +135,8 @@ public class InMemoryLog implements Log {
         if(idx < 0 || idx >= entries.length)
             return;
 
+        assert start_index > commit_index; // the commit index cannot go back!
+
         for(int index=idx; index <= last_appended; index++)
             entries[index]=null;
 
@@ -155,8 +157,7 @@ public class InMemoryLog implements Log {
         int start=Math.max(1, start_index)- first_appended, end=end_index- first_appended;
         for(int i=start; i <= end; i++) {
             LogEntry entry=entries[i];
-            function.accept(entry, start_index);
-            start_index++;
+            function.accept(entry, i);
         }
     }
 

@@ -350,15 +350,16 @@ public class LevelDBLog implements Log {
         Address loggedVotedForAddress =Util.objectFromByteBuffer(db.get(VOTEDFOR));
         log.trace("VotedFor in DB is: %s", loggedVotedForAddress);
 
-        assert (firstAppended == loggedFirstAppended);
-        assert (lastAppended == loggedLastAppended);
-        assert (currentTerm == loggedCurrentTerm);
-        assert (commitIndex == loggedCommitIndex);
+        assert firstAppended == loggedFirstAppended;
+        assert lastAppended == loggedLastAppended;
+        assert currentTerm == loggedCurrentTerm;
+        assert commitIndex == loggedCommitIndex;
         assert votedFor == null || (votedFor.equals(loggedVotedForAddress));
 
         LogEntry lastAppendedEntry = get(lastAppended);
         assert (lastAppendedEntry==null || lastAppendedEntry.term <= currentTerm);
-
+        assert firstAppended <= commitIndex;
+        assert commitIndex <= lastAppended;
     }
 
 }

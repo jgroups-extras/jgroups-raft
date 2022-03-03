@@ -1,8 +1,9 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
-import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
+
+import static org.jgroups.protocols.raft.AppendResult.Result.*;
 
 /**
  * Base class for the different roles a RAFT node can have (follower, candidate, leader)
@@ -31,43 +32,58 @@ public abstract class RaftImpl {
      * @param offset The offset
      * @param length The length
      * @param leader The leader's address (= the sender)
-     * @param prev_log_index The index of the previous log entry
-     * @param prev_log_term The term of the previous log entry
+     * @param prev_index The index of the previous log entry
+     * @param prev_term The term of the previous log entry
      * @param entry_term The term of the entry
      * @param leader_commit The leader's commit_index
      * @param internal True if the command is an internal command
      * @return AppendResult A result (true or false), or null if the request was ignored (e.g. due to lower term)
      */
     public AppendResult handleAppendEntriesRequest(byte[] data, int offset, int length, Address leader,
-                                                   int prev_log_index, int prev_log_term, int entry_term,
+                                                   int prev_index, int prev_term, int entry_term,
                                                    int leader_commit, boolean internal) {
         raft.leader(leader);
         if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit
-            handleCommitRequest(leader, leader_commit);
-            return null;
+            raft.commitLogTo(leader_commit);
+            return new AppendResult(OK, raft.lastAppended()).commitIndex(raft.commitIndex());
         }
 
-        int curr_index=prev_log_index+1;
-        LogEntry prev=raft.log_impl.get(prev_log_index);
-        if(prev == null && prev_log_index > 0) { // didn't find entry
+        int curr_index=prev_index+1;
+        if(curr_index <= raft.commitIndex()) {
+            raft.commitLogTo(leader_commit);
+            return new AppendResult(OK, raft.lastAppended()).commitIndex(raft.commitIndex());
+        }
+
+        LogEntry prev=raft.log_impl.get(prev_index);
+        if(prev == null && prev_index > 0) { // didn't find entry
             raft.num_failed_append_requests_not_found++;
-            return new AppendResult(false, raft.lastAppended()); // required, e.g. when catching up as a new mbr
+            return new AppendResult(FAIL_ENTRY_NOT_FOUND, raft.lastAppended()); // required, e.g. when catching up as a new mbr
         }
 
-        // if the term at prev_log_index != prev_term -> return false and the start index of the conflicting term
-        if(prev_log_index == 0 || prev.term == prev_log_term) {
+        // if the term at prev_index != prev_term -> return false and the start index of the conflicting term
+        if(prev_index == 0 || prev.term == prev_term) {
             LogEntry existing=raft.log_impl.get(curr_index);
             if(existing != null && existing.term != entry_term) {
                 // delete this and all subsequent entries and overwrite with received entry
                 raft.deleteAllLogEntriesStartingFrom(curr_index);
             }
-            raft.append(entry_term, curr_index, data, offset, length, internal).commitLogTo(leader_commit);
+            boolean added=raft.append(entry_term, curr_index, data, offset, length, internal);
+            raft.commitLogTo(leader_commit);
             if(internal)
                 raft.executeInternalCommand(null, data, offset, length);
-            return new AppendResult(true, curr_index).commitIndex(raft.commitIndex());
+            return new AppendResult(OK, added? curr_index : raft.lastAppended())
+              .commitIndex(raft.commitIndex());
         }
         raft.num_failed_append_requests_wrong_term++;
-        return new AppendResult(false, getFirstIndexOfConflictingTerm(prev_log_index, prev.term), prev.term);
+        int conflicting_index=getFirstIndexOfConflictingTerm(prev_index, prev.term);
+        if(conflicting_index <= raft.commitIndex()) {
+            raft.getLog().error("%s: cannot delete entries <= %d as commit_index is higher: log=%s",
+                                raft.getAddress(), conflicting_index, raft.log_impl);
+            conflicting_index=raft.last_appended;
+        }
+        else
+            raft.deleteAllLogEntriesStartingFrom(conflicting_index);
+        return new AppendResult(FAIL_CONFLICTING_PREV_TERM, conflicting_index, prev.term).commitIndex(raft.commitIndex());
     }
 
 
@@ -94,11 +110,5 @@ public abstract class RaftImpl {
         return retval;
     }
 
-    protected void handleCommitRequest(Address sender, int leader_commit) {
-        raft.commitLogTo(leader_commit);
-        AppendResult result=new AppendResult(true, raft.lastAppended()).commitIndex(raft.commitIndex());
-        Message msg=new EmptyMessage(sender).putHeader(raft.getId(), new AppendEntriesResponse(raft.currentTerm(), result));
-        raft.getDownProtocol().down(msg);
-    }
 
 }

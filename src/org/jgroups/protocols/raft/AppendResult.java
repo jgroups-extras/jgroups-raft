@@ -1,6 +1,5 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.Global;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Streamable;
 
@@ -14,8 +13,11 @@ import java.io.IOException;
  * @since  0.1
  */
 public class AppendResult implements Streamable {
+
+    public enum Result {OK, FAIL_ENTRY_NOT_FOUND, FAIL_CONFLICTING_PREV_TERM};
+
     /** True if the append succeeded, false otherwise */
-    protected boolean success;
+    protected Result  result;
 
     /** The index of the last appended entry if success == true. If success is false, the first index for
      * non-matching term. If index == 0, this means the follower doesn't have a log and needs to run the
@@ -30,36 +32,36 @@ public class AppendResult implements Streamable {
 
     public AppendResult() {}
 
-    public AppendResult(boolean success, int index) {
-        this.success=success;
+    public AppendResult(Result result, int index) {
+        this.result=result;
         this.index=index;
     }
 
-    public AppendResult(boolean success, int index, int non_matching_term) {
-        this.success=success;
-        this.index=index;
-        this.non_matching_term = non_matching_term;
+    public AppendResult(Result result, int index, int non_matching_term) {
+        this(result, index);
+        this.non_matching_term=non_matching_term;
     }
 
-    public boolean      success()           {return success;}
+    public boolean      success()           {return result != null && result == Result.OK;}
     public int          index()             {return index;}
     public int          commitIndex()       {return commit_index;}
     public int          nonMatchingTerm()   {return non_matching_term;}
     public AppendResult commitIndex(int ci) {this.commit_index=ci; return this;}
 
     public int size() {
-        return Global.BYTE_SIZE + Bits.size(index) + Bits.size(commit_index) + Bits.size(non_matching_term);
+        return Bits.size(result.ordinal()) + Bits.size(index) + Bits.size(commit_index) + Bits.size(non_matching_term);
     }
 
     public void writeTo(DataOutput out) throws IOException {
-        out.writeBoolean(success);
+        Bits.writeIntCompressed(result.ordinal(), out);
         Bits.writeIntCompressed(index, out);
         Bits.writeIntCompressed(commit_index, out);
         Bits.writeIntCompressed(non_matching_term, out);
     }
 
     public void readFrom(DataInput in) throws IOException {
-        success=in.readBoolean();
+        int ordinal=Bits.readIntCompressed(in);
+        result=Result.values()[ordinal];
         index=Bits.readIntCompressed(in);
         commit_index=Bits.readIntCompressed(in);
         non_matching_term=Bits.readIntCompressed(in);
@@ -67,6 +69,8 @@ public class AppendResult implements Streamable {
 
 
     public String toString() {
-        return success + ", index=" + index + ", commit-index=" + commit_index;
+        return String.format("%b%s, index=%d, commit-index=%d%s",
+                             success(), success()? "" : String.format(" (%s)", result), index, commit_index,
+                             non_matching_term> 0? String.format(", non-matching-term=%d", non_matching_term) : "");
     }
 }

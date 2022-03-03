@@ -177,7 +177,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     public String       raftId()                      {return raft_id;}
     public RAFT         raftId(String id)             {if(id != null) this.raft_id=id; return this;}
-    public List<String> members()                     {return members;}
     public RaftImpl     impl()                        {return impl;}
     public int          majority()                    {return majority;}
     public String       logClass()                    {return log_class;}
@@ -218,12 +217,24 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
           =num_failed_append_requests_wrong_term=0;
     }
 
+    @Property(description="List of members (logical names); majority is computed from it")
+    public void setMembers(String list) {
+        members(Util.parseCommaDelimitedStrings(list));
+    }
+
     public RAFT members(Collection<String> list) {
         this.members.clear();
         this.members.addAll(new HashSet<>(list));
         computeMajority();
         return this;
     }
+
+    @Property public List<String> members() {
+        synchronized (members) {
+            return new ArrayList<>(members);
+        }
+    }
+
 
     /**
      * Sets current_term if new_term is bigger
@@ -454,6 +465,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         super.stop();
         runner.stop();
         impl.destroy();
+        Util.close(log_impl);
     }
 
 
@@ -490,6 +502,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         if(!batch.isEmpty())
             up_prot.up(batch);
+    }
+
+    @ManagedOperation(description="Sends all pending AppendEntriesRequests")
+    public void flushCommitTable() {
+        if(commit_table != null)
+            commit_table.forEach(this::sendAppendEntriesMessage);
     }
 
     /**
@@ -552,6 +570,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return retval; // 4. Return CompletableFuture
     }
 
+    public String toString() {
+        return String.format("%s commit=%d last-appended=%d curr-term=%d",
+                             RAFT.class.getSimpleName(), commit_index, last_appended, current_term);
+    }
+
     protected void add(Request r) {
         try {
             processing_queue.put(r);
@@ -585,7 +608,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
             // 3. Multicast an AppendEntries message (exclude self)
             Message msg=new BytesMessage(null, buf, offset, length)
-              .putHeader(id, new AppendEntriesRequest(this.local_addr, prev_index, prev_term, current_term, commit_index, cmd != null))
+              .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term, current_term, commit_index, cmd != null))
               .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
 
             // the message needs to be sent inside the synchronized block (and hit NAKACK2 in the correct order):
@@ -605,27 +628,24 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         // if hdr.term < current_term -> drop message
         // if hdr.term > current_term -> set current_term and become Follower, accept message
         // if hdr.term == current_term -> accept message
-        if(currentTerm(hdr.term) < 0)
+        if(currentTerm(hdr.curr_term) < 0)
             return;
 
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest req=(AppendEntriesRequest)hdr;
             AppendResult result=impl.handleAppendEntriesRequest(msg.getArray(), msg.getOffset(), msg.getLength(), msg.src(),
-                                                                req.prev_log_index, req.prev_log_term, req.term,
-                                                                req.leader_commit, req.internal);
-            if(result != null) {
-                result.commitIndex(commit_index);
-                Message rsp=new EmptyMessage(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
-                down_prot.down(rsp);
-            }
+                                                                req.prev_log_index, req.prev_log_term, req.entry_term,
+                                                                req.leader_commit, req.internal).commitIndex(commit_index);
+            Message rsp=new EmptyMessage(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
+            down_prot.down(rsp);
         }
         else if(hdr instanceof AppendEntriesResponse) {
             AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
-            impl.handleAppendEntriesResponse(msg.src(),rsp.term(), rsp.result);
+            impl.handleAppendEntriesResponse(msg.src(),rsp.curr_term, rsp.result);
         }
         else if(hdr instanceof InstallSnapshotRequest) {
             InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
-            impl.handleInstallSnapshotRequest(msg, req.term(), req.leader, req.last_included_index, req.last_included_term);
+            impl.handleInstallSnapshotRequest(msg, req.curr_term, req.leader, req.last_included_index, req.last_included_term);
         }
         else
             log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
@@ -669,7 +689,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     handleDownRequest(dr.f, dr.buf, dr.offset, dr.length, dr.cmd);
                 }
             }
-            catch(Exception ex) {
+            catch(Throwable ex) {
                 log.error("%s: failed handling request %s: %s", local_addr, r, ex);
             }
         }
@@ -750,7 +770,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         if(this.commit_index > commit_idx) { // send an empty AppendEntries message as commit message
             Message msg=new EmptyMessage(member)
-              .putHeader(id, new AppendEntriesRequest(this.local_addr, 0, 0,
+              .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, 0, 0,
                                                       current_term, this.commit_index, false));
             down_prot.down(msg);
             return;
@@ -786,8 +806,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         LogEntry prev=log_impl.get(index-1);
         int prev_term=prev != null? prev.term : 0;
         Message msg=new BytesMessage(target).setArray(entry.command, entry.offset, entry.length)
-          .putHeader(id, new AppendEntriesRequest(this.local_addr, index - 1, prev_term,
-                                                  current_term, commit_index, entry.internal));
+          .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, index - 1, prev_term,
+                                                  entry.term, commit_index, entry.internal));
         down_prot.down(msg);
         num_resends++;
     }
@@ -876,14 +896,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return this;
     }
 
-    protected synchronized RAFT append(int term, int index, byte[] data, int offset, int length, boolean internal) {
-        if(index > last_appended) {
-            LogEntry entry=new LogEntry(term, data, offset, length, internal);
-            log_impl.append(index, true, entry);
-            last_appended=log_impl.lastAppended();
-        }
+    /** Appends to the loig and returns true if added or false if not (e.g. because the entry already existed */
+    protected synchronized boolean append(int term, int index, byte[] data, int offset, int length, boolean internal) {
+        if(index <= last_appended)
+            return false;
+        LogEntry entry=new LogEntry(term, data, offset, length, internal);
+        log_impl.append(index, true, entry);
+        last_appended=log_impl.lastAppended();
         snapshotIfNeeded(length);
-        return this;
+        return true;
     }
 
     protected void deleteAllLogEntriesStartingFrom(int index) {

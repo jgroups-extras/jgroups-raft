@@ -12,26 +12,26 @@ import java.io.IOException;
  * @since  0.1
  */
 public abstract class RaftHeader extends Header {
-    protected int term;
+    protected int curr_term; // the current term on the leader
 
     public RaftHeader() {}
-    public RaftHeader(int term) {this.term=term;}
+    public RaftHeader(int curr_term) {this.curr_term=curr_term;}
 
-    public int        term()      {return term;}
-    public RaftHeader term(int t) {term=t; return this;}
+    public int        currTerm()      {return curr_term;}
+    public RaftHeader currTerm(int t) {curr_term=t; return this;}
 
 
     public int serializedSize() {
-        return Bits.size(term);
+        return Bits.size(curr_term);
     }
 
     public void writeTo(DataOutput out) throws IOException {
-        Bits.writeIntCompressed(term, out);
+        Bits.writeIntCompressed(curr_term, out);
     }
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
-        term=Bits.readIntCompressed(in);
+        curr_term=Bits.readIntCompressed(in);
     }
 
-    public String toString() {return getClass().getSimpleName() + ": term=" + term;}
+    public String toString() {return getClass().getSimpleName() + ": current_term=" + curr_term;}
 }
