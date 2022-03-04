@@ -16,7 +16,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiConsumer;
 import java.util.function.Supplier;
@@ -51,18 +50,6 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     // used to correlate redirect requests and responses: keys are request-ids and values futures
     protected final Map<Integer,CompletableFuture<byte[]>> requests=new HashMap<>();
 
-
-    @Override
-    public byte[] set(byte[] buf, int offset, int length) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
-        return future.get();
-    }
-
-    @Override
-    public byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
-        return future.get(timeout, unit);
-    }
 
     @Override
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {

@@ -5,7 +5,6 @@ import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.*;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.function.ObjIntConsumer;
 
 /**
@@ -61,16 +60,6 @@ public class RaftHandle implements Settable {
 
     public void logEntries(ObjIntConsumer<LogEntry> func) {
         raft.logEntries(func);
-    }
-
-    @Override
-    public byte[] set(byte[] buf, int offset, int length) throws Exception {
-        return settable.set(buf, offset, length);
-    }
-
-    @Override
-    public byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
-        return settable.set(buf, offset, length, timeout, unit);
     }
 
     @Override

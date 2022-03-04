@@ -20,7 +20,10 @@ public interface Settable {
      * serialized result of the previous key in a hashmap
      * @throws Exception Thrown if the change could not be applied/committed, e.g. because there was no majority, or no elected leader
      */
-    byte[] set(byte[] buf, int offset, int length) throws Exception;
+    default byte[] set(byte[] buf, int offset, int length) throws Exception {
+        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
+        return future.get();
+    }
 
     /**
      * Synchronous set bounded by a timeout. Blocks until the change has been committed or a timeout occurred
@@ -33,10 +36,14 @@ public interface Settable {
      * serialized result of the previous key in a hashmap
      * @throws Exception Thrown if the change could not be applied/committed, e.g. because there was no majority, or no elected leader
      */
-    byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception;
+    default byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
+        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
+        return future.get(timeout, unit);
+    }
 
     /**
-     * Asynchronous set. Returns immediately
+     * Asynchronous set, returns immediately with a CompletableFuture. To wait for the result,
+     * {@link CompletableFuture#get()} or {@link CompletableFuture#get(long, TimeUnit)} can be called.
      * @param buf The buffer (usually a serialized command) which represent the change to be applied to all state machines
      * @param offset The offset into the buffer
      * @param length he number of bytes to be used in the buffer, starting at offset

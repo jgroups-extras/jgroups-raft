@@ -52,7 +52,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public static final byte[]    raft_id_key          = Util.stringToBytes("raft-id");
     protected static final short  RAFT_ID              = 521;
 
-    protected static final Function<ExtendedUUID,String> print_function=uuid -> {
+    public static final Function<ExtendedUUID,String> print_function=uuid -> {
         byte[] val=uuid.get(raft_id_key);
         return val != null? Util.bytesToString(val) : uuid.print();
     };
@@ -141,7 +141,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     protected volatile RaftImpl       impl=new Follower(this);
     protected volatile View           view;
-    protected TimeScheduler           timer;
 
     /** The current leader (can be null if there is currently no leader) */
     protected volatile Address        leader;
@@ -393,8 +392,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @Override public void init() throws Exception {
         super.init();
-        timer=getTransport().getTimer();
-
         // we can only add/remove 1 member at a time (section 4.1 of [1])
         synchronized(members) {
             Set<String> tmp=new HashSet<>(members);
@@ -407,11 +404,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
 
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
-        final JChannel ch=stack.getChannel();
-        ch.addAddressGenerator(() -> {
-            ExtendedUUID.setPrintFunction(print_function);
-            return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
-        });
+        JChannel ch=stack != null? stack.getChannel() : null;
+        if(ch != null) {
+            ch.addAddressGenerator(() -> {
+                ExtendedUUID.setPrintFunction(print_function);
+                return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
+            });
+        }
         processing_queue=new ArrayBlockingQueue<>(processing_queue_max_size);
         runner=new Runner(new DefaultThreadFactory("runner", true, true),
                           "runner", this::processQueue, null);
@@ -510,35 +509,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             commit_table.forEach(this::sendAppendEntriesMessage);
     }
 
-    /**
-     * The blocking equivalent of {@link #setAsync(byte[],int,int)}. Used to apply a change
-     * across all cluster nodes via consensus.
-     * @param buf The serialized command to be applied (interpreted by the caller)
-     * @param offset The offset into the buffer
-     * @param length The length of the buffer
-     * @return The serialized result (to be interpreted by the caller)
-     * @throws Exception ExecutionException or InterruptedException
-     */
-    public byte[] set(byte[] buf, int offset, int length) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length, null);
-        return future.get();
-    }
-
-    /**
-     * Time bounded blocking get(). Returns when the result is available, or a timeout (or exception) has occurred
-     * @param buf The buffer
-     * @param offset The offset into the buffer
-     * @param length The length of the buffer
-     * @param timeout The timeout
-     * @param unit The unit of the timeout
-     * @return The serialized result
-     * @throws Exception ExecutionException when the execution failed, InterruptedException, or TimeoutException when
-     * the timeout elapsed without getting an exception.
-     */
-    public byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length, null);
-        return future.get(timeout, unit);
-    }
 
     /**
      * Called by a building block to apply a change to all state machines in a cluster. This starts the consensus
@@ -556,6 +526,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, InternalCommand cmd) {
+        return setAsync(buf, offset, length, cmd, false);
+    }
+
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, InternalCommand cmd, boolean sync) {
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
         if(buf == null)
@@ -566,7 +540,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             retval.completeExceptionally(new IllegalStateException("request table was null on " + impl.getClass().getSimpleName()));
             return retval;
         }
-        add(new DownRequest(retval, buf, offset, length, cmd)); // will call handleDownRequest()
+        if(sync)
+            handleDownRequest(retval, buf, offset, length, cmd);
+        else
+            add(new DownRequest(retval, buf, offset, length, cmd)); // will call handleDownRequest()
         return retval; // 4. Return CompletableFuture
     }
 
@@ -584,8 +561,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
-    protected CompletableFuture<byte[]> handleDownRequest(CompletableFuture<byte[]> retval, byte[] buf, int offset, int length,
-                                                          InternalCommand cmd) {
+    protected void handleDownRequest(CompletableFuture<byte[]> retval, byte[] buf, int offset, int length,
+                                     InternalCommand cmd) {
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
 
@@ -608,7 +585,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
             // 3. Multicast an AppendEntries message (exclude self)
             Message msg=new BytesMessage(null, buf, offset, length)
-              .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term, current_term, commit_index, cmd != null))
+              .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
+                                                      current_term, commit_index, cmd != null))
               .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
 
             // the message needs to be sent inside the synchronized block (and hit NAKACK2 in the correct order):
@@ -621,10 +599,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             if(reqtab.isCommitted(curr_index))
                 handleCommit(curr_index);
         }
-        return retval; // 4. Return CompletableFuture
     }
 
-    protected void handleUpRequest(Message msg, RaftHeader hdr) {
+    public void handleUpRequest(Message msg, RaftHeader hdr) {
         // if hdr.term < current_term -> drop message
         // if hdr.term > current_term -> set current_term and become Follower, accept message
         // if hdr.term == current_term -> accept message
@@ -959,7 +936,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             request_table.notifyAndRemove(index, rsp);
     }
 
-    protected void handleView(View view) {
+    public void handleView(View view) {
         boolean check_view=this.view != null && this.view.size() < view.size();
         this.view=view;
         if(commit_table != null) {
