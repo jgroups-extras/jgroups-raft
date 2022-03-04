@@ -16,7 +16,6 @@ import java.net.Socket;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Client stub which accesses a remote server via the {@link CLIENT} protocol through a socket. Forwards all requests
@@ -64,28 +63,14 @@ public class ClientStub implements Settable, Closeable {
         return this;
     }
 
-    @Override
-    public void close() {
+    @Override public void close() {
         stop();
-    }
-
-    @Override
-    public byte[] set(byte[] buf, int offset, int length) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
-        return future.get();
-    }
-
-    @Override
-    public byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
-        CompletableFuture<byte[]> future=setAsync(buf, offset, length);
-        return future.get(timeout, unit);
     }
 
     @Override
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
         return setAsync(CLIENT.RequestType.set_req, buf, offset, length);
     }
-
 
     public CompletableFuture<byte[]> setAsync(CLIENT.RequestType type,
                                               byte[] buf, int offset, int length) throws Exception {

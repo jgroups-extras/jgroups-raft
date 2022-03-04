@@ -11,7 +11,7 @@ import org.jgroups.protocols.pbcast.STABLE;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.util.CommitTable;
-import org.jgroups.raft.util.SampleStateMachine;
+import org.jgroups.raft.util.CounterStateMachine;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
@@ -34,18 +34,18 @@ public class RaftTest {
     protected JChannel            a, b;
     protected RaftHandle          rha, rhb;
     protected RAFT                raft_a, raft_b;
-    protected SampleStateMachine  sma, smb;
+    protected CounterStateMachine sma, smb;
     protected static final String GRP="RaftTest";
 
     @BeforeMethod
     protected void create() throws Exception {
         a=create("A", 600_000, 1_000_000);
-        rha=new RaftHandle(a, sma=new SampleStateMachine());
+        rha=new RaftHandle(a, sma=new CounterStateMachine());
         a.connect(GRP);
         raft_a=raft(a).leader(a.getAddress()).changeRole(Role.Leader);
 
         b=create("B", 600_000, 1_000_000);
-        rhb=new RaftHandle(b, smb=new SampleStateMachine());
+        rhb=new RaftHandle(b, smb=new CounterStateMachine());
         b.connect(GRP);
         raft_b=raft(b).leader(a.getAddress()).changeRole(Role.Follower);
         Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b);

@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * @author Bela Ban
  * @since  1.0.5
  */
-public class SampleStateMachine implements StateMachine {
+public class CounterStateMachine implements StateMachine {
     protected final AtomicInteger counter=new AtomicInteger();
     protected final AtomicInteger additions=new AtomicInteger();
     protected final AtomicInteger subtractions=new AtomicInteger();
@@ -43,7 +43,7 @@ public class SampleStateMachine implements StateMachine {
         out.writeInt(counter.get());
     }
 
-    public SampleStateMachine reset() {
+    public CounterStateMachine reset() {
         counter.set(0); additions.set(0); subtractions.set(0);
         return this;
     }

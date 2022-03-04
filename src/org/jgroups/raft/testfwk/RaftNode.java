@@ -27,6 +27,8 @@ public class RaftNode extends Protocol implements Lifecycle, Settable {
     public RAFT raft()       {return raft;}
 
     public void init() throws Exception {
+        if(raft.stateMachine() == null)
+            throw new IllegalStateException(String.format("state machine not set in %s", this));
         raft.init();
     }
 

@@ -5,8 +5,11 @@ import org.jgroups.Global;
 import org.jgroups.View;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.Role;
+import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
+import org.jgroups.raft.util.CounterStateMachine;
+import org.jgroups.util.Bits;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
@@ -15,6 +18,7 @@ import org.testng.annotations.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Same as {@link RaftTest}, but only a single thread is used to run the tests (no asynchronous processing).
@@ -31,10 +35,13 @@ public class SynchronousTests {
     protected final RaftCluster   cluster=new RaftCluster();
     protected RAFT                raft_a, raft_b;
     protected RaftNode            node_a, node_b;
+    protected StateMachine        sma, smb;
 
     @BeforeMethod protected void init() throws Exception {
-        raft_a=createRAFT(a, "A", mbrs).changeRole(Role.Leader).leader(a);
-        raft_b=createRAFT(b, "B", mbrs).changeRole(Role.Follower).leader(a);
+        raft_a=createRAFT(a, "A", mbrs).stateMachine(sma=new CounterStateMachine())
+          .changeRole(Role.Leader).leader(a);
+        raft_b=createRAFT(b, "B", mbrs).stateMachine(smb=new CounterStateMachine())
+          .changeRole(Role.Follower).leader(a);
         node_a=new RaftNode(cluster, raft_a);
         node_b=new RaftNode(cluster, raft_b);
         node_a.init();
@@ -43,6 +50,7 @@ public class SynchronousTests {
         cluster.handleView(view);
         node_a.start();
         node_b.start();
+        raft_a.currentTerm(5);
     }
 
 
@@ -61,9 +69,15 @@ public class SynchronousTests {
 
 
     public void testSimpleAppend() throws Exception {
-        byte[] buf={'b', 'e', 'l', 'a'};
+        byte[] buf=number(1);
         byte[] retval=node_a.set(buf, 0, buf.length);
         System.out.println("retval = " + Arrays.toString(retval));
+
+        for(;;) {
+            CompletableFuture<byte[]> f=node_a.setAsync(buf, 0, buf.length);
+            f.whenComplete((r,ex) -> System.out.printf("result=%d, ex=%s\n", Bits.readInt(r, 0), ex));
+            Util.sleep(1000);
+        }
     }
 
 
@@ -73,10 +87,18 @@ public class SynchronousTests {
           .setAddress(addr);
     }
 
-    public Address createAddress(String name) {
+    protected static Address createAddress(String name) {
         ExtendedUUID.setPrintFunction(RAFT.print_function);
         return ExtendedUUID.randomUUID(name).put(RAFT.raft_id_key, Util.stringToBytes(name));
     }
+
+    protected static byte[] number(int n) {
+        byte[] buf=new byte[Integer.BYTES];
+        Bits.writeInt(n, buf, 0);
+        return buf;
+    }
+
+
 
     /*public void testRegularAppend() throws Exception {
         int prev_value=add(rha, 1);
