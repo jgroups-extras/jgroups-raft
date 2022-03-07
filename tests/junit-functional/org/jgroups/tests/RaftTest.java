@@ -310,7 +310,6 @@ public class RaftTest {
         assertIndices(5, 5, 22, raft_a);
         assertIndices(5, 5, 22, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 5, 5, 6);
-
     }
 
     protected static void sendAppendEntriesRequest(RAFT r, int prev_index, int prev_term, int curr_term, int commit_index) {

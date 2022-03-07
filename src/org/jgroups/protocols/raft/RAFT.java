@@ -509,6 +509,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             commit_table.forEach(this::sendAppendEntriesMessage);
     }
 
+    public void flushCommitTable(Address member) {
+        CommitTable.Entry e=commit_table.get(Objects.requireNonNull(member));
+        if(e != null)
+            sendAppendEntriesMessage(member, e);
+    }
+
 
     /**
      * Called by a building block to apply a change to all state machines in a cluster. This starts the consensus
@@ -609,10 +615,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return;
 
         if(hdr instanceof AppendEntriesRequest) {
-            AppendEntriesRequest req=(AppendEntriesRequest)hdr;
+            AppendEntriesRequest r=(AppendEntriesRequest)hdr;
             AppendResult result=impl.handleAppendEntriesRequest(msg.getArray(), msg.getOffset(), msg.getLength(), msg.src(),
-                                                                req.prev_log_index, req.prev_log_term, req.entry_term,
-                                                                req.leader_commit, req.internal).commitIndex(commit_index);
+                                                                r.prev_log_index, r.prev_log_term, r.entry_term,
+                                                                r.leader_commit, r.internal);
+            result.commitIndex(commit_index);
             Message rsp=new EmptyMessage(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
             down_prot.down(rsp);
         }
@@ -714,30 +721,29 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * match_index == next_index, message resending for that member is stopped. When a new message is appended to the
      * leader's log, next-index for all members is incremented and resending starts again.
      */
-    protected void sendAppendEntriesMessage(Address member, CommitTable.Entry entry) {
-        int next_index=entry.nextIndex(), commit_idx=entry.commitIndex(), match_index=entry.matchIndex();
-        if(next_index < log().firstAppended()) {
-            if(entry.snapshotInProgress(true)) {
+    protected void sendAppendEntriesMessage(Address member, CommitTable.Entry e) {
+        if(e.nextIndex() < log().firstAppended()) {
+            if(e.snapshotInProgress(true)) {
                 try {
                     sendSnapshotTo(member); // will reset snapshot_in_progress
                 }
-                catch(Exception e) {
+                catch(Exception ex) {
                     log.error("%s: failed sending snapshot to %s: next_index=%d, first_applied=%d",
-                              local_addr, member, next_index, log().firstAppended());
+                              local_addr, member, e.nextIndex(), log().firstAppended());
                 }
             }
             return;
         }
-        if(this.last_appended >= next_index) {
-            int to=entry.sendSingleMessage()? next_index : last_appended;
-            for(int i=Math.max(next_index,1); i <= to; i++) {  // i=match_index+1 ?
+        if(this.last_appended >= e.nextIndex()) {
+            int to=e.sendSingleMessage()? e.nextIndex() : last_appended;
+            for(int i=Math.max(e.nextIndex(),1); i <= to; i++) {  // i=match_index+1 ?
                 if(log.isTraceEnabled())
                     log.trace("%s: resending %d to %s\n", local_addr, i, member);
                 resend(member, i);
             }
             return;
         }
-        if(this.last_appended > match_index) {
+        if(this.last_appended > e.matchIndex()) {
             int index=this.last_appended;
             if(index > 0) {
                 log.trace("%s: resending %d to %s\n", local_addr, index, member);
@@ -745,7 +751,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             }
             return;
         }
-        if(this.commit_index > commit_idx) { // send an empty AppendEntries message as commit message
+        if(this.commit_index > e.commitIndex()) { // send an empty AppendEntries message as commit message
             Message msg=new EmptyMessage(member)
               .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, 0, 0,
                                                       current_term, this.commit_index, false));
