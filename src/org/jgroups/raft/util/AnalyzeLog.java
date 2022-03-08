@@ -6,6 +6,7 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.raft.blocks.CounterService;
 
+import java.io.*;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
@@ -17,8 +18,9 @@ import java.util.function.Function;
  * @since  1.0.5
  */
 public class AnalyzeLog {
-    protected Class<? extends Log>      log_class=LevelDBLog.class;
-    protected Function<LogEntry,String> reader=CounterService::dumpLogEntry;
+    protected Class<? extends Log>       log_class=LevelDBLog.class;
+    protected Function<LogEntry,String>  reader=CounterService::dumpLogEntry;
+    protected Function<DataInput,String> snapshot_reader=CounterService::readAndDumpSnapshot;
 
     public AnalyzeLog logClass(String cl) throws ClassNotFoundException {
         log_class=(Class<? extends Log>)Class.forName(cl);
@@ -26,19 +28,29 @@ public class AnalyzeLog {
     }
 
     public AnalyzeLog reader(String r) throws Exception {
-        int index=r.lastIndexOf(".");
-        if(index < 0)
-            throw new IllegalArgumentException(String.format("-reader class.method (was %s)", r));
-        String cl=r.substring(0, index), method_name=r.substring(index+1);
-        Class<?> clazz=Class.forName(cl);
-        Method method=clazz.getMethod(method_name, LogEntry.class);
+        Method method=getMethod(r, LogEntry.class);
         reader=le -> invoke(method, le);
         return this;
     }
 
-    protected static String invoke(Method method, LogEntry le) {
+    public AnalyzeLog snapshotReader(String r) throws Exception {
+        Method method=getMethod(r, DataInput.class);
+        snapshot_reader=le -> invoke(method, le);
+        return this;
+    }
+
+    protected static Method getMethod(String name, Class<?> param) throws Exception {
+        int index=name.lastIndexOf(".");
+        if(index < 0)
+            throw new IllegalArgumentException(String.format("expected class.method (was %s)", name));
+        String cl=name.substring(0, index), method_name=name.substring(index+1);
+        Class<?> clazz=Class.forName(cl);
+        return clazz.getMethod(method_name, param);
+    }
+
+    protected static String invoke(Method method, Object obj) {
         try {
-            return (String)method.invoke(null, le);
+            return (String)method.invoke(null, obj);
         }
         catch(Exception e) {
             return e.toString();
@@ -51,11 +63,13 @@ public class AnalyzeLog {
     }
 
     protected void _analyze(String path) throws Exception {
-        try(Log l=createLog()) {
+        try(Log l=createLog();DataInputStream snapshot=createSnapshotInput(path)) {
             l.init(path, null);
-
             long first=l.firstAppended(), commit=l.commitIndex(), last=l.lastAppended(), term=l.currentTerm();
             Address votedfor=l.votedFor();
+
+            if(snapshot_reader != null && snapshot != null)
+                System.out.printf("----------\nsnapshot: %s\n-----------\n", snapshot_reader.apply(snapshot));
 
             System.out.printf("first=%d, commit-index=%d, last-appended=%d, term=%d, voted-for=%s\n",
                               first, commit, last, term, votedfor);
@@ -79,6 +93,12 @@ public class AnalyzeLog {
         return log_class.getDeclaredConstructor().newInstance();
     }
 
+    protected static DataInputStream createSnapshotInput(String path) throws FileNotFoundException {int index=path.indexOf(".log");
+        if(index < 0) return null;
+        String snapshot_name=String.format("%s.snapshot", path.substring(0, index));
+        return new File(snapshot_name).exists()? new DataInputStream(new FileInputStream(snapshot_name)) : null;
+    }
+
 
     public static void main(String[] args) throws Exception {
         AnalyzeLog   al=new AnalyzeLog();
@@ -93,8 +113,13 @@ public class AnalyzeLog {
                 al.reader(args[++i]);
                 continue;
             }
+            if(args[i].startsWith("-snapshot_reader")) {
+                al.snapshotReader(args[++i]);
+                continue;
+            }
             if(args[i].startsWith("-h")) {
-                System.out.printf("%s [-log_class <log class>] [-reader <class.method>] [logfiles]\n",
+                System.out.printf("%s [-log_class <log class>] [-reader <class.method>] " +
+                                    "[-snapshot_reader <class.method>] [logfiles]\n",
                                   AnalyzeLog.class.getSimpleName());
                 return;
             }

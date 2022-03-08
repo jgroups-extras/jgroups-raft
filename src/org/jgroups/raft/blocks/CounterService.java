@@ -193,6 +193,22 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         }
     }
 
+    public static String readAndDumpSnapshot(DataInput in) {
+        try {
+            int size=in.readInt();
+            StringBuilder sb=new StringBuilder();
+            for(int i=0; i < size; i++) {
+                AsciiString name=Bits.readAsciiString(in);
+                Long value=Bits.readLongCompressed(in);
+                sb.append(name).append(": ").append(value);
+            }
+            return sb.toString();
+        }
+        catch(Exception ex) {
+            return null;
+        }
+    }
+
     public void dumpLog() {
         raft.logEntries((entry, index) -> {
             StringBuilder sb=new StringBuilder().append(index).append(" (").append(entry.term()).append("): ");
