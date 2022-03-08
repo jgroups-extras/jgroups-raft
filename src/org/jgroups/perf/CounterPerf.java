@@ -43,7 +43,6 @@ public class CounterPerf implements Receiver {
     protected volatile View        view;
     protected volatile boolean     looping=true;
     protected ThreadFactory        thread_factory;
-
     protected CounterService       counter_service;
     protected Counter              counter;
 
@@ -53,6 +52,7 @@ public class CounterPerf implements Receiver {
     @Property protected boolean print_incrementers;
     @Property protected boolean print_details;
     @Property protected long    timeout=60000; // ms
+    @Property protected int     range=10;
     // ... add your own here, just don't forget to annotate them with @Property
     // =======================================================
 
@@ -62,11 +62,11 @@ public class CounterPerf implements Receiver {
     private static final short SET                   =  2;
     private static final short QUIT_ALL              =  3;
 
-    protected static final Field NUM_THREADS, TIME, TIMEOUT, PRINT_INVOKERS, PRINT_DETAILS;
+    protected static final Field NUM_THREADS, TIME, TIMEOUT, PRINT_INVOKERS, PRINT_DETAILS, RANGE;
 
 
     protected static final String format=
-      "[1] Start test [2] View [4] Threads (%d) [6] Time (%s)" +
+      "[1] Start test [2] View [4] Threads (%d) [6] Time (%s) [r] Range (%d)" +
         "\n[t] incr timeout (%s) [d] details (%b)  [i] print incrementers (%b)" +
         "\n[v] Version [x] Exit [X] Exit all %s";
 
@@ -83,6 +83,7 @@ public class CounterPerf implements Receiver {
             TIMEOUT=Util.getField(CounterPerf.class, "timeout", true);
             PRINT_INVOKERS=Util.getField(CounterPerf.class, "print_incrementers", true);
             PRINT_DETAILS=Util.getField(CounterPerf.class, "print_details", true);
+            RANGE=Util.getField(CounterPerf.class, "range", true);
             PerfUtil.init();
             ClassConfigurator.addIfAbsent((short)1050, IncrementResult.class);
         }
@@ -246,7 +247,7 @@ public class CounterPerf implements Receiver {
             try {
                 long cnt=getCounter();
                 int c=Util.keyPress(String.format(format, num_threads, Util.printTime(time, TimeUnit.MILLISECONDS),
-                                                  Util.printTime(timeout, TimeUnit.MILLISECONDS),
+                                                  range, Util.printTime(timeout, TimeUnit.MILLISECONDS),
                                                   print_details, print_incrementers,
                                                   cnt < 0? "\n" : String.format(" (counter=%d)\n", cnt)));
                 switch(c) {
@@ -270,6 +271,9 @@ public class CounterPerf implements Receiver {
                         break;
                     case 't':
                         changeFieldAcrossCluster(TIMEOUT, Util.readIntFromStdin("incr timeout (ms): "));
+                        break;
+                    case 'r':
+                        changeFieldAcrossCluster(RANGE, Util.readIntFromStdin("range: "));
                         break;
                     case 'v':
                         System.out.printf("Version: %s, Java version: %s\n", Version.printVersion(),
@@ -373,6 +377,11 @@ public class CounterPerf implements Receiver {
         }
     }
 
+    protected int getDelta() {
+        long random=Util.random(range);
+        return (int)(Util.tossWeightedCoin(.5)? -random : random);
+    }
+
 
 
     protected class Incrementer implements Runnable {
@@ -400,8 +409,9 @@ public class CounterPerf implements Receiver {
 
             while(running) {
                 try {
+                    int delta=getDelta();
                     long start=System.nanoTime();
-                    counter.incrementAndGet();
+                    counter.addAndGet(delta);
                     long incr_time=System.nanoTime()-start;
                     avg_incrtime.add(incr_time);
                     num_increments++;
@@ -412,7 +422,6 @@ public class CounterPerf implements Receiver {
                 }
             }
         }
-
     }
 
     protected static class IncrementResult implements Streamable {
@@ -451,7 +460,7 @@ public class CounterPerf implements Receiver {
         }
     }
 
-    // todo: copied from JGroups; remove when 5.2.1.Final is used
+    // todo: copied from JGroups; remove when 5.2.2.Final is used
     public static class AverageMinMax extends Average {
         protected long       min=Long.MAX_VALUE, max=0;
         protected List<Long> values;

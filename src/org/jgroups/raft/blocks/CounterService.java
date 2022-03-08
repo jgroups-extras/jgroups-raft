@@ -2,10 +2,7 @@ package org.jgroups.raft.blocks;
 
 import org.jgroups.JChannel;
 import org.jgroups.blocks.atomic.Counter;
-import org.jgroups.protocols.raft.InternalCommand;
-import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.Role;
-import org.jgroups.protocols.raft.StateMachine;
+import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.util.*;
 
@@ -199,56 +196,62 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public void dumpLog() {
         raft.logEntries((entry, index) -> {
             StringBuilder sb=new StringBuilder().append(index).append(" (").append(entry.term()).append("): ");
-            if(entry.command() == null) {
-                sb.append("<marker record>");
-                System.out.println(sb);
-                return;
-            }
-            if(entry.internal()) {
-                try {
-                    InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class,
-                                                                      entry.command(), entry.offset(), entry.length());
-                    sb.append("[internal] ").append(cmd);
-                }
-                catch(Exception ex) {
-                    sb.append("[failure reading internal cmd] ").append(ex);
-                }
-                System.out.println(sb);
-                return;
-            }
-            ByteArrayDataInputStream in=new ByteArrayDataInputStream(entry.command(), entry.offset(), entry.length());
-            try {
-                Command cmd=Command.values()[in.readByte()];
-                String name=Bits.readAsciiString(in).toString();
-                switch(cmd) {
-                    case create:
-                    case set:
-                    case addAndGet:
-                        sb.append(print(cmd, name, 1, in));
-                        break;
-                    case delete:
-                    case get:
-                    case incrementAndGet:
-                    case decrementAndGet:
-                        sb.append(print(cmd, name, 0, in));
-                        break;
-                    case compareAndSet:
-                        sb.append(print(cmd, name, 2, in));
-                        break;
-                    default:
-                        throw new IllegalArgumentException("command " + cmd + " is unknown");
-                }
-            }
-            catch(Throwable t) {
-                sb.append(t);
-            }
+            sb.append(dumpLogEntry(entry));
             System.out.println(sb);
         });
+    }
+
+    public static String dumpLogEntry(LogEntry e) {
+        if(e.command() == null)
+            return "<marker record>";
+
+        StringBuilder sb=new StringBuilder();
+        if(e.internal()) {
+            try {
+                InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class, e.command(), e.offset(), e.length());
+                sb.append("[internal] ").append(cmd);
+            }
+            catch(Exception ex) {
+                sb.append("[failure reading internal cmd] ").append(ex);
+            }
+            return sb.toString();
+        }
+        ByteArrayDataInputStream in=new ByteArrayDataInputStream(e.command(), e.offset(), e.length());
+        try {
+            Command cmd=Command.values()[in.readByte()];
+            String name=Bits.readAsciiString(in).toString();
+            switch(cmd) {
+                case create:
+                case set:
+                case addAndGet:
+                    sb.append(print(cmd, name, 1, in));
+                    break;
+                case delete:
+                case get:
+                case incrementAndGet:
+                case decrementAndGet:
+                    sb.append(print(cmd, name, 0, in));
+                    break;
+                case compareAndSet:
+                    sb.append(print(cmd, name, 2, in));
+                    break;
+                default:
+                    throw new IllegalArgumentException("command " + cmd + " is unknown");
+            }
+        }
+        catch(Throwable t) {
+            sb.append(t);
+        }
+        return sb.toString();
     }
 
     @Override
     public void roleChanged(Role role) {
         System.out.println("-- changed role to " + role);
+    }
+
+    public String toString() {
+        return printCounters();
     }
 
     protected Object invoke(Command command, String name, boolean ignore_return_value, long ... values) throws Exception {
