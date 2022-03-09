@@ -312,13 +312,36 @@ public class SynchronousTests {
         assertIndices(5, 5, 22, raft_a);
         assertIndices(5, 5, 22, raft_b);
         assertCommitTableIndeces(b, raft_a, 5, 5, 6);
+    }
 
+
+    public void testSnapshot() throws Exception {
+        raft_b.maxLogSize(100);
+        for(int i=1; i <= 100; i++) {
+            add(i);
+            if(raft_b.numSnapshots() > 0)
+                break;
+        }
+        expect(325, sma.counter());
+        expect(300, smb.counter());
+
+        node_b.stop();
+        ((CounterStateMachine)raft_b.stateMachine()).reset();
+        raft_b.stateMachineLoaded(false);
+        raft_b.log(null); // log needs to be null, or else it on't get re-initialized
+        node_b.start(); // reads snapshot and log
+
+        expect(325, sma.counter());
+        expect(300, smb.counter());
+        raft_a.flushCommitTable(b);
+        expect(325, sma.counter());
+        expect(325, smb.counter());
     }
 
 
 
     protected static RAFT createRAFT(Address addr, String name, List<String> members) {
-        return new RAFT().raftId(name).members(members).logName("synctest-" + name)
+        return new RAFT().raftId(name).members(members).logPrefix("synctest-" + name)
           .resendInterval(600_000) // long to disable resending by default
           .setAddress(addr);
     }

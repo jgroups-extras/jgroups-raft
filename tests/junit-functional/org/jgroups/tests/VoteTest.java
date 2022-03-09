@@ -210,7 +210,7 @@ public class VoteTest {
 
     protected static JChannel create(String name, List<String> mbrs) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
         ch.connect(CLUSTER);
         return ch;

@@ -615,7 +615,7 @@ public class AppendEntriesTest {
     protected static JChannel create(String name, boolean follower, final List<String> members, Function<RAFT, RAFT> config) throws Exception {
         ELECTION election=new ELECTION().noElections(follower);
         RAFT raft=config.apply(new RAFT()).members(members).raftId(name)
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         return new JChannel(Util.getTestStack(election, raft, new REDIRECT())).name(name);
     }
 

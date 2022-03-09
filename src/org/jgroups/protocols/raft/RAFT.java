@@ -94,11 +94,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected String                  log_dir=Util.checkForMac()?
       File.separator + "tmp" : System.getProperty("java.io.tmpdir", File.separator + "tmp");
 
-    @Property(description="The name of the log. The logical name of the channel (if defined) is used by default. " +
-      "Note that logs for different processes on the same host need to be different")
+    @Property(description="The prefix of the log and snapshot. If null, the logical name of the channel is used as prefix")
+    protected String                  log_prefix;
+
+    @ManagedAttribute(description="The name of the log")
     protected String                  log_name;
 
-    @Property(description="The name of the snapshot. By default, <log_name>.snapshot will be used")
+    @ManagedAttribute(description="The name of the snapshot")
     protected String                  snapshot_name;
 
     @Property(description="Interval (ms) at which AppendEntries messages are resent to members with missing log entries",
@@ -152,7 +154,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Index of the highest log entry appended to the log",type=AttributeType.SCALAR)
     protected int                     last_appended;
 
-    @ManagedAttribute(description="Index of the highest committed log entry",type=AttributeType.SCALAR)
+    @ManagedAttribute(description="Index of the last committed log entry",type=AttributeType.SCALAR)
     protected int                     commit_index;
 
     @ManagedAttribute(description="The number of snapshots performed")
@@ -182,18 +184,19 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public RAFT         logClass(String clazz)        {log_class=clazz; return this;}
     public String       logArgs()                     {return log_args;}
     public RAFT         logArgs(String args)          {log_args=args; return this;}
+    public String       logPrefix()                   {return log_prefix;}
+    public RAFT         logPrefix(String name)        {log_prefix=name; return this;}
     public String       logName()                     {return log_name;}
-    public RAFT         logName(String name)          {log_name=name; return this;}
     public String       snapshotName()                {return snapshot_name;}
-    public RAFT         snapshotName(String name)     {snapshot_name=name; return this;}
     public long         resendInterval()              {return resend_interval;}
     public RAFT         resendInterval(long val)      {resend_interval=val; return this;}
     public boolean      sendCommitsImmediately()      {return send_commits_immediately;}
     public RAFT         sendCommitsImmediately(boolean val)      {send_commits_immediately=val; return this;}
     public int          maxLogSize()                  {return max_log_size;}
     public RAFT         maxLogSize(int val)           {max_log_size=val; return this;}
+    public int          currentLogSize()              {return curr_log_size;}
     public int          requestTableSize()            {return request_table.size();}
-
+    public int          numSnapshots()                {return num_snapshots;}
     public Address      leader()                      {return leader;}
     public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
     public boolean      isLeader()                    {return Objects.equals(leader, local_addr);}
@@ -208,6 +211,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public RAFT         log(Log new_log)              {this.log_impl=new_log; return this;}
     public RAFT         addRoleListener(RoleChange c) {this.role_change_listeners.add(c); return this;}
     public RAFT         remRoleListener(RoleChange c) {this.role_change_listeners.remove(c); return this;}
+    public RAFT         stateMachineLoaded(boolean b) {this.state_machine_loaded=b; return this;}
 
 
     public void resetStats() {
@@ -355,39 +359,37 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /** Loads the log entries from [first .. commit_index] into the state machine */
     @ManagedOperation(description="Reads the snapshot (if present) and loads log entries from [first .. commit_index] " +
       "into the state machine")
-    public synchronized void initStateMachineFromLog(boolean force) throws Exception {
-        if(state_machine != null) {
-            if(!state_machine_loaded || force) {
-                int snapshot_offset=0;
-                try(InputStream input=new FileInputStream(snapshot_name)) {
-                    state_machine.readContentFrom(new DataInputStream(input));
-                    snapshot_offset=1;
-                    log.debug("%s: initialized state machine from snapshot %s", local_addr, snapshot_name);
-                }
-                catch(FileNotFoundException fne) {
-                }
+    public synchronized void initStateMachineFromLog() throws Exception {
+        if(state_machine == null || state_machine_loaded)
+            return;
+        int snapshot_offset=0;  // 0 when no snapshot is present, 1 otherwise
+        try(InputStream input=new FileInputStream(snapshot_name)) {
+            state_machine.readContentFrom(new DataInputStream(input));
+            snapshot_offset=1;
+            log.debug("%s: initialized state machine from snapshot %s", local_addr, snapshot_name);
+        }
+        catch(FileNotFoundException fne) {
+        }
 
-                int from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;
-                for(int i=from; i <= to; i++) {
-                    LogEntry log_entry=log_impl.get(i);
-                    if(log_entry == null) {
-                        log.error("%s: log entry for index %d not found in log", local_addr, i);
-                        break;
-                    }
-                    if(log_entry.command != null) {
-                        if(log_entry.internal)
-                            executeInternalCommand(null, log_entry.command, log_entry.offset, log_entry.length);
-                        else {
-                            state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
-                            count++;
-                        }
-                    }
+        int from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;
+        for(int i=from; i <= to; i++) {
+            LogEntry log_entry=log_impl.get(i);
+            if(log_entry == null) {
+                log.error("%s: log entry for index %d not found in log", local_addr, i);
+                break;
+            }
+            if(log_entry.command != null) {
+                if(log_entry.internal)
+                    executeInternalCommand(null, log_entry.command, log_entry.offset, log_entry.length);
+                else {
+                    state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
+                    count++;
                 }
-                state_machine_loaded=true;
-                if(count > 0)
-                    log.debug("%s: applied %d entries from the log (%d - %d) to the state machine", local_addr, count, from, to);
             }
         }
+        state_machine_loaded=true;
+        if(count > 0)
+            log.debug("%s: applied %d entries from the log (%d - %d) to the state machine", local_addr, count, from, to);
     }
 
     @Override public void init() throws Exception {
@@ -438,10 +440,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             else
                 args=new HashMap<>();
 
-            if(log_name == null)
-                log_name=raft_id;
-            snapshot_name=log_name;
-            log_name=createLogName(log_name, "log");
+            if(log_prefix == null)
+                log_prefix=raft_id;
+            snapshot_name=log_prefix;
+            log_name=createLogName(log_prefix, "log");
             snapshot_name=createLogName(snapshot_name, "snapshot");
             log_impl.init(log_name, args);
         }
@@ -454,7 +456,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         current_term=log_impl.currentTerm();
         log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
         if(snapshot_name != null)
-            initStateMachineFromLog(false);
+            initStateMachineFromLog();
         curr_log_size=logSizeInBytes();
         runner.start();
     }
@@ -712,14 +714,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /**
-     * Runs (on the leader) as part of the queue handling loop: checks if all members in the commit table have received
-     * all messages and resends AppendEntries messages to members who haven't.<br/>
+     * Runs (on the leader) as part of the queue handling loop: checks if all members (except the leader) in the commit
+     * table have received all messages and resends AppendEntries messages to members who haven't.<br/>
      * For each member, a next-index and match-index is maintained: next-index is the index of the next message to send to
      * that member (initialized to last-applied) and match-index is the index of the highest message known to have
      * been received by the member.<br/>
      * Messages are resent to a given member as long as that member's match-index is smaller than its next-index. When
-     * match_index == next_index, message resending for that member is stopped. When a new message is appended to the
-     * leader's log, next-index for all members is incremented and resending starts again.
+     * match_index == next_index, message resending for that member is stopped. When a new message is sent,
+     * next-index is incremented (on reception of the AppendResult) and resending starts again.
      */
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry e) {
         if(e.nextIndex() < log().firstAppended()) {
@@ -879,7 +881,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return this;
     }
 
-    /** Appends to the loig and returns true if added or false if not (e.g. because the entry already existed */
+    /** Appends to the log and returns true if added or false if not (e.g. because the entry already existed */
     protected synchronized boolean append(int term, int index, byte[] data, int offset, int length, boolean internal) {
         if(index <= last_appended)
             return false;

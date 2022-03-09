@@ -188,13 +188,16 @@ public class LevelDBLog implements Log {
         if (upto_index< firstAppended|| upto_index> lastAppended)
             return;
 
-        if(upto_index > commitIndex)
+        if(upto_index > commitIndex) {
+            log.warn("upto_index (%d) is higher than commit-index (%d); only truncating up to %d",
+                     upto_index, commitIndex, commitIndex);
             upto_index=commitIndex;
+        }
 
         WriteBatch batch=null;
         try {
             batch = db.createWriteBatch();
-            for (int index=firstAppended; index < upto_index; index++) {
+            for(int index=firstAppended; index < upto_index; index++) {
                 batch.delete(fromIntToByteArray(index));
             }
             batch.put(FIRSTAPPENDED, fromIntToByteArray(upto_index));
@@ -261,8 +264,8 @@ public class LevelDBLog implements Log {
 
     @Override
     public String toString() {
-        return String.format("first=%d, last=%d, commit=%d, term=%d (size=%d)",
-                             firstAppended, lastAppended, commitIndex, currentTerm, size());
+        return String.format("first=%d, commit=%d, last-appended=%d, term=%d (size=%d)",
+                             firstAppended, commitIndex, lastAppended, currentTerm, size());
     }
 
     private void appendEntryIfAbsent(int index, LogEntry entry, WriteBatch batch) throws Exception {

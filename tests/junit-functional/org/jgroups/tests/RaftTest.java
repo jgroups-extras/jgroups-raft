@@ -374,7 +374,7 @@ public class RaftTest {
           new FRAG2(),
           // new ELECTION().electionMinInterval(100).electionMaxInterval(300).heartbeatInterval(30),
           new RAFT().members(List.of("A", "B", "C")).raftId(name)
-            .logName("rafttest-" + name).resendInterval(resend_interval).maxLogSize(max_log_size),
+            .logPrefix("rafttest-" + name).resendInterval(resend_interval).maxLogSize(max_log_size),
           new REDIRECT()
         };
         return new JChannel(protocols).name(name);

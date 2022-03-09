@@ -124,7 +124,7 @@
      protected JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
          ELECTION election=new ELECTION().noElections(true);
          RAFT raft=raftSupplier.get().members(members).raftId(name)
-           .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
+           .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
          REDIRECT client=new REDIRECT();
          return new JChannel(Util.getTestStack(election, raft, client)).name(name);
      }

@@ -203,7 +203,7 @@ public class DynamicMembershipTest {
 
     protected JChannel create(String name) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
         ch.connect(CLUSTER);
         return ch;
@@ -211,7 +211,7 @@ public class DynamicMembershipTest {
 
     protected static JChannel create(String[] names, int index) throws Exception {
         RAFT raft=new RAFT().members(Arrays.asList(names)).raftId(names[index]).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(names[index] + "-" + CLUSTER);
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(names[index] + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(names[index]);
         ch.connect(CLUSTER);
         return ch;

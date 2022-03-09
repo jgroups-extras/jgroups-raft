@@ -1,5 +1,6 @@
 package org.jgroups.raft.util;
 
+import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.util.Bits;
 
@@ -32,6 +33,23 @@ public class CounterStateMachine implements StateMachine {
         byte[] retval=new byte[Integer.BYTES];
         Bits.writeInt(old_counter, retval, 0);
         return retval;
+    }
+
+    public static String readAndDumpSnapshot(DataInput in) {
+        try {
+            int num=in.readInt();
+            return String.valueOf(num);
+        }
+        catch(Exception ex) {
+            return null;
+        }
+    }
+
+    public static String reader(LogEntry le) {
+        byte[] buf=le.command();
+        int offset=le.offset();
+        int val=Bits.readInt(buf, offset);
+        return String.valueOf(val);
     }
 
     public void readContentFrom(DataInput in) throws Exception {

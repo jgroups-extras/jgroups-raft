@@ -74,7 +74,7 @@ public class AnalyzeLog {
             System.out.printf("first=%d, commit-index=%d, last-appended=%d, term=%d, voted-for=%s\n",
                               first, commit, last, term, votedfor);
 
-            for(long i=first; i <= last; i++) {
+            for(long i=Math.max(1, first); i <= last; i++) {
                 StringJoiner sj=new StringJoiner(",");
                 if(i == first)
                     sj.add("first");

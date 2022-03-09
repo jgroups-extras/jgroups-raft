@@ -1,8 +1,5 @@
 package org.jgroups.tests;
 
-import java.util.Arrays;
-import java.util.List;
-
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
@@ -12,6 +9,9 @@ import org.jgroups.raft.blocks.ReplicatedStateMachine;
 import org.jgroups.tests.VoteTest.DummyStateMachine;
 import org.jgroups.util.Util;
 import org.testng.annotations.Test;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class ReplicatedStateMachineTest {
@@ -36,7 +36,7 @@ public class ReplicatedStateMachineTest {
     @SuppressWarnings("resource")
 	protected JChannel create(String name) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logName(name + "-" + CLUSTER);
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
         ch.connect(CLUSTER);
         return ch;
