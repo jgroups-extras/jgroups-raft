@@ -26,16 +26,17 @@ import java.util.concurrent.TimeUnit;
  */
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class SynchronousTests {
-    protected final Address       a=createAddress("A"), b=createAddress("B");
-    protected final View          view=View.create(a, 1, a,b);
-    protected final List<String>  mbrs=List.of("A", "B");
+    protected final Address       a=createAddress("A"), b=createAddress("B"), c=createAddress("C");
+    protected View                view;
+    protected final List<String>  mbrs=List.of("A", "B","C");
     protected final RaftCluster   cluster=new RaftCluster();
-    protected RAFT                raft_a, raft_b;
-    protected RaftNode            node_a, node_b;
-    protected CounterStateMachine sma, smb;
+    protected RAFT                raft_a, raft_b, raft_c;
+    protected RaftNode            node_a, node_b, node_c;
+    protected CounterStateMachine sma, smb, smc;
     protected static final int    TERM=5;
 
     @BeforeMethod protected void init() throws Exception {
+        view=View.create(a, 1, a,b);
         raft_a=createRAFT(a, "A", mbrs).stateMachine(sma=new CounterStateMachine())
           .changeRole(Role.Leader).leader(a);
         raft_b=createRAFT(b, "B", mbrs).stateMachine(smb=new CounterStateMachine())
@@ -52,8 +53,15 @@ public class SynchronousTests {
     }
 
 
+
     @AfterMethod
     protected void destroy() throws Exception {
+        if(node_c != null) {
+            node_c.stop();
+            node_c.destroy();
+            raft_c.deleteLog();
+            raft_c.deleteSnapshot();
+        }
         node_b.stop();
         node_a.stop();
         node_b.destroy();
@@ -314,7 +322,6 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 5, 5, 6);
     }
 
-
     public void testSnapshot() throws Exception {
         raft_b.maxLogSize(100);
         for(int i=1; i <= 100; i++) {
@@ -337,6 +344,110 @@ public class SynchronousTests {
         expect(325, sma.counter());
         expect(325, smb.counter());
     }
+
+    /** Tests adding C to cluster A,B, transfer of state from A to C */
+    public void testAddThirdMember() throws Exception {
+        raft_a.currentTerm(20);
+        for(int i=1; i <= 5; i++)
+            add(i);
+        expect(15, sma.counter());
+        expect(10, smb.counter());
+        assertIndices(5, 5, 20, raft_a);
+        assertIndices(5, 4, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 4, 5, 6);
+
+        addMemberC();
+        raft_a.flushCommitTable(b);
+        raft_a.flushCommitTable(c); // sets C's next-index to 1
+        raft_a.flushCommitTable(c); // sends single append, next-index = 2
+        raft_a.flushCommitTable(c); // sends messages/commit 2-5
+        expect(15, smc.counter());
+    }
+
+
+    /** Members A,B,C: A and B have commit-index=10, B still has 5. A now snapshots its log at 10, but needs to
+     * resend messages missed by C and cannot find them; therefore a snapshot is sent from A -> C
+     */
+    public void testSnapshotOnLeader() throws Exception {
+        raft_a.currentTerm(20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+        expect(15, sma.counter());
+        expect(10, smb.counter());
+        expect(10, smc.counter());
+        assertIndices(5, 5, 20, raft_a);
+        assertIndices(5, 4, 20, raft_b);
+        assertIndices(5, 4, 20, raft_c);
+        assertCommitTableIndeces(b, raft_a, 4, 5, 6);
+        assertCommitTableIndeces(c, raft_a, 4, 5, 6);
+
+        cluster.dropTrafficTo(c);
+        for(int i=6; i <= 10; i++)
+            add(i);
+        expect(55, sma.counter());
+        expect(45, smb.counter());
+        expect(10, smc.counter());
+        assertIndices(10, 10, 20, raft_a);
+        assertIndices(10, 9, 20, raft_b);
+        assertIndices(5, 4, 20, raft_c);
+        assertCommitTableIndeces(b, raft_a, 9, 10, 11);
+        assertCommitTableIndeces(c, raft_a, 4, 5, 6);
+
+        // now snapshot the leader at 10, and resume traffic
+        raft_a.snapshot();
+        cluster.clearDroppedTraffic();
+
+        raft_a.flushCommitTable();
+        raft_a.flushCommitTable(c);
+        expect(55, sma.counter());
+        expect(55, smb.counter());
+        expect(55, smc.counter());
+        assertIndices(10, 10, 20, raft_a);
+        assertIndices(10, 10, 20, raft_b);
+        assertIndices(10, 10, 20, raft_c);
+        assertCommitTableIndeces(b, raft_a, 10, 10, 11);
+        assertCommitTableIndeces(c, raft_a, 10, 10, 11);
+    }
+
+
+    public void testSnapshotOnFollower() throws Exception {
+        raft_a.currentTerm(20);
+        for(int i=1; i <= 5; i++)
+            add(i);
+        expect(15, sma.counter());
+        expect(10, smb.counter());
+        assertIndices(5, 5, 20, raft_a);
+        assertIndices(5, 4, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 4, 5, 6);
+
+        raft_b.snapshot();
+        assertIndices(5, 4, 20, raft_b);
+
+        raft_b.stop();
+        raft_b.log(null); // required to re-initialize the log
+        ((CounterStateMachine)raft_b.stateMachine()).reset();
+        raft_b.stateMachineLoaded(false);
+        raft_b.start();
+        expect(10, smb.counter());
+        assertIndices(5, 5, 20, raft_a);
+        assertIndices(5, 4, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 4, 5, 6);
+
+        for(int i=6; i <= 10; i++)
+            add(i);
+        expect(55, sma.counter());
+        expect(45, smb.counter());
+        assertIndices(10, 10, 20, raft_a);
+        assertIndices(10, 9, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 9, 10, 11);
+
+        raft_a.flushCommitTable(b);
+        expect(55, smb.counter());
+        assertIndices(10, 10, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 10, 10, 11);
+    }
+
 
 
 
@@ -413,6 +524,17 @@ public class SynchronousTests {
 
     protected static void expect(int expected_value, int actual_value) {
         assert actual_value == expected_value : String.format("expected=%d actual=%d", expected_value, actual_value);
+    }
+
+    protected void addMemberC() throws Exception {
+        raft_c=createRAFT(c, "C", mbrs).stateMachine(smc=new CounterStateMachine())
+          .changeRole(Role.Follower).leader(a);
+        node_c=new RaftNode(cluster, raft_c);
+        node_c.init();
+        node_c.start();
+        cluster.add(c, node_c);
+        view=View.create(a, 2, a,b,c);
+        cluster.handleView(view);
     }
 
 }

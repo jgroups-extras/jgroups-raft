@@ -146,7 +146,6 @@ public class LevelDBLog implements Log {
         }
         catch(Exception ex) {
         }
-
     }
 
     @Override
@@ -185,7 +184,7 @@ public class LevelDBLog implements Log {
 
     @Override
     public void truncate(int upto_index) {
-        if (upto_index< firstAppended|| upto_index> lastAppended)
+        if(upto_index< firstAppended || upto_index> lastAppended)
             return;
 
         if(upto_index > commitIndex) {

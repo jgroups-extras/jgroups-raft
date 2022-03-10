@@ -826,7 +826,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             Message msg=new BytesMessage(dest, data)
               .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
             down_prot.down(msg);
-
         }
         finally {
             snapshotting=false;
