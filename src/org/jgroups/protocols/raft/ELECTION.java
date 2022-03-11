@@ -48,6 +48,8 @@ public class ELECTION extends Protocol {
       "range [election_min_interval..election_max_interval]")
     protected long              election_max_interval=300;
 
+    @Property(description="Use views to start/stop elections (https://github.com/belaban/jgroups-raft/issues/20)")
+    protected boolean           use_views=true;
 
     /** The address of the candidate this node voted for in the current term */
     protected Address           voted_for;
@@ -59,7 +61,6 @@ public class ELECTION extends Protocol {
     @Property(description="No election will ever be started if true; this node will always be a follower. " +
       "Used only for testing and may get removed. Don't use !")
     protected boolean           no_elections;
-
 
     /** Whether a heartbeat has been received before this election timeout kicked in. If false, the follower becomes
      * candidate and starts a new election */
@@ -79,10 +80,15 @@ public class ELECTION extends Protocol {
     public ELECTION electionMaxInterval(long val)  {election_max_interval=val; return this;}
     public boolean  noElections()                  {return no_elections;}
     public ELECTION noElections(boolean flag)      {no_elections=flag; return this;}
+    public ELECTION timer(TimeScheduler ts)        {timer=ts; return this;}
+    public boolean  useViews()                     {return use_views;}
+    public ELECTION useViews(boolean b)            {use_views=b; return this;}
+    public RAFT     raft()                         {return raft;}
+    public ELECTION raft(RAFT r)                   {raft=r; return this;}
 
 
     @ManagedAttribute(description="The current role")
-    public String role() {return role.toString();}
+    public Role role() {return role;}
 
     @ManagedAttribute(description="Is the heartbeat task running")
     public synchronized boolean isHeartbeatTaskRunning() {
@@ -94,19 +100,23 @@ public class ELECTION extends Protocol {
 
     public void init() throws Exception {
         super.init();
-        if(heartbeat_interval < 1L) {
+        if(heartbeat_interval < 1L)
         	throw new Exception(String.format("heartbeat_interval (%d) must not be below one", heartbeat_interval));
-        }
         if(heartbeat_interval >= election_min_interval)
             throw new Exception(String.format("heartbeat_interval (%d) needs to be smaller than " +
                                   "election_min_interval (%d)", heartbeat_interval, election_min_interval));
         if(election_min_interval >= election_max_interval)
             throw new Exception(String.format("election_min_interval (%d) needs to be smaller than " +
                                   "election_max_interval (%d)", election_min_interval, election_max_interval));
-        timer=getTransport().getTimer();
+        if(timer == null)
+            timer=getTransport().getTimer();
         raft=findProtocol(RAFT.class);
     }
 
+    public void stop() {
+        stopHeartbeatTimer();
+        stopElectionTimer();
+    }
 
     public Object down(Event evt) {
         switch(evt.getType()) {
@@ -158,14 +168,37 @@ public class ELECTION extends Protocol {
     }
 
     protected void handleView(View v) {
-        if (v == null || v.size() >= raft.majority()) {
+        if(use_views) {
+            _handleView(v);
             return;
         }
-        if (role == Role.Leader) {
+        if(v == null || v.size() >= raft.majority())
+            return;
+        if(role == Role.Leader)
             changeRole(Role.Candidate);
-        } else {
-            // follower or candidate
-            raft.leader(null);
+        else
+            raft.leader(null); // follower or candidate
+    }
+
+    protected void _handleView(View v) {
+        if(v.size() >= raft.majority()) {
+            if(raft.leader() == null)
+                startElectionTimer();
+            else {
+                Address leader=raft.leader();
+                if(!v.containsMember(leader))
+                    startElectionTimer();
+                else if(Objects.equals(leader, local_addr))
+                    sendHeartbeat(raft.currentTerm(), leader, true); // send a HB to new members
+            }
+        }
+        else {
+            if(role == Role.Leader)
+                changeRole(Role.Candidate);
+            else
+                raft.leader(null); // follower or candidate
+            stopElectionTimer();
+            stopHeartbeatTimer();
         }
     }
 
@@ -195,9 +228,8 @@ public class ELECTION extends Protocol {
         }
         else if(hdr instanceof VoteResponse) {
             VoteResponse rsp=(VoteResponse)hdr;
-            if(rsp.result()) {
-            	handleVoteResponse(rsp.currTerm());
-            }
+            if(rsp.result())
+                handleVoteResponse(rsp.currTerm());
         }
     }
 
@@ -206,6 +238,8 @@ public class ELECTION extends Protocol {
         if(Objects.equals(local_addr, leader))
             return;
         heartbeatReceived(true);
+        if(use_views)
+            stopElectionTimer();
         if(role != Role.Follower || raft.updateTermAndLeader(term, leader)) {
             changeRole(Role.Follower);
             voteFor(null);
@@ -221,9 +255,8 @@ public class ELECTION extends Protocol {
             if(voteFor(sender)) {
                 if(sameOrNewer(last_log_term, last_log_index))
                     send_vote_rsp=true;
-                else {
+                else
                     log.trace("%s: dropped VoteRequest from %s as my log is more up-to-date", local_addr, sender);
-                }
             }
             else
                 log.trace("%s: already voted for %s in term %d; skipping vote", local_addr, sender, term);
@@ -234,7 +267,7 @@ public class ELECTION extends Protocol {
 
     protected synchronized void handleVoteResponse(int term) {
         if(role == Role.Candidate && term == raft.current_term) {
-            int majority = raft.majority();
+            int majority=raft.majority();
             if(++current_votes >= majority) {
                 // we've got the majority: become leader
                 log.trace("%s: collected %d votes (majority=%d) in term %d -> becoming leader",
@@ -244,7 +277,7 @@ public class ELECTION extends Protocol {
         }
     }
 
-    protected synchronized void handleElectionTimeout() {
+    protected void handleElectionTimeout() {
         log.trace("%s: election timeout", local_addr);
         switch(role) {
             case Follower:
@@ -261,7 +294,6 @@ public class ELECTION extends Protocol {
      * Returns true if last_log_term >= my own last log term, or last_log_index >= my own index
      * @param last_log_term
      * @param last_log_index
-     * @return
      */
     protected boolean sameOrNewer(int last_log_term, int last_log_index) {
         int my_last_log_index;
@@ -279,9 +311,14 @@ public class ELECTION extends Protocol {
     }
 
     protected void sendHeartbeat(int term, Address leader) {
+        sendHeartbeat(term, leader, false);
+    }
+
+    protected void sendHeartbeat(int term, Address leader, boolean reliable) {
         Message req=new EmptyMessage(null).putHeader(id, new HeartbeatRequest(term, leader))
-          .setFlag(Message.Flag.OOB, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC)
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK);
+          .setFlag(Message.TransientFlag.DONT_LOOPBACK).setFlag(Message.Flag.OOB, Message.Flag.NO_FC);
+        if(!reliable)
+            req.setFlag(Message.Flag.NO_RELIABILITY);
         down_prot.down(req);
     }
 
@@ -310,13 +347,15 @@ public class ELECTION extends Protocol {
         if(role != Role.Leader && new_role == Role.Leader) {
             raft.leader(local_addr);
             // send a first heartbeat immediately after the election so other candidates step down
-            sendHeartbeat(raft.currentTerm(), raft.leader());
+            sendHeartbeat(raft.currentTerm(), raft.leader(), use_views);
             stopElectionTimer();
-            startHeartbeatTimer();
+            if(!use_views)
+                startHeartbeatTimer();
         }
         else if(role == Role.Leader && new_role != Role.Leader) {
             stopHeartbeatTimer();
-            startElectionTimer();
+            if(!use_views)
+                startElectionTimer();
             raft.leader(null);
         }
         role=new_role;
@@ -333,7 +372,8 @@ public class ELECTION extends Protocol {
             if(!voteFor(local_addr))
                 return;
         }
-        sendVoteRequest(new_term); // send VoteRequest message; responses are received asynchronously. If majority -> become leader
+        // send VoteRequest message; responses are received asynchronously. If majority -> become leader
+        sendVoteRequest(new_term);
     }
 
     @ManagedAttribute(description="Vote cast for a candidate in the current term")
@@ -354,7 +394,7 @@ public class ELECTION extends Protocol {
     }
 
 
-    protected void startElectionTimer() {
+    public void startElectionTimer() {
         if(!no_elections && (election_task == null || election_task.isDone()))
             election_task=timer.scheduleWithDynamicInterval(new ElectionTask());
     }

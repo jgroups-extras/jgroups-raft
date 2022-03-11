@@ -6,13 +6,10 @@ import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
-import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -324,9 +321,4 @@ public class DynamicMembershipTest {
         }
     }
 
-    protected static class DummyStateMachine implements StateMachine {
-        public byte[] apply(byte[] data, int offset, int length) throws Exception {return new byte[0];}
-        public void readContentFrom(DataInput in) throws Exception {}
-        public void writeContentTo(DataOutput out) throws Exception {}
-    }
 }

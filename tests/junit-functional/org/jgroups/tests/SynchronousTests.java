@@ -62,8 +62,7 @@ public class SynchronousTests {
             raft_c.deleteLog();
             raft_c.deleteSnapshot();
         }
-        node_b.stop();
-        node_a.stop();
+        Util.close(node_b, node_a);
         node_b.destroy();
         node_a.destroy();
         raft_a.deleteLog();
@@ -449,12 +448,10 @@ public class SynchronousTests {
     }
 
 
-
-
     protected static RAFT createRAFT(Address addr, String name, List<String> members) {
         return new RAFT().raftId(name).members(members).logPrefix("synctest-" + name)
           .resendInterval(600_000) // long to disable resending by default
-          .setAddress(addr);
+          .synchronous(true).setAddress(addr);
     }
 
     protected static Address createAddress(String name) {
@@ -470,14 +467,14 @@ public class SynchronousTests {
 
     protected int add(int delta) throws Exception {
         byte[] buf=num(delta);
-        CompletableFuture<byte[]> f=raft_a.setAsync(buf, 0, buf.length, null, true);
+        CompletableFuture<byte[]> f=raft_a.setAsync(buf, 0, buf.length, null);
         byte[] retval=f.get(10, TimeUnit.SECONDS);
         return Bits.readInt(retval, 0);
     }
 
     protected void addAsync(int delta) throws Exception {
         byte[] buf=num(delta);
-        raft_a.setAsync(buf, 0, buf.length, null, true);
+        raft_a.setAsync(buf, 0, buf.length, null);
     }
 
     protected static void sendAppendEntriesRequest(RAFT r, int prev_index, int prev_term, int curr_term, int commit_index) {

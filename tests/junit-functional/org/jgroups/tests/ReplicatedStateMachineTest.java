@@ -6,7 +6,6 @@ import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
-import org.jgroups.tests.VoteTest.DummyStateMachine;
 import org.jgroups.util.Util;
 import org.testng.annotations.Test;
 
@@ -34,7 +33,7 @@ public class ReplicatedStateMachineTest {
 	}
 
     @SuppressWarnings("resource")
-	protected JChannel create(String name) throws Exception {
+	protected static JChannel create(String name) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);

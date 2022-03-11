@@ -25,7 +25,7 @@ In a nutshell
 -------------
 * Leader election is started only on view changes, depending on the view
 * Once a leader is established, there won't be any elections or heartbeats until a new view is installed
-* New members get the term, leader's address (leaderId) and majority via a message from the current leader
+* New members get the term and the leader's address via a message from the current leader (HeartbeatMessage)
 * New members don't take part in voting until the leader has sent them the above message. This makes it easy to
   dynamically change the majority when adding members
 
@@ -41,14 +41,27 @@ State
 
 On reception of view change V
 -----------------------------
+- If v.size < majority:
+    - Stop elections
+    - If leader -> become candidate
+    - Else -> leader=null
+- Else // v.size >= majority
+    - If leader == null or leader not in V -> start elections
+    - If leader -> send heartbeat (leader / term) to new member(s)
 
+
+On leader elected
+-----------------
+- Leader
+    - Send heartbeat (leader / term) to all followers (regular message, *not* OOB)
+    - Stop elections
 
 
 On reception of heartbeat HB
 ----------------------------
 - Set term to HB.term
-- Set leader to GB.leader
-- Set majority to HB.majority
+- Set leader to HB.leader
+- Stop elections
 - If not active -> set active to true
 
 

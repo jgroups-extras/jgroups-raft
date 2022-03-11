@@ -13,8 +13,6 @@ import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -784,10 +782,4 @@ public class AppendEntriesTest {
                                                prev_log_index, prev_log_term, entry_term, leader_commit, false);
     }
 
-
-    protected static class DummyStateMachine implements StateMachine {
-        public byte[] apply(byte[] data, int offset, int length) throws Exception {return new byte[0];}
-        public void readContentFrom(DataInput in) throws Exception {}
-        public void writeContentTo(DataOutput out) throws Exception {}
-    }
 }

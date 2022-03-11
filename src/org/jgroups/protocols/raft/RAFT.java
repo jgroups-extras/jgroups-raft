@@ -48,20 +48,17 @@ import java.util.regex.Pattern;
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol implements Settable, DynamicMembership {
-    // When moving to JGroups -> add to jg-protocol-ids.xml
     public static final byte[]    raft_id_key          = Util.stringToBytes("raft-id");
     protected static final short  RAFT_ID              = 521;
+    protected static final short  APPEND_ENTRIES_REQ   = 2000;
+    protected static final short  APPEND_ENTRIES_RSP   = 2001;
+    protected static final short  APPEND_RESULT        = 2002;
+    protected static final short  INSTALL_SNAPSHOT_REQ = 2003;
 
     public static final Function<ExtendedUUID,String> print_function=uuid -> {
         byte[] val=uuid.get(raft_id_key);
         return val != null? Util.bytesToString(val) : uuid.print();
     };
-
-    // When moving to JGroups -> add to jg-magic-map.xml
-    protected static final short  APPEND_ENTRIES_REQ   = 2000;
-    protected static final short  APPEND_ENTRIES_RSP   = 2001;
-    protected static final short  APPEND_RESULT        = 2002;
-    protected static final short  INSTALL_SNAPSHOT_REQ = 2003;
 
     static {
         ClassConfigurator.addProtocol(RAFT_ID, RAFT.class);
@@ -145,6 +142,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected volatile View           view;
 
     /** The current leader (can be null if there is currently no leader) */
+    @ManagedAttribute(description="the current leader")
     protected volatile Address        leader;
 
     /** The current term. Incremented when this node becomes a candidate, or set when a higher term is seen */
@@ -174,6 +172,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected final List<Request>     remove_queue=new ArrayList<>();
 
     protected Runner                  runner; // the single thread processing the request queue
+
+    protected boolean                 synchronous; // used by the synchronous execution framework (only for testing)
 
 
     public String       raftId()                      {return raft_id;}
@@ -212,6 +212,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public RAFT         addRoleListener(RoleChange c) {this.role_change_listeners.add(c); return this;}
     public RAFT         remRoleListener(RoleChange c) {this.role_change_listeners.remove(c); return this;}
     public RAFT         stateMachineLoaded(boolean b) {this.state_machine_loaded=b; return this;}
+    public boolean      synchronous()                 {return synchronous;}
+    public RAFT         synchronous(boolean b)        {synchronous=b; return this;}
 
 
     public void resetStats() {
@@ -486,7 +488,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public Object up(Message msg) {
         RaftHeader hdr=msg.getHeader(id);
         if(hdr != null) {
-            add(new UpRequest(msg, hdr));
+            if(synchronous)
+                handleUpRequest(msg, hdr);
+            else
+                add(new UpRequest(msg, hdr));
             return null;
         }
         return up_prot.up(msg);
@@ -498,7 +503,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             RaftHeader hdr=msg.getHeader(id);
             if(hdr != null) {
                 it.remove();
-                add(new UpRequest(msg, hdr));
+                if(synchronous)
+                    handleUpRequest(msg, hdr);
+                else
+                    add(new UpRequest(msg, hdr));
             }
         }
         if(!batch.isEmpty())
@@ -533,11 +541,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return setAsync(buf, offset, length, null);
     }
 
-    protected CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, InternalCommand cmd) {
-        return setAsync(buf, offset, length, cmd, false);
-    }
-
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, InternalCommand cmd, boolean sync) {
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, InternalCommand cmd) {
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
         if(buf == null)
@@ -548,7 +552,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             retval.completeExceptionally(new IllegalStateException("request table was null on " + impl.getClass().getSimpleName()));
             return retval;
         }
-        if(sync)
+        if(synchronous)
             handleDownRequest(retval, buf, offset, length, cmd);
         else
             add(new DownRequest(retval, buf, offset, length, cmd)); // will call handleDownRequest()

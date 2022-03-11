@@ -49,7 +49,7 @@ public class CounterPerf implements Receiver {
     // ============ configurable properties ==================
     @Property protected int     num_threads=100;
     @Property protected int     time=30; // in seconds
-    @Property protected boolean print_incrementers;
+    @Property protected boolean print_updaters;
     @Property protected boolean print_details;
     @Property protected long    timeout=60000; // ms
     @Property protected int     range=10;
@@ -67,7 +67,7 @@ public class CounterPerf implements Receiver {
 
     protected static final String format=
       "[1] Start test [2] View [4] Threads (%d) [6] Time (%s) [r] Range (%d)" +
-        "\n[t] incr timeout (%s) [d] details (%b)  [i] print incrementers (%b)" +
+        "\n[t] incr timeout (%s) [d] details (%b)  [i] print updaters (%b)" +
         "\n[v] Version [x] Exit [X] Exit all %s";
 
 
@@ -81,11 +81,11 @@ public class CounterPerf implements Receiver {
             NUM_THREADS=Util.getField(CounterPerf.class, "num_threads", true);
             TIME=Util.getField(CounterPerf.class, "time", true);
             TIMEOUT=Util.getField(CounterPerf.class, "timeout", true);
-            PRINT_INVOKERS=Util.getField(CounterPerf.class, "print_incrementers", true);
+            PRINT_INVOKERS=Util.getField(CounterPerf.class, "print_updaters", true);
             PRINT_DETAILS=Util.getField(CounterPerf.class, "print_details", true);
             RANGE=Util.getField(CounterPerf.class, "range", true);
             PerfUtil.init();
-            ClassConfigurator.addIfAbsent((short)1050, IncrementResult.class);
+            ClassConfigurator.addIfAbsent((short)1050, UpdateResult.class);
         }
         catch(Exception e) {
             throw new RuntimeException(e);
@@ -94,7 +94,7 @@ public class CounterPerf implements Receiver {
 
 
     public void init(String props, String name, int bind_port, boolean use_fibers) throws Throwable {
-        thread_factory=new DefaultThreadFactory("incrementer", false, true)
+        thread_factory=new DefaultThreadFactory("updater", false, true)
           .useFibers(use_fibers);
         if(use_fibers && Util.fibersAvailable())
             System.out.println("-- using fibers instead of threads");
@@ -142,17 +142,17 @@ public class CounterPerf implements Receiver {
 
     // =================================== callbacks ======================================
 
-    public IncrementResult startTest() throws Throwable {
+    public UpdateResult startTest() throws Throwable {
         System.out.printf("running for %d seconds\n", time);
         final CountDownLatch latch=new CountDownLatch(1);
         counter=counter_service.getOrCreateCounter("counter", 0);
 
-        Incrementer[] incrementers=new Incrementer[num_threads];
+        Updater[] updaters=new Updater[num_threads];
         Thread[]  threads=new Thread[num_threads];
         for(int i=0; i < threads.length; i++) {
-            incrementers[i]=new Incrementer(latch);
-            threads[i]=thread_factory.newThread(incrementers[i]);
-            threads[i].setName("incrementer-" + (i+1));
+            updaters[i]=new Updater(latch);
+            threads[i]=thread_factory.newThread(updaters[i]);
+            threads[i].setName("updater-" + (i+1));
             threads[i].start(); // waits on latch
         }
 
@@ -161,32 +161,32 @@ public class CounterPerf implements Receiver {
         long interval=(long)((time * 1000.0) / 10.0);
         for(int i=1; i <= 10; i++) {
             Util.sleep(interval);
-            System.out.printf("%d: %s\n", i, printAverage(start, incrementers));
+            System.out.printf("%d: %s\n", i, printAverage(start, updaters));
         }
 
-        for(Incrementer incrementer: incrementers)
-            incrementer.stop();
+        for(Updater updater: updaters)
+            updater.stop();
         for(Thread t: threads)
             t.join();
         long total_time=System.currentTimeMillis() - start;
 
         System.out.println();
         AverageMinMax avg_incrs=null;
-        for(int i=0; i < incrementers.length; i++) {
-            Incrementer incrementer=incrementers[i];
-            if(print_incrementers)
-                System.out.printf("incrementer %s: increments %s\n", threads[i].getId(),
-                                  print(incrementer.avg_incrtime, print_details));
+        for(int i=0; i < updaters.length; i++) {
+            Updater updater=updaters[i];
+            if(print_updaters)
+                System.out.printf("updater %s: updates %s\n", threads[i].getId(),
+                                  print(updater.avg_updatetime, print_details));
             if(avg_incrs == null)
-                avg_incrs=incrementer.avgIncrementTime();
+                avg_incrs=updater.avgUpdateTime();
             else
-                avg_incrs.merge(incrementer.avgIncrementTime());
+                avg_incrs.merge(updater.avgUpdateTime());
         }
-        if(print_incrementers)
-            System.out.printf("\navg over all incrementers: %s\n", print(avg_incrs, print_details));
+        if(print_updaters)
+            System.out.printf("\navg over all updaters: %s\n", print(avg_incrs, print_details));
 
         System.out.printf("\ndone (in %s ms)\n", total_time);
-        return new IncrementResult(getTotalIncrements(incrementers), total_time, avg_incrs);
+        return new UpdateResult(getTotalUpdates(updaters), total_time, avg_incrs);
     }
 
     public void quitAll() {
@@ -195,18 +195,18 @@ public class CounterPerf implements Receiver {
         System.exit(0);
     }
 
-    protected String printAverage(long start_time, Incrementer[] incrementers) {
+    protected String printAverage(long start_time, Updater[] updaters) {
         long tmp_time=System.currentTimeMillis() - start_time;
-        long incrs=getTotalIncrements(incrementers);
+        long incrs=getTotalUpdates(updaters);
         double incrs_sec=incrs / (tmp_time / 1000.0);
-        return String.format("%,.0f increments/sec (%,d increments)", incrs_sec, incrs);
+        return String.format("%,.0f updates/sec (%,d updates)", incrs_sec, incrs);
     }
 
-    protected long getTotalIncrements(Incrementer[] incrementers) {
+    protected long getTotalUpdates(Updater[] updaters) {
         long total=0;
-        if(incrementers != null)
-            for(Incrementer incr: incrementers)
-                total+=incr.numIncrements();
+        if(updaters != null)
+            for(Updater incr: updaters)
+                total+=incr.numUpdates();
         return total;
     }
 
@@ -248,7 +248,7 @@ public class CounterPerf implements Receiver {
                 long cnt=getCounter();
                 int c=Util.keyPress(String.format(format, num_threads, Util.printTime(time, TimeUnit.MILLISECONDS),
                                                   range, Util.printTime(timeout, TimeUnit.MILLISECONDS),
-                                                  print_details, print_incrementers,
+                                                  print_details, print_updaters,
                                                   cnt < 0? "\n" : String.format(" (counter=%d)\n", cnt)));
                 switch(c) {
                     case '1':
@@ -258,7 +258,7 @@ public class CounterPerf implements Receiver {
                         printView();
                         break;
                     case '4':
-                        changeFieldAcrossCluster(NUM_THREADS, Util.readIntFromStdin("Number of incrementer threads: "));
+                        changeFieldAcrossCluster(NUM_THREADS, Util.readIntFromStdin("Number of updater threads: "));
                         break;
                     case '6':
                         changeFieldAcrossCluster(TIME, Util.readIntFromStdin("Time (secs): "));
@@ -267,10 +267,10 @@ public class CounterPerf implements Receiver {
                         changeFieldAcrossCluster(PRINT_DETAILS, !print_details);
                         break;
                     case 'i':
-                        changeFieldAcrossCluster(PRINT_INVOKERS, !print_incrementers);
+                        changeFieldAcrossCluster(PRINT_INVOKERS, !print_updaters);
                         break;
                     case 't':
-                        changeFieldAcrossCluster(TIMEOUT, Util.readIntFromStdin("incr timeout (ms): "));
+                        changeFieldAcrossCluster(TIMEOUT, Util.readIntFromStdin("update timeout (ms): "));
                         break;
                     case 'r':
                         changeFieldAcrossCluster(RANGE, Util.readIntFromStdin("range: "));
@@ -308,7 +308,7 @@ public class CounterPerf implements Receiver {
 
     /** Kicks off the benchmark on all cluster nodes */
     void startBenchmark() throws Exception {
-        RspList<IncrementResult> responses=null;
+        RspList<UpdateResult> responses=null;
         try {
             RequestOptions options=new RequestOptions(ResponseMode.GET_ALL, 0)
               .flags(Message.Flag.OOB, Message.Flag.DONT_BUNDLE, Message.Flag.NO_FC);
@@ -324,24 +324,24 @@ public class CounterPerf implements Receiver {
         AverageMinMax avg_incrs=null;
 
         System.out.println("\n======================= Results: ===========================");
-        for(Map.Entry<Address,Rsp<IncrementResult>> entry: responses.entrySet()) {
+        for(Map.Entry<Address,Rsp<UpdateResult>> entry: responses.entrySet()) {
             Address mbr=entry.getKey();
-            Rsp<IncrementResult> rsp=entry.getValue();
-            IncrementResult result=rsp.getValue();
+            Rsp<UpdateResult> rsp=entry.getValue();
+            UpdateResult result=rsp.getValue();
             if(result != null) {
-                total_incrs+=result.num_increments;
+                total_incrs+=result.num_updates;
                 total_time+=result.total_time;
                 if(avg_incrs == null)
-                    avg_incrs=result.avg_increments;
+                    avg_incrs=result.avg_updates;
                 else
-                    avg_incrs.merge(result.avg_increments);
+                    avg_incrs.merge(result.avg_updates);
             }
             System.out.println(mbr + ": " + result);
         }
         double total_reqs_sec=total_incrs / ( total_time/ 1000.0);
         System.out.println("\n");
-        System.out.println(Util.bold(String.format("Throughput: %,.2f increments/sec/node\n" +
-                                                   "Time:       %s / increment\n",
+        System.out.println(Util.bold(String.format("Throughput: %,.2f updates/sec/node\n" +
+                                                   "Time:       %s / update\n",
                                                    total_reqs_sec, print(avg_incrs, print_details))));
         System.out.println("\n\n");
     }
@@ -384,19 +384,19 @@ public class CounterPerf implements Receiver {
 
 
 
-    protected class Incrementer implements Runnable {
+    protected class Updater implements Runnable {
         private final CountDownLatch latch;
-        private long                 num_increments;
-        private final AverageMinMax  avg_incrtime=new AverageMinMax(); // in ns
+        private long                 num_updates;
+        private final AverageMinMax  avg_updatetime=new AverageMinMax(); // in ns
         private volatile boolean     running=true;
 
 
-        public Incrementer(CountDownLatch latch) {
+        public Updater(CountDownLatch latch) {
             this.latch=latch;
         }
 
-        public long          numIncrements()    {return num_increments;}
-        public AverageMinMax avgIncrementTime() {return avg_incrtime;}
+        public long          numUpdates()       {return num_updates;}
+        public AverageMinMax avgUpdateTime()    {return avg_updatetime;}
         public void          stop()             {running=false;}
 
         public void run() {
@@ -413,8 +413,8 @@ public class CounterPerf implements Receiver {
                     long start=System.nanoTime();
                     counter.addAndGet(delta);
                     long incr_time=System.nanoTime()-start;
-                    avg_incrtime.add(incr_time);
-                    num_increments++;
+                    avg_updatetime.add(incr_time);
+                    num_updates++;
                 }
                 catch(Throwable t) {
                     if(running)
@@ -424,39 +424,38 @@ public class CounterPerf implements Receiver {
         }
     }
 
-    protected static class IncrementResult implements Streamable {
-        protected long          num_increments;
+    protected static class UpdateResult implements Streamable {
+        protected long          num_updates;
         protected long          total_time;     // in ms
-        protected AverageMinMax avg_increments; // in ns
+        protected AverageMinMax avg_updates; // in ns
 
-        public IncrementResult() {
+        public UpdateResult() {
         }
 
-        public IncrementResult(long num_increments, long total_time, AverageMinMax avg_increments) {
-            this.num_increments=num_increments;
+        public UpdateResult(long num_updates, long total_time, AverageMinMax avg_updates) {
+            this.num_updates=num_updates;
             this.total_time=total_time;
-            this.avg_increments=avg_increments;
+            this.avg_updates=avg_updates;
         }
 
         @Override
         public void writeTo(DataOutput out) throws IOException {
-            Bits.writeLongCompressed(num_increments, out);
+            Bits.writeLongCompressed(num_updates, out);
             Bits.writeLongCompressed(total_time, out);
-            Util.writeStreamable(avg_increments, out);
+            Util.writeStreamable(avg_updates, out);
         }
 
         @Override
         public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
-            num_increments=Bits.readLongCompressed(in);
+            num_updates=Bits.readLongCompressed(in);
             total_time=Bits.readLongCompressed(in);
-            avg_increments=Util.readStreamable(AverageMinMax::new, in);
+            avg_updates=Util.readStreamable(AverageMinMax::new, in);
         }
 
         public String toString() {
-            double total_reqs_per_sec=num_increments / (total_time / 1000.0);
-            return String.format("%,.2f increments/sec (%,d increments, %s / increment)",
-                                 total_reqs_per_sec, num_increments,
-                                 Util.printTime(avg_increments.average(), TimeUnit.NANOSECONDS));
+            double total_reqs_per_sec=num_updates / (total_time / 1000.0);
+            return String.format("%,.2f updates/sec (%,d updates, %s / update)", total_reqs_per_sec, num_updates,
+                                 Util.printTime(avg_updates.average(), TimeUnit.NANOSECONDS));
         }
     }
 

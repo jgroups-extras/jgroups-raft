@@ -1,10 +1,14 @@
 package org.jgroups.raft.testfwk;
 
 import org.jgroups.Address;
+import org.jgroups.Event;
 import org.jgroups.Message;
 import org.jgroups.View;
+import org.jgroups.stack.Protocol;
 
-import java.util.*;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
@@ -46,7 +50,11 @@ public class RaftCluster {
     public void handleView(View view) {
         List<Address> members=view.getMembers();
         nodes.keySet().retainAll(Objects.requireNonNull(members));
-        nodes.values().forEach(n -> n.raft().handleView(view));
+        nodes.values().forEach(n -> {
+            Protocol[] protocols=n.protocols();
+            for(Protocol p: protocols)
+                p.down(new Event(Event.VIEW_CHANGE, view));
+        });
     }
 
     public void send(Message msg) {
