@@ -53,18 +53,18 @@ public class AppendResult implements Streamable {
     }
 
     public void writeTo(DataOutput out) throws IOException {
-        Bits.writeIntCompressed(result.ordinal(), out);
-        Bits.writeIntCompressed(index, out);
-        Bits.writeIntCompressed(commit_index, out);
-        Bits.writeIntCompressed(non_matching_term, out);
+        out.writeInt(result.ordinal());
+        out.writeInt(index);
+        out.writeInt(commit_index);
+        out.writeInt(non_matching_term);
     }
 
     public void readFrom(DataInput in) throws IOException {
-        int ordinal=Bits.readIntCompressed(in);
+        int ordinal=in.readInt();
         result=Result.values()[ordinal];
-        index=Bits.readIntCompressed(in);
-        commit_index=Bits.readIntCompressed(in);
-        non_matching_term=Bits.readIntCompressed(in);
+        index=in.readInt();
+        commit_index=in.readInt();
+        non_matching_term=in.readInt();
     }
 
 

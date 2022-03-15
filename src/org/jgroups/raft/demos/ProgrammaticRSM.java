@@ -1,8 +1,6 @@
 package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
-import org.jgroups.Receiver;
-import org.jgroups.View;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.*;
 import org.jgroups.protocols.dns.DNS_PING;
@@ -11,7 +9,10 @@ import org.jgroups.protocols.pbcast.NAKACK2;
 import org.jgroups.protocols.pbcast.STABLE;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
-import org.jgroups.stack.*;
+import org.jgroups.stack.DiagnosticsHandler;
+import org.jgroups.stack.NonReflectiveProbeHandler;
+import org.jgroups.stack.Protocol;
+import org.jgroups.stack.ProtocolStack;
 import org.jgroups.util.Util;
 
 import java.net.InetAddress;
@@ -35,19 +36,14 @@ public class ProgrammaticRSM {
         LogFactory.useJdkLogger(true);
         // prevents setting default values: GraalVM doesn't accept creation of InetAddresses at build time (in the
         // image), so we have to set the default valiues at run time
-        Configurator.skipSettingDefaultValues(true);
+        // Configurator.skipSettingDefaultValues(true);
 
         boolean use_udp=Boolean.getBoolean("use.udp");
 
         try {
             ch=create(use_udp);
-            Configurator.skipSettingDefaultValues(false);
             h=new NonReflectiveProbeHandler(ch).initialize(ch.getProtocolStack().getProtocols());
-            ch.setReceiver(new Receiver() {
-                @Override public void viewAccepted(View view) {
-                    System.out.println("-- view change: " + view);
-                }
-            });
+            ch.setReceiver(view -> System.out.println("-- view change: " + view));
             rsm=new ReplicatedStateMachine<>(ch);
         }
         catch(Exception ex) {
@@ -111,7 +107,8 @@ public class ProgrammaticRSM {
         InetAddress diag_addr=Util.getAddress("224.0.75.75", Util.getIpStackType()),
           mcast_addr=Util.getAddress("228.8.8.8", Util.getIpStackType()),
           mping_mcast=Util.getAddress("230.5.6.7", Util.getIpStackType());
-        transport.setBindAddress(ba).setBindPort(bind_port).getDiagnosticsHandler().setMcastAddress(diag_addr);
+        transport.setBindAddress(ba).setBindPort(bind_port).getDiagnosticsHandler();
+        // ((UDP)transport).setMcastAddress(diag_addr);
         if(transport instanceof UDP)
             ((UDP)transport).setMulticastAddress(mcast_addr);
 
@@ -141,14 +138,12 @@ public class ProgrammaticRSM {
             }
             transport.registerProbeHandler(h);
 
-            rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
-                @Override
-                public void put(String key, Object val, Object old_val) {
+            rsm.addNotificationListener(new ReplicatedStateMachine.Notification() {
+                public void put(Object key, Object val, Object old_val) {
                     System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
                 }
 
-                @Override
-                public void remove(String key, Object old_val) {
+                public void remove(Object key, Object old_val) {
                     System.out.printf("-- remove(%s) -> %s\n", key, old_val);
                 }
             });
@@ -169,8 +164,8 @@ public class ProgrammaticRSM {
             transport.getDiagnosticsHandler().enableUdp(true);
         else
             transport.getDiagnosticsHandler().enableUdp(false).enableTcp(true);
-        transport.getThreadPool().setMaxThreads(200);
-        transport.getDiagnosticsHandler().setEnabled(true);
+        //transport.getThreadPool().setMaxThreads(200);
+        //transport.getDiagnosticsHandler().setEnabled(true);
         prots.add(transport);
 
         // discovery protocols
@@ -195,7 +190,7 @@ public class ProgrammaticRSM {
           new GMS().setJoinTimeout(2000),
           new UFC(),
           new MFC(),
-          new FRAG4(),
+          new FRAG2(),
           new ELECTION(),
           new RAFT(),
           new REDIRECT(),

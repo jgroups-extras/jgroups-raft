@@ -1,6 +1,5 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.util.Bits;
 import org.jgroups.util.Streamable;
 import org.jgroups.util.Util;
 
@@ -47,13 +46,13 @@ public class LogEntry implements Streamable {
     public boolean internal() {return internal;}
 
     public void writeTo(DataOutput out) throws IOException {
-        Bits.writeIntCompressed(term, out);
+        out.writeInt(term);
         Util.writeByteBuffer(command, offset, length, out);
         out.writeBoolean(internal);
     }
 
     public void readFrom(DataInput in) throws IOException {
-        term=Bits.readIntCompressed(in);
+        term=in.readInt();
         command=Util.readByteBuffer(in);
         offset=0;
         length=command != null? command.length : 0;

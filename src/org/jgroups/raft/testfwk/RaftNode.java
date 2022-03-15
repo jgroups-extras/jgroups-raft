@@ -2,7 +2,6 @@ package org.jgroups.raft.testfwk;
 
 import org.jgroups.Address;
 import org.jgroups.Event;
-import org.jgroups.Lifecycle;
 import org.jgroups.Message;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
@@ -21,11 +20,12 @@ import java.util.stream.Stream;
  * @author Bela Ban
  * @since  1.0.5
  */
-public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable {
+public class RaftNode extends Protocol implements Settable, Closeable {
     protected final Protocol[]  prots;    // the wrapped protocols, from low to high
     protected final RAFT        raft;
     protected final ELECTION    election;
     protected final RaftCluster cluster;
+    protected Address           local_addr;
 
     public RaftNode(RaftCluster cluster, Protocol[] protocols) {
         this.cluster=cluster;
@@ -54,9 +54,12 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
     public Protocol[] protocols() {return prots;}
 
     public Address getAddress() {
-        for(Protocol p: prots)
-            if(p.getAddress() != null)
-                return p.getAddress();
+        for(Protocol p: prots) {
+            if(p instanceof ELECTION && ((ELECTION)p).getAddress() != null)
+                return ((ELECTION)p).getAddress();
+            if(p instanceof RAFT && ((RAFT)p).getAddress() != null)
+                return ((RAFT)p).getAddress();
+        }
         return null;
     }
 
@@ -111,7 +114,7 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
     public String toString() {
         return Stream.of(prots)
           .map(p -> String.format("%s [%s]",
-                                  p instanceof RAFT? ((RAFT)p).raftId() : p.getAddress(), p))
+                                  p instanceof RAFT? ((RAFT)p).raftId() : ((RAFT)p).getAddress(), p))
           .collect(Collectors.joining("\n"));
 
     }
@@ -127,10 +130,7 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
     protected Address localAddress() {
         if(local_addr != null)
             return local_addr;
-        for(int i=prots.length-1; i >= 0; i--)
-            if((local_addr=prots[i].getAddress()) != null)
-                return local_addr;
-        return local_addr;
+        return local_addr=getAddress();
     }
 
 

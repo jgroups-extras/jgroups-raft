@@ -38,6 +38,9 @@ public class ELECTION extends Protocol {
         ClassConfigurator.add(HEARTBEAT_REQ, HeartbeatRequest.class);
     }
 
+    @ManagedAttribute(description="the local address")
+    protected Address           local_addr;
+
     @Property(description="Interval (in ms) at which a leader sends out heartbeats")
     protected long              heartbeat_interval=30;
 
@@ -72,6 +75,8 @@ public class ELECTION extends Protocol {
     protected Future<?>         heartbeat_task;
     protected Role              role=Role.Follower;
 
+    public Address  getAddress()                   {return local_addr;}
+    public ELECTION setAddress(Address a)          {local_addr=a; return this;}
     public long     heartbeatInterval()            {return heartbeat_interval;}
     public ELECTION heartbeatInterval(long val)    {heartbeat_interval=val; return this;}
     public long     electionMinInterval()          {return election_min_interval;}
@@ -133,6 +138,9 @@ public class ELECTION extends Protocol {
                 break;
             case Event.VIEW_CHANGE:
                 handleView(evt.getArg());
+                break;
+            case Event.SET_LOCAL_ADDRESS:
+                local_addr=evt.arg();
                 break;
         }
         return down_prot.down(evt);
@@ -315,8 +323,8 @@ public class ELECTION extends Protocol {
     }
 
     protected void sendHeartbeat(int term, Address leader, boolean reliable) {
-        Message req=new EmptyMessage(null).putHeader(id, new HeartbeatRequest(term, leader))
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK).setFlag(Message.Flag.OOB, Message.Flag.NO_FC);
+        Message req=new Message(null).putHeader(id, new HeartbeatRequest(term, leader))
+          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK).setFlag(Message.Flag.OOB, Message.Flag.NO_FC);
         if(!reliable)
             req.setFlag(Message.Flag.NO_RELIABILITY);
         down_prot.down(req);
@@ -328,7 +336,7 @@ public class ELECTION extends Protocol {
         int last_log_term=entry != null? entry.term() : 0;
         VoteRequest req=new VoteRequest(term, last_log_term, last_log_index);
         log.trace("%s: sending %s", local_addr, req);
-        Message vote_req=new EmptyMessage(null).putHeader(id, req)
+        Message vote_req=new Message(null).putHeader(id, req)
           .setFlag(Message.Flag.OOB, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(vote_req);
     }
@@ -336,7 +344,7 @@ public class ELECTION extends Protocol {
     protected void sendVoteResponse(Address dest, int term) {
         VoteResponse rsp=new VoteResponse(term, true);
         log.trace("%s: sending %s",local_addr,rsp);
-        Message vote_rsp=new EmptyMessage(dest).putHeader(id, rsp)
+        Message vote_rsp=new Message(dest).putHeader(id, rsp)
           .setFlag(Message.Flag.OOB, Message.Flag.NO_RELIABILITY, Message.Flag.NO_FC);
         down_prot.down(vote_rsp);
     }

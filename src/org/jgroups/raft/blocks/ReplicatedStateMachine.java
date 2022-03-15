@@ -5,7 +5,6 @@ import org.jgroups.protocols.raft.InternalCommand;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.StateMachine;
 import org.jgroups.raft.RaftHandle;
-import org.jgroups.util.Bits;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
@@ -196,7 +195,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     }
 
     @Override public void readContentFrom(DataInput in) throws Exception {
-        int size=Bits.readIntCompressed(in);
+        int size=in.readInt();
         Map<K,V> tmp=new HashMap<>(size);
         for(int i=0; i < size; i++) {
             K key=Util.objectFromStream(in);
@@ -211,7 +210,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     @Override public void writeContentTo(DataOutput out) throws Exception {
         synchronized(map) {
             int size=map.size();
-            Bits.writeIntCompressed(size, out);
+            out.writeInt(size);
             for(Map.Entry<K,V> entry : map.entrySet()) {
                 Util.objectToStream(entry.getKey(), out);
                 Util.objectToStream(entry.getValue(), out);

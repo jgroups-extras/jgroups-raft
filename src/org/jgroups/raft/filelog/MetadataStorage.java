@@ -1,16 +1,16 @@
 package org.jgroups.raft.filelog;
 
+import org.jgroups.Address;
+import org.jgroups.Global;
+import org.jgroups.util.ByteBufferInputStream;
+import org.jgroups.util.Util;
+
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-
-import org.jgroups.Address;
-import org.jgroups.Global;
-import org.jgroups.util.ByteBufferInputStream;
-import org.jgroups.util.Util;
 
 /**
  * Stores the RAFT log metadata in a file.
@@ -83,7 +83,8 @@ public class MetadataStorage extends BaseStorage {
       ByteBuffer buffer = ByteBuffer.allocate(Global.INT_SIZE + data.length);
       buffer.putInt(data.length);
       buffer.put(data);
-      fChannel.write(buffer.flip(), VOTED_FOR_POS);
+      buffer.flip();
+      fChannel.write(buffer, VOTED_FOR_POS);
    }
 
    private int readIntOrZero(long position) throws IOException {

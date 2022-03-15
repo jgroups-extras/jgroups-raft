@@ -5,7 +5,6 @@ import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
-import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.RequestTable;
@@ -68,6 +67,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
     }
 
+    @ManagedAttribute(description="the local address")
+    protected Address                 local_addr;
+
     @Property(description="The identifier of this node. Needs to be unique and an element of members. Must not be null",
               writable=false)
     protected String                  raft_id;
@@ -100,18 +102,17 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="The name of the snapshot")
     protected String                  snapshot_name;
 
-    @Property(description="Interval (ms) at which AppendEntries messages are resent to members with missing log entries",
-      type=AttributeType.TIME)
+    @Property(description="Interval (ms) at which AppendEntries messages are resent to members with missing log entries")
     protected long                    resend_interval=1000;
 
     @Property(description="Send commit message to followers immediately after leader commits (majority has consensus). " +
       "Caution : it may generate more traffic than expected")
     protected boolean                 send_commits_immediately;
 
-    @Property(description="Max number of bytes a log can have until a snapshot is created",type=AttributeType.BYTES)
+    @Property(description="Max number of bytes a log can have until a snapshot is created")
     protected int                     max_log_size=1_000_000;
 
-    @ManagedAttribute(description="The current size of the log in bytes",type=AttributeType.BYTES)
+    @ManagedAttribute(description="The current size of the log in bytes")
     protected int                     curr_log_size; // keeps counts of the bytes added to the log
 
     @ManagedAttribute(description="Number of successful AppendEntriesRequests")
@@ -149,10 +150,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="The current term")
     protected int                     current_term;
 
-    @ManagedAttribute(description="Index of the highest log entry appended to the log",type=AttributeType.SCALAR)
+    @ManagedAttribute(description="Index of the highest log entry appended to the log")
     protected int                     last_appended;
 
-    @ManagedAttribute(description="Index of the last committed log entry",type=AttributeType.SCALAR)
+    @ManagedAttribute(description="Index of the last committed log entry")
     protected int                     commit_index;
 
     @ManagedAttribute(description="The number of snapshots performed")
@@ -163,7 +164,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected boolean                 snapshotting;
 
-    @Property(description="Max size in items the processing queue can have",type=AttributeType.SCALAR)
+    @Property(description="Max size in items the processing queue can have")
     protected int                     processing_queue_max_size=9182;
 
     /** All requests are added to this queue; a single thread processes this queue - hence no synchronization issues */
@@ -176,6 +177,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected boolean                 synchronous; // used by the synchronous execution framework (only for testing)
 
 
+    public Address      getAddress()                  {return local_addr;}
+    public RAFT         setAddress(Address a)         {local_addr=a; return this;}
     public String       raftId()                      {return raft_id;}
     public RAFT         raftId(String id)             {if(id != null) this.raft_id=id; return this;}
     public RaftImpl     impl()                        {return impl;}
@@ -475,6 +478,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public Object down(Event evt) {
         if(evt.getType() == Event.VIEW_CHANGE)
             handleView(evt.getArg());
+        if(evt.getType() == Event.SET_LOCAL_ADDRESS)
+            local_addr=evt.arg();
         return down_prot.down(evt);
     }
 
@@ -596,10 +601,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             reqtab.create(curr_index, raft_id, retval, majority());
 
             // 3. Multicast an AppendEntries message (exclude self)
-            Message msg=new BytesMessage(null, buf, offset, length)
+            Message msg=new Message(null, buf, offset, length)
               .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
                                                       current_term, commit_index, cmd != null))
-              .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+              .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
 
             // the message needs to be sent inside the synchronized block (and hit NAKACK2 in the correct order):
             // updates (prev-index:current-index) 4:5 and 5:6 would fail if 5:6 was applied first, as 5 would not exist
@@ -622,11 +627,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         if(hdr instanceof AppendEntriesRequest) {
             AppendEntriesRequest r=(AppendEntriesRequest)hdr;
-            AppendResult result=impl.handleAppendEntriesRequest(msg.getArray(), msg.getOffset(), msg.getLength(), msg.src(),
+            AppendResult result=impl.handleAppendEntriesRequest(msg.getRawBuffer(), msg.getOffset(), msg.getLength(), msg.src(),
                                                                 r.prev_log_index, r.prev_log_term, r.entry_term,
                                                                 r.leader_commit, r.internal);
             result.commitIndex(commit_index);
-            Message rsp=new EmptyMessage(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
+            Message rsp=new Message(leader).putHeader(id, new AppendEntriesResponse(current_term, result));
             down_prot.down(rsp);
         }
         else if(hdr instanceof AppendEntriesResponse) {
@@ -758,7 +763,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return;
         }
         if(this.commit_index > e.commitIndex()) { // send an empty AppendEntries message as commit message
-            Message msg=new EmptyMessage(member)
+            Message msg=new Message(member)
               .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, 0, 0,
                                                       current_term, this.commit_index, false));
             down_prot.down(msg);
@@ -794,7 +799,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         LogEntry prev=log_impl.get(index-1);
         int prev_term=prev != null? prev.term : 0;
-        Message msg=new BytesMessage(target).setArray(entry.command, entry.offset, entry.length)
+        Message msg=new Message(target).setBuffer(entry.command, entry.offset, entry.length)
           .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, index - 1, prev_term,
                                                   entry.term, commit_index, entry.internal));
         down_prot.down(msg);
@@ -827,7 +832,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
             byte[] data=Files.readAllBytes(Paths.get(snapshot_name));
             log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.length), dest);
-            Message msg=new BytesMessage(dest, data)
+            Message msg=new Message(dest, data)
               .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
             down_prot.down(msg);
         }

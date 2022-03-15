@@ -67,7 +67,7 @@ public class RaftCluster {
             for(Map.Entry<Address,RaftNode> e: nodes.entrySet()) {
                 Address d=e.getKey();
                 RaftNode n=e.getValue();
-                if(Objects.equals(d, src) && msg.isFlagSet(DONT_LOOPBACK))
+                if(Objects.equals(d, src) && msg.isTransientFlagSet(DONT_LOOPBACK))
                     continue;
                 n.up(msg);
             }

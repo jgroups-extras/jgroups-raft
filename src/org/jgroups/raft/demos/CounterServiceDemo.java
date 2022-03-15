@@ -1,8 +1,6 @@
 package org.jgroups.raft.demos;
 
 import org.jgroups.JChannel;
-import org.jgroups.Receiver;
-import org.jgroups.View;
 import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
@@ -22,11 +20,7 @@ public class CounterServiceDemo {
         counter_service=new CounterService(ch).raftId(name).replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
         if(follower)
             disableElections(ch);
-        ch.setReceiver(new Receiver() {
-            public void viewAccepted(View view) {
-                System.out.println("-- view: " + view);
-            }
-        });
+        ch.setReceiver(view -> System.out.println("-- view: " + view));
 
         try {
             ch.connect("cntrs");

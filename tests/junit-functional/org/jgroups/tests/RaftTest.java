@@ -1,6 +1,9 @@
 package org.jgroups.tests;
 
-import org.jgroups.*;
+import org.jgroups.Address;
+import org.jgroups.Global;
+import org.jgroups.JChannel;
+import org.jgroups.Message;
 import org.jgroups.protocols.FRAG2;
 import org.jgroups.protocols.SHARED_LOOPBACK;
 import org.jgroups.protocols.SHARED_LOOPBACK_PING;
@@ -20,8 +23,9 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
 
 /**
  * Tests the various stages of the Raft protocoll, e.g. regular append, incorrect append, snapshots, leader change,
@@ -299,10 +303,10 @@ public class RaftTest {
 
         // send a correct index, but incorrect prev_term:
         // does this ever happen?
-        Message msg=new BytesMessage(null, val, 0, val.length)
+        Message msg=new Message(null, val, 0, val.length)
           .putHeader(raft_a.getId(), new AppendEntriesRequest(raft_a.getAddress(), 22,
                                                               5, 23, 25, 0, false))
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+          .setTransientFlag(DONT_LOOPBACK); // don't receive my own request
         raft_a.getDownProtocol().down(msg);
         Util.waitUntilTrue(5000, 200, () -> raft_b.commitIndex() == 5);
         expect(5, sma.counter());
@@ -316,10 +320,10 @@ public class RaftTest {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
-        Message msg=new BytesMessage(null, val, 0, val.length)
+        Message msg=new Message(null, val, 0, val.length)
           .putHeader(r.getId(), new AppendEntriesRequest(r.getAddress(), curr_term,
                                                          prev_index, prev_term, curr_term, commit_index, false))
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+          .setTransientFlag(DONT_LOOPBACK); // don't receive my own request
         r.getDownProtocol().down(msg);
     }
 
@@ -373,7 +377,7 @@ public class RaftTest {
           new GMS().setJoinTimeout(1000),
           new FRAG2(),
           // new ELECTION().electionMinInterval(100).electionMaxInterval(300).heartbeatInterval(30),
-          new RAFT().members(List.of("A", "B", "C")).raftId(name)
+          new RAFT().members(Arrays.asList("A", "B", "C")).raftId(name)
             .logPrefix("rafttest-" + name).resendInterval(resend_interval).maxLogSize(max_log_size),
           new REDIRECT()
         };

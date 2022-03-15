@@ -32,7 +32,7 @@ import java.util.stream.Stream;
 public class SyncElectionTests {
     protected final Address      a,b,c;
     protected final Address[]    addrs={a=createAddress("A"), b=createAddress("B"), c=createAddress("C")};
-    protected final List<String> mbrs=List.of("A", "B", "C");
+    protected final List<String> mbrs=Arrays.asList("A", "B", "C");
     protected final RaftCluster  cluster=new RaftCluster();
     protected RAFT[]             rafts=new RAFT[3];
     protected ELECTION[]         elections=new ELECTION[3];

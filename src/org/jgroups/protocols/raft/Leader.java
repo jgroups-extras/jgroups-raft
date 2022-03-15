@@ -1,7 +1,6 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
-import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.util.ExtendedUUID;
@@ -66,7 +65,7 @@ public class Leader extends RaftImpl {
     private void sendCommitMessageToFollower(Address member, CommitTable.Entry entry) {
         if(raft.commit_index > entry.commitIndex()) {
             int cterm=raft.currentTerm();
-            Message msg=new EmptyMessage(member)
+            Message msg=new Message(member)
               .putHeader(raft.getId(), new AppendEntriesRequest(raft.getAddress(), cterm, 0, 0, cterm, raft.commit_index, false));
             raft.down(msg);
         }

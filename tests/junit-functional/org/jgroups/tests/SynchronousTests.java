@@ -13,6 +13,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -28,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 public class SynchronousTests {
     protected final Address       a=createAddress("A"), b=createAddress("B"), c=createAddress("C");
     protected View                view;
-    protected final List<String>  mbrs=List.of("A", "B","C");
+    protected final List<String>  mbrs=Arrays.asList("A", "B","C");
     protected final RaftCluster   cluster=new RaftCluster();
     protected RAFT                raft_a, raft_b, raft_c;
     protected RaftNode            node_a, node_b, node_c;
@@ -308,10 +309,10 @@ public class SynchronousTests {
 
         // send a correct index, but incorrect prev_term: does this ever happen? probably not, as the commit index
         // can never decrease!
-        Message msg=new BytesMessage(null, val, 0, val.length)
+        Message msg=new Message(null, val, 0, val.length)
           .putHeader(raft_a.getId(), new AppendEntriesRequest(raft_a.getAddress(), 22,
                                                               5, 23, 25, 0, false))
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         raft_a.getDownProtocol().down(msg);
         raft_a.flushCommitTable(b);
         expect(5, sma.counter());
@@ -481,10 +482,10 @@ public class SynchronousTests {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
-        Message msg=new BytesMessage(null, val, 0, val.length)
+        Message msg=new Message(null, val, 0, val.length)
           .putHeader(r.getId(), new AppendEntriesRequest(r.getAddress(), curr_term,
                                                          prev_index, prev_term, curr_term, commit_index, false))
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+          .setTransientFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         r.getDownProtocol().down(msg);
     }
 

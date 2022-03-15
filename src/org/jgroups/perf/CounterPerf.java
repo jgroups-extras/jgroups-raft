@@ -10,8 +10,6 @@ import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.TP;
 import org.jgroups.raft.blocks.CounterService;
-import org.jgroups.tests.perf.PerfUtil;
-import org.jgroups.tests.perf.PerfUtil.Config;
 import org.jgroups.util.*;
 
 import java.io.DataInput;
@@ -34,7 +32,7 @@ import static org.jgroups.util.Util.printTime;
  * @author Bela Ban
  * @version 1.0.5
  */
-public class CounterPerf implements Receiver {
+public class CounterPerf extends ReceiverAdapter {
     private JChannel               channel;
     private Address                local_addr;
     private RpcDispatcher          disp;
@@ -85,7 +83,7 @@ public class CounterPerf implements Receiver {
             PRINT_DETAILS=Util.getField(CounterPerf.class, "print_details", true);
             RANGE=Util.getField(CounterPerf.class, "range", true);
             PerfUtil.init();
-            ClassConfigurator.addIfAbsent((short)1050, UpdateResult.class);
+            ClassConfigurator.add((short)1050, UpdateResult.class);
         }
         catch(Exception e) {
             throw new RuntimeException(e);
@@ -105,7 +103,9 @@ public class CounterPerf implements Receiver {
             transport.setBindPort(bind_port);
         }
 
-        disp=new RpcDispatcher(channel, this).setReceiver(this).setMethodLookup(id -> METHODS[id]);
+        disp=new RpcDispatcher(channel, this);
+        disp.setMembershipListener(this);
+        disp.setMethodLookup(id -> METHODS[id]);
         counter_service=new CounterService(channel).raftId(name).replTimeout(this.timeout);
         channel.connect(groupname);
         local_addr=channel.getAddress();
@@ -113,7 +113,7 @@ public class CounterPerf implements Receiver {
         if(members.size() < 2)
             return;
         Address coord=members.get(0);
-        Config config=disp.callRemoteMethod(coord, new MethodCall(GET_CONFIG), new RequestOptions(ResponseMode.GET_ALL, 5000));
+        PerfUtil.Config config=disp.callRemoteMethod(coord, new MethodCall(GET_CONFIG), new RequestOptions(ResponseMode.GET_ALL, 5000));
         if(config != null) {
             applyConfig(config);
             System.out.println("Fetched config from " + coord + ": " + config + "\n");
@@ -222,8 +222,8 @@ public class CounterPerf implements Receiver {
     }
 
 
-    public Config getConfig() {
-        Config config=new Config();
+    public PerfUtil.Config getConfig() {
+        PerfUtil.Config config=new PerfUtil.Config();
         for(Field field: Util.getAllDeclaredFieldsWithAnnotations(CounterPerf.class, Property.class)) {
             if(field.isAnnotationPresent(Property.class)) {
                 config.add(field.getName(), Util.getField(field, this));
@@ -232,7 +232,7 @@ public class CounterPerf implements Receiver {
         return config;
     }
 
-    protected void applyConfig(Config config) {
+    protected void applyConfig(PerfUtil.Config config) {
         for(Map.Entry<String,Object> entry: config.values().entrySet()) {
             Field field=Util.getField(getClass(), entry.getKey());
             Util.setField(field, this, entry.getValue());
@@ -363,7 +363,7 @@ public class CounterPerf implements Receiver {
 
     protected static String print(AverageMinMax avg, boolean details) {
         return details? String.format("min/avg/max = %s", avg.toString(TimeUnit.NANOSECONDS)) :
-          String.format("%s", Util.printTime(avg.average(), TimeUnit.NANOSECONDS));
+          String.format("%s", Util.printTime((long)avg.average(), TimeUnit.NANOSECONDS));
     }
 
     protected long getCounter() {
@@ -440,22 +440,22 @@ public class CounterPerf implements Receiver {
 
         @Override
         public void writeTo(DataOutput out) throws IOException {
-            Bits.writeLongCompressed(num_updates, out);
-            Bits.writeLongCompressed(total_time, out);
+            out.writeLong(num_updates);
+            out.writeLong(total_time);
             Util.writeStreamable(avg_updates, out);
         }
 
         @Override
         public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
-            num_updates=Bits.readLongCompressed(in);
-            total_time=Bits.readLongCompressed(in);
+            num_updates=in.readLong();
+            total_time=in.readLong();
             avg_updates=Util.readStreamable(AverageMinMax::new, in);
         }
 
         public String toString() {
             double total_reqs_per_sec=num_updates / (total_time / 1000.0);
             return String.format("%,.2f updates/sec (%,d updates, %s / update)", total_reqs_per_sec, num_updates,
-                                 Util.printTime(avg_updates.average(), TimeUnit.NANOSECONDS));
+                                 Util.printTime((long)avg_updates.average(), TimeUnit.NANOSECONDS));
         }
     }
 
@@ -514,19 +514,19 @@ public class CounterPerf implements Receiver {
         public String toString(TimeUnit u) {
             if(count == 0)
                 return "n/a";
-            return String.format("%s/%s/%s", printTime(min, u), printTime(getAverage(), u), printTime(max, u));
+            return String.format("%s/%s/%s", printTime(min, u), printTime((long)getAverage(), u), printTime(max, u));
         }
 
         public void writeTo(DataOutput out) throws IOException {
             super.writeTo(out);
-            Bits.writeLongCompressed(min, out);
-            Bits.writeLongCompressed(max, out);
+            out.writeLong(min);
+            out.writeLong(max);
         }
 
         public void readFrom(DataInput in) throws IOException {
             super.readFrom(in);
-            min=Bits.readLongCompressed(in);
-            max=Bits.readLongCompressed(in);
+            min=in.readLong();
+            max=in.readLong();
         }
 
 

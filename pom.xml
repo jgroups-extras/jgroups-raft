@@ -5,13 +5,13 @@
     <artifactId>jgroups-raft</artifactId>
     <packaging>jar</packaging>
     <name>jgroups-raft</name>
-    <version>1.0.5.Final-SNAPSHOT</version>
+    <version>0.4.0.Final-SNAPSHOT</version>
     <url>https://github.com/belaban/jgroups-raft</url>
     <description>JGroups RAFT implementation</description>
 
     <properties>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
+        <maven.compiler.source>8</maven.compiler.source>
+        <maven.compiler.target>8</maven.compiler.target>
         <!-- nexus-staging-maven-plugin -->
         <autoReleaseAfterClose>true</autoReleaseAfterClose>
         <nexus.server.id>jboss-releases-repository</nexus.server.id>
@@ -19,7 +19,7 @@
         <nexus.snapshot.server.id>jboss-snapshots-repository</nexus.snapshot.server.id>
         <nexus.snapshot.server.url>https://repository.jboss.org/nexus/content/repositories/snapshots/</nexus.snapshot.server.url>
         <testng.version>6.14.3</testng.version>
-        <jgroups.version>5.2.1.Final</jgroups.version>
+        <jgroups.version>4.2.20.Final</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
         <rocksdb.version>6.27.3</rocksdb.version>
         <mapdb.version>1.0.8</mapdb.version>

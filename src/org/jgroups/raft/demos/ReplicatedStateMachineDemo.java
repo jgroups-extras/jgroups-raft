@@ -2,7 +2,6 @@ package org.jgroups.raft.demos;
 
 import org.jgroups.Address;
 import org.jgroups.JChannel;
-import org.jgroups.View;
 import org.jgroups.blocks.cs.BaseServer;
 import org.jgroups.blocks.cs.TcpServer;
 import org.jgroups.jmx.JmxConfigurator;
@@ -38,21 +37,19 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         rsm=new ReplicatedStateMachine<String,Object>(ch).raftId(name).timeout(timeout);
         if(follower)
             disableElections(ch);
-        ch.setReceiver(new org.jgroups.Receiver() {
-            @Override public void viewAccepted(View view) {
-                System.out.println("-- view change: " + view);
-            }
-        });
+        ch.setReceiver(view -> System.out.println("-- view change: " + view));
 
         ch.connect("rsm");
         Util.registerChannel(rsm.channel(), "rsm");
         rsm.addRoleChangeListener(this);
-        rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
-            @Override public void put(String key, Object val, Object old_val) {
-                // System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
-            }
+        rsm.addNotificationListener(new ReplicatedStateMachine.Notification() {
 
-            @Override public void remove(String key, Object old_val) {
+            @Override
+            public void put(Object key, Object val, Object old_val) {
+
+            }
+            @Override
+            public void remove(Object key, Object old_val) {
                 System.out.printf("-- remove(%s) -> %s\n", key, old_val);
             }
         });

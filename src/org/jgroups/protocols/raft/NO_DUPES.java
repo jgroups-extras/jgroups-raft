@@ -6,7 +6,7 @@ import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.pbcast.JoinRsp;
 import org.jgroups.stack.Protocol;
-import org.jgroups.util.ByteArray;
+import org.jgroups.util.Buffer;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
@@ -101,8 +101,8 @@ public class NO_DUPES extends Protocol {
         try {
             // needs to be a BytesMessage for now (no ObjectMessage) as GMS itself also uses a BytesMessage;
             // once GMS has been changed in JGroups itself to use an ObjectMessage, we can change this here, too
-            ByteArray buffer=Util.streamableToBuffer(new JoinRsp(reject_message));
-            Message msg=new BytesMessage(joiner, buffer).putHeader(gms_id, new GMS.GmsHeader(GMS.GmsHeader.JOIN_RSP));
+            Buffer buffer=Util.streamableToBuffer(new JoinRsp(reject_message));
+            Message msg=new Message(joiner, buffer).putHeader(gms_id, new GMS.GmsHeader(GMS.GmsHeader.JOIN_RSP));
             down_prot.down(msg);
         }
         catch(Exception ex) {

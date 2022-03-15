@@ -247,7 +247,7 @@ public class VoteTest {
 
     protected static void discardAll(JChannel ... channels) throws Exception {
         for(JChannel ch: channels)
-            ch.getProtocolStack().insertProtocol(new DISCARD().discardAll(true), ProtocolStack.Position.ABOVE, TP.class);
+            ch.getProtocolStack().insertProtocol(new DISCARD().setDiscardAll(true), ProtocolStack.Position.ABOVE, TP.class);
     }
 
     protected static void assertSameLeader(Address leader, JChannel... channels) {
