@@ -25,7 +25,7 @@ CP=$CLASSES:$CONF:$LIB/*
 LOG="-Dlog4j.configurationFile=$CONF/log4j2.xml"
 
 
-JG_FLAGS="-Djgroups.bind_addr=${BIND_ADDR} -Djgroups.udp.mcast_addr=$MCAST_ADDR"
+JG_FLAGS="-Djgroups.udp.mcast_addr=$MCAST_ADDR"
 JG_FLAGS="$JG_FLAGS -Djava.net.preferIPv4Stack=true"
 FLAGS="-server -Xmx600M -Xms600M"
 FLAGS="$FLAGS -XX:CompileThreshold=10000 -XX:ThreadStackSize=64K -XX:SurvivorRatio=8"
