@@ -43,13 +43,9 @@ public abstract class RaftImpl {
                                                    int prev_index, int prev_term, int entry_term,
                                                    int leader_commit, boolean internal) {
         raft.leader(leader);
-        if(data == null || length == 0) { // we got an empty AppendEntries message containing only leader_commit
-            raft.commitLogTo(leader_commit);
-            return new AppendResult(OK, raft.lastAppended()).commitIndex(raft.commitIndex());
-        }
-
         int curr_index=prev_index+1;
-        if(curr_index <= raft.commitIndex()) {
+        // we got an empty AppendEntries message containing only leader_commit, or the index is below the commit index
+        if(data == null || length == 0 || curr_index <= raft.commitIndex()) {
             raft.commitLogTo(leader_commit);
             return new AppendResult(OK, raft.lastAppended()).commitIndex(raft.commitIndex());
         }
@@ -96,12 +92,13 @@ public abstract class RaftImpl {
     }
 
 
-    /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log */
+    /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log,
+     * not not going lower than commit-index */
     protected int getFirstIndexOfConflictingTerm(int start_index, int conflicting_term) {
         Log log=raft.log_impl;
-        int first=Math.max(1, log.firstAppended()), last=log.lastAppended();
+        int first=Math.max(1, log.firstAppended()), last=log.lastAppended(), commit_index=log.commitIndex();
         int retval=Math.min(start_index, last);
-        for(int i=retval; i >= first; i--) {
+        for(int i=retval; i >= first && i > commit_index; i--) {
             LogEntry entry=log.get(i);
             if(entry == null || entry.term != conflicting_term)
                 break;
