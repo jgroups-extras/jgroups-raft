@@ -51,7 +51,7 @@ public class CommitTableTest {
     }
 
 
-    protected List<Address> generate(String ... members) {
+    protected static List<Address> generate(String... members) {
         return Arrays.stream(members).map(Util::createRandomAddress).collect(Collectors.toList());
     }
 

@@ -6,6 +6,5 @@ package org.jgroups.protocols.raft;
  */
 public enum Role {
     Follower,
-    Candidate,
     Leader
 }

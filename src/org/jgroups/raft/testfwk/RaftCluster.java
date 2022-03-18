@@ -1,15 +1,13 @@
 package org.jgroups.raft.testfwk;
 
 import org.jgroups.Address;
-import org.jgroups.Event;
 import org.jgroups.Message;
 import org.jgroups.View;
-import org.jgroups.stack.Protocol;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
 
@@ -22,46 +20,41 @@ public class RaftCluster {
     // used to 'send' requests between the various instances
     protected final Map<Address,RaftNode> nodes=new ConcurrentHashMap<>();
     protected final Map<Address,RaftNode> dropped_members=new ConcurrentHashMap<>();
+    protected final Executor              thread_pool=createThreadPool(1000);
+    protected boolean                     async;
 
     public RaftCluster add(Address addr, RaftNode node) {
         nodes.put(addr, node);
         return this;
     }
 
+    public boolean     async()                          {return async;}
+    public RaftCluster async(boolean b)                 {async=b; return this;}
     public RaftCluster remove(Address addr)             {nodes.remove(addr); return this;}
     public RaftCluster clear()                          {nodes.clear(); return this;}
     public boolean     dropTraffic()                    {return !dropped_members.isEmpty();}
-
-    public RaftCluster dropTrafficTo(Address a) {
-        move(a, nodes, dropped_members);
-        return this;
-    }
-
-    public RaftCluster clearDroppedTrafficTo(Address a) {
-        move(a, dropped_members, nodes);
-        return this;
-    }
-
-    public RaftCluster clearDroppedTraffic() {
-        moveAll(dropped_members, nodes);
-        return this;
-    }
+    public RaftCluster dropTrafficTo(Address a)         {move(a, nodes, dropped_members); return this;}
+    public RaftCluster clearDroppedTrafficTo(Address a) {move(a, dropped_members, nodes); return this;}
+    public RaftCluster clearDroppedTraffic()            {moveAll(dropped_members, nodes); return this;}
 
     public void handleView(View view) {
         List<Address> members=view.getMembers();
         nodes.keySet().retainAll(Objects.requireNonNull(members));
-        nodes.values().forEach(n -> {
-            Protocol[] protocols=n.protocols();
-            for(Protocol p: protocols)
-                p.down(new Event(Event.VIEW_CHANGE, view));
-        });
+        nodes.values().forEach(n -> n.handleView(view));
     }
 
     public void send(Message msg) {
+        send(msg, false);
+    }
+
+    public void send(Message msg, boolean async) {
         Address dest=msg.dest(), src=msg.src();
         if(dest != null) {
             RaftNode node=nodes.get(dest);
-            node.up(msg);
+            if(this.async || async)
+                deliverAsync(node, msg);
+            else
+                node.up(msg);
         }
         else {
             for(Map.Entry<Address,RaftNode> e: nodes.entrySet()) {
@@ -69,9 +62,16 @@ public class RaftCluster {
                 RaftNode n=e.getValue();
                 if(Objects.equals(d, src) && msg.isFlagSet(DONT_LOOPBACK))
                     continue;
-                n.up(msg);
+                if(this.async || async)
+                    deliverAsync(n, msg);
+                else
+                    n.up(msg);
             }
         }
+    }
+
+    protected void deliverAsync(RaftNode n, Message msg) {
+        thread_pool.execute(() -> n.up(msg));
     }
 
     public String toString() {
@@ -89,5 +89,11 @@ public class RaftCluster {
         for(Map.Entry<Address,RaftNode> e: from.entrySet())
             to.putIfAbsent(e.getKey(), e.getValue());
         from.clear();
+    }
+
+    protected static Executor createThreadPool(long max_idle_ms) {
+        int max_cores=Runtime.getRuntime().availableProcessors();
+        return new ThreadPoolExecutor(0, max_cores, max_idle_ms, TimeUnit.MILLISECONDS,
+                                      new SynchronousQueue<>());
     }
 }

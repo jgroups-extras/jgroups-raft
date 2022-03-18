@@ -16,19 +16,15 @@ import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_ENTRY_NOT_FOUN
 public class RaftHeaderTest {
 
     public void testVoteRequestHeader() throws Exception {
-        VoteRequest hdr=new VoteRequest(22, 3, 7);
+        VoteRequest hdr=new VoteRequest(22);
         _testSize(hdr, VoteRequest.class);
     }
 
     public void testVoteResponseHeader() throws Exception {
-        VoteResponse rsp=new VoteResponse(22, true);
+        VoteResponse rsp=new VoteResponse(22, 3, 7);
         _testSize(rsp, VoteResponse.class);
     }
 
-    public void testHeatbeatHeader() throws Exception {
-        HeartbeatRequest hb=new HeartbeatRequest(22, Util.createRandomAddress("A"));
-        _testSize(hb, HeartbeatRequest.class);
-    }
 
     public void testAppendEntriesRequest() throws Exception {
         AppendEntriesRequest req=new AppendEntriesRequest(Util.createRandomAddress("A"), 22, 4, 21, 22, 18, true);

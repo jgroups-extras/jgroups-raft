@@ -65,7 +65,7 @@ public class TimeoutTest {
             try {
                 sm.put(i, i);
                 System.out.println(i);
-                Thread.sleep(50);
+                Thread.sleep(10);
             }
             catch(Exception ex) {
                 System.err.printf("put(%d): last-applied=%d, commit-index=%d\n", i, sm.lastApplied(), sm.commitIndex());

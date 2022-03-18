@@ -10,23 +10,25 @@ import java.io.IOException;
 import java.util.function.Supplier;
 
 /**
- * Used by {@link org.jgroups.protocols.raft.ELECTION} to send heartbeats. Contrary to the RAFT paper, heartbeats are
- * not emulated with AppendEntriesRequests
+ * Sent by the freshly elected leader to all members (-self)
  * @author Bela Ban
- * @since  0.1
+ * @since  1.0.6
  */
-public class HeartbeatRequest extends RaftHeader {
+public class LeaderElected extends RaftHeader {
     protected Address leader;
 
-    public HeartbeatRequest() {}
-    public HeartbeatRequest(int term, Address leader) {super(term); this.leader=leader;}
+    public LeaderElected() {
+    }
 
+    public LeaderElected(Address leader) {this.leader=leader;}
+
+    public Address leader()   {return leader;}
     public short getMagicId() {
-        return ELECTION.HEARTBEAT_REQ;
+        return ELECTION.LEADER_ELECTED;
     }
 
     public Supplier<? extends Header> create() {
-        return HeartbeatRequest::new;
+        return LeaderElected::new;
     }
 
     public int serializedSize() {

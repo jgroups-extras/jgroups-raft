@@ -58,7 +58,6 @@ public class ProgrammaticRSM {
 
     public static void main(String[] args) throws Exception {
         String       name=null;
-        boolean      follower=false;
         long         timeout=3000;
         String       bind_addr=null;
         int          bind_port=0;
@@ -67,10 +66,6 @@ public class ProgrammaticRSM {
         for(int i=0; i < args.length; i++) {
             if(args[i].equals("-name")) {
                 name=args[++i];
-                continue;
-            }
-            if(args[i].equals("-follower")) {
-                follower=true;
                 continue;
             }
             if(args[i].equals("-timeout")) {
@@ -90,7 +85,7 @@ public class ProgrammaticRSM {
                 continue;
             }
             System.out.println("ReplicatedStateMachine -members members -name name" +
-                               "                       [-follower] [-timeout timeout] -tcp true|false]\n" +
+                               "                       [-timeout timeout] -tcp true|false]\n" +
                                "                       [-bind_addr addr] [-bind_port port]\n" +
                                " Example: -members A,B,C,D -name C");
             return;
@@ -126,8 +121,6 @@ public class ProgrammaticRSM {
         raft.members(members).raftId(name);
 
         rsm.raftId(name).timeout(timeout);
-        if(follower)
-            disableElections(ch);
 
         try {
             ch.connect("rsm");
@@ -205,11 +198,6 @@ public class ProgrammaticRSM {
         return new JChannel(prots);
     }
 
-    protected static void disableElections(JChannel ch) {
-        ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
-        if(election != null)
-            election.noElections(true);
-    }
 
     protected static void loop() {
         boolean looping=true;

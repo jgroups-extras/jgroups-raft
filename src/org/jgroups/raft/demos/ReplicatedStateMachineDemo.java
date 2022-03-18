@@ -6,7 +6,6 @@ import org.jgroups.View;
 import org.jgroups.blocks.cs.BaseServer;
 import org.jgroups.blocks.cs.TcpServer;
 import org.jgroups.jmx.JmxConfigurator;
-import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.Role;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
@@ -32,12 +31,10 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     public enum Command {PUT, GET, REMOVE, SHOW_ALL, DUMP_LOG, SNAPSHOT, GET_VIEW}
 
 
-    public void start(String props, String name, boolean follower, long timeout,
+    public void start(String props, String name, long timeout,
                       InetAddress bind_addr, int port, boolean listen, boolean nohup) throws Exception {
         ch=new JChannel(props).name(name);
         rsm=new ReplicatedStateMachine<String,Object>(ch).raftId(name).timeout(timeout);
-        if(follower)
-            disableElections(ch);
         ch.setReceiver(new org.jgroups.Receiver() {
             @Override public void viewAccepted(View view) {
                 System.out.println("-- view change: " + view);
@@ -133,12 +130,6 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                           bind_addr != null? bind_addr : "0.0.0.0",  local_port);
     }
 
-
-    protected static void disableElections(JChannel ch) {
-        ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
-        if(election != null)
-            election.noElections(true);
-    }
 
     protected void loop() {
         boolean looping=true;
@@ -270,7 +261,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     public static void main(String[] args) throws Exception {
         String      props="raft.xml";
         String      name=null;
-        boolean     follower=false, listen=false, nohup=false;
+        boolean     listen=false, nohup=false;
         long        timeout=3000;
         InetAddress bind_addr=null;
         int         port=2065;
@@ -282,10 +273,6 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
             }
             if(args[i].equals("-name")) {
                 name=args[++i];
-                continue;
-            }
-            if(args[i].equals("-follower")) {
-                follower=true;
                 continue;
             }
             if(args[i].equals("-listen")) {
@@ -308,12 +295,12 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                 port=Integer.parseInt(args[++i]);
                 continue;
             }
-            System.out.printf("\n%s [-props <config>] [-name <name>] [-follower] [-timeout timeout]\n" +
+            System.out.printf("\n%s [-props <config>] [-name <name>] [-timeout timeout]\n" +
                                 "                   [-bind_addr <bind address>] [-port <bind port>] [-nohup]\n\n",
                               ReplicatedStateMachineDemo.class.getSimpleName());
             return;
         }
-        new ReplicatedStateMachineDemo().start(props, name, follower, timeout, bind_addr, port, listen, nohup);
+        new ReplicatedStateMachineDemo().start(props, name, timeout, bind_addr, port, listen, nohup);
     }
 
 

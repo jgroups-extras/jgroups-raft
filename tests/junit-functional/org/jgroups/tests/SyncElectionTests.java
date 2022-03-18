@@ -2,17 +2,19 @@ package org.jgroups.tests;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
+import org.jgroups.MergeView;
 import org.jgroups.View;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.RaftImpl;
 import org.jgroups.protocols.raft.Role;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.ExtendedUUID;
-import org.jgroups.util.TimeScheduler3;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.Arrays;
@@ -37,7 +39,10 @@ public class SyncElectionTests {
     protected RAFT[]             rafts=new RAFT[3];
     protected ELECTION[]         elections=new ELECTION[3];
     protected RaftNode[]         nodes=new RaftNode[3];
+    protected int                view_id=1;
 
+
+    @BeforeMethod protected void init() {view_id=1;}
 
     @AfterMethod
     protected void destroy() throws Exception {
@@ -45,35 +50,42 @@ public class SyncElectionTests {
             if(nodes[i] != null) {
                 nodes[i].stop();
                 nodes[i].destroy();
+                nodes[i]=null;
             }
-            if(rafts[i] != null)
+            if(rafts[i] != null) {
                 rafts[i].deleteLog().deleteSnapshot();
+                rafts[i]=null;
+            }
+            if(elections[i] != null) {
+                elections[i].stopVotingThread();
+                elections[i]=null;
+            }
         }
         cluster.clear();
     }
 
-    /** All members have the same (initial) logs, so any member can be elected as leader */
-    public void testSimpleElection() throws Exception {
+    /** Not really an election, as we only have a single member */
+    public void testSingletonElection() throws Exception {
         createNode(0, "A");
+        assert !rafts[0].isLeader();
         View view=createView();
         cluster.handleView(view);
         assert !rafts[0].isLeader();
-        elections[0].noElections(false);
-        elections[0].startElectionTimer();
-        Util.waitUntilTrue(5000, 500, () -> rafts[0].isLeader());
+        Util.waitUntilTrue(2000, 200, () -> rafts[0].isLeader());
         assert !rafts[0].isLeader();
+        // assert !elections[0].isVotingThreadRunning();
+        waitUntilVotingThreadHasStopped();
     }
 
-    public void testElectionwithTwoMembers() throws Exception {
+    public void testElectionWithTwoMembers() throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         View view=createView();
-        Stream.of(elections[0], elections[1]).forEach(el -> el.noElections(false));
         cluster.handleView(view);
         Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
         assertOneLeader();
         System.out.printf("%s\n", print());
-        waitUntilHeartbeatAndElectionTimersHaveStopped();
+        waitUntilVotingThreadHasStopped();
     }
 
     /** Tests adding a third member. After {A,B} has formed, this should not change anything */
@@ -81,7 +93,6 @@ public class SyncElectionTests {
         createNode(0, "A");
         createNode(1, "B");
         View view=createView();
-        Stream.of(elections[0], elections[1]).forEach(el -> el.noElections(false));
         cluster.handleView(view);
         Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
         System.out.printf("%s\n", print());
@@ -89,21 +100,144 @@ public class SyncElectionTests {
         System.out.println("Adding 3rd member:");
         createNode(2, "C");
         view=createView();
-        elections[2].noElections(false);
         cluster.handleView(view);
         assertOneLeader();
         System.out.printf("%s\n", print());
-        waitUntilHeartbeatAndElectionTimersHaveStopped();
+        waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
     }
 
-    protected void waitUntilHeartbeatAndElectionTimersHaveStopped() throws TimeoutException {
-        Util.waitUntil(50000, 100, () -> Stream.of(elections)
-                         .allMatch(el -> el == null || (!el.isElectionTimerRunning() && !el.isHeartbeatTaskRunning())),
-                       this::printTimers);
+    /** Tests A -> ABC */
+    public void testGoingFromOneToThree() throws Exception {
+        createNode(0, "A");
+        View view=createView();
+        cluster.handleView(view);
+        Util.waitUntilTrue(2000, 200, () -> rafts[0].isLeader());
+        assert !rafts[0].isLeader();
+
+        createNode(1, "B");
+        createNode(2, "C");
+        view=createView();
+        cluster.handleView(view);
+        Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
+        System.out.printf("%s\n", print());
+        assertOneLeader();
+        waitUntilVotingThreadHasStopped();
+        assertSameTerm(this::print);
     }
 
-    // Checks that there is 1 leader in the cluster
+    /** {} -> {ABC} */
+    public void testGoingFromZeroToThree() throws Exception {
+        createNode(0, "A");
+        createNode(1, "B");
+        createNode(2, "C");
+        View view=createView();
+        // cluster.async(true);
+        cluster.handleView(view);
+        Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
+        System.out.printf("%s\n", print());
+        assertOneLeader();
+        waitUntilVotingThreadHasStopped();
+        assertSameTerm(this::print);
+    }
+
+    /** Follower is leaving */
+    public void testGoingFromThreeToTwo() throws Exception {
+        testGoingFromZeroToThree();
+        int follower=find(Role.Follower);
+        kill(follower);
+        View view=createView();
+        cluster.handleView(view);
+        Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
+        System.out.printf("%s\n", print());
+        assertOneLeader();
+        waitUntilVotingThreadHasStopped();
+        assertSameTerm(this::print);
+    }
+
+    public void testGoingFromThreeToOne() throws Exception {
+        testGoingFromZeroToThree();
+        int follower=find(Role.Follower);
+        kill(follower);
+        follower=find(Role.Follower);
+        kill(follower);
+
+        View view=createView();
+        cluster.handleView(view);
+        Util.waitUntilTrue(2000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).noneMatch(RAFT::isLeader));
+        System.out.printf("%s\n", print());
+        waitUntilVotingThreadHasStopped();
+        assertSameTerm(this::print);
+    }
+
+    /** ABC (A=leader) -> BC */
+    public void testLeaderLeaving() throws Exception {
+        testGoingFromZeroToThree();
+        int leader=find(Role.Leader);
+        kill(leader);
+        View view=createView();
+        cluster.handleView(view);
+        Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
+        System.out.printf("%s\n", print());
+        assertOneLeader();
+        waitUntilVotingThreadHasStopped();
+        assertSameTerm(this::print);
+    }
+
+    /** Tests a vote where a non-coord has a longer log */
+    public void testVotingFollowerHasLongerLog() throws Exception {
+        createNode(0, "A");
+        createNode(1, "B");
+        createNode(2, "C");
+
+        byte[] data=new byte[4];
+        int[] terms={0,1,1,1,2,4,4,5,6,6};
+        RaftImpl impl=rafts[2].impl();
+        for(int i=1; i < terms.length; i++)
+            impl.handleAppendEntriesRequest(data, 0, data.length, a, i-1, terms[i-1], terms[i], 0, false);
+
+        View view=createView();
+        // cluster.async(true);
+        cluster.handleView(view);
+        Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
+        System.out.printf("%s\n", print());
+        assertOneLeader();
+        assert elections[0].role() != Role.Leader;
+        assert elections[2].role() == Role.Leader;
+        waitUntilVotingThreadHasStopped();
+        assertSameTerm(this::print);
+        int new_term=terms[terms.length-1]+1;
+        assertTerm(new_term, () -> String.format("expected term=%d, actual:\n%s", new_term, print()));
+    }
+
+    /** {A}, {B}, {C} -> {A,B,C} */
+    public void testMerge() throws Exception {
+        createNode(0, "A");
+        createNode(1, "B");
+        createNode(2, "C");
+        View v1,v2,v3;
+        nodes[0].handleView(v1=View.create(a, 1, a));
+        nodes[1].handleView(v2=View.create(b, 1, b));
+        nodes[2].handleView(v3=View.create(c, 1, c));
+
+        View mv=new MergeView(b, 2, Arrays.asList(b,a,c), Arrays.asList(v2,v1,v3));
+        for(RaftNode n: nodes)
+            n.handleView(mv);
+        Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
+        System.out.printf("%s\n", print());
+        assertOneLeader();
+        waitUntilVotingThreadHasStopped();
+        assertSameTerm(this::print);
+    }
+
+
+    protected void waitUntilVotingThreadHasStopped() throws TimeoutException {
+        Util.waitUntil(5000, 100, () -> Stream.of(elections)
+                         .allMatch(el -> el == null || !el.isVotingThreadRunning()),
+                       this::printVotingThreads);
+    }
+
+    // Checks that there is 1 leader in the cluster and the rest are followers
     protected void assertOneLeader() {
         assert Stream.of(rafts).filter(r -> r != null && r.isLeader()).count() == 1 : print();
         assert Stream.of(elections).filter(e -> e != null && e.role() == Role.Leader).count() == 1 : print();
@@ -116,16 +250,36 @@ public class SyncElectionTests {
                 continue;
             if(term == -1)
                 term=elections[i].raft().currentTerm();
-            else assert term == elections[i].raft().currentTerm() : message.get();
+            else
+                assert term == elections[i].raft().currentTerm() : message.get();
+        }
+    }
+
+    protected void assertTerm(int expected_term, Supplier<String> message) {
+        for(int i=0; i < elections.length; i++) {
+            if(elections[i] == null)
+                continue;
+            assert expected_term == elections[i].raft().currentTerm() : message.get();
         }
     }
 
 
-    protected ELECTION leader() {
-        for(ELECTION el: elections)
-            if(el != null && el.role() == Role.Leader)
-                return el;
-        return null;
+    protected void kill(int index) {
+        System.out.printf("-- killing node %d (%s)\n", index, elections[index].getAddress());
+        cluster.remove(nodes[index].getAddress());
+        nodes[index].stop();
+        nodes[index].destroy();
+        nodes[index]=null;
+        elections[index]=null;
+        rafts[index]=null;
+    }
+
+    protected int find(Role r) {
+        for(int i=elections.length-1; i >= 0; i--) {
+            if(elections[i] != null && elections[i].role() == r)
+                return i;
+        }
+        return -1;
     }
 
     protected String print() {
@@ -135,10 +289,10 @@ public class SyncElectionTests {
           .collect(Collectors.joining("\n"));
     }
 
-    protected String printTimers() {
+
+    protected String printVotingThreads() {
         return Stream.of(elections).filter(Objects::nonNull)
-          .map(e -> String.format("%s: heartbeats=%b, elections=%b", e.getAddress(), e.isHeartbeatTaskRunning(),
-                                  e.isElectionTimerRunning()))
+          .map(e -> String.format("%s: voting thread=%b", e.getAddress(), e.isVotingThreadRunning()))
           .collect(Collectors.joining("\n"));
     }
 
@@ -147,8 +301,7 @@ public class SyncElectionTests {
           .resendInterval(600_000) // long to disable resending by default
           .stateMachine(new DummyStateMachine())
           .synchronous(true).setAddress(addrs[index]);
-        elections[index]=new ELECTION().noElections(true).raft(rafts[index]).useViews(true)
-          .timer(new TimeScheduler3()).setAddress(addrs[index]);
+        elections[index]=new ELECTION().raft(rafts[index]).setAddress(addrs[index]);
         RaftNode node=nodes[index]=new RaftNode(cluster, new Protocol[]{elections[index], rafts[index]});
         node.init();
         cluster.add(addrs[index], node);
@@ -158,7 +311,7 @@ public class SyncElectionTests {
 
     protected View createView() {
         List<Address> l=Stream.of(nodes).filter(Objects::nonNull).map(RaftNode::getAddress).collect(Collectors.toList());
-        return l.isEmpty()? null : View.create(l.get(0), 1, l);
+        return l.isEmpty()? null : View.create(l.get(0), view_id++, l);
     }
 
     protected static Address createAddress(String name) {

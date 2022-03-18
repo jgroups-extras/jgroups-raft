@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Header;
+import org.jgroups.util.Bits;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -12,10 +13,15 @@ import java.util.function.Supplier;
  * @since  0.1
  */
 public class VoteResponse extends RaftHeader {
-    protected boolean result;
+    protected int last_log_term;  // term of the last log entry
+    protected int last_log_index; // index of the last log entry
 
     public VoteResponse() {}
-    public VoteResponse(int term, boolean result) {super(term); this.result=result;}
+    public VoteResponse(int term, int last_log_term, int last_log_index) {
+        super(term);
+        this.last_log_term=last_log_term;
+        this.last_log_index=last_log_index;
+    }
 
     public short getMagicId() {
         return ELECTION.VOTE_RSP;
@@ -25,23 +31,24 @@ public class VoteResponse extends RaftHeader {
         return VoteResponse::new;
     }
 
-    public boolean result() {return result;}
 
     public int serializedSize() {
-        return super.serializedSize() + 1;
+        return super.serializedSize() + Bits.size(last_log_term) + Bits.size(last_log_index);
     }
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
-    	result=in.readByte() == 1;
+        last_log_term=Bits.readIntCompressed(in);
+        last_log_index=Bits.readIntCompressed(in);
     }
 
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
-        out.writeByte(result ? 1 : 0);
+        Bits.writeIntCompressed(last_log_term, out);
+        Bits.writeIntCompressed(last_log_index, out);
     }
 
     public String toString() {
-        return super.toString() + ", result=" + result;
+        return super.toString() + ", last_log_term=" + last_log_term + ", last_log_index=" + last_log_index;
     }
 }

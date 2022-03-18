@@ -1,7 +1,6 @@
 
 Election based on JGroups views
 ===============================
-
 Author: Bela Ban
 
 
@@ -11,23 +10,32 @@ The current impl of jgroups-raft ignores the functionality (failure detection, v
 implements leader election more or less as described in [1].
 
 By rewriting that part to reuse JGroups functionality, the following advantages can be had:
+* More deterministic voting process, each round is _orchestrated_ by the coordinator
 * Code reduction, reuse of proven code
 * Many failure detection protocols are available
 * Ability to customize failure detection
 * No constant traffic by heartbeats; a leader establishes itself once and then remains leader until a new view starts a
   new leader election
-* No elections unless triggered by view changes -> this reduces competing elections (but doesn't eliminate them)
-* Simple implementation of dynamic membership changes (ch. 4 in [1]); no need to append special configuration entries
-  to the log
+* No elections unless triggered by view changes -> this reduces competing elections
 
 
 In a nutshell
 -------------
-* Leader election is started only on view changes, depending on the view
-* Once a leader is established, there won't be any elections or heartbeats until a new view is installed
-* New members get the term and the leader's address via a message from the current leader (HeartbeatMessage)
-* New members don't take part in voting until the leader has sent them the above message. This makes it easy to
-  dynamically change the majority when adding members
+* Leader election is started only on view changes
+* Contrary to [1], there are only leaders or followers, *no* candidates
+* Once a leader is elected, there won't be any elections until a new view (not including the leader, or dropping below
+  the majority) is installed
+* New members get the term and the leader's address via a message from the current leader (LeaderElected)
+
+Voting is started by the coordinator; it solicits the votes of all members (including itself). The vote
+responses contain the current term (incremented by one), term of the last log entry and last log index for each member.
+
+The coordinator picks the member with the highest last term / last log index. If all members have the same terms and
+indices, the coordinator picks the oldest member (itself) as leader.
+
+If no responses from a majority of members have been received after a timeout, then voting continues; otherwise
+voting is stopped and a LeaderElected message (with the max of all current terms and the leader) is sent to all members
+
 
 
 Implementation
@@ -35,37 +43,45 @@ Implementation
 
 State
 -----
-- ELECTION.active: when false, drop vote requests
-- ELECTION.majority: votes needed for majority (initially set via XML). Dynamically set thereafter
+- term: the current term
+- leader: the address of the leader
 
 
-On reception of view change V
------------------------------
-- If v.size < majority:
-    - Stop elections
-    - If leader -> become candidate
-    - Else -> leader=null
-- Else // v.size >= majority
-    - If leader == null or leader not in V -> start elections
-    - If leader -> send heartbeat (leader / term) to new member(s)
+On reception of view change
+---------------------------
+- Coordinator: if the majority is reached or the leader left -> start the voting thread
+- Leader: new members joined -> send a LeaderElected msg to new members
+- If the majority is lost -> leader=null
+
+Voting thread
+-------------
+- Periodically sends VoteRequest message to all members (+self)
+- Terminates when LeaderElected message is received, or on shutdown
+
+On reception of VoteRequest
+---------------------------
+- Increment the current term
+- Send a VoteResponse (containing the current term and last log index and last log term) back to the sender
+  (Example current_term=26 (a number of elections have been held), last_log_index=2012, last_log_term=6)
 
 
-On leader elected
------------------
-- Leader
-    - Send heartbeat (leader / term) to all followers (regular message, *not* OOB)
-    - Stop elections
-
-
-On reception of heartbeat HB
+On reception of VoteResponse
 ----------------------------
-- Set term to HB.term
-- Set leader to HB.leader
-- Stop elections
-- If not active -> set active to true
+(on coordinator)
+- If enough votes
+    -> Determine the leader based on highest last log term / index / rank
+    -> Set term to max of all received current terms
+    -> Send LeaderElected(leader,term) message to all members (+self)
+    -> Stop voting thread
+- Else
+    -> Continue
 
 
-
+On reception of LeaderElected(leader,term) message
+--------------------------------------------------
+- if(leader == self) -> become leader
+- Only on the coordinator: stop the Voting thread
+- Set term and leader
 
 
 

@@ -20,7 +20,8 @@ import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Function;
-import java.util.stream.Stream;
+ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
 
 import static org.testng.Assert.*;
 
@@ -31,7 +32,8 @@ import static org.testng.Assert.*;
  */
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class AppendEntriesTest {
-    protected JChannel                                a,  b,  c;  // A is always the leader
+    // A is always the leader because started first and logs are equal
+    protected JChannel                                a,  b,  c;
     protected ReplicatedStateMachine<Integer,Integer> as, bs, cs;
     protected static final String                     CLUSTER="AppendEntriesTest";
     protected final List<String>                      members=Arrays.asList("A", "B", "C");
@@ -48,7 +50,7 @@ public class AppendEntriesTest {
 
     public void testSingleMember() throws Exception  {
         // given
-        a=create("A", false, Collections.singletonList("A"));
+        a=create("A", Collections.singletonList("A"));
         a.connect(CLUSTER);
         RaftHandle raft=new RaftHandle(a, new DummyStateMachine());
         Util.waitUntil(1000, 250, raft::isLeader);
@@ -82,7 +84,7 @@ public class AppendEntriesTest {
 
 
     public void testPutWithoutLeader() throws Exception {
-        a=create("A", false); // leader
+        a=create("A"); // leader
         as=new ReplicatedStateMachine<>(a);
         a.connect(CLUSTER);
         assert !isLeader(a);
@@ -137,12 +139,14 @@ public class AppendEntriesTest {
 
         // Now start C again: entries 1-5 will have to get resent to C as its log was deleted above (otherwise only 3-5
         // would have to be resent)
-        c=create("C", true);  // follower
+        System.out.println("-- starting C again, needs to catch up");
+        c=create("C");  // follower
         cs=new ReplicatedStateMachine<>(c);
         c.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b,c);
+        Util.waitUntilAllChannelsHaveSameView(5000, 100, a,b,c);
 
         // Now C should also have the same entries (1-5) as A and B
+        raft(a).resendInterval(200);
         assertSame(as, bs, cs);
     }
 
@@ -195,9 +199,9 @@ public class AppendEntriesTest {
      * on the leader should throw an exception!
      */
     public void testLeaderRestart() throws Exception {
-        a=create("A", false);
+        a=create("A");
         raft(a).stateMachine(new DummyStateMachine());
-        b=create("B", true);
+        b=create("B");
         raft(b).stateMachine(new DummyStateMachine());
         a.connect(CLUSTER);
         b.connect(CLUSTER);
@@ -208,6 +212,7 @@ public class AppendEntriesTest {
         assert !raft(b).isLeader();
         System.out.println("--> disconnecting B");
         b.disconnect(); // stop B; it was only needed to make A the leader
+        Util.waitUntil(5000, 100, () -> !raft(a).isLeader());
 
         // Now try to make a change on A. This will fail as A is not leader anymore
         try {
@@ -223,7 +228,7 @@ public class AppendEntriesTest {
 
         // Now start B again, this gives us a majority and entry #1 should be able to be committed
         System.out.println("--> restarting B");
-        b=create("B", true);
+        b=create("B");
         raft(b).stateMachine(new DummyStateMachine());
         b.connect(CLUSTER);
         // A and B now have a majority and A is leader
@@ -249,7 +254,7 @@ public class AppendEntriesTest {
         as.snapshot();
 
         // Now start C
-        c=create("C", true);  // follower
+        c=create("C");  // follower
         cs=new ReplicatedStateMachine<>(c);
         c.connect(CLUSTER);
         Util.waitUntilAllChannelsHaveSameView(10000, 500, a, b, c);
@@ -258,7 +263,7 @@ public class AppendEntriesTest {
     }
 
 
-    /** Tests an append at index 1 with prev_index 0 and index=2 with prev_index=1*/
+    /** Tests an append at index 1 with prev_index 0 and index=2 with prev_index=1 */
     public void testInitialAppends() throws Exception {
         initB();
         RaftImpl impl=getImpl(b);
@@ -306,14 +311,9 @@ public class AppendEntriesTest {
 
     public void testSendCommitsImmediately() throws Exception {
         // Force leader to send commit messages immediately
-        init(true, r -> r.resendInterval(1000000000).sendCommitsImmediately(true));
+        init(true, r -> r.resendInterval(60_000).sendCommitsImmediately(true));
         as.put(1,1);
-        try {
-            assertSame(as, bs); // if as is not equal to bs, `as` should then be equals to `cs`
-        } catch (AssertionError e) {
-            assertSame(as, cs);
-            throw e;
-        }
+        assertSame(as, bs, cs);
     }
 
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
@@ -379,7 +379,6 @@ public class AppendEntriesTest {
     // Index  01 02 03 04 05 06 07 08 09 10 11 12
     // Leader 01 01 01 04 04 05 05 06 06 06
     public void testRAFTPaperAppendOnLeader() throws Exception {
-
         initB();
         RaftImpl impl=getImpl(b);
         Log log=impl.raft().log();
@@ -598,20 +597,20 @@ public class AppendEntriesTest {
     }
 
 
-    protected JChannel create(String name, boolean follower) throws Exception {
-        return create(name, follower, r -> r);
+    protected JChannel create(String name) throws Exception {
+        return create(name, r -> r);
     }
 
-    protected JChannel create(String name, boolean follower, Function<RAFT, RAFT> config) throws Exception {
-        return create(name, follower, members, config);
+    protected JChannel create(String name, Function<RAFT, RAFT> config) throws Exception {
+        return create(name, members, config);
     }
 
-    protected static JChannel create(String name, boolean follower, final List<String> members) throws Exception {
-        return create(name, follower, members, r -> r);
+    protected static JChannel create(String name, final List<String> members) throws Exception {
+        return create(name, members, r -> r);
     }
 
-    protected static JChannel create(String name, boolean follower, final List<String> members, Function<RAFT, RAFT> config) throws Exception {
-        ELECTION election=new ELECTION().noElections(follower);
+    protected static JChannel create(String name, final List<String> members, Function<RAFT, RAFT> config) throws Exception {
+        ELECTION election=new ELECTION();
         RAFT raft=config.apply(new RAFT()).members(members).raftId(name)
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         return new JChannel(Util.getTestStack(election, raft, new REDIRECT())).name(name);
@@ -639,17 +638,23 @@ public class AppendEntriesTest {
         init(verbose, r -> r);
     }
 
-    protected void init(boolean verbose, Function<RAFT, RAFT> config) throws Exception {
-        c=create("C", true, config);  // follower
-        cs=new ReplicatedStateMachine<>(c);
-        b=create("B", true, config);  // follower
-        bs=new ReplicatedStateMachine<>(b);
-        a=create("A", false, config); // leader
+    protected void init(boolean verbose, Function<RAFT,RAFT> config) throws Exception {
+        a=create("A", config); // leader
         as=new ReplicatedStateMachine<>(a);
-        c.connect(CLUSTER);
-        b.connect(CLUSTER);
         a.connect(CLUSTER);
+
+        b=create("B", config);  // follower
+        bs=new ReplicatedStateMachine<>(b);
+        b.connect(CLUSTER);
+
+        c=create("C", config);  // follower
+        cs=new ReplicatedStateMachine<>(c);
+        c.connect(CLUSTER);
         Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b,c);
+        Util.waitUntil(5000, 100,
+                       () -> Stream.of(a,b,c).map(AppendEntriesTest::raft).allMatch(r -> r.leader() != null),
+                       () -> Stream.of(a,b,c).map(ch -> String.format("%s: leader=%s", ch.getAddress(), raft(ch).leader()))
+                         .collect(Collectors.joining("\n")));
 
         for(int i=0; i < 20; i++) {
             if(isLeader(a) && !isLeader(b) && !isLeader(c))
@@ -667,14 +672,14 @@ public class AppendEntriesTest {
     }
 
     protected void initB() throws Exception {
-        b=create("B", true); // follower
+        b=create("B"); // follower
         raft(b).stateMachine(new DummyStateMachine());
         b.connect(CLUSTER);
     }
 
     protected static boolean isLeader(JChannel ch) {
-        RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-        return ch.getAddress().equals(raft.leader());
+        RAFT raft=raft(ch);
+        return raft.leader() != null && ch.getAddress().equals(raft.leader());
     }
 
     protected static RaftImpl getImpl(JChannel ch) {

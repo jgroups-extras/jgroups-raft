@@ -1,21 +1,18 @@
  package org.jgroups.tests;
 
  import org.jgroups.Address;
- import org.jgroups.Global;
- import org.jgroups.JChannel;
- import org.jgroups.protocols.raft.*;
- import org.jgroups.util.Util;
- import org.testng.annotations.AfterMethod;
- import org.testng.annotations.BeforeMethod;
- import org.testng.annotations.Test;
+import org.jgroups.Global;
+import org.jgroups.JChannel;
+import org.jgroups.protocols.raft.*;
+import org.jgroups.util.Util;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.Test;
 
- import java.lang.reflect.Method;
- import java.util.ArrayList;
- import java.util.Arrays;
- import java.util.List;
- import java.util.function.Supplier;
-
- import static org.testng.Assert.fail;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Supplier;
 
  /**
   * Tests elections
@@ -27,18 +24,8 @@
      protected JChannel            a,b,c;
      protected static final String CLUSTER="ElectionsTest";
      protected final List<String>  members=Arrays.asList("A", "B", "C");
-     protected static final Method startElectionTimer;
      protected static final byte[] BUF={};
-
-     static {
-         try {
-             startElectionTimer=ELECTION.class.getDeclaredMethod("startElectionTimer");
-             startElectionTimer.setAccessible(true);
-         }
-         catch(NoSuchMethodException ex) {
-             throw new RuntimeException(ex);
-         }
-     }
+     protected volatile Runnable   setup;
 
      @BeforeMethod protected void init() throws Exception {
          a=create("A"); a.connect(CLUSTER);
@@ -54,53 +41,21 @@
 
      /** All members have the same (initial) logs, so any member can be elected as leader */
      public void testSimpleElection() throws Exception {
-         startElections(a, b, c);
          assertLeader(20, 500, null, a,b,c);
      }
 
-     /** Test whether having min-interval higher than max-interval throws an exception */
-     public void testMinIntervalAboveMaxInterval() {
-    	 ELECTION election=new ELECTION().noElections(true).electionMaxInterval(500L).electionMinInterval(1000L).heartbeatInterval(100L);
-    	 try {
-			election.init();
-			fail("should have thrown an exception due to misconfiguration");
-		} catch (Exception ex) {
-			assert String.format("election_min_interval (%d) needs to be smaller than "
-                + "election_max_interval (%d)", election.electionMinInterval(), election.electionMaxInterval()).equals(ex.getMessage());
-		}
-     }
 
-     /** Test whether having heartbeat-interval higher than min-interval throws an exception */
-     public void testHeartbeatIntervalAboveMinInterval() {
-    	 ELECTION election=new ELECTION().noElections(true).electionMaxInterval(500L).electionMinInterval(250L).heartbeatInterval(300L);
-    	 try {
-			election.init();
-			fail("should have thrown an exception due to misconfiguration");
-		} catch (Exception ex) {
-			assert String.format("heartbeat_interval (%d) needs to be smaller than "
-                + "election_min_interval (%d)", election.heartbeatInterval(), election.electionMinInterval()).equals(ex.getMessage());
-		}
-     }
-
-     /** Test whether heartbeat-interval below one throws an Exception */
-     public void testNegativeHeartbeat() {
-    	 ELECTION election=new ELECTION().noElections(true).electionMaxInterval(500L).electionMinInterval(250L).heartbeatInterval(-300L);
-    	 try {
-			election.init();
-			fail("should have thrown an exception due to misconfiguration");
-		} catch (Exception ex) {
-			assert String.format("heartbeat_interval (%d) must not be below one", election.heartbeatInterval()).equals(ex.getMessage());
-		}
-     }
-
-
-     /**
-      * B and C have longer logs than A: one of {B,C} must become coordinator, but *not* A
-      */
+     /** B and C have longer logs than A: one of {B,C} must become coordinator, but *not* A */
      public void testElectionWithLongLog() throws Exception {
          setLog(b, 1,1,2);
          setLog(c, 1,1,2);
-         startElections(a, b, c);
+
+         JChannel coord=findCoord(a,b,c);
+         System.out.printf("\n\n-- starting the voting process on %s:\n", coord.getAddress());
+         ELECTION el=coord.getProtocolStack().findProtocol(ELECTION.class);
+         el.startVotingThread();
+         Util.waitUntilTrue(5000, 500, () -> !el.isVotingThreadRunning());
+
          Address leader=assertLeader(20, 500, null, a, b, c);
          assert leader.equals(b.getAddress()) || leader.equals(c.getAddress());
          assert !leader.equals(a.getAddress());
@@ -113,6 +68,14 @@
          c.connect(CLUSTER);
      }
 
+
+     protected static JChannel findCoord(JChannel... channels) {
+         for(JChannel ch: channels)
+             if(ch.getView().getCoord().equals(ch.getAddress()))
+                 return ch;
+         return null;
+     }
+
      protected JChannel createWithRAFTSubclass(String name) throws Exception {
          return create(name, () -> new RAFT(){});
      }
@@ -122,7 +85,7 @@
      }
 
      protected JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
-         ELECTION election=new ELECTION().noElections(true);
+         ELECTION election=new ELECTION();
          RAFT raft=raftSupplier.get().members(members).raftId(name)
            .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
          REDIRECT client=new REDIRECT();
@@ -161,13 +124,6 @@
              log.append(++index, true, new LogEntry(term, BUF));
      }
 
-     protected static void startElections(JChannel... channels) throws Exception {
-         for(JChannel ch: channels) {
-             ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
-             election.noElections(false);
-             startElectionTimer.invoke(election);
-         }
-     }
 
      protected static boolean isLeader(JChannel ch) {
          RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);

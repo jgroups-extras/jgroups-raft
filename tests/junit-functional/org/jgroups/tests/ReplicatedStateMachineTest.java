@@ -16,7 +16,7 @@ import java.util.List;
 public class ReplicatedStateMachineTest {
 
 	protected static final String CLUSTER=ReplicatedStateMachineTest.class.getSimpleName();
-	protected static final List<String> mbrs=Arrays.asList("A", "B", "C", "D");
+	protected final List<String> mbrs=Arrays.asList("A", "B", "C", "D");
 
 	public void testEquals() throws Exception {
 		try(JChannel channelA = create("A");
@@ -33,7 +33,7 @@ public class ReplicatedStateMachineTest {
 	}
 
     @SuppressWarnings("resource")
-	protected static JChannel create(String name) throws Exception {
+	protected JChannel create(String name) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);

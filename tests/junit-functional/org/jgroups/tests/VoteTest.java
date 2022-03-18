@@ -56,7 +56,9 @@ public class VoteTest {
      * Membership is {A,B,C,D}, majority 3. Members A and B are up. Try to append an entry won't work as A and B don't
      * have the majority. Now restart B. The entry must still not be able to commit as B's vote shouldn't count twice.<p/>
      * https://github.com/belaban/jgroups-raft/issues/24
+     * @deprecated Voting has changed in 1.0.6, so this test is moot (https://github.com/belaban/jgroups-raft/issues/20)
      */
+    @Deprecated
     public void testMemberVotesTwice() throws Exception {
         init("A", "B", "C", "D");
         Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
@@ -138,8 +140,8 @@ public class VoteTest {
         assert leader.equals(channels[0].getAddress());
     }
 
-    /** {A,B,C} with leader A. Then B and C leave: A needs to become Candidate */
-    public void testLeaderGoingBacktoCandidate() throws Exception {
+    /** {A,B,C} with leader A. Then B and C leave: A needs to become Follower */
+    public void testLeaderGoingBacktoFollower() throws Exception {
         init("A", "B", "C");
         Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
         JChannel leader_ch=getLeader(10000, 500, channels);
@@ -154,7 +156,7 @@ public class VoteTest {
             Util.close(ch);
         }
 
-        Util.waitUntil(10000, 500, () -> !raft.isLeader());
+        Util.waitUntil(5000, 500, () -> !raft.isLeader());
         assert raft.leader() == null;
     }
 
@@ -173,7 +175,7 @@ public class VoteTest {
         Util.close(channels[2], channels[3]); // close C and D, now everybody should have a null leader
         Util.waitUntil(10000, 500,
                        () -> Stream.of(channels).filter(JChannel::isConnected)
-                         .map(c -> (RAFT)c.getProtocolStack().findProtocol(RAFT.class))
+                         .map(VoteTest::raft)
                          .allMatch((RAFT r) -> r.leader() == null),
                        this::printLeaders);
         System.out.printf("channels:\n%s", printLeaders());
@@ -196,11 +198,9 @@ public class VoteTest {
                 sb.append(String.format("%s: not connected\n", ch.getName()));
             else {
                 RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-                sb.append(String.format("%s: leader=%s, is-leader: %b\n", ch.getName(), raft.leader(), raft.isLeader()));
-
+                sb.append(String.format("%s: leader=%s\n", ch.getName(), raft.leader()));
             }
         }
-
         return sb.toString();
     }
 

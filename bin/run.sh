@@ -22,7 +22,7 @@ CLASSES=`dirname $0`/../classes
 CONF=`dirname $0`/../conf
 
 CP=$CLASSES:$CONF:$LIB/*
-LOG="-Dlog4j.configurationFile=$CONF/log4j2.xml"
+LOG="-Dlog4j.configurationFile=$HOME/log4j2.xml"
 
 
 JG_FLAGS="-Djgroups.udp.mcast_addr=$MCAST_ADDR"

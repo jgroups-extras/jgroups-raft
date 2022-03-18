@@ -1,9 +1,6 @@
 package org.jgroups.raft.testfwk;
 
-import org.jgroups.Address;
-import org.jgroups.Event;
-import org.jgroups.Lifecycle;
-import org.jgroups.Message;
+import org.jgroups.*;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.Settable;
@@ -30,7 +27,6 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
     public RaftNode(RaftCluster cluster, Protocol[] protocols) {
         this.cluster=cluster;
         this.prots=Objects.requireNonNull(protocols);
-        // this.prots[prots.length-1].setDownProtocol(this);
         if(protocols.length == 0)
             throw new IllegalArgumentException("empty protocol list");
         raft=find(RAFT.class);
@@ -79,12 +75,20 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
     }
 
     public void close() throws IOException {
-         stop();
+        stop();
     }
 
     public void destroy() {
         for(int i=prots.length-1; i >= 0; i--)
             prots[i].destroy();
+    }
+
+    public void handleView(View v) {
+        if(prots != null && prots.length > 0) {
+            Protocol top=prots[prots.length-1];
+            if(top != null)
+                top.down(new Event(Event.VIEW_CHANGE, v));
+        }
     }
 
     public Object down(Event evt) {

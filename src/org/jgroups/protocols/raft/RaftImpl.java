@@ -67,6 +67,7 @@ public abstract class RaftImpl {
             raft.commitLogTo(leader_commit);
             if(internal)
                 raft.executeInternalCommand(null, data, offset, length);
+            raft.num_successful_append_requests++;
             return new AppendResult(OK, added? curr_index : raft.lastAppended())
               .commitIndex(raft.commitIndex());
         }

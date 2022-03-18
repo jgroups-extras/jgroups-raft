@@ -64,8 +64,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         ClassConfigurator.addProtocol(RAFT_ID, RAFT.class);
         ClassConfigurator.add(APPEND_ENTRIES_REQ,   AppendEntriesRequest.class);
         ClassConfigurator.add(APPEND_ENTRIES_RSP,   AppendEntriesResponse.class);
-        ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
         ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
+        ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
     }
 
     @Property(description="The identifier of this node. Needs to be unique and an element of members. Must not be null",
@@ -588,6 +588,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             int prev_term=entry != null? entry.term : 0;
 
             log_impl.append(curr_index, true, new LogEntry(current_term, buf, offset, length, cmd != null));
+            num_successful_append_requests++;
 
             if(cmd != null)
                 executeInternalCommand(cmd, null, 0, 0);
@@ -744,7 +745,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             int to=e.sendSingleMessage()? e.nextIndex() : last_appended;
             for(int i=Math.max(e.nextIndex(),1); i <= to; i++) {  // i=match_index+1 ?
                 if(log.isTraceEnabled())
-                    log.trace("%s: resending %d to %s\n", local_addr, i, member);
+                    log.trace("%s: resending %d to %s", local_addr, i, member);
                 resend(member, i);
             }
             return;
@@ -752,7 +753,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(this.last_appended > e.matchIndex()) {
             int index=this.last_appended;
             if(index > 0) {
-                log.trace("%s: resending %d to %s\n", local_addr, index, member);
+                log.trace("%s: resending %d to %s", local_addr, index, member);
                 resend(member, index);
             }
             return;
@@ -962,7 +963,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     public RAFT changeRole(Role new_role) {
-        RaftImpl new_impl=new_role == Role.Follower? new Follower(this) : new_role == Role.Candidate? new Candidate(this) : new Leader(this);
+        RaftImpl new_impl=new_role == Role.Leader? new Leader(this) : new Follower(this);
         RaftImpl old_impl=impl;
         if(old_impl == null || !old_impl.getClass().equals(new_impl.getClass())) {
             if(old_impl != null)

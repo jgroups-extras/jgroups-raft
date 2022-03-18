@@ -4,7 +4,6 @@ import org.jgroups.JChannel;
 import org.jgroups.Receiver;
 import org.jgroups.View;
 import org.jgroups.blocks.atomic.Counter;
-import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.util.Util;
@@ -17,11 +16,9 @@ public class CounterServiceDemo {
     protected JChannel       ch;
     protected CounterService counter_service;
 
-    void start(String props, String name, long repl_timeout, boolean allow_dirty_reads, boolean follower) throws Exception {
+    void start(String props, String name, long repl_timeout, boolean allow_dirty_reads) throws Exception {
         ch=new JChannel(props).name(name);
         counter_service=new CounterService(ch).raftId(name).replTimeout(repl_timeout).allowDirtyReads(allow_dirty_reads);
-        if(follower)
-            disableElections(ch);
         ch.setReceiver(new Receiver() {
             public void viewAccepted(View view) {
                 System.out.println("-- view: " + view);
@@ -104,7 +101,7 @@ public class CounterServiceDemo {
                 }
             }
             catch(Throwable t) {
-                System.err.println(t.toString());
+                System.err.println(t);
             }
         }
     }
@@ -124,11 +121,6 @@ public class CounterServiceDemo {
         return counter_service.logSize();
     }
 
-    protected static void disableElections(JChannel ch) {
-        ELECTION election=ch.getProtocolStack().findProtocol(ELECTION.class);
-        if(election != null)
-            election.noElections(true);
-    }
 
 
 
@@ -137,7 +129,6 @@ public class CounterServiceDemo {
         String name=null;
         long repl_timeout=5000;
         boolean allow_dirty_reads=true;
-        boolean follower=false;
         for(int i=0; i < args.length; i++) {
             if(args[i].equals("-props")) {
                 properties=args[++i];
@@ -155,16 +146,12 @@ public class CounterServiceDemo {
                 allow_dirty_reads=Boolean.parseBoolean(args[++i]);
                 continue;
             }
-            if(args[i].equals("-follower")) {
-                follower=true;
-                continue;
-            }
             help();
             return;
         }
 
 
-        new CounterServiceDemo().start(properties, name, repl_timeout, allow_dirty_reads, follower);
+        new CounterServiceDemo().start(properties, name, repl_timeout, allow_dirty_reads);
 
     }
 

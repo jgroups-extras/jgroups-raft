@@ -91,7 +91,7 @@ public class CompletableFutureTest {
         MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
         future=new CompletableFuture<>();
         future.whenComplete(handler);
-        new Completer<>(future, 0, new NullPointerException("booom"), 500).start();
+        new Completer<>(future, 0, new NullPointerException("booom"), 50).start();
         Util.waitUntil(10000, 500, () -> future.isDone());
         Throwable ex=handler.getException();
         assert ex instanceof NullPointerException;
