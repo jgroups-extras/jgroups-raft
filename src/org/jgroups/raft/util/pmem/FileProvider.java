@@ -29,17 +29,18 @@ public class FileProvider {
       ATTEMPT_PMEM = attemptPmem;
    }
 
-   public static FileChannel openChannel(File file, int length, boolean create, boolean readSharedMetadata) throws IOException {
-      FileChannel fileChannel = ATTEMPT_PMEM ? PmemUtilWrapper.pmemChannelFor(file, length, create, readSharedMetadata) : null;
+   public static boolean isPMEMAvailable() {
+      return ATTEMPT_PMEM;
+   }
 
-      if (fileChannel == null) {
-         if (!file.exists() && !create) {
-            return null;
-         }
-         return FileChannel.open(file.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ);
+   public static FileChannel openPMEMChannel(File file,
+                                             int length,
+                                             boolean create,
+                                             boolean readSharedMetadata) throws IOException {
+      if (!isPMEMAvailable()) {
+         return null;
       }
-
-      return fileChannel;
+      return PmemUtilWrapper.pmemChannelFor(file, length, create, readSharedMetadata);
    }
 
 }

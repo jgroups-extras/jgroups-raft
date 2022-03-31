@@ -5,7 +5,6 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
@@ -20,18 +19,33 @@ import org.jgroups.util.Util;
  * @author Pedro Ruivo
  * @since 0.5.4
  */
-public class MetadataStorage extends BaseStorage {
+public class MetadataStorage {
 
    private static final String FILE_NAME = "metadata.raft";
 
+   // page 4 RAft original paper: COMMIT INDEX DOESN'T REQUIRE FDATASYNC
    private static final int COMMIT_INDEX_POS = 0;
+   // page 4 RAft original paper: RARE BUT REQUIRES FDATASYNC
    private static final int CURRENT_TERM_POS = COMMIT_INDEX_POS + Global.INT_SIZE;
+   // Check if file length is != from the last FSYNC: this is variable-sized!
    private static final int VOTED_FOR_POS = CURRENT_TERM_POS + Global.INT_SIZE;
+   private final FileStorage fileStorage;
 
    public MetadataStorage(File parentDir) {
-      super(new File(parentDir, FILE_NAME));
+      fileStorage = new FileStorage(new File(parentDir, FILE_NAME));
    }
 
+   public void open() throws IOException {
+      fileStorage.open();
+   }
+
+   public void close() throws IOException {
+      fileStorage.close();
+   }
+
+   public void delete() throws IOException {
+      fileStorage.delete();
+   }
 
    public int getCommitIndex() throws IOException {
       return readIntOrZero(COMMIT_INDEX_POS);
@@ -47,59 +61,51 @@ public class MetadataStorage extends BaseStorage {
 
    public void setCurrentTerm(int term) throws IOException {
       writeInt(term, CURRENT_TERM_POS);
+      fileStorage.flush();
    }
 
    public Address getVotedFor() throws IOException, ClassNotFoundException {
-      FileChannel fChannel = checkOpen();
       // most addresses are quite small
-      ByteBuffer data = ByteBuffer.allocate(Global.INT_SIZE);
-      fChannel.read(data, VOTED_FOR_POS);
-      data.flip();
-      if (data.remaining() != Global.INT_SIZE) {
+      final ByteBuffer dataLengthBuffer = fileStorage.read(VOTED_FOR_POS, Global.INT_SIZE);
+      if (dataLengthBuffer.remaining() != Global.INT_SIZE) {
          // corrupted?
          return null;
       }
-      int addressLength = data.getInt();
-      data = ByteBuffer.allocate(addressLength);
-      fChannel.read(data, VOTED_FOR_POS + Global.INT_SIZE);
-      data.flip();
-      if (data.remaining() != addressLength) {
+      final int addressLength = dataLengthBuffer.getInt(0);
+      final ByteBuffer addressLengthBuffer = fileStorage.read(VOTED_FOR_POS + Global.INT_SIZE, addressLength);
+      if (addressLengthBuffer.remaining() != addressLength) {
          //uname to read "addressLength" bytes
          return null;
       }
-      return readAddress(data);
+      return readAddress(addressLengthBuffer);
    }
 
    public void setVotedFor(Address address) throws IOException {
-      FileChannel fChannel = checkOpen();
       if (address == null) {
-         fChannel.truncate(VOTED_FOR_POS);
+         fileStorage.truncateTo(VOTED_FOR_POS);
          return;
       }
       ByteArrayOutputStream baos = new ByteArrayOutputStream();
       Util.writeAddress(address, new DataOutputStream(baos));
 
       byte[] data = baos.toByteArray();
-      ByteBuffer buffer = ByteBuffer.allocate(Global.INT_SIZE + data.length);
+      ByteBuffer buffer = fileStorage.ioBufferWith(Global.INT_SIZE + data.length);
       buffer.putInt(data.length);
       buffer.put(data);
-      fChannel.write(buffer.flip(), VOTED_FOR_POS);
+      buffer.flip();
+      fileStorage.write(VOTED_FOR_POS);
    }
 
    private int readIntOrZero(long position) throws IOException {
-      FileChannel fChannel = checkOpen();
-      ByteBuffer data = ByteBuffer.allocate(Global.INT_SIZE);
-      int read = fChannel.read(data, position);
-      data.flip();
-      return read == Global.INT_SIZE ? data.getInt() : 0;
+      ByteBuffer data = fileStorage.read(position, Global.INT_SIZE);
+      return data.remaining() == Global.INT_SIZE ? data.getInt(0) : 0;
    }
 
    private void writeInt(int value, long position) throws IOException {
-      FileChannel fChannel = checkOpen();
-      ByteBuffer data = ByteBuffer.allocate(Global.INT_SIZE);
+      ByteBuffer data = fileStorage.ioBufferWith(Global.INT_SIZE);
       data.putInt(value);
       data.flip();
-      fChannel.write(data, position);
+      fileStorage.write(position);
    }
 
    private static Address readAddress(ByteBuffer buffer) throws IOException, ClassNotFoundException {
