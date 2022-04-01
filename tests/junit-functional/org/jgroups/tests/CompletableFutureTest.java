@@ -77,7 +77,7 @@ public class CompletableFutureTest {
     }
 
     public void testCompletionHandler() throws TimeoutException {
-        MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
+        final MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
         future=new CompletableFuture<>();
         future.whenComplete(handler);
         new Completer<>(future, 5, null, 500).start();
