@@ -54,7 +54,7 @@
     <MFC max_credits="2M"
          min_threshold="0.4"/>
     <FRAG4 frag_size="60K"  />
-    <raft.ELECTION election_min_interval="100" election_max_interval="500"/>
+    <raft.ELECTION />
     <raft.RAFT members="${raft_members:A,B,C}"
                raft_id="${raft_id}"
                log_dir="${log_dir}" />
