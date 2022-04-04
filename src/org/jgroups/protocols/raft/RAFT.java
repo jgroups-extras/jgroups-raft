@@ -560,8 +560,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     public String toString() {
-        return String.format("%s commit=%d last-appended=%d curr-term=%d",
-                             RAFT.class.getSimpleName(), commit_index, last_appended, current_term);
+        return String.format("%s %s: commit=%d last-appended=%d curr-term=%d",
+                             RAFT.class.getSimpleName(), local_addr, commit_index, last_appended, current_term);
     }
 
     protected void add(Request r) {
@@ -841,7 +841,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     /**
      * Received a majority of votes for the entry at index. Note that indices may be received out of order, e.g. if
-     * we have modifications at indixes 4, 5 and 6, entry[5] might get a majority of votes (=committed)
+     * we have modifications at indices 4, 5 and 6, entry[5] might get a majority of votes (=committed)
      * before entry[3] and entry[6].<p/>
      * The following things are done:
      * <ul>
