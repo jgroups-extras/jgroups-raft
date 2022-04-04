@@ -139,10 +139,11 @@ public class LevelDBLog implements Log {
                 updateLastAppended(index, batch);
                 updateCurrentTerm(entry.term, batch);
 
-                log.trace("Flushing batch to DB: %s", batch);
-                db.write(batch);
+
                 index++;
             }
+            log.trace("Flushing batch to DB: %s", batch);
+            db.write(batch);
         }
         catch(Exception ex) {
         }
