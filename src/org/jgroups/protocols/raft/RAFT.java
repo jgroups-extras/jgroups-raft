@@ -854,10 +854,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected synchronized void handleCommit(int index) {
         try {
             for(int i=commit_index + 1; i <= Math.min(index, last_appended); i++) {
-                if(request_table.isCommitted(i)) {
-                    applyCommit(i);
-                    commit_index=Math.max(commit_index, i);
-                }
+                if(!request_table.isCommitted(i))
+                    break; // stop at the first uncommitted request
+                applyCommit(i);
+                commit_index=Math.max(commit_index, i);
             }
         }
         catch(Throwable t) {

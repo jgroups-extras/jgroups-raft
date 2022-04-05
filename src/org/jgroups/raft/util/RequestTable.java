@@ -1,11 +1,9 @@
 package org.jgroups.raft.util;
 
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
  * Keeps track of AppendRequest messages and responses. Each AppendEntry request is keyed by the index at which
@@ -18,7 +16,8 @@ import java.util.concurrent.CompletableFuture;
  * @since 0.1
  */
 public class RequestTable<T> {
-    protected final Map<Integer,Entry<T>> requests=new HashMap<>(); // maps an index to a set of (response) senders
+    // maps an index to a set of (response) senders
+    protected final NavigableMap<Integer,Entry<T>> requests=new ConcurrentSkipListMap<>();
 
 
     public void create(int index, T vote, CompletableFuture<byte[]> future, int majority) {
@@ -34,6 +33,14 @@ public class RequestTable<T> {
      * @return True if a majority has been reached, false otherwise. Note that this is done <em>exactly once</em>
      */
     public synchronized boolean add(int index, T sender, int majority) {
+        // we're getting an ack for index, but we also need to ack entries lower than index (if any, should only
+        // happen on leader change): https://github.com/belaban/jgroups-raft/issues/122
+
+        if(requests.lowerKey(index) != null) {
+            // we have entries with indices lower than index; ack them, too
+            Map<Integer,Entry<T>> lower_entries=requests.headMap(index);
+            lower_entries.values().stream().filter(Objects::nonNull).forEach(e -> e.add(sender, majority));
+        }
         Entry<T> entry=requests.get(index);
         return entry != null && entry.add(sender, majority);
     }

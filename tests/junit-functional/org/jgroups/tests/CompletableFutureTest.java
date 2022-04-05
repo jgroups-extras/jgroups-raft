@@ -10,33 +10,34 @@ import java.util.function.BiConsumer;
 
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class CompletableFutureTest {
-    protected CompletableFuture<Integer> future;
+    protected CompletableFuture<Integer> f;
 
-    @BeforeMethod protected void setup() {future=new CompletableFuture<>();}
+    @BeforeMethod protected void setup() {
+        f=new CompletableFuture<>();}
 
     public void testDone() {
-        assert !future.isDone();
-        assert !future.isCancelled();
-        future.cancel(true);
-        assert future.isCancelled();
-        assert future.isDone();
+        assert !f.isDone();
+        assert !f.isCancelled();
+        f.cancel(true);
+        assert f.isCancelled();
+        assert f.isDone();
     }
 
     public void testGet() throws Exception {
-        boolean success=future.complete(1);
+        boolean success=f.complete(1);
         assert success;
-        success=future.complete(2);
+        success=f.complete(2);
         assert !success;
-        int result=future.get();
+        int result=f.get();
         assert result == 1;
-        result=future.get(500,TimeUnit.MILLISECONDS);
+        result=f.get(500, TimeUnit.MILLISECONDS);
         assert result == 1;
     }
 
     public void testGetWithException() throws Exception {
-        future.completeExceptionally(new NullPointerException("booom"));
+        f.completeExceptionally(new NullPointerException("booom"));
         try {
-            future.get();
+            f.get();
             assert false : "should have thrown an exception";
         }
         catch(ExecutionException ex) {
@@ -47,7 +48,7 @@ public class CompletableFutureTest {
 
     public void testGetWithTimeout() throws Exception {
         try {
-            future.get(50,TimeUnit.MILLISECONDS);
+            f.get(50, TimeUnit.MILLISECONDS);
             assert false : "should have thrown a TimeoutException";
         }
         catch(TimeoutException ex) {
@@ -56,43 +57,40 @@ public class CompletableFutureTest {
     }
 
     public void testDelayedGet() throws Exception {
-        Completer<Integer> completer=new Completer<>(future, 5, null, 500);
+        Completer<Integer> completer=new Completer<>(f, 5, null, 500);
         completer.start();
-        int result=future.get();
+        int result=f.get();
         System.out.println("result = " + result);
         assert result == 5;
     }
 
     public void testCancel() throws Exception {
-        new Thread(() -> {Util.sleep(500); future.cancel(true);}).start();
+        new Thread(() -> {Util.sleep(500); f.cancel(true);}).start();
 
         try {
-            future.get();
+            f.get();
             assert false : "should have thrown a CancellationException";
         }
         catch(CancellationException cex) {
             System.out.println("received CancellationException as expected: " + cex);
         }
-        assert future.isCancelled() && future.isDone();
+        assert f.isCancelled() && f.isDone();
     }
 
-    public void testCompletionHandler() throws TimeoutException {
-        final MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
-        future=new CompletableFuture<>();
-        future.whenComplete(handler);
-        new Completer<>(future, 5, null, 500).start();
+    public void testCompletionHandler() throws Exception {
+        CompletableFuture<Integer> fut=new CompletableFuture<>();
+        new Completer<>(fut, 5, null, 500).start();
 
-        Util.waitUntil(10000, 500, () -> future.isDone());
-        assert handler.getException() == null;
-        assert handler.getValue() == 5;
+        Util.waitUntil(10000, 100, fut::isDone);
+        assert fut.get(2, TimeUnit.SECONDS) == 5;
     }
 
     public void testCompletionHandlerWithException() throws TimeoutException {
         MyCompletionHandler<Integer> handler=new MyCompletionHandler<>();
-        future=new CompletableFuture<>();
-        future.whenComplete(handler);
-        new Completer<>(future, 0, new NullPointerException("booom"), 50).start();
-        Util.waitUntil(10000, 500, () -> future.isDone());
+        f=new CompletableFuture<>();
+        f.whenComplete(handler);
+        new Completer<>(f, 0, new NullPointerException("booom"), 50).start();
+        Util.waitUntil(10000, 500, () -> f.isDone());
         Throwable ex=handler.getException();
         assert ex instanceof NullPointerException;
     }
