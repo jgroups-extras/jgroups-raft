@@ -82,7 +82,7 @@ public class SyncElectionTestsWithRestriction {
     public void testScenarioD() throws Exception {
         createScenarioC();
         System.out.printf("-- Initial:\n%s\n", printTerms());
-        kill(0);
+        kill(0, true);
         makeLeader(4);
         View v=View.create(s5, view_id++, s5,s2,s3,s4);
         cluster.handleView(v);
@@ -118,7 +118,7 @@ public class SyncElectionTestsWithRestriction {
         r1.flushCommitTable(s3);
 
         System.out.printf("-- Initial:\n%s\n", printTerms());
-        kill(0);
+        kill(0, true);
         v=View.create(s2, view_id++, s2,s3,s4,s5);
         cluster.handleView(v);
         System.out.printf("-- After killing S1:\n%s\n", printTerms());
@@ -230,13 +230,20 @@ public class SyncElectionTestsWithRestriction {
         return list.stream().mapToInt(Integer::intValue).toArray();
     }
 
-    protected void kill(int index) {
+    protected void kill(int index, boolean remove_log) throws Exception {
         cluster.remove(nodes[index].getAddress());
         nodes[index].stop();
         nodes[index].destroy();
         nodes[index]=null;
-        elections[index]=null;
-        rafts[index]=null;
+        if(elections[index] != null) {
+            elections[index].stopVotingThread();
+            elections[index]=null;
+        }
+        if(rafts[index] != null) {
+            if(remove_log)
+                rafts[index].deleteLog().deleteSnapshot();
+            rafts[index]=null;
+        }
     }
 
 
