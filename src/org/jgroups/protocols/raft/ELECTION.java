@@ -26,10 +26,7 @@ import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
  */
 @MBean(description="Protocol performing leader election according to the RAFT paper")
 public class ELECTION extends Protocol {
-    // If moving to JGroups -> add to jg-protocol-ids.xml
     protected static final short ELECTION_ID    = 520;
-
-    // If moving to JGroups -> add to jg-magic-map.xml
     protected static final short VOTE_REQ       = 3000;
     protected static final short VOTE_RSP       = 3001;
     protected static final short LEADER_ELECTED = 3005;
@@ -47,7 +44,6 @@ public class ELECTION extends Protocol {
     protected int                num_voting_rounds;
 
     protected RAFT               raft; // direct ref instead of events
-    protected Role               role=Role.Follower;
     protected volatile View      view;
     protected final Runner       voting_thread=new Runner("voting-thread", this::runVotingProcess, null);
 
@@ -62,9 +58,6 @@ public class ELECTION extends Protocol {
         num_voting_rounds=0;
     }
 
-    @ManagedAttribute(description="The current role")
-    public Role role() {return role;}
-
     @ManagedAttribute(description="Is the voting thread (only on the coordinator) running?")
     public boolean isVotingThreadRunning() {return voting_thread.isRunning();}
 
@@ -75,13 +68,13 @@ public class ELECTION extends Protocol {
 
     public void stop() {
         stopVotingThread();
-        changeRole(Role.Follower);
+        raft.setLeaderAndTerm(null);
     }
 
     public Object down(Event evt) {
         switch(evt.getType()) {
             case Event.DISCONNECT:
-                changeRole(Role.Follower);
+                raft.setLeaderAndTerm(null);
                 break;
             case Event.VIEW_CHANGE:
                 handleView(evt.getArg());
@@ -128,9 +121,8 @@ public class ELECTION extends Protocol {
         this.view=v;
         switch(result) {
             case no_change: // the leader resends its term/address for new members to set the term/leader
-                Address leader=raft.leader();
-                if(Objects.equals(leader, local_addr) && has_new_members)
-                    sendLeaderElectedMessage(leader, raft.currentTerm());
+                if(raft.isLeader() && has_new_members)
+                    sendLeaderElectedMessage(raft.leader(), raft.currentTerm());
                 break;
             case reached:
             case leader_lost:
@@ -141,8 +133,7 @@ public class ELECTION extends Protocol {
                 break;
             case lost:
                 stopVotingThread(); // if running, double-dutch
-                changeRole(Role.Follower);
-                raft.leader(null);
+                raft.setLeaderAndTerm(null);
                 break;
         }
     }
@@ -153,13 +144,10 @@ public class ELECTION extends Protocol {
             int term=hdr.currTerm();
             Address leader=((LeaderElected)hdr).leader();
             stopVotingThread(); // only on the coord
-            boolean is_leader=Objects.equals(leader, local_addr);
             log.trace("%s <- %s: %s", local_addr, msg.src(), hdr);
-            changeRole(is_leader? Role.Leader : Role.Follower);
-            raft.leader(leader).currentTerm(term);
+            raft.setLeaderAndTerm(leader, term); // possibly changes the role
             return;
         }
-
         if(hdr instanceof VoteRequest) {
             handleVoteRequest(msg.src());
             return;
@@ -190,7 +178,7 @@ public class ELECTION extends Protocol {
         sendVoteResponse(sender, new_term, my_last_term, my_last_index);
     }
 
-    protected synchronized void handleVoteResponse(Address sender, VoteResponse rsp) {
+    protected void handleVoteResponse(Address sender, VoteResponse rsp) {
         votes.add(sender, rsp);
     }
 
@@ -211,10 +199,8 @@ public class ELECTION extends Protocol {
             int new_term=highestTerm();
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
                       local_addr, votes.getValidResults(), time, majority, leader, new_term);
-            if(Objects.equals(local_addr, leader))
-                changeRole(Role.Leader);
-            sendLeaderElectedMessage(leader, new_term);
-            raft.leader(leader).currentTerm(new_term);
+            sendLeaderElectedMessage(leader, new_term); // send to all - self
+            raft.setLeaderAndTerm(leader, new_term);
             stopVotingThread();
         }
         else
@@ -288,22 +274,6 @@ public class ELECTION extends Protocol {
         log.trace("%s -> all (-self): %s", local_addr, hdr);
         down_prot.down(msg);
     }
-
-    protected void changeRole(Role new_role) {
-        if(role == new_role) // no change
-            return;
-        log.debug("%s: changing from %s -> %s", local_addr, role, new_role);
-        switch(role) {
-            case Follower: // change to leader
-                raft.leader(local_addr);
-                break;
-            case Leader: // change to follower
-                raft.leader(null);
-                break;
-        }
-        raft.changeRole(role=new_role);
-    }
-
 
     public synchronized ELECTION startVotingThread() {
         if(!isVotingThreadRunning())

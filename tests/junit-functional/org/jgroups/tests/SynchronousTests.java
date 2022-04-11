@@ -37,10 +37,8 @@ public class SynchronousTests {
 
     @BeforeMethod protected void init() throws Exception {
         view=View.create(a, 1, a,b);
-        raft_a=createRAFT(a, "A", mbrs).stateMachine(sma=new CounterStateMachine())
-          .changeRole(Role.Leader).leader(a);
-        raft_b=createRAFT(b, "B", mbrs).stateMachine(smb=new CounterStateMachine())
-          .changeRole(Role.Follower).leader(a);
+        raft_a=createRAFT(a, "A", mbrs).stateMachine(sma=new CounterStateMachine()).setLeaderAndTerm(a);
+        raft_b=createRAFT(b, "B", mbrs).stateMachine(smb=new CounterStateMachine()).setLeaderAndTerm(a);
         node_a=new RaftNode(cluster, raft_a);
         node_b=new RaftNode(cluster, raft_b);
         node_a.init();
@@ -524,8 +522,7 @@ public class SynchronousTests {
     }
 
     protected void addMemberC() throws Exception {
-        raft_c=createRAFT(c, "C", mbrs).stateMachine(smc=new CounterStateMachine())
-          .changeRole(Role.Follower).leader(a);
+        raft_c=createRAFT(c, "C", mbrs).stateMachine(smc=new CounterStateMachine()).setLeaderAndTerm(a);
         node_c=new RaftNode(cluster, raft_c);
         node_c.init();
         node_c.start();

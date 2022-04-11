@@ -190,10 +190,7 @@ public class SyncElectionTestsWithRestriction {
         for(int i=0; i < rafts.length; i++) {
             if(rafts[i] == null)
                 continue;
-            if(i == index)
-                rafts[i].changeRole(Role.Leader).leader(leader);
-            else
-                rafts[i].changeRole(Role.Follower).leader(leader);
+            rafts[i].setLeaderAndTerm(leader);
         }
     }
 

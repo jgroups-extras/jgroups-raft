@@ -42,12 +42,12 @@ public class RaftTest {
         a=create("A", 600_000, 1_000_000);
         rha=new RaftHandle(a, sma=new CounterStateMachine());
         a.connect(GRP);
-        raft_a=raft(a).leader(a.getAddress()).changeRole(Role.Leader);
+        raft_a=raft(a).setLeaderAndTerm(a.getAddress());
 
         b=create("B", 600_000, 1_000_000);
         rhb=new RaftHandle(b, smb=new CounterStateMachine());
         b.connect(GRP);
-        raft_b=raft(b).leader(a.getAddress()).changeRole(Role.Follower);
+        raft_b=raft(b).setLeaderAndTerm(a.getAddress());
         Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b);
         assert raft_a.isLeader();
         assert !raft_b.isLeader();

@@ -7,7 +7,6 @@ import org.jgroups.View;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.RaftImpl;
-import org.jgroups.protocols.raft.Role;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.stack.Protocol;
@@ -144,7 +143,7 @@ public class SyncElectionTests {
     /** Follower is leaving */
     public void testGoingFromThreeToTwo() throws Exception {
         testGoingFromZeroToThree();
-        int follower=find(Role.Follower);
+        int follower=findFirst(false);
         kill(follower);
         View view=createView();
         cluster.handleView(view);
@@ -157,9 +156,9 @@ public class SyncElectionTests {
 
     public void testGoingFromThreeToOne() throws Exception {
         testGoingFromZeroToThree();
-        int follower=find(Role.Follower);
+        int follower=findFirst(false);
         kill(follower);
-        follower=find(Role.Follower);
+        follower=findFirst(false);
         kill(follower);
 
         View view=createView();
@@ -173,7 +172,7 @@ public class SyncElectionTests {
     /** ABC (A=leader) -> BC */
     public void testLeaderLeaving() throws Exception {
         testGoingFromZeroToThree();
-        int leader=find(Role.Leader);
+        int leader=findFirst(true);
         kill(leader);
         View view=createView();
         cluster.handleView(view);
@@ -202,8 +201,8 @@ public class SyncElectionTests {
         Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
         System.out.printf("%s\n", print());
         assertOneLeader();
-        assert elections[0].role() != Role.Leader;
-        assert elections[2].role() == Role.Leader;
+        assert !rafts[0].isLeader();
+        assert rafts[2].isLeader();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
         int new_term=terms[terms.length-1]+1;
@@ -240,7 +239,6 @@ public class SyncElectionTests {
     // Checks that there is 1 leader in the cluster and the rest are followers
     protected void assertOneLeader() {
         assert Stream.of(rafts).filter(r -> r != null && r.isLeader()).count() == 1 : print();
-        assert Stream.of(elections).filter(e -> e != null && e.role() == Role.Leader).count() == 1 : print();
     }
 
     protected void assertSameTerm(Supplier<String> message) {
@@ -274,9 +272,9 @@ public class SyncElectionTests {
         rafts[index]=null;
     }
 
-    protected int find(Role r) {
-        for(int i=elections.length-1; i >= 0; i--) {
-            if(elections[i] != null && elections[i].role() == r)
+    protected int findFirst(boolean leader) {
+        for(int i=rafts.length-1; i >= 0; i--) {
+            if(rafts[i] != null && rafts[i].isLeader() == leader)
                 return i;
         }
         return -1;
@@ -284,8 +282,8 @@ public class SyncElectionTests {
 
     protected String print() {
         return Stream.of(elections).filter(Objects::nonNull)
-          .map(el -> String.format("%s: leader=%s, role=%s, term=%d",
-                                   el.getAddress(), el.raft().leader(), el.role(), el.raft().currentTerm()))
+          .map(el -> String.format("%s: leader=%s, term=%d",
+                                   el.getAddress(), el.raft().leader(), el.raft().currentTerm()))
           .collect(Collectors.joining("\n"));
     }
 
