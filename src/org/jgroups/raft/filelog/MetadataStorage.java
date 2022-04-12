@@ -5,6 +5,9 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
@@ -30,6 +33,8 @@ public class MetadataStorage {
    // Check if file length is != from the last FSYNC: this is variable-sized!
    private static final int VOTED_FOR_POS = CURRENT_TERM_POS + Global.INT_SIZE;
    private final FileStorage fileStorage;
+   // This won't need a sys-call for frequently accessed data
+   private MappedByteBuffer commitAndTermBytes;
 
    public MetadataStorage(File parentDir) {
       fileStorage = new FileStorage(new File(parentDir, FILE_NAME));
@@ -37,31 +42,36 @@ public class MetadataStorage {
 
    public void open() throws IOException {
       fileStorage.open();
+      commitAndTermBytes = FileChannel.open(fileStorage.getStorageFile().toPath(),
+                                            StandardOpenOption.READ, StandardOpenOption.WRITE)
+         .map(FileChannel.MapMode.READ_WRITE, 0, VOTED_FOR_POS);
    }
 
    public void close() throws IOException {
       fileStorage.close();
+      commitAndTermBytes = null;
    }
 
    public void delete() throws IOException {
       fileStorage.delete();
+      commitAndTermBytes = null;
    }
 
-   public int getCommitIndex() throws IOException {
-      return readIntOrZero(COMMIT_INDEX_POS);
+   public int getCommitIndex() {
+      return commitAndTermBytes.getInt(COMMIT_INDEX_POS);
    }
 
    public void setCommitIndex(int commitIndex) throws IOException {
-      writeInt(commitIndex, COMMIT_INDEX_POS);
+      commitAndTermBytes.putInt(COMMIT_INDEX_POS, commitIndex);
    }
 
-   public int getCurrentTerm() throws IOException {
-      return readIntOrZero(CURRENT_TERM_POS);
+   public int getCurrentTerm() {
+      return commitAndTermBytes.getInt(CURRENT_TERM_POS);
    }
 
    public void setCurrentTerm(int term) throws IOException {
-      writeInt(term, CURRENT_TERM_POS);
-      fileStorage.flush();
+      commitAndTermBytes.putInt(CURRENT_TERM_POS, term);
+      commitAndTermBytes.force();
    }
 
    public Address getVotedFor() throws IOException, ClassNotFoundException {
@@ -94,18 +104,6 @@ public class MetadataStorage {
       buffer.put(data);
       buffer.flip();
       fileStorage.write(VOTED_FOR_POS);
-   }
-
-   private int readIntOrZero(long position) throws IOException {
-      ByteBuffer data = fileStorage.read(position, Global.INT_SIZE);
-      return data.remaining() == Global.INT_SIZE ? data.getInt(0) : 0;
-   }
-
-   private void writeInt(int value, long position) throws IOException {
-      ByteBuffer data = fileStorage.ioBufferWith(Global.INT_SIZE);
-      data.putInt(value);
-      data.flip();
-      fileStorage.write(position);
    }
 
    private static Address readAddress(ByteBuffer buffer) throws IOException, ClassNotFoundException {
