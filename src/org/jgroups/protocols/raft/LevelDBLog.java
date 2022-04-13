@@ -5,6 +5,7 @@ import org.iq80.leveldb.DB;
 import org.iq80.leveldb.DBIterator;
 import org.iq80.leveldb.Options;
 import org.iq80.leveldb.WriteBatch;
+import org.iq80.leveldb.WriteOptions;
 import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.util.Util;
@@ -40,6 +41,7 @@ public class LevelDBLog implements Log {
     private int     firstAppended; // always: firstAppened <= commitIndex <= lastAppened
     private int     commitIndex;
     private int     lastAppended;
+    private static final WriteOptions WRITE_OPTIONS = new WriteOptions().sync(true);
 
 
     @Override
@@ -142,7 +144,7 @@ public class LevelDBLog implements Log {
                 index++;
             }
             log.trace("Flushing batch to DB: %s", batch);
-            db.write(batch);
+            db.write(batch, WRITE_OPTIONS);
         }
         catch(Exception ex) {
         }
@@ -200,7 +202,7 @@ public class LevelDBLog implements Log {
                 batch.delete(fromIntToByteArray(index));
             }
             batch.put(FIRSTAPPENDED, fromIntToByteArray(upto_index));
-            db.write(batch);
+            db.write(batch, WRITE_OPTIONS);
             firstAppended=upto_index;
         }
         finally {
@@ -229,7 +231,7 @@ public class LevelDBLog implements Log {
             updateLastAppended(start_index - 1, batch);
             if(commitIndex > lastAppended)
                 commitIndex(lastAppended);
-            db.write(batch);
+            db.write(batch, WRITE_OPTIONS);
         }
         finally {
             Util.close(batch);
@@ -313,7 +315,7 @@ public class LevelDBLog implements Log {
             batch.put(LASTAPPENDED, fromIntToByteArray(0));
             batch.put(CURRENTTERM, fromIntToByteArray(0));
             batch.put(COMMITINDEX, fromIntToByteArray(0));
-            db.write(batch);
+            db.write(batch, WRITE_OPTIONS);
         } catch (Exception ex) {
             ex.printStackTrace(); // todo: better error handling
         } finally {
