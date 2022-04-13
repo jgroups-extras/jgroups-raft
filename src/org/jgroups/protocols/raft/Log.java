@@ -65,6 +65,7 @@ public interface Log extends Closeable {
      * @param entries The entries to append
      */
     // todo: remove 'overwrite' (always true)
+    // todo: return last_appended
     void append(int index, boolean overwrite, LogEntry... entries);
 
 
