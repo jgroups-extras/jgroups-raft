@@ -172,7 +172,7 @@ public class LevelDBLog implements Log {
                 function.accept(l, i);
             }
             catch(Exception ex) {
-                throw new RuntimeException("failed deserializing LogRecord", ex);
+                throw new RuntimeException("failed deserializing LogRecord " + i, ex);
             }
         }
     }
