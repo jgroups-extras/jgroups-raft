@@ -1,22 +1,17 @@
 package org.jgroups.raft.filelog;
 
-import static org.jgroups.raft.filelog.FilePositionCache.NO_CAPACITY;
-import static org.jgroups.raft.filelog.FilePositionCache.OK;
-import static org.jgroups.raft.filelog.FilePositionCache.TOO_OLD;
-
 import java.io.File;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.util.Objects;
-import java.util.concurrent.locks.StampedLock;
 import java.util.function.ObjIntConsumer;
 
 import org.jgroups.Global;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.raft.util.ArrayRingBuffer;
 
 /**
  * Stores the {@link LogEntry} into a file.
@@ -24,59 +19,74 @@ import org.jgroups.protocols.raft.LogEntry;
  * @author Pedro Ruivo
  * @since 0.5.4
  */
-public class LogEntryStorage extends BaseStorage {
+public class LogEntryStorage {
 
    private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
    private static final byte MAGIC_NUMBER = 0x01;
    private static final String FILE_NAME = "entries.raft";
    private static final int HEADER_SIZE = Global.INT_SIZE * 4 + 1;
+   // this is the typical OS page size and SSD blck_size
+   private static final int WRITE_AHEAD_BYTES = 4096;
 
+   private final FileStorage fileStorage;
    private FilePositionCache positionCache;
+   private ArrayRingBuffer<LogEntry> uncommittedEntries;
+   private Header lastAppendedHeader;
    private volatile int lastAppended;
-   private final StampedLock lock = new StampedLock();
 
    public LogEntryStorage(File parentDir) {
-      super(new File(parentDir, FILE_NAME));
+      super();
       positionCache = new FilePositionCache(0);
+      fileStorage = new FileStorage(new File(parentDir, FILE_NAME), WRITE_AHEAD_BYTES);
+      uncommittedEntries = new ArrayRingBuffer<>(1);
    }
 
-   public void reload() throws IOException {
-      long stamp = lock.writeLock();
-      try {
-         FileChannel channel = checkOpen();
-         Header header = readHeader(channel, 0);
+   public void open() throws IOException {
+      fileStorage.open();
+   }
+
+   public void close() throws IOException {
+      fileStorage.close();
+      uncommittedEntries = null;
+   }
+
+   public void delete() throws IOException {
+      fileStorage.delete();
+   }
+
+   public void reload(final int commitIndex) throws IOException {
+      Header header = readHeader(0);
+      if (header == null) {
+         positionCache = new FilePositionCache(0);
+         lastAppended = 0;
+         uncommittedEntries = new ArrayRingBuffer<>(commitIndex + 1);
+         return;
+      }
+      positionCache = new FilePositionCache(header.index == 1 ? 0 : header.index);
+      setFilePosition(header.index, header.position);
+      lastAppended = header.index;
+      uncommittedEntries = new ArrayRingBuffer<>(commitIndex + 1);
+      if (header.index > commitIndex) {
+         uncommittedEntries.set(header.index, header.readLogEntry(this));
+      }
+      long position = header.nextPosition();
+
+      while (true) {
+         header = readHeader(position);
          if (header == null) {
-            positionCache = new FilePositionCache(0);
-            lastAppended = 0;
             return;
          }
-         positionCache = new FilePositionCache(header.index == 1 ? 0 : header.index);
-         setFilePosition(header);
-         lastAppended = header.index;
-
-         long position = header.nextPosition();
-
-         while (true) {
-            header = readHeader(channel, position);
-            if (header == null) {
-               return;
-            }
-            setFilePosition(header);
-            position = header.nextPosition();
-            lastAppended = header.index;
+         setFilePosition(header.index, header.position);
+         if (header.index > commitIndex) {
+            uncommittedEntries.set(header.index, header.readLogEntry(this));
          }
-      } finally {
-         lock.unlockWrite(stamp);
+         position = header.nextPosition();
+         lastAppended = header.index;
       }
    }
 
    public int getFirstAppended() {
-      long stamp = lock.readLock();
-      try {
-         return positionCache.getFirstAppended();
-      } finally {
-         lock.unlockRead(stamp);
-      }
+      return positionCache.getFirstAppended();
    }
 
    public int getLastAppended() {
@@ -84,82 +94,69 @@ public class LogEntryStorage extends BaseStorage {
    }
 
    public LogEntry getLogEntry(int index) throws IOException {
-      long stamp = lock.readLock();
-      try {
-         FileChannel channel = checkOpen();
-         long position = positionCache.getPosition(index);
-         if (position < 0) {
-            return null;
-         }
-         Header header = readHeader(channel, position);
-         if (header == null) {
-            return null;
-         }
-         return header.readLogEntry(channel);
-      } finally {
-         lock.unlockRead(stamp);
+      if (uncommittedEntries.contains(index)) {
+         return uncommittedEntries.get(index);
       }
+      long position = positionCache.getPosition(index);
+      if (position < 0) {
+         return null;
+      }
+      Header header = readHeader(position);
+      if (header == null) {
+         return null;
+      }
+      return header.readLogEntry(this);
    }
 
    public int write(int startIndex, LogEntry[] entries, final boolean overwrite) throws IOException {
-      PositionCheck check = overwrite ?
-            PositionCheck.OVERWRITE :
-            PositionCheck.PUT_IF_ABSENT;
-      FileChannel channel = checkOpen();
-      long stamp = lock.writeLock();
-      try {
-         if (startIndex == 1) {
-            return appendLocked(channel, entries, 1, 0, check);
+      if (startIndex == 1) {
+         if (overwrite) {
+            return appendWithoutOverwriteCheck(entries, 1, 0);
          }
-         // find previous entry to append
-         long previousPosition = positionCache.getPosition(startIndex - 1);
-         if (previousPosition < 0) {
-            throw new IllegalStateException();
-         }
-         Header previous = readHeader(channel, previousPosition);
-         if (previous == null) {
-            throw new IllegalStateException();
-         }
-         return appendLocked(channel, entries, startIndex, previous.nextPosition(), check);
-      } finally {
-         lock.unlockWrite(stamp);
+         return appendOverwriteCheck(entries, 1, 0);
       }
-   }
-
-   private void expandCapacity() {
-      positionCache = positionCache.expand();
-   }
-
-   private void setFilePosition(Header header) {
-      setFilePosition(header.index, header.position);
+      // find previous entry to append
+      long previousPosition = positionCache.getPosition(startIndex - 1);
+      if (previousPosition < 0) {
+         throw new IllegalStateException();
+      }
+      if (lastAppendedHeader == null || lastAppendedHeader.position != previousPosition) {
+         lastAppendedHeader = readHeader(previousPosition);
+         assert lastAppendedHeader == null || lastAppendedHeader.position == previousPosition;
+      }
+      if (lastAppendedHeader == null) {
+         throw new IllegalStateException();
+      }
+      if (overwrite) {
+         return appendWithoutOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
+      }
+      return appendOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
    }
 
    private void setFilePosition(int index, long position) {
-      do {
-         switch (positionCache.set(index, position)) {
-            case NO_CAPACITY:
-               expandCapacity();
-               break;
-            case TOO_OLD:
-               log.warn("Unable to set file position for index " + index + ". LogEntry is too old");
-            case OK:
-            default:
-               return;
-         }
-      } while (true);
+      if (!positionCache.set(index, position)) {
+         log.warn("Unable to set file position for index " + index + ". LogEntry is too old");
+      }
    }
 
-   private int appendLocked(FileChannel channel, LogEntry[] entries, int index, long position, PositionCheck check) throws IOException {
-      ByteBuffer buffer = null;
+   /**
+    * This is not used but for testing, hence it's not using any batching optimization as {@link #appendWithoutOverwriteCheck} does.
+    */
+   private int appendOverwriteCheck(LogEntry[] entries, int index, long position) throws IOException {
       int term = 0;
-      channel.position(position);
       for (LogEntry entry : entries) {
          Header header = new Header(position, index, entry);
-         if (check.canWrite(channel, header, entry)) {
-            if (buffer == null || buffer.capacity() < header.totalLength) {
-               buffer = ByteBuffer.allocate(header.totalLength);
+         if (!entryExists(header)) {
+            final ByteBuffer buffer = fileStorage.ioBufferWith(header.totalLength);
+            header.writeTo(buffer);
+            buffer.put(entry.command(), entry.offset(), entry.length());
+            buffer.flip();
+            fileStorage.write(header.position);
+            buffer.clear();
+            setFilePosition(header.index, header.position);
+            if (header.index >= uncommittedEntries.getHeadSequence()) {
+               uncommittedEntries.set(header.index, entry);
             }
-            writeLogEntry(channel, header, entry, buffer);
             term = Math.max(entry.term(), term);
          }
          position = header.nextPosition();
@@ -167,112 +164,117 @@ public class LogEntryStorage extends BaseStorage {
       }
 
       lastAppended = index - 1;
-      positionCache.invalidate(index);
-      channel.truncate(position);
+      if (positionCache.invalidateFrom(index)) {
+         uncommittedEntries.truncateTo(index);
+         fileStorage.truncateTo(position);
+      }
+      fileStorage.flush();
       return term;
    }
 
-   private static Header readHeader(FileChannel channel, long position) throws IOException {
-      ByteBuffer data = ByteBuffer.allocate(HEADER_SIZE);
-      channel.read(data, position);
-      data.flip();
+   private int appendWithoutOverwriteCheck(LogEntry[] entries, int index, long position) throws IOException {
+      int term = 0;
+      int batchBytes = 0;
+      for (LogEntry entry : entries) {
+         batchBytes += Header.getTotalLength(entry.length());
+      }
+      final long startPosition = position;
+      final ByteBuffer batchBuffer = fileStorage.ioBufferWith(batchBytes);
+      for (int i = 0, size = entries.length; i < size; i++) {
+         final LogEntry entry = entries[i];
+         Header header = new Header(position, index, entry);
+         header.writeTo(batchBuffer);
+         batchBuffer.put(entry.command(), entry.offset(), entry.length());
+         setFilePosition(header.index, header.position);
+         if (header.index >= uncommittedEntries.getHeadSequence()) {
+            uncommittedEntries.set(header.index, entry);
+         }
+         term = Math.max(entry.term(), term);
+         position = header.nextPosition();
+         if (i == (size - 1)) {
+            lastAppendedHeader = header;
+         }
+         ++index;
+      }
+      batchBuffer.flip();
+      fileStorage.write(startPosition);
+      lastAppended = index - 1;
+      if (positionCache.invalidateFrom(index)) {
+         uncommittedEntries.truncateTo(index);
+         fileStorage.truncateTo(position);
+      }
+      fileStorage.flush();
+      return term;
+   }
+
+   private static Header readHeader(LogEntryStorage logStorage, long position) throws IOException {
+      ByteBuffer data = logStorage.fileStorage.read(position, HEADER_SIZE);
       if (data.remaining() != HEADER_SIZE) {
          // corrupted data or non-existing data
          return null;
       }
-
       return new Header(position, data).consistencyCheck();
    }
 
-   private void writeLogEntry(FileChannel channel, Header header, LogEntry entry, ByteBuffer buffer) throws IOException {
-      header.writeTo(buffer);
-      buffer.put(entry.command(), entry.offset(), entry.length());
-      buffer.flip();
-      channel.write(buffer);
-      buffer.clear();
-      setFilePosition(header);
+   private Header readHeader(long position) throws IOException {
+      return readHeader(this, position);
    }
 
    public void removeOld(int index) throws IOException {
-      long stamp = lock.writeLock();
-      try {
-         long position = positionCache.getPosition(index);
-         truncateUntil(position);
-         positionCache = positionCache.deleteFrom(index);
-      } finally {
-         lock.unlockWrite(stamp);
-      }
+      fileStorage.truncateFrom(positionCache.getPosition(index));
+      positionCache = positionCache.createDeleteCopyFrom(index);
+      uncommittedEntries.clearUntil(index);
    }
 
    public int removeNew(int index) throws IOException {
-      long stamp = lock.readLock();
-      try {
-         FileChannel channel = checkOpen();
-         // remove all?
-         if (index == 1) {
-            channel.truncate(0);
-            lastAppended = 0;
-            return 0;
-         }
-         long position = positionCache.getPosition(index - 1);
-         Header previousHeader = readHeader(channel, position);
-         if (previousHeader == null) {
-            throw new IllegalStateException();
-         }
-         channel.truncate(previousHeader.nextPosition());
-         positionCache.invalidate(index);
-         lastAppended = index - 1;
-         return previousHeader.term;
-      } finally {
-         lock.unlockRead(stamp);
+      // remove all?
+      uncommittedEntries.truncateTo(index);
+      if (index == 1) {
+         fileStorage.truncateTo(0);
+         lastAppended = 0;
+         return 0;
       }
+      long position = positionCache.getPosition(index - 1);
+      Header previousHeader = readHeader(position);
+      if (previousHeader == null) {
+         throw new IllegalStateException();
+      }
+      fileStorage.truncateTo(previousHeader.nextPosition());
+      positionCache.invalidateFrom(index);
+      lastAppended = index - 1;
+      return previousHeader.term;
    }
 
    public void forEach(ObjIntConsumer<LogEntry> consumer, int startIndex, int endIndex) throws IOException {
       startIndex = Math.max(Math.max(startIndex, getFirstAppended()), 1);
-      long stamp = lock.readLock();
-      try {
-         long position = positionCache.getPosition(startIndex);
-         if (position < 0) {
+      long position = positionCache.getPosition(startIndex);
+      if (position < 0) {
+         return;
+      }
+      while (startIndex <= endIndex) {
+         Header header = readHeader(position);
+         if (header == null) {
             return;
          }
-         FileChannel channel = checkOpen();
-         while (startIndex <= endIndex) {
-            Header header = readHeader(channel, position);
-            if (header == null) {
-               return;
-            }
-            consumer.accept(header.readLogEntry(channel), startIndex);
-            position = header.nextPosition();
-            ++startIndex;
-         }
-      } finally {
-         lock.unlockRead(stamp);
+         consumer.accept(header.readLogEntry(this), startIndex);
+         position = header.nextPosition();
+         ++startIndex;
       }
    }
 
-   private enum PositionCheck {
-      OVERWRITE {
-         @Override
-         public boolean canWrite(FileChannel channel, Header header, LogEntry entry) {
-            return true;
-         }
-      },
-      PUT_IF_ABSENT {
-         @Override
-         public boolean canWrite(FileChannel channel, Header header, LogEntry entry) throws IOException {
-            Header existing = readHeader(channel, header.position);
-            if (existing == null) {
-               return true;
-            }
-            if (existing.equals(header)) { // same entry, skip overwriting
-               return false;
-            }
-            throw new IllegalStateException();
-         }
-      };
+   private boolean entryExists(Header header) throws IOException {
+      Header existing = readHeader(this, header.position);
+      if (existing == null) {
+         return false;
+      }
+      if (existing.equals(header)) { // same entry, skip overwriting
+         return true;
+      }
+      throw new IllegalStateException();
+   }
 
-      abstract boolean canWrite(FileChannel channel, Header header, LogEntry entry) throws IOException;
+   public void committedIndex(final int new_index) {
+      uncommittedEntries.clearUntil(new_index + 1);
    }
 
    private static class Header {
@@ -291,7 +293,11 @@ public class LogEntryStorage extends BaseStorage {
          this.index = index;
          this.term = entry.term();
          this.dataLength = entry.length();
-         this.totalLength = HEADER_SIZE + dataLength;
+         this.totalLength = getTotalLength(dataLength);
+      }
+
+      public static int getTotalLength(final int dataLength) {
+         return HEADER_SIZE + dataLength;
       }
 
       Header(long position, ByteBuffer buffer) {
@@ -325,16 +331,12 @@ public class LogEntryStorage extends BaseStorage {
                null : this;
       }
 
-      LogEntry readLogEntry(FileChannel channel) throws IOException {
-         ByteBuffer data = ByteBuffer.allocate(dataLength);
-         channel.read(data, position + HEADER_SIZE);
-         data.flip();
+      LogEntry readLogEntry(LogEntryStorage storage) throws IOException {
+         ByteBuffer data = storage.fileStorage.read(position + HEADER_SIZE, dataLength);
          if (data.remaining() != dataLength) {
             return null;
          }
-         if (data.hasArray()) {
-            return new LogEntry(term, data.array(), data.arrayOffset(), dataLength);
-         }
+         assert !data.hasArray();
          byte[] bytes = new byte[dataLength];
          data.get(bytes);
          return new LogEntry(term, bytes);

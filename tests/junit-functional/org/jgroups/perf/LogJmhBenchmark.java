@@ -19,8 +19,8 @@ import java.util.concurrent.TimeUnit;
  */
 @BenchmarkMode(Mode.AverageTime)
 @OutputTimeUnit(TimeUnit.NANOSECONDS)
-@Warmup(iterations = 2, time = 5)
-@Measurement(iterations = 4, time = 5)
+@Warmup(iterations = 10, time = 5)
+@Measurement(iterations = 10, time = 5)
 @Fork(1)
 public class LogJmhBenchmark {
 
@@ -34,21 +34,23 @@ public class LogJmhBenchmark {
    }
 
    @Benchmark
-   public void append(Blackhole bh, ExecutionPlan plan) {
-      plan.log.append(plan.index, false, plan.entry);
-      ++plan.index;
+   public void append(ExecutionPlan plan) {
+      plan.log.append(plan.index, true, plan.entries);
+      plan.index+= plan.batchSize;
    }
 
    @State(Scope.Benchmark)
    public static class ExecutionPlan {
 
-      @Param({"10", "100"})
+      @Param({"10", "100", "4096"})
       private int dataSize;
       @Param({"leveldb", "file"})
       private String logType;
-      @Param({"/tmp"})
+      @Param({"/tmp/tmp_raft_bench", "./tmp_raft_bench"})
       private String baseDir;
-      private LogEntry entry;
+      @Param({"1","3"})
+      private int batchSize;
+      private LogEntry[] entries;
       private int index;
       private Log log;
 
@@ -57,7 +59,8 @@ public class LogJmhBenchmark {
          index = 1;
          byte[] data = new byte[dataSize];
          Arrays.fill(data, (byte) 1);
-         entry = new LogEntry(1, data);
+         entries = new LogEntry[batchSize];
+         Arrays.fill(entries, new LogEntry(1, data));
          if ("leveldb".equals(logType)) {
             log = new LevelDBLog();
          } else if ("file".equals(logType)) {
