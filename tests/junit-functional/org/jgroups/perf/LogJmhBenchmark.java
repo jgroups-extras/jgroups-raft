@@ -44,7 +44,7 @@ public class LogJmhBenchmark {
 
       @Param({"10", "100"})
       private int dataSize;
-      @Param({"leveldb", "rocksdb", "file"})
+      @Param({"leveldb", "file"})
       private String logType;
       @Param({"/tmp"})
       private String baseDir;
@@ -60,8 +60,6 @@ public class LogJmhBenchmark {
          entry = new LogEntry(1, data);
          if ("leveldb".equals(logType)) {
             log = new LevelDBLog();
-         } else if ("rocksdb".equals(logType)) {
-            log = new RocksDBLog();
          } else if ("file".equals(logType)) {
             log = new FileBasedLog();
          } else {

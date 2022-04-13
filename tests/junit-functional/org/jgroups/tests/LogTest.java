@@ -26,9 +26,7 @@ public class LogTest {
 
     @DataProvider static Object[][] logProvider() {
         return new Object[][] {
-          /*{new MapDBLog()},*/
           {new LevelDBLog()},
-          {new RocksDBLog()},
           {new InMemoryLog()},
           {new FileBasedLog()},
           {new LogCache(new LevelDBLog(), 100)}

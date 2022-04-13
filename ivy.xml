@@ -16,13 +16,11 @@
         <dependency org="org.jgroups"               name="jgroups"        rev="5.2.2.Final"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-api"      rev="2.17.1"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-core"     rev="2.17.1"/>
-        <dependency org="org.mapdb"                 name="mapdb"          rev="1.0.8"/>
         <dependency org="org.fusesource.leveldbjni" name="leveldbjni-all" rev="1.8"/>
         <dependency org="org.testng"                name="testng"         rev="6.14.+"/>
         <dependency org="com.beust"                 name="jcommander"     rev="1.+"/>
         <dependency org="commons-io"                name="commons-io"     rev="2.5"/>
         <dependency org="net.jcip"                  name="jcip-annotations" rev="1.0"/>
-        <dependency org="org.rocksdb"               name="rocksdbjni"     rev="6.27.+"/>
         <dependency org="org.openjdk.jmh"           name="jmh-core"                 rev="1.34"/>
         <dependency org="org.openjdk.jmh"           name="jmh-generator-annprocess" rev="1.34"/>
         <dependency org="io.mashona"                name="mashona-logwriting"       rev="1.1.0"/>
