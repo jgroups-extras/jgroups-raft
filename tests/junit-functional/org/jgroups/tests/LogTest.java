@@ -1,23 +1,17 @@
 package org.jgroups.tests;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
-
-import java.util.concurrent.atomic.AtomicInteger;
-
 import org.jgroups.Address;
 import org.jgroups.Global;
-import org.jgroups.protocols.raft.FileBasedLog;
-import org.jgroups.protocols.raft.InMemoryLog;
-import org.jgroups.protocols.raft.LevelDBLog;
-import org.jgroups.protocols.raft.Log;
-import org.jgroups.protocols.raft.LogEntry;
-import org.jgroups.protocols.raft.RocksDBLog;
+import org.jgroups.protocols.raft.*;
+import org.jgroups.raft.util.LogCache;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.testng.Assert.*;
 
 /**
  * Tests all {@link org.jgroups.protocols.raft.Log} implementations for correctness
@@ -36,7 +30,8 @@ public class LogTest {
           {new LevelDBLog()},
           {new RocksDBLog()},
           {new InMemoryLog()},
-          {new FileBasedLog()}
+          {new FileBasedLog()},
+          {new LogCache(new LevelDBLog(), 100)}
         };
     }
 

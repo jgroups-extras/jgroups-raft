@@ -107,7 +107,8 @@ public class CLIENT extends Protocol implements Runnable {
     public void stop() {
         super.stop();
         Util.close(sock);
-        thread_pool.shutdown();
+        if(thread_pool != null)
+            thread_pool.shutdown();
     }
 
     @Override

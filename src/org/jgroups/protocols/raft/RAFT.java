@@ -8,6 +8,7 @@ import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.raft.util.CommitTable;
+import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.*;
@@ -80,7 +81,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @Property(description="If true, we can change 'members' at runtime")
     protected boolean                 dynamic_view_changes=true;
 
-
     @Property(description="The fully qualified name of the class implementing Log")
     protected String                  log_class="org.jgroups.protocols.raft.LevelDBLog";
 
@@ -110,6 +110,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @Property(description="Max number of bytes a log can have until a snapshot is created",type=AttributeType.BYTES)
     protected int                     max_log_size=1_000_000;
+
+    protected int                     _max_log_cache_size=1024;
 
     @ManagedAttribute(description="The current size of the log in bytes",type=AttributeType.BYTES)
     protected int                     curr_log_size; // keeps counts of the bytes added to the log
@@ -191,7 +193,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public long         resendInterval()              {return resend_interval;}
     public RAFT         resendInterval(long val)      {resend_interval=val; return this;}
     public boolean      sendCommitsImmediately()      {return send_commits_immediately;}
-    public RAFT         sendCommitsImmediately(boolean val)      {send_commits_immediately=val; return this;}
+    public RAFT         sendCommitsImmediately(boolean v) {send_commits_immediately=v; return this;}
     public int          maxLogSize()                  {return max_log_size;}
     public RAFT         maxLogSize(int val)           {max_log_size=val; return this;}
     public int          currentLogSize()              {return curr_log_size;}
@@ -220,6 +222,44 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         super.resetStats();
         num_snapshots=num_resends=num_successful_append_requests=num_failed_append_requests_not_found
           =num_failed_append_requests_wrong_term=0;
+        if(log_impl instanceof LogCache)
+            ((LogCache)log_impl).resetStats();
+    }
+
+    @Property(description="Max size of the log cache (0 disables the log cache)",type=AttributeType.BYTES)
+    public int maxLogCacheSize() {
+        return _max_log_cache_size;
+    }
+
+    @Property
+    public RAFT maxLogCacheSize(int size) {
+        _max_log_cache_size=size;
+        if(log_impl == null) // initial configuration
+            return this;
+        if(log_impl instanceof LogCache)
+            ((LogCache)log_impl).maxSize(size);
+        else {
+            if(size <= 0)
+                disableLogCache();
+            else
+                enableLogCache();
+        }
+        return this;
+    }
+
+    @ManagedAttribute(description="Number of times the log cache has been trimmed",type=AttributeType.SCALAR)
+    public int logCacheNumTrims() {
+        return log_impl instanceof LogCache? ((LogCache)log_impl).numTrims() : 0;
+    }
+
+    @ManagedAttribute(description="Number of times the cache has been accessed",type=AttributeType.SCALAR)
+    public int LogCacheNumAccesses() {
+        return log_impl instanceof LogCache? ((LogCache)log_impl).numAccesses() : 0;
+    }
+
+    @ManagedAttribute(description="Hit ratio of the cache")
+    public double logCacheHitRatio() {
+        return log_impl instanceof LogCache? ((LogCache)log_impl).hitRatio() : 0;
     }
 
     @Property(description="List of members (logical names); majority is computed from it")
@@ -265,6 +305,18 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Number of log entries in the log")
     public int logSize()            {return log_impl.size();}
 
+    @ManagedAttribute(description="Describes the log")
+    public String logDescription() {
+        if(log_impl instanceof LogCache) {
+            LogCache lc=(LogCache)log_impl;
+            return String.format("%s (%d/%d) -> %s", lc.getClass().getSimpleName(), lc.cacheSize(), lc.maxSize(),
+                                 lc.log().getClass().getSimpleName());
+
+        }
+        return log_impl.getClass().getSimpleName();
+    }
+
+
     /** This is a managed operation because it should invoked sparingly (costly) */
     @ManagedOperation(description="Number of bytes in the log")
     public int logSizeInBytes() {
@@ -286,6 +338,39 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedOperation(description="Dumps all log entries")
     public String dumpLog() {return dumpLog(last_appended - 1);}
+
+    @ManagedOperation(description="Enabled the log cache")
+    public void enableLogCache() {
+        if(!(log_impl instanceof LogCache)) {
+            if(_max_log_cache_size <= 0)
+                log.error("cannot enable log cache as max_log_cache_size is 0");
+            else
+                log_impl=new LogCache(log_impl, _max_log_cache_size);
+        }
+    }
+
+    @ManagedOperation(description="Disables the log cache")
+    public void disableLogCache() {
+        if(log_impl instanceof LogCache) {
+            LogCache lc=(LogCache)log_impl;
+            log_impl=lc.log();
+            lc.clear();
+        }
+    }
+
+    @ManagedOperation(description="Clears the log cache")
+    public RAFT clearLogCache() {
+        if(log_impl instanceof LogCache)
+            ((LogCache)log_impl).clear();
+        return this;
+    }
+
+    @ManagedOperation(description="Trims the log cache to max_log_cache_size")
+    public RAFT trimLogCache() {
+        if(log_impl instanceof LogCache)
+            ((LogCache)log_impl).trim();
+        return this;
+    }
 
     public RAFT deleteSnapshot() {
         File file=new File(snapshot_name);
@@ -444,6 +529,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(snapshot_name != null)
             initStateMachineFromLog();
         curr_log_size=logSizeInBytes();
+
+        if(_max_log_cache_size > 0)  // the log cache is enabled
+            log_impl=new LogCache(log_impl, _max_log_cache_size);
         runner.start();
     }
 

@@ -136,10 +136,9 @@ public class LevelDBLog implements Log {
                 else
                     appendEntryIfAbsent(index, entry, batch);
 
+                // todo: move setting these variable outside the loop
                 updateLastAppended(index, batch);
                 updateCurrentTerm(entry.term, batch);
-
-
                 index++;
             }
             log.trace("Flushing batch to DB: %s", batch);
@@ -361,8 +360,8 @@ public class LevelDBLog implements Log {
 
         LogEntry lastAppendedEntry = get(lastAppended);
         assert (lastAppendedEntry==null || lastAppendedEntry.term <= currentTerm);
-        assert firstAppended <= commitIndex;
-        assert commitIndex <= lastAppended;
+        assert firstAppended <= commitIndex : String.format("first=%d, commit=%d", firstAppended, commitIndex);
+        assert commitIndex <= lastAppended : String.format("commit=%d, last=%d", commitIndex, lastAppended);
     }
 
 }

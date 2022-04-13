@@ -64,6 +64,7 @@ public interface Log extends Closeable {
      * @param overwrite If there is an existing entry and overwrite is true, overwrite it. Else throw an exception
      * @param entries The entries to append
      */
+    // todo: remove 'overwrite' (always true)
     void append(int index, boolean overwrite, LogEntry... entries);
 
 
@@ -80,7 +81,7 @@ public interface Log extends Closeable {
      * Truncates the log up to (and excluding) index. All entries < index are removed. First = index.
      * @param index If greater than commit_index, commit_index will be used instead
      */
-    void truncate(int index);
+    void truncate(int index); // todo return first_appended; avoids a read after truncate()
 
 
     /**

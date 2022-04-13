@@ -25,7 +25,6 @@ import java.util.function.Supplier;
      protected static final String CLUSTER="ElectionsTest";
      protected final List<String>  members=Arrays.asList("A", "B", "C");
      protected static final byte[] BUF={};
-     protected volatile Runnable   setup;
 
      @BeforeMethod protected void init() throws Exception {
          a=create("A"); a.connect(CLUSTER);
