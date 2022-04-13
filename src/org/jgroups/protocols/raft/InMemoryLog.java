@@ -51,6 +51,14 @@ public class InMemoryLog implements Log {
         }
     }
 
+    public Log useFsync(boolean f) {
+        return this;
+    }
+
+    public boolean useFsync() {
+        return false;
+    }
+
     @Override
     public void close() {}
 

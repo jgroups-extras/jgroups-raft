@@ -38,15 +38,16 @@ public class LogCache implements Log {
         this.max_size=max_size;
     }
 
-    public int    maxSize()      {return max_size;}
-    public Log    maxSize(int s) {max_size=s; return this;}
-    public int    cacheSize()    {return cache.size();}
-    public Log    log()          {return log;}
-    public int    numTrims()     {return num_trims;}
-    public int    numAccesses()  {return num_hits+num_misses;}
-    public double hitRatio()     {return numAccesses() == 0? 0 : (double)num_hits / numAccesses();}
-    public Log    resetStats()   {num_trims=num_hits=num_misses=0; return this;}
-
+    public int     maxSize()           {return max_size;}
+    public Log     maxSize(int s)      {max_size=s; return this;}
+    public int     cacheSize()         {return cache.size();}
+    public Log     log()               {return log;}
+    public int     numTrims()          {return num_trims;}
+    public int     numAccesses()       {return num_hits+num_misses;}
+    public double  hitRatio()          {return numAccesses() == 0? 0 : (double)num_hits / numAccesses();}
+    public Log     resetStats()        {num_trims=num_hits=num_misses=0; return this;}
+    public Log     useFsync(boolean f) {log.useFsync(f); return this;}
+    public boolean useFsync()          {return log.useFsync();}
 
     public void init(String log_name, Map<String,String> args) throws Exception {
         log.init(log_name, args);

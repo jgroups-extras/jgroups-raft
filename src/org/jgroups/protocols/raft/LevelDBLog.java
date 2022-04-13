@@ -25,7 +25,6 @@ import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
  * @author Ugo Landini
  */
 public class LevelDBLog implements Log {
-
     protected final org.jgroups.logging.Log log=LogFactory.getLog(this.getClass());
 
     private static final byte[] FIRSTAPPENDED = "FA".getBytes();
@@ -34,14 +33,14 @@ public class LevelDBLog implements Log {
     private static final byte[] COMMITINDEX   = "CX".getBytes();
     private static final byte[] VOTEDFOR      = "VF".getBytes();
 
-    private DB      db;
-    private File    dbFileName;
-    private int     currentTerm;
-    private Address votedFor;
-    private int     firstAppended; // always: firstAppened <= commitIndex <= lastAppened
-    private int     commitIndex;
-    private int     lastAppended;
-    private static final WriteOptions WRITE_OPTIONS = new WriteOptions().sync(true);
+    private DB                 db;
+    private File               dbFileName;
+    private int                currentTerm;
+    private Address            votedFor;
+    private int                firstAppended; // always: firstAppened <= commitIndex <= lastAppened
+    private int                commitIndex;
+    private int                lastAppended;
+    private final WriteOptions write_options=new WriteOptions();
 
 
     @Override
@@ -59,6 +58,15 @@ public class LevelDBLog implements Log {
             readMetadataFromLog();
         }
         checkForConsistency();
+    }
+
+    public Log useFsync(boolean f) {
+        write_options.sync(f);
+        return this;
+    }
+
+    public boolean useFsync() {
+        return write_options.sync();
     }
 
     @Override
@@ -144,7 +152,7 @@ public class LevelDBLog implements Log {
                 index++;
             }
             log.trace("Flushing batch to DB: %s", batch);
-            db.write(batch, WRITE_OPTIONS);
+            db.write(batch, write_options);
         }
         catch(Exception ex) {
         }
@@ -202,7 +210,7 @@ public class LevelDBLog implements Log {
                 batch.delete(fromIntToByteArray(index));
             }
             batch.put(FIRSTAPPENDED, fromIntToByteArray(upto_index));
-            db.write(batch, WRITE_OPTIONS);
+            db.write(batch, write_options);
             firstAppended=upto_index;
         }
         finally {
@@ -231,7 +239,7 @@ public class LevelDBLog implements Log {
             updateLastAppended(start_index - 1, batch);
             if(commitIndex > lastAppended)
                 commitIndex(lastAppended);
-            db.write(batch, WRITE_OPTIONS);
+            db.write(batch, write_options);
         }
         finally {
             Util.close(batch);
@@ -315,7 +323,7 @@ public class LevelDBLog implements Log {
             batch.put(LASTAPPENDED, fromIntToByteArray(0));
             batch.put(CURRENTTERM, fromIntToByteArray(0));
             batch.put(COMMITINDEX, fromIntToByteArray(0));
-            db.write(batch, WRITE_OPTIONS);
+            db.write(batch, write_options);
         } catch (Exception ex) {
             ex.printStackTrace(); // todo: better error handling
         } finally {

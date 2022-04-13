@@ -113,6 +113,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected int                     _max_log_cache_size=1024;
 
+    protected boolean                 _log_use_fsync;
+
     @ManagedAttribute(description="The current size of the log in bytes",type=AttributeType.BYTES)
     protected int                     curr_log_size; // keeps counts of the bytes added to the log
 
@@ -189,6 +191,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public String       logPrefix()                   {return log_prefix;}
     public RAFT         logPrefix(String name)        {log_prefix=name; return this;}
     public String       logName()                     {return log_name;}
+
     public String       snapshotName()                {return snapshot_name;}
     public long         resendInterval()              {return resend_interval;}
     public RAFT         resendInterval(long val)      {resend_interval=val; return this;}
@@ -246,6 +249,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         return this;
     }
+
+    @Property(description="If true, a change is guaranteed to be written to disk when the call returns")
+    public RAFT    logUseFsync(boolean b) {_log_use_fsync=b; if(log_impl != null) log_impl.useFsync(b); return this;}
+    @Property
+    public boolean logUseFsync()          {return log_impl.useFsync();}
 
     @ManagedAttribute(description="Number of times the log cache has been trimmed",type=AttributeType.SCALAR)
     public int logCacheNumTrims() {
@@ -529,6 +537,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(snapshot_name != null)
             initStateMachineFromLog();
         curr_log_size=logSizeInBytes();
+        log_impl.useFsync(_log_use_fsync);
 
         if(_max_log_cache_size > 0)  // the log cache is enabled
             log_impl=new LogCache(log_impl, _max_log_cache_size);

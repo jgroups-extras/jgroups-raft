@@ -20,8 +20,13 @@ public interface Log extends Closeable {
      */
     void init(String log_name, Map<String,String> args) throws Exception;
 
-   // /** Called when the instance is closed. Should release resource, ie. close a DB connection */
-    // void close();
+    /**
+     * Do not cache a change (e.g. AppendEntriesRequest, or setting the commit index), but force a write
+     * to disk (fsync), if true.
+     */
+    Log useFsync(boolean f);
+
+    boolean useFsync();
 
     /** Remove the persistent store, e.g. DB table, or file */
     void delete() throws Exception;
@@ -68,13 +73,10 @@ public interface Log extends Closeable {
     // todo: return last_appended
     void append(int index, boolean overwrite, LogEntry... entries);
 
-
     /**
-     * Gets the entry at start_index.
-     * Updates current_term and last_appended accordingly
-     *
+     * Gets the entry at start_index. Updates current_term and last_appended accordingly
      * @param index The index
-     * @return The LogEntry, or null if none's present at index.
+     * @return The LogEntry, or null if none is present at index.
      */
     LogEntry get(int index);
 

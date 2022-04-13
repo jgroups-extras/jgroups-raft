@@ -1,14 +1,14 @@
 package org.jgroups.protocols.raft;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.Map;
-import java.util.function.ObjIntConsumer;
-
 import org.apache.commons.io.FileUtils;
 import org.jgroups.Address;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Map;
+import java.util.function.ObjIntConsumer;
 
 /**
  * A {@link Log} implementation stored in a file.
@@ -48,6 +48,16 @@ public class FileBasedLog implements Log {
       votedFor = metadataStorage.getVotedFor();
 
       logEntryStorage.reload(commitIndex);
+   }
+
+   @Override
+   public Log useFsync(boolean f) { // todo: implement (default is true)
+      return this;
+   }
+
+   @Override
+   public boolean useFsync() { // todo: implement
+      return true;
    }
 
    @Override
