@@ -167,7 +167,7 @@ public class LogEntryStorage {
 
       lastAppended = index - 1;
       if (positionCache.invalidateFrom(index)) {
-         uncommittedEntries.truncateTo(index);
+         uncommittedEntries.dropTailTo(index);
          fileStorage.truncateTo(position);
       }
       if (fsync) {
@@ -204,7 +204,7 @@ public class LogEntryStorage {
       fileStorage.write(startPosition);
       lastAppended = index - 1;
       if (positionCache.invalidateFrom(index)) {
-         uncommittedEntries.truncateTo(index);
+         uncommittedEntries.dropTailTo(index);
          fileStorage.truncateTo(position);
       }
       if (fsync) {
@@ -229,12 +229,12 @@ public class LogEntryStorage {
    public void removeOld(int index) throws IOException {
       fileStorage.truncateFrom(positionCache.getPosition(index));
       positionCache = positionCache.createDeleteCopyFrom(index);
-      uncommittedEntries.clearUntil(index);
+      uncommittedEntries.dropHeadUntil(index);
    }
 
    public int removeNew(int index) throws IOException {
       // remove all?
-      uncommittedEntries.truncateTo(index);
+      uncommittedEntries.dropTailTo(index);
       if (index == 1) {
          fileStorage.truncateTo(0);
          lastAppended = 0;
@@ -280,7 +280,7 @@ public class LogEntryStorage {
    }
 
    public void committedIndex(final int new_index) {
-      uncommittedEntries.clearUntil(new_index + 1);
+      uncommittedEntries.dropHeadUntil(new_index + 1);
    }
 
    public void useFsync(final boolean value) {
