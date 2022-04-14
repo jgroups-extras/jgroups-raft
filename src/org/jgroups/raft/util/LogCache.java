@@ -6,7 +6,6 @@ import org.jgroups.protocols.raft.LogEntry;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.function.ObjIntConsumer;
 
 /**
@@ -16,26 +15,28 @@ import java.util.function.ObjIntConsumer;
  * @since  1.0.8
  */
 public class LogCache implements Log {
+    private static final int DEFAULT_MAX_SIZE = 1024;
     protected final Log                            log;
-    protected final NavigableMap<Integer,LogEntry> cache=new ConcurrentSkipListMap<>();
-    protected int                                  max_size=1024;
+    protected final ArrayRingBuffer<LogEntry>      cache;
+    protected int                                  max_size;
     protected int                                  current_term, commit_index, first_appended, last_appended;
     protected Address                              voted_for;
     protected int                                  num_trims, num_hits, num_misses;
 
 
     public LogCache(Log log) {
+        this(log, DEFAULT_MAX_SIZE);
+    }
+
+    public LogCache(Log log, int max_size) {
         this.log=Objects.requireNonNull(log);
         current_term=log.currentTerm();
         commit_index=log.commitIndex();
         first_appended=log.firstAppended();
         last_appended=log.lastAppended();
         voted_for=log.votedFor();
-    }
-
-    public LogCache(Log log, int max_size) {
-        this(log);
         this.max_size=max_size;
+        cache=new ArrayRingBuffer<>(max_size);
     }
 
     public int     maxSize()           {return max_size;}
@@ -57,6 +58,7 @@ public class LogCache implements Log {
         log.delete();
         current_term=commit_index=first_appended=last_appended=0;
         voted_for=null;
+        cache.clear();
     }
 
     public int currentTerm() {
@@ -86,7 +88,7 @@ public class LogCache implements Log {
     public Log commitIndex(int new_index) {
         log.commitIndex(new_index);
         commit_index=new_index;
-        cache.headMap(new_index).clear();
+        cache.dropHeadUntil(new_index);
         return this;
     }
 
@@ -102,30 +104,50 @@ public class LogCache implements Log {
         log.append(index, overwrite, entries);
         last_appended=log.lastAppended();
         current_term=log.currentTerm();
-        for(int i=0; i < entries.length; i++)
-            cache.put(index++, entries[i]);
+        for (int i = 0; i < entries.length; i++) {
+            final int logIndex = index + i;
+            if (logIndex >= cache.getHeadSequence()) {
+                if (cache.availableCapacityWithoutResizing() == 0) {
+                    // try trim here to see if we can save enlarging to happen
+                    trim();
+                }
+                cache.set(logIndex, entries[i]);
+            }
+        }
         trim();
     }
 
     public LogEntry get(int index) {
         if(index > last_appended) // called by every append() to check if the entry is already present
             return null;
-
-        LogEntry e=cache.get(index);
-        if(e != null) {
-            num_hits++;
-            return e;
+        if (index < cache.getHeadSequence()) {
+            // this cannot be cached!
+            num_misses++;
+            assert !cache.contains(index);
+            return log.get(index);
+        }
+        if (cache.contains(index)) {
+            final LogEntry e = cache.get(index);
+            if (e != null) {
+                num_hits++;
+                return e;
+            }
+        }
+        final LogEntry e = log.get(index);
+        if (e == null) {
+            return null;
         }
         num_misses++;
-        e=log.get(index);
-        return cache(index, e);
+        cache.set(index, e);
+        trim();
+        return e;
     }
 
     public void truncate(int index) {
         log.truncate(index);
+        cache.dropHeadUntil(index);
         // todo: first_appended should be set to the return value of truncate() (once it has been changed)
         first_appended=log.firstAppended();
-        cache.headMap(first_appended).clear();
     }
 
     public void deleteAllEntriesStartingFrom(int start_index) {
@@ -133,7 +155,7 @@ public class LogCache implements Log {
         commit_index=log.commitIndex();
         last_appended=log.lastAppended();
         current_term=log.currentTerm();
-        cache.tailMap(start_index, true).clear();
+        cache.dropTailTo(start_index);
     }
 
     public void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
@@ -154,17 +176,11 @@ public class LogCache implements Log {
         return this;
     }
 
-    // todo: more efficient implementation
     public Log trim() {
-        if(cache.size() > max_size) {
-            int num_to_remove=cache.size() - max_size;
-            Set<Integer> keys=cache.keySet();
-            Iterator<Integer> it=keys.iterator();
-            while(num_to_remove-- > 0 && it.hasNext()) {
-                it.next();
-                it.remove();
-                num_trims++;
-            }
+        final int oldestToRemove = cache.size() - max_size;
+        if (oldestToRemove > 0) {
+            cache.dropHeadUntil(cache.getHeadSequence() + oldestToRemove);
+            num_trims++;
         }
         return this;
     }
@@ -179,14 +195,6 @@ public class LogCache implements Log {
                                "term=%d log-term=%d (max-size=%d)",
                              first_appended, log.firstAppended(), commit_index, log.commitIndex(),
                              last_appended, log.lastAppended(),  current_term, log.currentTerm(), max_size);
-    }
-
-    protected LogEntry cache(int index, LogEntry e) {
-        if(e != null) {
-            cache.put(index, e);
-            trim();
-        }
-        return e;
     }
 
 
