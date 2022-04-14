@@ -26,21 +26,23 @@ public class LogEntryStorage {
    private static final String FILE_NAME = "entries.raft";
    private static final int HEADER_SIZE = Global.INT_SIZE * 4 + 1;
    // this is the typical OS page size and SSD blck_size
-   private static final int WRITE_AHEAD_BYTES = 4096;
+   private static final int DEFAULT_WRITE_AHEAD_BYTES = 4096;
 
    private final FileStorage fileStorage;
    private FilePositionCache positionCache;
    private ArrayRingBuffer<LogEntry> uncommittedEntries;
    private Header lastAppendedHeader;
-   private volatile int lastAppended;
+   private int lastAppended;
+   private boolean fsync;
 
-   public LogEntryStorage(File parentDir) {
+   public LogEntryStorage(File parentDir, boolean fsync) {
       super();
+      this.fsync = fsync;
       positionCache = new FilePositionCache(0);
-      fileStorage = new FileStorage(new File(parentDir, FILE_NAME), WRITE_AHEAD_BYTES);
+      fileStorage = new FileStorage(new File(parentDir, FILE_NAME), DEFAULT_WRITE_AHEAD_BYTES);
       uncommittedEntries = new ArrayRingBuffer<>(1);
    }
-
+   
    public void open() throws IOException {
       fileStorage.open();
    }
@@ -168,7 +170,9 @@ public class LogEntryStorage {
          uncommittedEntries.truncateTo(index);
          fileStorage.truncateTo(position);
       }
-      fileStorage.flush();
+      if (fsync) {
+         fileStorage.flush();
+      }
       return term;
    }
 
@@ -203,7 +207,9 @@ public class LogEntryStorage {
          uncommittedEntries.truncateTo(index);
          fileStorage.truncateTo(position);
       }
-      fileStorage.flush();
+      if (fsync) {
+         fileStorage.flush();
+      }
       return term;
    }
 
@@ -275,6 +281,9 @@ public class LogEntryStorage {
 
    public void committedIndex(final int new_index) {
       uncommittedEntries.clearUntil(new_index + 1);
+   }
+
+   public void useFsync(final boolean value) {
    }
 
    private static class Header {
