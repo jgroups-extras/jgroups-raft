@@ -20,16 +20,18 @@ public class FileBasedLog implements Log {
 
    private final Object metadataLock = new Object();
 
-   private volatile File logDir;
-   private volatile Address votedFor;
-   private volatile int commitIndex;
-   private volatile int currentTerm;
+   private File logDir;
+   private Address votedFor;
+   private int commitIndex;
+   private int currentTerm;
 
-   private volatile MetadataStorage metadataStorage;
-   private volatile LogEntryStorage logEntryStorage;
+   private static final boolean DEFAULT_FSYNC = true;
+   private boolean fsync = DEFAULT_FSYNC;
+   private MetadataStorage metadataStorage;
+   private LogEntryStorage logEntryStorage;
 
    @Override
-   public synchronized void init(String log_name, Map<String, String> args) throws Exception {
+   public void init(String log_name, Map<String, String> args) throws Exception {
       logDir = new File(log_name);
       if (!logDir.exists() && !logDir.mkdirs()) {
          throw new IllegalArgumentException("Unable to create directory " + logDir.getAbsolutePath());
@@ -37,10 +39,10 @@ public class FileBasedLog implements Log {
          throw new IllegalArgumentException("File " + logDir.getAbsolutePath() + " is not a directory!");
       }
 
-      metadataStorage = new MetadataStorage(logDir);
+      metadataStorage = new MetadataStorage(logDir, fsync);
       metadataStorage.open();
 
-      logEntryStorage = new LogEntryStorage(logDir);
+      logEntryStorage = new LogEntryStorage(logDir, fsync);
       logEntryStorage.open();
 
       commitIndex = metadataStorage.getCommitIndex();
@@ -51,17 +53,24 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public Log useFsync(boolean f) { // todo: implement (default is true)
+   public Log useFsync(boolean value) {
+      this.fsync = value;
+      if (metadataStorage != null) {
+         metadataStorage.useFsync(value);
+      }
+      if (logEntryStorage != null) {
+         logEntryStorage.useFsync(value);
+      }
       return this;
    }
 
    @Override
-   public boolean useFsync() { // todo: implement
-      return true;
+   public boolean useFsync() {
+      return fsync;
    }
 
    @Override
-   public synchronized void close() {
+   public void close() {
       try {
          MetadataStorage metadataStorage = this.metadataStorage;
          if (metadataStorage != null) {
@@ -77,7 +86,7 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public synchronized void delete() {
+   public void delete() {
       try {
          MetadataStorage storage = metadataStorage;
          if (storage != null) {
@@ -103,15 +112,13 @@ public class FileBasedLog implements Log {
 
    @Override
    public Log currentTerm(int new_term) {
-      synchronized (metadataLock) {
-         //assert new_term >= currentTerm;
-         try {
-            checkMetadataStarted().setCurrentTerm(new_term);
-            currentTerm = new_term;
-            return this;
-         } catch (IOException e) {
-            throw new IllegalStateException(e);
-         }
+      //assert new_term >= currentTerm;
+      try {
+         checkMetadataStarted().setCurrentTerm(new_term);
+         currentTerm = new_term;
+         return this;
+      } catch (IOException e) {
+         throw new IllegalStateException(e);
       }
    }
 
@@ -122,14 +129,12 @@ public class FileBasedLog implements Log {
 
    @Override
    public Log votedFor(Address member) {
-      synchronized (metadataLock) {
-         try {
-            checkMetadataStarted().setVotedFor(member);
-            votedFor = member;
-            return this;
-         } catch (IOException e) {
-            throw new IllegalStateException(e);
-         }
+      try {
+         checkMetadataStarted().setVotedFor(member);
+         votedFor = member;
+         return this;
+      } catch (IOException e) {
+         throw new IllegalStateException(e);
       }
    }
 
@@ -140,16 +145,14 @@ public class FileBasedLog implements Log {
 
    @Override
    public Log commitIndex(int new_index) {
-      synchronized (metadataLock) {
-         assert new_index >= commitIndex;
-         try {
-            checkMetadataStarted().setCommitIndex(new_index);
-            checkLogEntryStorageStarted().committedIndex(new_index);
-            commitIndex = new_index;
-            return this;
-         } catch (IOException e) {
-            throw new IllegalStateException();
-         }
+      assert new_index >= commitIndex;
+      try {
+         checkMetadataStarted().setCommitIndex(new_index);
+         checkLogEntryStorageStarted().committedIndex(new_index);
+         commitIndex = new_index;
+         return this;
+      } catch (IOException e) {
+         throw new IllegalStateException();
       }
    }
 
@@ -198,7 +201,7 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public synchronized void deleteAllEntriesStartingFrom(int start_index) {
+   public void deleteAllEntriesStartingFrom(int start_index) {
       assert start_index > commitIndex; // can we delete committed entries!? See org.jgroups.tests.LogTest.testDeleteEntriesFromFirst
       assert start_index >= firstAppended();
 

@@ -11,6 +11,7 @@ import java.nio.file.StandardOpenOption;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
+import org.jgroups.protocols.raft.Log;
 import org.jgroups.util.ByteBufferInputStream;
 import org.jgroups.util.Util;
 
@@ -35,9 +36,19 @@ public class MetadataStorage {
    private final FileStorage fileStorage;
    // This won't need a sys-call for frequently accessed data
    private MappedByteBuffer commitAndTermBytes;
+   private boolean fsync;
 
-   public MetadataStorage(File parentDir) {
+   public MetadataStorage(File parentDir, boolean fsync) {
       fileStorage = new FileStorage(new File(parentDir, FILE_NAME));
+      this.fsync = fsync;
+   }
+
+   public void useFsync(boolean value) {
+      fsync = value;
+   }
+
+   public boolean useFsync() {
+      return fsync;
    }
 
    public void open() throws IOException {
@@ -71,7 +82,9 @@ public class MetadataStorage {
 
    public void setCurrentTerm(int term) throws IOException {
       commitAndTermBytes.putInt(CURRENT_TERM_POS, term);
-      commitAndTermBytes.force();
+      if (fsync) {
+         commitAndTermBytes.force();
+      }
    }
 
    public Address getVotedFor() throws IOException, ClassNotFoundException {
