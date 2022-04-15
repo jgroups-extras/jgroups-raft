@@ -1,6 +1,7 @@
 package org.jgroups.raft.util;
 
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.function.ObjLongConsumer;
 
 /**
@@ -17,13 +18,17 @@ public final class ArrayRingBuffer<T> {
    private long headSequence;
    private T[] elements;
 
-   @SuppressWarnings("unchecked")
    public ArrayRingBuffer() {
-      this.elements = (T[]) EMPTY;
+      this(0, 0);
    }
 
    public ArrayRingBuffer(final long headSequence) {
-      this.elements = (T[]) EMPTY;
+      this(0, headSequence);
+   }
+
+   @SuppressWarnings("unchecked")
+   public ArrayRingBuffer(final int initialSize, final long headSequence) {
+      this.elements = (T[]) (initialSize == 0 ? EMPTY : new Object[initialSize]);
       this.headSequence = headSequence;
       this.tailSequence = headSequence;
       if (headSequence < 0) {
@@ -48,8 +53,12 @@ public final class ArrayRingBuffer<T> {
       final T[] elements = this.elements;
       long sequence = headSequence;
       for (int i = 0; i < size; i++) {
-         consumer.accept(elements[bufferOffset(sequence)], sequence);
+         final T e = elements[bufferOffset(sequence)];
          sequence++;
+         if (e == null) {
+            continue;
+         }
+         consumer.accept(e, sequence);
       }
    }
 
@@ -80,15 +89,32 @@ public final class ArrayRingBuffer<T> {
       return false;
    }
 
-   public void trimToEmpty() {
-      truncateTo(getHeadSequence());
+   public void dropTailToHead() {
+      dropTailTo(getHeadSequence());
    }
 
    public void clear() {
-      clearUntil(getTailSequence());
+      dropHeadUntil(getTailSequence());
    }
 
-   public int truncateTo(final long indexInclusive) {
+   /**
+    * Remove all elements from {@code tailSequence} back to {@code indexInclusive}.<br>
+    * At the end of this operation {@code tailSequence} is equals to {@code indexInclusive}.
+    *
+    * <pre>
+    * eg:
+    * elements = [A, B, C]
+    * tail = 3
+    * head = 0
+    *
+    * dropTailTo(1)
+    *
+    * elements = [A]
+    * tail = 1
+    * head = 0
+    * </pre>
+    */
+   public int dropTailTo(final long indexInclusive) {
       if (size() == 0 || !contains(indexInclusive)) {
          return 0;
       }
@@ -110,7 +136,24 @@ public final class ArrayRingBuffer<T> {
       return removed;
    }
 
-   public int clearUntil(final long indexExclusive) {
+   /**
+    * Remove all elements from {@code headSequence} to {@code indexExclusive}.<br>
+    * At the end of this operation {@code headSequence} is equals to {@code indexExclusive}.
+    *
+    * <pre>
+    * eg:
+    * elements = [A, B, C]
+    * tail = 3
+    * head = 0
+    *
+    * dropHeadUntil(1)
+    *
+    * elements = [B, C]
+    * tail = 3
+    * head = 1
+    * </pre>
+    */
+   public int dropHeadUntil(final long indexExclusive) {
       final long indexInclusive = indexExclusive - 1;
       if (size() == 0 || !contains(indexInclusive)) {
          return 0;
@@ -154,6 +197,7 @@ public final class ArrayRingBuffer<T> {
    }
 
    public T set(final long index, final T e) {
+      Objects.requireNonNull(e);
       validateIndex(index, false);
       if (index < tailSequence) {
          return replace(index, e);
@@ -171,6 +215,7 @@ public final class ArrayRingBuffer<T> {
    }
 
    public void add(final T e) {
+      Objects.requireNonNull(e);
       if (availableCapacityWithoutResizing() == 0) {
          growCapacity(1);
       }
@@ -183,11 +228,23 @@ public final class ArrayRingBuffer<T> {
       return tailSequence == headSequence;
    }
 
-   public T poll() {
+   public T peek() {
       if (isEmpty()) {
          return null;
       }
       return get(headSequence);
+   }
+
+   public T poll() {
+      if (isEmpty()) {
+         return null;
+      }
+      final T[] elements = this.elements;
+      final int offset = bufferOffset(headSequence);
+      final T e = elements[offset];
+      elements[offset] = null;
+      headSequence++;
+      return e;
    }
 
    private void growCapacity(int delta) {

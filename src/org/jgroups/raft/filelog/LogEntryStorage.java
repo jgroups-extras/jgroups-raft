@@ -11,7 +11,6 @@ import org.jgroups.Global;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.LogEntry;
-import org.jgroups.raft.util.ArrayRingBuffer;
 
 /**
  * Stores the {@link LogEntry} into a file.
@@ -30,7 +29,6 @@ public class LogEntryStorage {
 
    private final FileStorage fileStorage;
    private FilePositionCache positionCache;
-   private ArrayRingBuffer<LogEntry> uncommittedEntries;
    private Header lastAppendedHeader;
    private int lastAppended;
    private boolean fsync;
@@ -40,16 +38,14 @@ public class LogEntryStorage {
       this.fsync = fsync;
       positionCache = new FilePositionCache(0);
       fileStorage = new FileStorage(new File(parentDir, FILE_NAME), DEFAULT_WRITE_AHEAD_BYTES);
-      uncommittedEntries = new ArrayRingBuffer<>(1);
-   }
-   
+  }
+
    public void open() throws IOException {
       fileStorage.open();
    }
 
    public void close() throws IOException {
       fileStorage.close();
-      uncommittedEntries = null;
    }
 
    public void delete() throws IOException {
@@ -61,16 +57,11 @@ public class LogEntryStorage {
       if (header == null) {
          positionCache = new FilePositionCache(0);
          lastAppended = 0;
-         uncommittedEntries = new ArrayRingBuffer<>(commitIndex + 1);
          return;
       }
       positionCache = new FilePositionCache(header.index == 1 ? 0 : header.index);
       setFilePosition(header.index, header.position);
       lastAppended = header.index;
-      uncommittedEntries = new ArrayRingBuffer<>(commitIndex + 1);
-      if (header.index > commitIndex) {
-         uncommittedEntries.set(header.index, header.readLogEntry(this));
-      }
       long position = header.nextPosition();
 
       while (true) {
@@ -79,9 +70,6 @@ public class LogEntryStorage {
             return;
          }
          setFilePosition(header.index, header.position);
-         if (header.index > commitIndex) {
-            uncommittedEntries.set(header.index, header.readLogEntry(this));
-         }
          position = header.nextPosition();
          lastAppended = header.index;
       }
@@ -96,9 +84,6 @@ public class LogEntryStorage {
    }
 
    public LogEntry getLogEntry(int index) throws IOException {
-      if (uncommittedEntries.contains(index)) {
-         return uncommittedEntries.get(index);
-      }
       long position = positionCache.getPosition(index);
       if (position < 0) {
          return null;
@@ -156,9 +141,6 @@ public class LogEntryStorage {
             fileStorage.write(header.position);
             buffer.clear();
             setFilePosition(header.index, header.position);
-            if (header.index >= uncommittedEntries.getHeadSequence()) {
-               uncommittedEntries.set(header.index, entry);
-            }
             term = Math.max(entry.term(), term);
          }
          position = header.nextPosition();
@@ -167,7 +149,6 @@ public class LogEntryStorage {
 
       lastAppended = index - 1;
       if (positionCache.invalidateFrom(index)) {
-         uncommittedEntries.truncateTo(index);
          fileStorage.truncateTo(position);
       }
       if (fsync) {
@@ -190,9 +171,6 @@ public class LogEntryStorage {
          header.writeTo(batchBuffer);
          batchBuffer.put(entry.command(), entry.offset(), entry.length());
          setFilePosition(header.index, header.position);
-         if (header.index >= uncommittedEntries.getHeadSequence()) {
-            uncommittedEntries.set(header.index, entry);
-         }
          term = Math.max(entry.term(), term);
          position = header.nextPosition();
          if (i == (size - 1)) {
@@ -204,7 +182,6 @@ public class LogEntryStorage {
       fileStorage.write(startPosition);
       lastAppended = index - 1;
       if (positionCache.invalidateFrom(index)) {
-         uncommittedEntries.truncateTo(index);
          fileStorage.truncateTo(position);
       }
       if (fsync) {
@@ -229,12 +206,10 @@ public class LogEntryStorage {
    public void removeOld(int index) throws IOException {
       fileStorage.truncateFrom(positionCache.getPosition(index));
       positionCache = positionCache.createDeleteCopyFrom(index);
-      uncommittedEntries.clearUntil(index);
    }
 
    public int removeNew(int index) throws IOException {
       // remove all?
-      uncommittedEntries.truncateTo(index);
       if (index == 1) {
          fileStorage.truncateTo(0);
          lastAppended = 0;
@@ -277,10 +252,6 @@ public class LogEntryStorage {
          return true;
       }
       throw new IllegalStateException();
-   }
-
-   public void committedIndex(final int new_index) {
-      uncommittedEntries.clearUntil(new_index + 1);
    }
 
    public void useFsync(final boolean value) {
