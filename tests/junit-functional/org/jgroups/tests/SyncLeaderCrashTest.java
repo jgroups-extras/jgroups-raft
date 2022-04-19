@@ -81,8 +81,8 @@ public class SyncLeaderCrashTest {
             for(int i=5; i <= 7; i++) {
                 Log l=r.log();
                 int prev_term=l.get(i-1).term();
-                r.impl().handleAppendEntriesRequest(DATA, 0, DATA.length, a,
-                                                    i-1, prev_term, 9, 4, false);
+                LogEntries entries=new LogEntries().add(new LogEntry(9, DATA));
+                r.impl().handleAppendEntriesRequest(entries, a,i-1, prev_term, 9, 4);
             }
         }
         kill(0, true);
@@ -163,9 +163,10 @@ public class SyncLeaderCrashTest {
         for(int i=0; i < terms.length; i++) {
             int curr_index=i+1, prev_index=curr_index-1;
             int prev_term=prev_index == 0? 0 : terms[prev_index-1];
-            rafts[index].currentTerm(terms[curr_index-1]);
-            impl.handleAppendEntriesRequest(DATA, 0, DATA.length, leader,
-                                            i, prev_term, terms[curr_index-1], 0, false);
+            int curr_term=terms[curr_index-1];
+            rafts[index].currentTerm(curr_term);
+            LogEntries entries=new LogEntries().add(new LogEntry(curr_term, DATA));
+            impl.handleAppendEntriesRequest(entries, leader, i, prev_term, curr_term, 0);
         }
     }
 

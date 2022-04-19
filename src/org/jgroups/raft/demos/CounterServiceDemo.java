@@ -42,7 +42,7 @@ public class CounterServiceDemo {
         while(looping) {
             try {
                 int key=Util.keyPress("[0] Initialize counter [1] Increment [2] Decrement [3] Compare and set\n" +
-                        "[4] Dump log [8] Snapshot [9] Increment N times [x] Exit\n" +
+                        "[4] Dump log [5] Snapshot [6] Increment N times [7] increment N times (parallel) [x] Exit\n" +
                         "first-applied=" + firstApplied() +
                         ", last-applied=" + counter_service.lastApplied() +
                         ", commit-index=" + counter_service.commitIndex() +
@@ -75,13 +75,13 @@ public class CounterServiceDemo {
                     case '4':
                         dumpLog();
                         break;
-                    case '8':
+                    case '5':
                         counter_service.snapshot();
                         break;
-                    case '9':
+                    case '6':
                         int NUM=Util.readIntFromStdin("num: ");
                         System.out.println();
-                        int print=NUM / 10;
+                        int print=Math.max(1, NUM / 10);
                         long retval=0;
                         long start=System.currentTimeMillis();
                         for(int i=0; i < NUM; i++) {
@@ -91,6 +91,17 @@ public class CounterServiceDemo {
                         }
                         long diff=System.currentTimeMillis() - start;
                         System.out.printf("\n%d incrs took %d ms; %.2f ops /sec\n", NUM, diff, (NUM / (diff / 1000.0)));
+                        break;
+                    case '7':
+                        NUM=Util.readIntFromStdin("num: ");
+                        System.out.println();
+                        for(int i=1; i <= NUM; i++) {
+                            Thread t=new Thread(() -> {
+                                long ret=counter.incrementAndGet();
+                                System.out.printf("[%d] val=%d\n", Thread.currentThread().getId(), ret);
+                            });
+                            t.start();
+                        }
                         break;
                     case 'x':
                         looping=false;

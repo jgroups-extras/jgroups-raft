@@ -783,8 +783,8 @@ public class AppendEntriesTest {
     protected static AppendResult append(RaftImpl impl, byte[] data, Address leader,
                                          int prev_log_index, int prev_log_term, int entry_term, int leader_commit) throws Exception {
         int len=data != null? data.length : 0;
-        return impl.handleAppendEntriesRequest(data, 0, len, leader,
-                                               prev_log_index, prev_log_term, entry_term, leader_commit, false);
+        LogEntries entries=new LogEntries().add(new LogEntry(entry_term, data, 0, len));
+        return impl.handleAppendEntriesRequest(entries, leader, prev_log_index, prev_log_term, entry_term, leader_commit);
     }
 
 }

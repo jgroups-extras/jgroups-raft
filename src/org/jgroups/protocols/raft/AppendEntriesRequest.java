@@ -1,7 +1,6 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
-import org.jgroups.Global;
 import org.jgroups.Header;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
@@ -25,18 +24,16 @@ public class AppendEntriesRequest extends RaftHeader {
     protected int        prev_log_index;
     protected int        prev_log_term;
     protected int        leader_commit;  // the commit_index of the leader
-    protected boolean    internal;
 
     public AppendEntriesRequest() {}
     public AppendEntriesRequest(Address leader, int current_term, int prev_log_index, int prev_log_term, int entry_term,
-                                int leader_commit, boolean internal) {
+                                int leader_commit) {
         super(current_term);
         this.leader=leader;
         this.entry_term=entry_term;
         this.prev_log_index=prev_log_index;
         this.prev_log_term=prev_log_term;
         this.leader_commit=leader_commit;
-        this.internal=internal;
     }
 
     public short getMagicId() {
@@ -50,7 +47,7 @@ public class AppendEntriesRequest extends RaftHeader {
     @Override
     public int serializedSize() {
         return super.serializedSize() + Util.size(leader) + Bits.size(entry_term) + Bits.size(prev_log_index)
-          + Bits.size(prev_log_term) + Bits.size(leader_commit) + Global.BYTE_SIZE;
+          + Bits.size(prev_log_term) + Bits.size(leader_commit);
     }
 
     @Override
@@ -61,7 +58,6 @@ public class AppendEntriesRequest extends RaftHeader {
         Bits.writeIntCompressed(prev_log_index, out);
         Bits.writeIntCompressed(prev_log_term, out);
         Bits.writeIntCompressed(leader_commit, out);
-        out.writeBoolean(internal);
     }
 
     @Override
@@ -72,11 +68,10 @@ public class AppendEntriesRequest extends RaftHeader {
         prev_log_index=Bits.readIntCompressed(in);
         prev_log_term=Bits.readIntCompressed(in);
         leader_commit=Bits.readIntCompressed(in);
-        internal=in.readBoolean();
     }
 
     @Override public String toString() {
-        return String.format("%s, leader=%s, entry_term=%d, prev_log_index=%d, prev_log_term=%d, leader_commit=%d, internal=%b",
-                             super.toString(), leader, entry_term, prev_log_index, prev_log_term, leader_commit, internal);
+        return String.format("%s, leader=%s, entry_term=%d, prev_log_index=%d, prev_log_term=%d, leader_commit=%d",
+                             super.toString(), leader, entry_term, prev_log_index, prev_log_term, leader_commit);
     }
 }

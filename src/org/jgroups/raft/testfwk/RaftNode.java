@@ -108,7 +108,7 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
     }
 
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
-        return raft.setAsync(buf, offset, length, null);
+        return raft.setAsync(buf, offset, length);
     }
 
 

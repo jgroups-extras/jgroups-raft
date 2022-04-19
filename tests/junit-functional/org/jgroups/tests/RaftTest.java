@@ -252,13 +252,14 @@ public class RaftTest {
         Bits.writeInt(1, val, 0);
 
         // 7
-        AppendResult result=impl.handleAppendEntriesRequest(val, 0, val.length, a.getAddress(), index - 1, 4, 5, 1, false);
+        LogEntries entries=new LogEntries().add(new LogEntry(5, val));
+        AppendResult result=impl.handleAppendEntriesRequest(entries, a.getAddress(), index - 1, 4, 5, 1);
         assert result.success();
         raft_b.currentTerm(5);
         index++;
 
         // 8
-        result=impl.handleAppendEntriesRequest(val, 0, val.length, a.getAddress(), index-1, 5, 5, 1, false);
+        result=impl.handleAppendEntriesRequest(entries, a.getAddress(), index-1, 5, 5, 1);
         assert result.success();
         assertIndices(8, 5, 5, raft_b);
 
@@ -297,11 +298,11 @@ public class RaftTest {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
-        // send a correct index, but incorrect prev_term:
-        // does this ever happen?
-        Message msg=new BytesMessage(null, val, 0, val.length)
+        // send a correct index, but incorrect prev_term: does this ever happen?
+        LogEntries entries=new LogEntries().add(new LogEntry(25, val));
+        Message msg=new ObjectMessage(null, entries)
           .putHeader(raft_a.getId(), new AppendEntriesRequest(raft_a.getAddress(), 22,
-                                                              5, 23, 25, 0, false))
+                                                              5, 23, 25, 0))
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         raft_a.getDownProtocol().down(msg);
         Util.waitUntilTrue(5000, 200, () -> raft_b.commitIndex() == 5);
@@ -316,9 +317,10 @@ public class RaftTest {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
-        Message msg=new BytesMessage(null, val, 0, val.length)
+        LogEntries entries=new LogEntries().add(new LogEntry(curr_term, val));
+        Message msg=new ObjectMessage(null, entries)
           .putHeader(r.getId(), new AppendEntriesRequest(r.getAddress(), curr_term,
-                                                         prev_index, prev_term, curr_term, commit_index, false))
+                                                         prev_index, prev_term, curr_term, commit_index))
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         r.getDownProtocol().down(msg);
     }

@@ -57,6 +57,10 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
         return ret;
     }
 
+    public long totalSize() {
+        return entries == null? 0 : entries.stream().filter(Objects::nonNull).map(e -> e.length).reduce(0, Integer::sum);
+    }
+
     public int serializedSize() {
         int size=size();
         int retval=Bits.size(size);

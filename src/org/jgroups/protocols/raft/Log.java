@@ -61,7 +61,11 @@ public interface Log extends Closeable {
     int lastAppended();
 
     /**
-     * Append the entries starting at index. Advance last_appended by the number of entries appended.<p/>
+     * Append the entries starting at index. Advance last_appended by the number of entries appended.
+     * <br/>
+     * If the operation fails, then last_appended needs to be the index of the last successful append. E.g. if
+     * last_appended is 1, and we attempt to appened 100 entries, but fail at 51, then last_appended must be 50 (not 1!).
+     * <br/>
      * This is used by the leader when appending entries before sending AppendEntries requests to cluster members.
      * Contrary to {@link #append(int,boolean,LogEntry...)}, no consistency check needs to be performed.
      * @param index The index at which to append the entries. Should be the same as lastAppended. LastAppended needs
@@ -74,9 +78,10 @@ public interface Log extends Closeable {
     void append(int index, boolean overwrite, LogEntry... entries);
 
     // todo: remove once every Log has this method implemented
-    default void append(int index, LogEntries entries) {
+    default int append(int index, LogEntries entries) {
         LogEntry[] arr=entries.toArray();
         append(index, true, arr);
+        return lastAppended();
     }
 
     /**

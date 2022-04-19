@@ -4,9 +4,7 @@ import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.MergeView;
 import org.jgroups.View;
-import org.jgroups.protocols.raft.ELECTION;
-import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.RaftImpl;
+import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.stack.Protocol;
@@ -192,8 +190,10 @@ public class SyncElectionTests {
         byte[] data=new byte[4];
         int[] terms={0,1,1,1,2,4,4,5,6,6};
         RaftImpl impl=rafts[2].impl();
-        for(int i=1; i < terms.length; i++)
-            impl.handleAppendEntriesRequest(data, 0, data.length, a, i-1, terms[i-1], terms[i], 0, false);
+        for(int i=1; i < terms.length; i++) {
+            LogEntries entries=new LogEntries().add(new LogEntry(terms[i], data));
+            impl.handleAppendEntriesRequest(entries, a, i - 1, terms[i - 1], terms[i], 0);
+        }
 
         View view=createView();
         // cluster.async(true);

@@ -33,7 +33,7 @@ public class LogEntry implements SizeStreamable {
     }
 
 
-    public LogEntry(int term,byte[] command,int offset,int length, boolean internal) {
+    public LogEntry(int term, byte[] command, int offset, int length, boolean internal) {
         this.term=term;
         this.command=command;
         this.offset=offset;
@@ -41,11 +41,13 @@ public class LogEntry implements SizeStreamable {
         this.internal=internal;
     }
 
-    public int     term()     {return term;}
-    public byte[]  command()  {return command;}
-    public int     offset()   {return offset;}
-    public int     length()   {return length;}
-    public boolean internal() {return internal;}
+    public int      term()              {return term;}
+    public LogEntry term(int t)         {term=t; return this;}
+    public byte[]   command()           {return command;}
+    public int      offset()            {return offset;}
+    public int      length()            {return length;}
+    public boolean  internal()          {return internal;}
+    public LogEntry internal(boolean b) {internal=b; return this;}
 
     public int serializedSize() {
         int retval=Bits.size(term) + Global.BYTE_SIZE*2;

@@ -28,24 +28,20 @@ public abstract class RaftImpl {
 
     /**
      * Called (on a follower) when an AppendEntries request is received
-     * @param data The data (command to be appended to the log)
-     * @param offset The offset
-     * @param length The length
+     * @param entries The data (commands to be appended to the log)
      * @param leader The leader's address (= the sender)
      * @param prev_index The index of the previous log entry
      * @param prev_term The term of the previous log entry
      * @param entry_term The term of the entry
      * @param leader_commit The leader's commit_index
-     * @param internal True if the command is an internal command
      * @return AppendResult A result (true or false), or null if the request was ignored (e.g. due to lower term)
      */
-    public AppendResult handleAppendEntriesRequest(byte[] data, int offset, int length, Address leader,
-                                                   int prev_index, int prev_term, int entry_term,
-                                                   int leader_commit, boolean internal) {
+    public AppendResult handleAppendEntriesRequest(LogEntries entries, Address leader,
+                                                   int prev_index, int prev_term, int entry_term, int leader_commit) {
         raft.leader(leader);
         int curr_index=prev_index+1;
         // we got an empty AppendEntries message containing only leader_commit, or the index is below the commit index
-        if(data == null || length == 0 || curr_index <= raft.commitIndex()) {
+        if(entries == null || curr_index <= raft.commitIndex()) {
             raft.commitLogTo(leader_commit);
             return new AppendResult(OK, raft.lastAppended()).commitIndex(raft.commitIndex());
         }
@@ -63,12 +59,11 @@ public abstract class RaftImpl {
                 // delete this and all subsequent entries and overwrite with received entry
                 raft.deleteAllLogEntriesStartingFrom(curr_index);
             }
-            boolean added=raft.append(entry_term, curr_index, data, offset, length, internal);
+            boolean added=raft.append(curr_index, entries);
+            int num_added=added? entries.size() : 0;
             raft.commitLogTo(leader_commit);
-            if(internal)
-                raft.executeInternalCommand(null, data, offset, length);
-            raft.num_successful_append_requests++;
-            return new AppendResult(OK, added? curr_index : raft.lastAppended())
+            raft.num_successful_append_requests+=num_added;
+            return new AppendResult(OK, added? prev_index+num_added : raft.lastAppended())
               .commitIndex(raft.commitIndex());
         }
         raft.num_failed_append_requests_wrong_term++;
@@ -82,7 +77,6 @@ public abstract class RaftImpl {
             raft.deleteAllLogEntriesStartingFrom(conflicting_index);
         return new AppendResult(FAIL_CONFLICTING_PREV_TERM, conflicting_index, prev.term).commitIndex(raft.commitIndex());
     }
-
 
     public void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
     }

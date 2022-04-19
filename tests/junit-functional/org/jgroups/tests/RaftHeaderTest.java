@@ -27,7 +27,7 @@ public class RaftHeaderTest {
 
 
     public void testAppendEntriesRequest() throws Exception {
-        AppendEntriesRequest req=new AppendEntriesRequest(Util.createRandomAddress("A"), 22, 4, 21, 22, 18, true);
+        AppendEntriesRequest req=new AppendEntriesRequest(Util.createRandomAddress("A"), 22, 4, 21, 22, 18);
         _testSize(req, AppendEntriesRequest.class);
     }
 

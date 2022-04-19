@@ -67,6 +67,11 @@ public class LogEntriesTest {
         assert arr[1].internal();
     }
 
+    public void testTotalSize() throws IOException, ClassNotFoundException {
+        testAdd();
+        long total_size=entries.totalSize();
+        assert total_size == 35;
+    }
 
 
     protected static LogEntries marshalAndUnmarshal(LogEntries le) throws IOException, ClassNotFoundException {
