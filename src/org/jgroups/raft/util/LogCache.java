@@ -36,7 +36,7 @@ public class LogCache implements Log {
         last_appended=log.lastAppended();
         voted_for=log.votedFor();
         this.max_size=max_size;
-        cache=new ArrayRingBuffer<>(max_size);
+        cache=new ArrayRingBuffer<>(max_size, log.commitIndex());
     }
 
     public int     maxSize()           {return max_size;}
