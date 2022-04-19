@@ -235,6 +235,7 @@ public final class ArrayRingBuffer<T> {
       return get(headSequence);
    }
 
+   /** Removes the element at head */
    public T poll() {
       if (isEmpty()) {
          return null;
@@ -244,6 +245,19 @@ public final class ArrayRingBuffer<T> {
       final T e = elements[offset];
       elements[offset] = null;
       headSequence++;
+      return e;
+   }
+
+   /** Removes an element at index */
+   public T remove(int index) {
+      if(isEmpty() || !contains(index))
+         return null;
+      final T[] elements = this.elements;
+      final int offset = bufferOffset(index);
+      final T e = elements[offset];
+      elements[offset] = null;
+      if(index == headSequence) // how about removal at tailSequence? tailSequence-- ?
+         headSequence++;
       return e;
    }
 

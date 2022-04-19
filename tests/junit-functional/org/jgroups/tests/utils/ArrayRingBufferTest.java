@@ -51,6 +51,23 @@ public class ArrayRingBufferTest {
       }
    }
 
+   public void testRemove() {
+      ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(1);
+      for(int i=1; i <= 10; i++)
+         rb.set(i, i);
+      assert rb.size() == 10;
+      Integer ret=rb.remove(0);
+      assert ret == null;
+
+      ret=rb.remove(1); // head
+      assert ret == 1;
+      assert rb.size() == 9;
+
+      ret=rb.remove(5);
+      assert ret == 5;
+      assert rb.size() == 8;
+   }
+
    public void testShouldUseAvailableCapacity() {
       ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(1);
       rb.set(1, 1);

@@ -224,7 +224,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public int          maxLogSize()                  {return max_log_size;}
     public RAFT         maxLogSize(int val)           {max_log_size=val; return this;}
     public int          currentLogSize()              {return curr_log_size;}
-    public int          requestTableSize()            {return request_table.size();}
+    @ManagedAttribute(description="Number of pending requests")
+    public int          requestTableSize()            {return request_table != null? request_table.size() : 0;}
     public int          numSnapshots()                {return num_snapshots;}
     public Address      leader()                      {return leader;}
     public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
@@ -659,7 +660,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             retval.completeExceptionally(new IllegalStateException("request table was null on " + impl.getClass().getSimpleName()));
             return retval;
         }
-        if(synchronous)
+        if(synchronous) // set only for testing purposes
             handleDownRequest(retval, buf, offset, length, internal);
         else
             add(new DownRequest(retval, buf, offset, length, internal)); // will call handleDownRequest()
