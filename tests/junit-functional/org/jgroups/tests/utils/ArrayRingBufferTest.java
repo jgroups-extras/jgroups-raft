@@ -5,7 +5,7 @@ import org.jgroups.raft.util.ArrayRingBuffer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-@Test(groups= Global.FUNCTIONAL,singleThreaded=true)
+@Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class ArrayRingBufferTest {
 
    public void testShouldEnlargeItWithGaps() {
@@ -62,7 +62,7 @@ public class ArrayRingBufferTest {
       rb.set(7, 2);
       rb.set(8, 3);
       final int before = rb.availableCapacityWithoutResizing();
-      rb.clearUntil(5);
+      rb.dropHeadUntil(5);
       final int after = rb.availableCapacityWithoutResizing();
       Assert.assertEquals(after - before, 4);
       Assert.assertEquals(rb.get(7), Integer.valueOf(2));
@@ -78,7 +78,7 @@ public class ArrayRingBufferTest {
       rb.set(4, 2);
       rb.set(7, 3);
       rb.set(8, 4);
-      rb.clearUntil(5);
+      rb.dropHeadUntil(5);
       rb.set(14, 5);
       Assert.assertEquals(rb.availableCapacityWithoutResizing(), 6);
    }
@@ -88,7 +88,7 @@ public class ArrayRingBufferTest {
       for (int i = 4; i < 12; i++) {
          rb.set(i, i);
       }
-      rb.clearUntil(11);
+      rb.dropHeadUntil(11);
       Assert.assertEquals(rb.size(), 1);
       Assert.assertEquals(rb.get(11), Integer.valueOf(11));
    }
@@ -98,7 +98,7 @@ public class ArrayRingBufferTest {
       for (int i = 4; i < 12; i++) {
          rb.set(i, i);
       }
-      rb.truncateTo(7);
+      rb.dropTailTo(7);
       Assert.assertEquals(rb.size(), 3);
       Assert.assertEquals(rb.get(4), Integer.valueOf(4));
       Assert.assertEquals(rb.get(5), Integer.valueOf(5));
@@ -119,7 +119,7 @@ public class ArrayRingBufferTest {
       for (int i = 4; i < 12; i++) {
          rb.set(i, i);
       }
-      rb.truncateTo(rb.getHeadSequence());
+      rb.dropTailTo(rb.getHeadSequence());
       Assert.assertEquals(rb.size(), 0);
    }
 
@@ -128,10 +128,33 @@ public class ArrayRingBufferTest {
       rb.set(1, 1);
       rb.set(5, 3);
       rb.set(15, 4);
-      rb.clearUntil(5);
+      rb.dropHeadUntil(5);
       Assert.assertThrows(IllegalArgumentException.class, () -> rb.get(4));
    }
 
+   public void testCreatingBackedArrayOfSpecificSize() {
+      Assert.assertEquals(new ArrayRingBuffer<Integer>(8,0).availableCapacityWithoutResizing(), 8);
+   }
 
+   public void testAddPeekPollIsEmptySizeConsistency() {
+      final int initialHead = 10;
+      final int size = 10;
+      ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(initialHead);
+      for (int i = 0; i < size; i++) {
+         rb.add(i);
+      }
+      Assert.assertEquals(rb.size(), size);
+      for (int i = 0; i < 10; i++) {
+         final Integer expected = Integer.valueOf(i);
+         Assert.assertEquals(rb.peek(), expected);
+         Assert.assertEquals(rb.poll(), expected);
+         Assert.assertEquals(rb.size(), size - (i + 1));
+         Assert.assertEquals(rb.getHeadSequence(), initialHead + i + 1);
+      }
+      Assert.assertTrue(rb.isEmpty());
+      Assert.assertNull(rb.peek());
+      Assert.assertNull(rb.poll());
+      Assert.assertEquals(rb.size(), 0);
+   }
 
 }

@@ -148,7 +148,6 @@ public class FileBasedLog implements Log {
       assert new_index >= commitIndex;
       try {
          checkMetadataStarted().setCommitIndex(new_index);
-         checkLogEntryStorageStarted().committedIndex(new_index);
          commitIndex = new_index;
          return this;
       } catch (IOException e) {
