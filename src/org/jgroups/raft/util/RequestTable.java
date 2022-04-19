@@ -3,7 +3,6 @@ package org.jgroups.raft.util;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentSkipListMap;
 
 /**
  * Keeps track of AppendRequest messages and responses. Each AppendEntry request is keyed by the index at which
@@ -17,59 +16,83 @@ import java.util.concurrent.ConcurrentSkipListMap;
  */
 public class RequestTable<T> {
     // maps an index to a set of (response) senders
-    protected final NavigableMap<Integer,Entry<T>> requests=new ConcurrentSkipListMap<>();
+    protected ArrayRingBuffer<Entry<T>> requests;
 
 
     public void create(int index, T vote, CompletableFuture<byte[]> future, int majority) {
         Entry<T> entry=new Entry<>(future);
-        synchronized(this) {
-            requests.put(index, entry);
-            entry.add(vote, majority);
+        if (requests == null) {
+            requests = new ArrayRingBuffer<>(index);
         }
+        requests.set(index, entry);
+        entry.add(vote, majority);
     }
 
     /**
      * Adds a response to the response set. If the majority has been reached, returns true
      * @return True if a majority has been reached, false otherwise. Note that this is done <em>exactly once</em>
      */
-    public synchronized boolean add(int index, T sender, int majority) {
+    public boolean add(int index, T sender, int majority) {
         // we're getting an ack for index, but we also need to ack entries lower than index (if any, should only
         // happen on leader change): https://github.com/belaban/jgroups-raft/issues/122
-
-        if(requests.lowerKey(index) != null) {
-            // we have entries with indices lower than index; ack them, too
-            Map<Integer,Entry<T>> lower_entries=requests.headMap(index);
-            lower_entries.values().stream().filter(Objects::nonNull).forEach(e -> e.add(sender, majority));
+        if (requests == null) {
+            return false;
         }
-        Entry<T> entry=requests.get(index);
-        return entry != null && entry.add(sender, majority);
+        boolean added = false;
+        for (long i = requests.getHeadSequence(); i <= Math.min(index, requests.getTailSequence() - 1); i++) {
+            final Entry<T> entry = requests.get(i);
+            if (entry == null) {
+                continue;
+            }
+            final boolean entryAdded = entry.add(sender, majority);
+            if (i == index && entryAdded) {
+                added = true;
+            }
+        }
+        return added;
     }
 
     /** Whether or not the entry at index is committed */
-    public synchronized boolean isCommitted(int index) {
-        Entry<?> entry=requests.get(index);
+    public boolean isCommitted(int index) {
+        if (requests == null) {
+            return false;
+        }
+        if (index < requests.getHeadSequence()) {
+            return true;
+        }
+        Entry<?> entry = requests.get(index);
         return entry != null && entry.committed;
     }
 
     /** number of requests being processed */
-    public synchronized int size() {
+    public int size() {
+        if (requests == null) {
+            return 0;
+        }
         return requests.size();
     }
 
     /** Notifies the CompletableFuture and then removes the entry for index */
-    public synchronized void notifyAndRemove(int index, byte[] response) {
-        Entry<?> entry=requests.get(index);
-        if(entry != null) {
-            if(entry.client_future != null)
+    public void notifyAndRemove(int index, byte[] response) {
+        if (requests == null) {
+            return;
+        }
+        if (index != requests.getHeadSequence() && !requests.isEmpty()) {
+            throw new IllegalStateException("cannot remove anything but " + requests.getHeadSequence());
+        }
+        final Entry<?> entry = requests.poll();
+        if (entry != null) {
+            if (entry.client_future != null)
                 entry.client_future.complete(response);
-            requests.remove(index);
         }
     }
 
     public String toString() {
+        if (requests == null || requests.isEmpty()) {
+            return "";
+        }
         StringBuilder sb=new StringBuilder();
-        for(Map.Entry<Integer,Entry<T>> entry: requests.entrySet())
-            sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
+        requests.forEach((entry, index) -> sb.append(index).append(": ").append(entry).append("\n"));
         return sb.toString();
     }
 
