@@ -284,6 +284,7 @@ public class LogEntryStorage {
    }
 
    public void useFsync(final boolean value) {
+      this.fsync = value;
    }
 
    private static class Header {
