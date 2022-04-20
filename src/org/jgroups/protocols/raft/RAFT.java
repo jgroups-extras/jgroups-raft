@@ -1002,10 +1002,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             throw new IllegalStateException(local_addr + ": state machine is null");
         byte[] rsp=null;
         if(log_entry.internal) {
-            InternalCommand cmd;
             try {
-                cmd=Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
-                                                  log_entry.offset, log_entry.length);
+                InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
+                                                                  log_entry.offset, log_entry.length);
                 if(cmd.type() == InternalCommand.Type.addServer || cmd.type() == InternalCommand.Type.removeServer)
                     members_being_changed.set(false); // new addServer()/removeServer() operations can now be started
             }
