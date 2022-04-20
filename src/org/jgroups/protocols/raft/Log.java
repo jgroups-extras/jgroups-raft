@@ -73,6 +73,12 @@ public interface Log extends Closeable {
     // todo: return last_appended
     void append(int index, boolean overwrite, LogEntry... entries);
 
+    // todo: remove once every Log has this method implemented
+    default void append(int index, LogEntries entries) {
+        LogEntry[] arr=entries.toArray();
+        append(index, true, arr);
+    }
+
     /**
      * Gets the entry at start_index. Updates current_term and last_appended accordingly
      * @param index The index

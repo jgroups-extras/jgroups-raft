@@ -55,6 +55,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected static final short  APPEND_ENTRIES_RSP   = 2001;
     protected static final short  APPEND_RESULT        = 2002;
     protected static final short  INSTALL_SNAPSHOT_REQ = 2003;
+    protected static final short  LOG_ENTRIES          = 2004;
 
     public static final Function<ExtendedUUID,String> print_function=uuid -> {
         byte[] val=uuid.get(raft_id_key);
@@ -67,6 +68,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         ClassConfigurator.add(APPEND_ENTRIES_RSP,   AppendEntriesResponse.class);
         ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
         ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
+        ClassConfigurator.add(LOG_ENTRIES,          LogEntries.class);
     }
 
     @Property(description="The identifier of this node. Needs to be unique and an element of members. Must not be null",
