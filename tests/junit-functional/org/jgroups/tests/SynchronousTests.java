@@ -1,7 +1,21 @@
 package org.jgroups.tests;
 
-import org.jgroups.*;
-import org.jgroups.protocols.raft.*;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+
+import org.jgroups.Address;
+import org.jgroups.BytesMessage;
+import org.jgroups.Global;
+import org.jgroups.Message;
+import org.jgroups.View;
+import org.jgroups.protocols.raft.AppendEntriesRequest;
+import org.jgroups.protocols.raft.AppendResult;
+import org.jgroups.protocols.raft.FileBasedLog;
+import org.jgroups.protocols.raft.LevelDBLog;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.RaftImpl;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.CommitTable;
@@ -11,11 +25,8 @@ import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Same as {@link RaftTest}, but only a single thread is used to run the tests (no asynchronous processing).
@@ -24,7 +35,7 @@ import java.util.concurrent.TimeUnit;
  * @author Bela Ban
  * @since  1.0.5
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true,dataProvider="logProvider")
 public class SynchronousTests {
     protected final Address       a=createAddress("A"), b=createAddress("B"), c=createAddress("C");
     protected View                view;
@@ -34,11 +45,22 @@ public class SynchronousTests {
     protected RaftNode            node_a, node_b, node_c;
     protected CounterStateMachine sma, smb, smc;
     protected static final int    TERM=5;
+    private String logClass;
 
-    @BeforeMethod protected void init() throws Exception {
+    @DataProvider
+    static Object[][] logProvider() {
+        return new Object[][] {
+              {LevelDBLog.class.getCanonicalName()},
+              {FileBasedLog.class.getCanonicalName()}
+        };
+    }
+
+    @BeforeMethod protected void init(Object[] args) throws Exception {
+        // args is the arguments from each test method
+        logClass = (String) args[0];
         view=View.create(a, 1, a,b);
-        raft_a=createRAFT(a, "A", mbrs).stateMachine(sma=new CounterStateMachine()).setLeaderAndTerm(a);
-        raft_b=createRAFT(b, "B", mbrs).stateMachine(smb=new CounterStateMachine()).setLeaderAndTerm(a);
+        raft_a=createRAFT(a, "A", mbrs).stateMachine(sma=new CounterStateMachine()).setLeaderAndTerm(a).logClass(logClass);
+        raft_b=createRAFT(b, "B", mbrs).stateMachine(smb=new CounterStateMachine()).setLeaderAndTerm(a).logClass(logClass);
         node_a=new RaftNode(cluster, raft_a);
         node_b=new RaftNode(cluster, raft_b);
         node_a.init();
@@ -71,7 +93,7 @@ public class SynchronousTests {
     }
 
 
-    public void testSimpleAppend() throws Exception {
+    public void testSimpleAppend(String logClass) throws Exception {
         int prev_value=add(1);
         assert prev_value == 0;
         assert sma.counter() == 1;
@@ -84,7 +106,7 @@ public class SynchronousTests {
     }
 
 
-    public void testRegularAppend() throws Exception {
+    public void testRegularAppend(String logClass) throws Exception {
         int prev_value=add(1);
         expect(0, prev_value);
         assert sma.counter() == 1;
@@ -142,7 +164,7 @@ public class SynchronousTests {
     }
 
 
-    public void testAppendSameElementTwice() throws Exception {
+    public void testAppendSameElementTwice(String logClass) throws Exception {
         raft_a.currentTerm(20);
         for(int i=1; i <= 5; i++)
             add(1);
@@ -163,7 +185,7 @@ public class SynchronousTests {
         assert smb.counter() == 5;
     }
 
-    public void testAppendBeyondLast() throws Exception {
+    public void testAppendBeyondLast(String logClass) throws Exception {
         raft_a.currentTerm(22);
         for(int i=1; i <= 5; i++)
             add(1);
@@ -180,7 +202,7 @@ public class SynchronousTests {
     }
 
     /** Tests appding with correct prev_index, but incorrect term */
-    public void testAppendWrongTerm() throws Exception {
+    public void testAppendWrongTerm(String logClass) throws Exception {
         raft_a.currentTerm(22);
         for(int i=1; i <= 15; i++) {
             if(i % 5 == 0)
@@ -234,7 +256,7 @@ public class SynchronousTests {
 
 
     /** Tests appends where we change prev_term, so that we'll get an AppendResult with success=false */
-    public void testIncorrectAppend() throws Exception {
+    public void testIncorrectAppend(String logClass) throws Exception {
         int prev_value=add(1);
         assert prev_value == 0;
         assert sma.counter() == 1;
@@ -290,7 +312,7 @@ public class SynchronousTests {
 
 
     /** Tests appending with correct prev_index, but incorrect term */
-    public void testAppendWrongTermOnlyOneTerm() throws Exception {
+    public void testAppendWrongTermOnlyOneTerm(String logClass) throws Exception {
         raft_a.currentTerm(22);
         for(int i=1; i <= 5; i++)
             add(1);
@@ -320,7 +342,7 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 5, 5, 6);
     }
 
-    public void testSnapshot() throws Exception {
+    public void testSnapshot(String logClass) throws Exception {
         raft_b.maxLogSize(100);
         for(int i=1; i <= 100; i++) {
             add(i);
@@ -344,7 +366,7 @@ public class SynchronousTests {
     }
 
     /** Tests adding C to cluster A,B, transfer of state from A to C */
-    public void testAddThirdMember() throws Exception {
+    public void testAddThirdMember(String logClass) throws Exception {
         raft_a.currentTerm(20);
         for(int i=1; i <= 5; i++)
             add(i);
@@ -366,7 +388,7 @@ public class SynchronousTests {
     /** Members A,B,C: A and B have commit-index=10, B still has 5. A now snapshots its log at 10, but needs to
      * resend messages missed by C and cannot find them; therefore a snapshot is sent from A -> C
      */
-    public void testSnapshotOnLeader() throws Exception {
+    public void testSnapshotOnLeader(String logClass) throws Exception {
         raft_a.currentTerm(20);
         addMemberC();
         for(int i=1; i <= 5; i++)
@@ -409,7 +431,7 @@ public class SynchronousTests {
     }
 
 
-    public void testSnapshotOnFollower() throws Exception {
+    public void testSnapshotOnFollower(String logClass) throws Exception {
         raft_a.currentTerm(20);
         for(int i=1; i <= 5; i++)
             add(i);
@@ -570,7 +592,7 @@ public class SynchronousTests {
     }
 
     protected void addMemberC() throws Exception {
-        raft_c=createRAFT(c, "C", mbrs).stateMachine(smc=new CounterStateMachine()).setLeaderAndTerm(a);
+        raft_c=createRAFT(c, "C", mbrs).stateMachine(smc=new CounterStateMachine()).setLeaderAndTerm(a).logClass(logClass);
         node_c=new RaftNode(cluster, raft_c);
         node_c.init();
         node_c.start();

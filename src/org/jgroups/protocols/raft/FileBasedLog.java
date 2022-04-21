@@ -191,7 +191,7 @@ public class FileBasedLog implements Log {
 
    @Override
    public void truncate(int index) {
-      assert index > firstAppended();
+      assert index >= firstAppended();
       try {
          checkLogEntryStorageStarted().removeOld(index);
       } catch (IOException e) {

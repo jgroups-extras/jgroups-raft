@@ -204,8 +204,17 @@ public class LogEntryStorage {
    }
 
    public void removeOld(int index) throws IOException {
-      fileStorage.truncateFrom(positionCache.getPosition(index));
+      int indexToRemove = Math.min(lastAppended, index);
+      long pos = positionCache.getPosition(indexToRemove);
+      if (pos > 0) {
+         // if pos is < 0, means the entry does not exist
+         // if pos == 0, means there is nothing to truncate
+         fileStorage.truncateFrom(pos);
+      }
       positionCache = positionCache.createDeleteCopyFrom(index);
+      if (lastAppended < index) {
+         lastAppended = index;
+      }
    }
 
    public int removeNew(int index) throws IOException {

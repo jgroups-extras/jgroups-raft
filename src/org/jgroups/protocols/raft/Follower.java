@@ -33,15 +33,12 @@ public class Follower extends RaftImpl {
             ByteArrayDataInputStream in=new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength());
             sm.readContentFrom(in);
 
-            raft.doSnapshot();
-
-            // insert a dummy entry
-            Log log=raft.log();
-            log.append(last_included_index, true, new LogEntry(last_included_term, null));
             raft.last_appended=last_included_index;
-            log.commitIndex(last_included_index);
             raft.commit_index=last_included_index;
-            log.truncate(last_included_index);
+
+            Log log=raft.log();
+            log.commitIndex(last_included_index);
+            raft.doSnapshot();
 
             raft.getLog().debug("%s: applied snapshot (%s) from %s; last_appended=%d, commit_index=%d",
                                 raft.getAddress(), Util.printBytes(msg.getLength()), msg.src(), raft.lastAppended(),

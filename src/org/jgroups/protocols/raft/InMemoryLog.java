@@ -135,6 +135,9 @@ public class InMemoryLog implements Log {
         System.arraycopy(entries, idx, tmp, 0, entries.length - idx);
         entries=tmp;
         first_appended=index;
+        if (last_appended < index) {
+            last_appended = index;
+        }
     }
 
     @Override

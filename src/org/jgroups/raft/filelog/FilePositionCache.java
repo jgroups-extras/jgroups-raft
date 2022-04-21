@@ -203,7 +203,8 @@ public class FilePositionCache {
       }
       final long positionToDecrement = positionPage.get(pageOffset);
       if (positionToDecrement == EMPTY) {
-         throw new IllegalArgumentException();
+         // if empty, we do not need to copy anything.
+         return new FilePositionCache(logIndex);
       }
       // copy from cacheIndex until lastNotEmptyIndex
       final int oldPages = positionPages.size();
