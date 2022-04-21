@@ -194,7 +194,7 @@ public class LevelDBLog implements Log {
 
     @Override
     public void truncate(int upto_index) {
-        if(upto_index< firstAppended || upto_index> lastAppended)
+        if(upto_index< firstAppended)
             return;
 
         if(upto_index > commitIndex) {
@@ -210,6 +210,12 @@ public class LevelDBLog implements Log {
                 batch.delete(fromIntToByteArray(index));
             }
             batch.put(FIRSTAPPENDED, fromIntToByteArray(upto_index));
+
+            if (lastAppended < upto_index) {
+                lastAppended = upto_index;
+                batch.put(LASTAPPENDED, fromIntToByteArray(upto_index));
+            }
+
             db.write(batch, write_options);
             firstAppended=upto_index;
         }
