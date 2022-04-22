@@ -52,9 +52,9 @@ public final class ArrayRingBuffer<T> {
       final int size = size();
       final T[] elements = this.elements;
       long sequence = headSequence;
-      for (int i = 0; i < size; i++) {
+      for (int i = 0; i < size; i++,sequence++) {
          final T e = elements[bufferOffset(sequence)];
-         sequence++;
+         // sequence++;
          if (e == null) {
             continue;
          }

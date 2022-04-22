@@ -5,6 +5,9 @@ import org.jgroups.raft.util.ArrayRingBuffer;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
+import java.util.HashMap;
+import java.util.Map;
+
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class ArrayRingBufferTest {
 
@@ -30,6 +33,21 @@ public class ArrayRingBufferTest {
       Assert.assertEquals(rb.availableCapacityWithoutResizing(), 3);
       for (int i = 6; i < 11; i++) {
          Assert.assertEquals(rb.get(i), Integer.valueOf(i));
+      }
+   }
+
+   public void testForEach() {
+      ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(6);
+      for (int i = 6; i <= 10; i++) {
+         rb.set(i, i);
+      }
+      Map<Integer,Long> expected_values=new HashMap<>(5);
+      rb.forEach(expected_values::put);
+      assert expected_values.size() == 5;
+      for(Map.Entry<Integer,Long> e: expected_values.entrySet()) {
+         Integer key=e.getKey();
+         Long val=e.getValue();
+         assert key.intValue() == val.longValue();
       }
    }
 
