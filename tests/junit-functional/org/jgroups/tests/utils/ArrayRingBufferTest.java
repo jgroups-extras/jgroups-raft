@@ -141,6 +141,45 @@ public class ArrayRingBufferTest {
       Assert.assertEquals(rb.size(), 0);
    }
 
+   public void testDropTailTo() {
+      ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(1);
+      for (int i = 1; i <= 20; i++)
+         rb.set(i, i);
+      assert rb.size() == 20;
+      for(int i=1; i <= 20; i++)
+         assert rb.get(i) == i;
+      rb.dropTailTo(5);
+      assert rb.size() == 4;
+      try {
+         assert rb.get(5) == 0; // drop was *inclusive*
+         assert false : "index 5 should not be found";
+      }
+      catch(IllegalArgumentException t) {
+         System.out.println("get(5) triggered an exception, as expected");
+      }
+      for(int i=1; i <= 4; i++)
+         assert rb.get(i) == i;
+   }
+
+   public void testDropHeadUntil() {
+      ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(1);
+      for (int i = 1; i <= 20; i++)
+         rb.set(i, i);
+      assert rb.size() == 20;
+      rb.dropHeadUntil(6);
+      assert rb.size() == 15;
+      try {
+         rb.get(5);
+         assert false : "index 5 should not be found";
+      }
+      catch(IllegalArgumentException ex) {
+         System.out.println("get(5) triggered an exception, as expected");
+      }
+      for(int i=6; i <= 20; i++) {
+         assert rb.get(i) == i;
+      }
+   }
+
    public void testCannotAccessClearedUpData() {
       ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(1);
       rb.set(1, 1);
