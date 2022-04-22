@@ -247,6 +247,10 @@ public final class ArrayRingBuffer<T> {
       return e;
    }
 
+   public String toString() {
+      return String.format("[%s..%s] (%s elements)", headSequence, tailSequence, size());
+   }
+
    private void growCapacity(int delta) {
       assert delta > 0;
       final T[] oldElements = this.elements;
