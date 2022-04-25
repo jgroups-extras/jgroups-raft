@@ -1,21 +1,7 @@
 package org.jgroups.tests;
 
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-
-import org.jgroups.Address;
-import org.jgroups.BytesMessage;
-import org.jgroups.Global;
-import org.jgroups.Message;
-import org.jgroups.View;
-import org.jgroups.protocols.raft.AppendEntriesRequest;
-import org.jgroups.protocols.raft.AppendResult;
-import org.jgroups.protocols.raft.FileBasedLog;
-import org.jgroups.protocols.raft.LevelDBLog;
-import org.jgroups.protocols.raft.LogEntry;
-import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.RaftImpl;
+import org.jgroups.*;
+import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.CommitTable;
@@ -27,6 +13,10 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Same as {@link RaftTest}, but only a single thread is used to run the tests (no asynchronous processing).
@@ -93,7 +83,7 @@ public class SynchronousTests {
     }
 
 
-    public void testSimpleAppend(String logClass) throws Exception {
+    public void testSimpleAppend(@SuppressWarnings("unused") String logClass) throws Exception {
         int prev_value=add(1);
         assert prev_value == 0;
         assert sma.counter() == 1;
@@ -106,7 +96,7 @@ public class SynchronousTests {
     }
 
 
-    public void testRegularAppend(String logClass) throws Exception {
+    public void testRegularAppend(@SuppressWarnings("unused") String logClass) throws Exception {
         int prev_value=add(1);
         expect(0, prev_value);
         assert sma.counter() == 1;
@@ -164,7 +154,7 @@ public class SynchronousTests {
     }
 
 
-    public void testAppendSameElementTwice(String logClass) throws Exception {
+    public void testAppendSameElementTwice(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(20);
         for(int i=1; i <= 5; i++)
             add(1);
@@ -185,7 +175,7 @@ public class SynchronousTests {
         assert smb.counter() == 5;
     }
 
-    public void testAppendBeyondLast(String logClass) throws Exception {
+    public void testAppendBeyondLast(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(22);
         for(int i=1; i <= 5; i++)
             add(1);
@@ -202,7 +192,7 @@ public class SynchronousTests {
     }
 
     /** Tests appding with correct prev_index, but incorrect term */
-    public void testAppendWrongTerm(String logClass) throws Exception {
+    public void testAppendWrongTerm(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(22);
         for(int i=1; i <= 15; i++) {
             if(i % 5 == 0)
@@ -256,7 +246,7 @@ public class SynchronousTests {
 
 
     /** Tests appends where we change prev_term, so that we'll get an AppendResult with success=false */
-    public void testIncorrectAppend(String logClass) throws Exception {
+    public void testIncorrectAppend(@SuppressWarnings("unused") String logClass) throws Exception {
         int prev_value=add(1);
         assert prev_value == 0;
         assert sma.counter() == 1;
@@ -312,7 +302,7 @@ public class SynchronousTests {
 
 
     /** Tests appending with correct prev_index, but incorrect term */
-    public void testAppendWrongTermOnlyOneTerm(String logClass) throws Exception {
+    public void testAppendWrongTermOnlyOneTerm(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(22);
         for(int i=1; i <= 5; i++)
             add(1);
@@ -342,7 +332,7 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 5, 5, 6);
     }
 
-    public void testSnapshot(String logClass) throws Exception {
+    public void testSnapshot(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_b.maxLogSize(100);
         for(int i=1; i <= 100; i++) {
             add(i);
@@ -366,7 +356,7 @@ public class SynchronousTests {
     }
 
     /** Tests adding C to cluster A,B, transfer of state from A to C */
-    public void testAddThirdMember(String logClass) throws Exception {
+    public void testAddThirdMember(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(20);
         for(int i=1; i <= 5; i++)
             add(i);
@@ -388,7 +378,7 @@ public class SynchronousTests {
     /** Members A,B,C: A and B have commit-index=10, B still has 5. A now snapshots its log at 10, but needs to
      * resend messages missed by C and cannot find them; therefore a snapshot is sent from A -> C
      */
-    public void testSnapshotOnLeader(String logClass) throws Exception {
+    public void testSnapshotOnLeader(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(20);
         addMemberC();
         for(int i=1; i <= 5; i++)
@@ -431,7 +421,7 @@ public class SynchronousTests {
     }
 
 
-    public void testSnapshotOnFollower(String logClass) throws Exception {
+    public void testSnapshotOnFollower(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(20);
         for(int i=1; i <= 5; i++)
             add(i);
@@ -468,7 +458,7 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 10, 10, 11);
     }
 
-    public void testSnapshotSentToFollower() throws Exception {
+    public void testSnapshotSentToFollower(@SuppressWarnings("unused") String logClass) throws Exception {
         raft_a.currentTerm(20);
         for(int i=1; i <= 5; i++)
             add(i);
