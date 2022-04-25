@@ -137,25 +137,24 @@ public class LevelDBLog implements Log {
 
 
     @Override
-    public void append(int index, boolean overwrite, LogEntry... entries) {
-        log.trace("Appending %d entries", entries.length);
+    public int append(int index, LogEntries entries) {
+        log.trace("Appending %d entries", entries.size());
+        int new_last_appended=-1;
         try (WriteBatch batch = db.createWriteBatch()) {
             for(LogEntry entry : entries) {
-                if(overwrite)
-                    appendEntry(index, entry, batch);
-                else
-                    appendEntryIfAbsent(index, entry, batch);
-
-                // todo: move setting these variable outside the loop
-                updateLastAppended(index, batch);
+                appendEntry(index, entry, batch);
+                new_last_appended=index;
                 updateCurrentTerm(entry.term, batch);
                 index++;
             }
+            if(new_last_appended >= 0)
+                updateLastAppended(new_last_appended, batch);
             log.trace("Flushing batch to DB: %s", batch);
             db.write(batch, write_options);
         }
         catch(Exception ex) {
         }
+        return lastAppended;
     }
 
     @Override
@@ -283,14 +282,6 @@ public class LevelDBLog implements Log {
                              firstAppended, commitIndex, lastAppended, currentTerm, size());
     }
 
-    private void appendEntryIfAbsent(int index, LogEntry entry, WriteBatch batch) throws Exception {
-        if (db.get(fromIntToByteArray(index))!= null) {
-            log.trace("Entry %d: %s can't be appended, index already present", index, entry);
-            throw new IllegalStateException("Entry at index " + index + " already exists");
-        } else {
-            appendEntry(index, entry, batch);
-        }
-    }
 
     private void appendEntry(int index, LogEntry entry, WriteBatch batch) throws Exception {
         log.trace("Appending entry %d: %s", index, entry);

@@ -56,8 +56,8 @@ public interface Log extends Closeable {
     /** Returns the index of the first log entry */
     int firstAppended();
 
-    /** Returns the index of the last append operation (May get removed as this should be in-memory)<p/>
-     * This value is set by {@link #append(int,boolean,LogEntry...)} */
+    /** Returns the index of the last append entry<br/>
+     * This value is set by {@link #append(int,LogEntries)} */
     int lastAppended();
 
     /**
@@ -66,23 +66,13 @@ public interface Log extends Closeable {
      * If the operation fails, then last_appended needs to be the index of the last successful append. E.g. if
      * last_appended is 1, and we attempt to appened 100 entries, but fail at 51, then last_appended must be 50 (not 1!).
      * <br/>
-     * This is used by the leader when appending entries before sending AppendEntries requests to cluster members.
-     * Contrary to {@link #append(int,boolean,LogEntry...)}, no consistency check needs to be performed.
      * @param index The index at which to append the entries. Should be the same as lastAppended. LastAppended needs
      *              to be incremented by the number of entries appended
-     * @param overwrite If there is an existing entry and overwrite is true, overwrite it. Else throw an exception
      * @param entries The entries to append
+     * @return int The index of the last appended entry
      */
-    // todo: remove 'overwrite' (always true)
-    // todo: return last_appended
-    void append(int index, boolean overwrite, LogEntry... entries);
+    int append(int index, LogEntries entries);
 
-    // todo: remove once every Log has this method implemented
-    default int append(int index, LogEntries entries) {
-        LogEntry[] arr=entries.toArray();
-        append(index, true, arr);
-        return lastAppended();
-    }
 
     /**
      * Gets the entry at start_index. Updates current_term and last_appended accordingly
@@ -95,7 +85,7 @@ public interface Log extends Closeable {
      * Truncates the log up to (and excluding) index. All entries < index are removed. First = index.
      * @param index If greater than commit_index, commit_index will be used instead
      */
-    void truncate(int index); // todo return first_appended; avoids a read after truncate()
+    void truncate(int index);
 
 
     /**

@@ -80,7 +80,7 @@ public class LogTest {
     public void testNewLogAfterDelete(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
-        append(log, 1, false, new byte[10], 5,5,5);
+        append(log, 1, new byte[10], 5,5,5);
         log.commitIndex(2);
         assertIndices(0, 3, 2, 5);
         log.close();
@@ -94,7 +94,7 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1,1,1, 4,4, 5,5, 6,6,6);
+        append(log, 1, buf, 1,1,1, 4,4, 5,5, 6,6,6);
         log.commitIndex(10);
         log.votedFor(Util.createRandomAddress("A"));
         log.close();
@@ -107,8 +107,8 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        log.append(1, false, new LogEntry(5, buf));
-        log.append(2, false, new LogEntry(5, buf));
+        LogEntries entries=LogEntries.create(new LogEntry(5, buf), new LogEntry(5, buf));
+        log.append(1, entries);
         assertIndices(0, 2, 0, 5);
     }
 
@@ -116,14 +116,14 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        LogEntry[] entries={new LogEntry(1, buf), new LogEntry(1, buf), new LogEntry(3, buf)};
-        log.append(1, false, entries);
+        LogEntries le=new LogEntries().add(new LogEntry(1, buf), new LogEntry(1, buf), new LogEntry(3, buf));
+        log.append(1, le);
         assertIndices(0,3,0,3);
 
-        entries=new LogEntry[30];
-        for(int i=0; i < entries.length; i++)
-            entries[i]=new LogEntry(Math.max(3,i/2), buf);
-        log.append(4, false, entries);
+        le.clear();
+        for(int i=0; i < 30; i++)
+            le.add(new LogEntry(Math.max(3,i/2), buf));
+        log.append(4, le);
         assertIndices(0, 33, 0, 29/2);
     }
 
@@ -131,9 +131,10 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        for(int i=0; i < 30; i++) {
-            log.append(i + 1, false, new LogEntry(i+1, buf));
-        }
+        LogEntries le=new LogEntries();
+        for(int i=0; i < 30; i++)
+            le.add(new LogEntry(i+1, buf));
+        log.append(1, le);
         assertIndices(0,30,0,30);
     }
 
@@ -141,7 +142,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1,1,1, 2,2,2, 3,3,3,3,3);
+        append(log, 1, buf, 1,1,1, 2,2,2, 3,3,3,3,3);
         log.commitIndex(5);
 
         log.deleteAllEntriesStartingFrom(6);
@@ -158,7 +159,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1,1,1, 2,2,2, 3,3,3,3,3);
+        append(log, 1,  buf, 1,1,1, 2,2,2, 3,3,3,3,3);
         // RAFT does not allow rollback
         // log.commitIndex(11);
 
@@ -172,7 +173,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
+        append(log, 1, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(10);
 
         log.deleteAllEntriesStartingFrom(11);
@@ -186,7 +187,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
+        append(log, 1, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(11);
 
         log.truncate(6);
@@ -201,7 +202,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
+        append(log, 1, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(11);
 
         log.truncate(1);
@@ -213,7 +214,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
+        append(log, 1, buf, 1, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3);
         log.commitIndex(11);
 
         log.truncate(11);
@@ -228,7 +229,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1, 1, 1, 2, 2);
+        append(log, 1, buf, 1, 1, 1, 2, 2);
         log.commitIndex(5);
 
         log.truncate(4);
@@ -247,7 +248,7 @@ public class LogTest {
         this.log = log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        append(log, 1, false, buf, 1, 1, 1, 2, 2,2,2,3,4,5);
+        append(log, 1, buf, 1, 1, 1, 2, 2,2,2,3,4,5);
         int last_appended=log.lastAppended();
         log.commitIndex(last_appended);
         log.truncate(log.commitIndex());
@@ -265,8 +266,10 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
+        LogEntries le=new LogEntries();
         for(int i=1; i <= 10; i++)
-            log.append(i, false, new LogEntry(5, buf));
+            le.add(new LogEntry(5, buf));
+        log.append(1, le);
         log.commitIndex(6);
         log.truncate(4);
         assertEquals(log.commitIndex(), 6);
@@ -283,8 +286,10 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
+        LogEntries le=new LogEntries();
         for(int i=1; i <= 10; i++)
-            log.append(i, false, new LogEntry(i, buf));
+            le.add(new LogEntry(i, buf));
+        log.append(1, le);
         log.commitIndex(8);
 
         final AtomicInteger cnt=new AtomicInteger(0);
@@ -294,7 +299,7 @@ public class LogTest {
         cnt.set(0);
         log.truncate(8);
 
-        append(log, 11, false, buf, 6,6,6, 7,7,7, 8,8,8,8);
+        append(log, 11, buf, 6,6,6, 7,7,7, 8,8,8,8);
         log.forEach((entry,index) -> cnt.incrementAndGet());
         assertEquals(cnt.get(), 13);
 
@@ -308,13 +313,19 @@ public class LogTest {
         log.init(filename, null);
         byte[] buf=new byte[10];
         assert log.size() == 0;
-        log.append(1, false, new LogEntry(5, buf));
+        LogEntries le=new LogEntries();
+        le.add(new LogEntry(5, buf));
+        log.append(1, le);
+
         assert log.size() == 1;
-        log.append(2, false, new LogEntry(5, buf));
+        le.clear().add(new LogEntry(5, buf));
+        log.append(2, le);
         assert log.size() == 2;
 
+        le.clear();
         for(int i=3; i <= 8; i++)
-            log.append(i, false, new LogEntry(5, buf));
+            le.add(new LogEntry(5, buf));
+        log.append(3, le);
         assert log.size() == 8;
         log.commitIndex(3);
         log.truncate(3); // excluding 3
@@ -322,12 +333,11 @@ public class LogTest {
     }
 
 
-    protected static void append(final Log log, int start_index, boolean overwrite, final byte[] buf, int... terms) {
-        int index=start_index;
-        for(int term: terms) {
-            log.append(index, overwrite, new LogEntry(term, buf));
-            index++;
-        }
+    protected static void append(final Log log, int start_index, final byte[] buf, int... terms) {
+        LogEntries le=new LogEntries();
+        for(int term: terms)
+            le.add(new LogEntry(term, buf));
+        log.append(start_index, le);
     }
 
     protected void assertIndices(int first_applied, int last_applied, int commit_index, int current_term) {

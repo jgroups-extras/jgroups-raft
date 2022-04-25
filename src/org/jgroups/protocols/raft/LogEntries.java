@@ -23,11 +23,16 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
     protected List<LogEntry> entries;
 
 
-    public LogEntries add(LogEntry le) {
+    public LogEntries add(LogEntry ... log_entries) {
         if(entries == null)
             entries=new ArrayList<>();
-        entries.add(Objects.requireNonNull(le));
+        for(LogEntry le: log_entries)
+            entries.add(Objects.requireNonNull(le));
         return this;
+    }
+
+    public static LogEntries create(LogEntry... entries) {
+        return new LogEntries().add(entries);
     }
 
     public LogEntries clear() {

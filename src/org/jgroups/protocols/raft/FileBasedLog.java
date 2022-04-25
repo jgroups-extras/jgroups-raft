@@ -166,18 +166,19 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void append(int index, boolean overwrite, LogEntry... entries) {
+   public int append(int index, LogEntries entries) {
       assert index > firstAppended();
       assert index > commitIndex();
       LogEntryStorage storage = checkLogEntryStorageStarted();
       try {
-         int term = storage.write(index, entries, overwrite);
+         int term = storage.write(index, entries);
          if (currentTerm != term) {
             currentTerm(term);
          }
       } catch (IOException e) {
          e.printStackTrace();
       }
+      return lastAppended();
    }
 
    @Override

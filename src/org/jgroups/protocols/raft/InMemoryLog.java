@@ -101,22 +101,21 @@ public class InMemoryLog implements Log {
     public int lastAppended() {return last_appended;}
 
     @Override
-    public synchronized void append(int index, boolean overwrite, LogEntry... new_entries) {
-        int space_required=new_entries != null? new_entries.length : 0;
+    public synchronized int append(int index, LogEntries entries) {
+        int space_required=entries != null? entries.size() : 0;
         int available_space=this.entries.length - 1 - last_appended;
         if(space_required > available_space)
             expand(space_required - available_space +1);
 
-        for(LogEntry entry: new_entries) {
-            int idx=index- first_appended;
-            if(!overwrite && this.entries[idx] != null)
-                throw new IllegalStateException("Index " + index + " already contains a log entry: " + this.entries[idx]);
+        for(LogEntry entry: entries) {
+            int idx=index-first_appended;
             this.entries[idx]=entry;
             last_appended=Math.max(last_appended, index);
             index++;
             if(entry.term > current_term)
                 current_term=entry.term;
         }
+        return last_appended;
     }
 
 

@@ -2,10 +2,12 @@ package org.jgroups.raft.util;
 
 import org.jgroups.Address;
 import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 
 import java.io.IOException;
-import java.util.*;
+import java.util.Map;
+import java.util.Objects;
 import java.util.function.ObjIntConsumer;
 
 /**
@@ -100,21 +102,23 @@ public class LogCache implements Log {
         return last_appended;
     }
 
-    public void append(int index, boolean overwrite, LogEntry... entries) {
-        log.append(index, overwrite, entries);
-        last_appended=log.lastAppended();
+    @Override
+    public int append(int index, LogEntries entries) {
+        last_appended=log.append(index, entries);
         current_term=log.currentTerm();
-        for (int i = 0; i < entries.length; i++) {
-            final int logIndex = index + i;
+
+        for(LogEntry le: entries) {
+            final int logIndex = index++;
             if (logIndex >= cache.getHeadSequence()) {
                 if (cache.availableCapacityWithoutResizing() == 0) {
                     // try trim here to see if we can save enlarging to happen
                     trim();
                 }
-                cache.set(logIndex, entries[i]);
+                cache.set(logIndex, le);
             }
         }
         trim();
+        return last_appended;
     }
 
     public LogEntry get(int index) {

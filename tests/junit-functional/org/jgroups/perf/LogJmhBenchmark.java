@@ -2,7 +2,6 @@ package org.jgroups.perf;
 
 import org.jgroups.protocols.raft.*;
 import org.openjdk.jmh.annotations.*;
-import org.openjdk.jmh.infra.Blackhole;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
@@ -35,7 +34,7 @@ public class LogJmhBenchmark {
 
    @Benchmark
    public void append(ExecutionPlan plan) {
-      plan.log.append(plan.index, true, plan.entries);
+      plan.log.append(plan.index, plan.entries);
       plan.index+= plan.batchSize;
    }
 
@@ -50,7 +49,7 @@ public class LogJmhBenchmark {
       private String baseDir;
       @Param({"1","3"})
       private int batchSize;
-      private LogEntry[] entries;
+      private LogEntries entries;
       private int index;
       private Log log;
 
@@ -59,8 +58,9 @@ public class LogJmhBenchmark {
          index = 1;
          byte[] data = new byte[dataSize];
          Arrays.fill(data, (byte) 1);
-         entries = new LogEntry[batchSize];
-         Arrays.fill(entries, new LogEntry(1, data));
+         entries = new LogEntries();
+         for(int i=0; i < batchSize; i++)
+            entries.add(new LogEntry(1, data));
          if ("leveldb".equals(logType)) {
             log = new LevelDBLog();
          } else if ("file".equals(logType)) {

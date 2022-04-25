@@ -1,16 +1,17 @@
 package org.jgroups.raft.filelog;
 
+import org.jgroups.Global;
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
+import org.jgroups.protocols.raft.LogEntries;
+import org.jgroups.protocols.raft.LogEntry;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.function.ObjIntConsumer;
-
-import org.jgroups.Global;
-import org.jgroups.logging.Log;
-import org.jgroups.logging.LogFactory;
-import org.jgroups.protocols.raft.LogEntry;
 
 /**
  * Stores the {@link LogEntry} into a file.
@@ -95,12 +96,9 @@ public class LogEntryStorage {
       return header.readLogEntry(this);
    }
 
-   public int write(int startIndex, LogEntry[] entries, final boolean overwrite) throws IOException {
+   public int write(int startIndex, LogEntries entries) throws IOException {
       if (startIndex == 1) {
-         if (overwrite) {
             return appendWithoutOverwriteCheck(entries, 1, 0);
-         }
-         return appendOverwriteCheck(entries, 1, 0);
       }
       // find previous entry to append
       long previousPosition = positionCache.getPosition(startIndex - 1);
@@ -114,10 +112,7 @@ public class LogEntryStorage {
       if (lastAppendedHeader == null) {
          throw new IllegalStateException();
       }
-      if (overwrite) {
-         return appendWithoutOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
-      }
-      return appendOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
+      return appendWithoutOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
    }
 
    private void setFilePosition(int index, long position) {
@@ -157,7 +152,7 @@ public class LogEntryStorage {
       return term;
    }
 
-   private int appendWithoutOverwriteCheck(LogEntry[] entries, int index, long position) throws IOException {
+   private int appendWithoutOverwriteCheck(LogEntries entries, int index, long position) throws IOException {
       int term = 0;
       int batchBytes = 0;
       for (LogEntry entry : entries) {
@@ -165,8 +160,8 @@ public class LogEntryStorage {
       }
       final long startPosition = position;
       final ByteBuffer batchBuffer = fileStorage.ioBufferWith(batchBytes);
-      for (int i = 0, size = entries.length; i < size; i++) {
-         final LogEntry entry = entries[i];
+      int size=entries.size(), i=0;
+      for (LogEntry entry: entries) {
          Header header = new Header(position, index, entry);
          header.writeTo(batchBuffer);
          batchBuffer.put(entry.command(), entry.offset(), entry.length());
@@ -176,6 +171,7 @@ public class LogEntryStorage {
          if (i == (size - 1)) {
             lastAppendedHeader = header;
          }
+         ++i;
          ++index;
       }
       batchBuffer.flip();

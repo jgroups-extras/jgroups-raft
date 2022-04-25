@@ -119,8 +119,10 @@ import java.util.function.Supplier;
          RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
          Log log=raft.log();
          int index=log.lastAppended();
+         LogEntries le=new LogEntries();
          for(int term: terms)
-             log.append(++index, true, new LogEntry(term, BUF));
+             le.add(new LogEntry(term, BUF));
+         log.append(index+1, le);
      }
 
 

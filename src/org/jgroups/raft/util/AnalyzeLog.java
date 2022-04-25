@@ -83,8 +83,10 @@ public class AnalyzeLog {
                 if(i == last)
                     sj.add("last-appended");
                 LogEntry entry=l.get((int)i);
-                String log_contents=reader != null? reader.apply(entry) : entry.toString();
-                System.out.printf("%d [%d]: %s %s\n", i, entry.term(), log_contents, sj);
+                if(entry != null) {
+                    String log_contents=reader != null? reader.apply(entry) : entry.toString();
+                    System.out.printf("%d [%d]: %s %s\n", i, entry.term(), log_contents, sj);
+                }
             }
         }
     }
