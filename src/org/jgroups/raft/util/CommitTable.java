@@ -8,6 +8,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.BiConsumer;
+import java.util.stream.Collectors;
 
 /**
  * Keeps track of next_index and match_index for each cluster member (excluding this leader).
@@ -67,10 +68,8 @@ public class CommitTable {
 
     @Override
     public String toString() {
-        StringBuilder sb=new StringBuilder();
-        for(Map.Entry<Address,Entry> entry: map.entrySet())
-            sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("\n");
-        return sb.toString();
+        return map.entrySet().stream().map(e -> String.format("%s: %s", e.getKey(), e.getValue()))
+          .collect(Collectors.joining("\n"));
     }
 
 

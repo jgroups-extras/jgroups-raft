@@ -446,6 +446,44 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 10, 10, 11);
     }
 
+    public void testSnapshotSentToFollower() throws Exception {
+        raft_a.currentTerm(20);
+        for(int i=1; i <= 5; i++)
+            add(i);
+        expect(15, sma.counter());
+        expect(10, smb.counter());
+        assertIndices(5, 5, 20, raft_a);
+        assertIndices(5, 4, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 4, 5, 6);
+
+        raft_b.stop();
+        raft_b.log().delete();
+        raft_b.deleteSnapshot();
+        raft_b.log(null); // required to re-initialize the log
+        ((CounterStateMachine)raft_b.stateMachine()).reset();
+        raft_b.stateMachineLoaded(false);
+
+        raft_a.snapshot();
+        assertIndices(5, 5, 20, raft_a);
+
+        view=View.create(a, view.getViewId().getId()+1, a);
+        cluster.handleView(view);
+
+        cluster.add(b, node_b);
+        raft_b.start();
+        view=View.create(a, view.getViewId().getId()+1, a,b);
+        cluster.handleView(view);
+
+        raft_a.flushCommitTable(b); // first flush will set next-index to 1
+        raft_a.flushCommitTable(b); // this flush will send the snapshot from A to B
+        expect(15, sma.counter());
+        expect(15, smb.counter());
+        assertIndices(5, 5, 20, raft_a);
+        assertIndices(5, 5, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 5, 5, 6);
+
+    }
+
 
     protected static RAFT createRAFT(Address addr, String name, List<String> members) {
         return new RAFT().raftId(name).members(members).logPrefix("synctest-" + name)
