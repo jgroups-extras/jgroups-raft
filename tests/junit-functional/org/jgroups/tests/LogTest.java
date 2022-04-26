@@ -281,6 +281,24 @@ public class LogTest {
         assertEquals(log.firstAppended(), 8);
     }
 
+    public void testReinitializeTo(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        LogEntries le=new LogEntries();
+        for(int i=1; i <= 10; i++)
+            le.add(new LogEntry(5, buf));
+        log.append(1, le);
+        assertIndices(0, 10, 0, 5);
+        log.reinitializeTo(5, new LogEntry(10, null));
+        assertIndices(5, 5, 5, 10);
+        assert log.size() == 1;
+        int last=log.append(6, LogEntries.create(new LogEntry(15, null)));
+        assert last == 6;
+        assert log.size() == 2;
+        assertIndices(5,6,5,15);
+    }
+
 
     public void testForEach(Log log) throws Exception {
         this.log=log;

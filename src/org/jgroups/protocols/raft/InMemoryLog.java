@@ -144,7 +144,7 @@ public class InMemoryLog implements Log {
     public void reinitializeTo(int index, LogEntry entry) {
         Arrays.fill(entries, null);
         first_appended=commit_index=last_appended=index;
-        current_term=0;
+        current_term=entry.term();
     }
 
     @Override

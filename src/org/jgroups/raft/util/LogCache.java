@@ -156,7 +156,7 @@ public class LogCache implements Log {
     }
 
     @Override
-    public void reinitializeTo(int index, LogEntry le) {
+    public void reinitializeTo(int index, LogEntry le) throws Exception {
         log.reinitializeTo(index, le);
         cache.clear();
         cache=new ArrayRingBuffer<>(max_size, index);

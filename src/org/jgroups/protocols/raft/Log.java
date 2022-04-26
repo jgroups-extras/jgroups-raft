@@ -93,8 +93,9 @@ public interface Log extends Closeable {
      * Use when a snapshot has been received by a follower, after setting the snapshot, to basically create a new log
      * @param index The new index
      * @param entry The entry to append
+     * @throws Exception Thrown if this operation failed
      */
-    void reinitializeTo(int index, LogEntry entry);
+    void reinitializeTo(int index, LogEntry entry) throws Exception;
 
     /**
      * Delete all entries starting from start_index (including the entry at start_index).

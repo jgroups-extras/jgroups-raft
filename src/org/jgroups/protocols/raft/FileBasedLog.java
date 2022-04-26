@@ -235,6 +235,8 @@ public class FileBasedLog implements Log {
 
    @Override
    public String toString() {
+      if(logEntryStorage == null)
+         return "<not initialized yet>";
       return String.format("first=%d, commit=%d, last-appended=%d, term=%d (size=%d)",
                            firstAppended(), commitIndex(), lastAppended(), currentTerm, size());
    }

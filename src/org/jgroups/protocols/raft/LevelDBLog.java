@@ -224,19 +224,20 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void reinitializeTo(int index, LogEntry le) {
+    public void reinitializeTo(int index, LogEntry le) throws Exception {
         WriteBatch batch=null;
         try {
             batch=db.createWriteBatch();
             for(int i=firstAppended; i <= lastAppended; i++)
                 batch.delete(fromIntToByteArray(i));
-
-            append(index, LogEntries.create(le));
+            appendEntry(index, le, batch);
             byte[] idx=fromIntToByteArray(index);
             batch.put(FIRSTAPPENDED, idx);
             batch.put(COMMITINDEX, idx);
             batch.put(LASTAPPENDED, idx);
+            batch.put(CURRENTTERM, fromIntToByteArray(le.term()));
             firstAppended=commitIndex=lastAppended=index;
+            currentTerm=le.term();
             db.write(batch, write_options);
         }
         finally {
