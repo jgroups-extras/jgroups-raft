@@ -335,7 +335,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public String role()            {return impl.getClass().getSimpleName();}
 
     @ManagedOperation(description="Dumps the commit table")
-    public String dumpCommitTable() {return commit_table != null? commit_table.toString() : "n/a";}
+    public String dumpCommitTable() {return commit_table != null? "\n" + commit_table.toString() : "n/a";}
 
     @ManagedAttribute(description="Number of log entries in the log")
     public int logSize()            {return log_impl.size();}
