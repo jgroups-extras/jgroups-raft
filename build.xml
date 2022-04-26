@@ -235,6 +235,7 @@
         <delete>
             <fileset dir="${root.dir}" defaultexcludes="no">
                 <include name="**/*~"/>
+                <include name=".ant-target*"/>
             </fileset>
         </delete>
         <delete dir="${manual.dir}/build"/>
