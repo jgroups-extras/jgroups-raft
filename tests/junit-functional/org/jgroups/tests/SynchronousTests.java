@@ -494,6 +494,13 @@ public class SynchronousTests {
         assertIndices(5, 5, 20, raft_b);
         assertCommitTableIndeces(b, raft_a, 5, 5, 6);
 
+        for(int i=6; i <= 10; i++)
+            add(i);
+        expect(55, sma.counter());
+        expect(45, smb.counter());
+        assertIndices(10, 10, 20, raft_a);
+        assertIndices(10, 9, 20, raft_b);
+        assertCommitTableIndeces(b, raft_a, 9, 10, 11);
     }
 
 
