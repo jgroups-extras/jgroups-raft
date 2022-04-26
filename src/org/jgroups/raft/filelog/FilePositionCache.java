@@ -194,16 +194,21 @@ public class FilePositionCache {
       }
       final int pageIndex = toPageIndex(cacheIndex);
       if (pageIndex >= positionPages.size()) {
-         throw new IllegalArgumentException();
+         // truncating to an index larger than last appended (example, snapshot transfer from leader -> follower)
+         // nothing to copy
+         return new FilePositionCache(logIndex);
       }
       final int pageOffset = toPageOffset(cacheIndex);
       final PositionPage positionPage = positionPages.get(pageIndex);
       if (positionPage == null) {
-         throw new IllegalArgumentException();
+         // truncating to an index larger than last appended (example, snapshot transfer from leader -> follower)
+         // nothing to copy
+         return new FilePositionCache(logIndex);
       }
       final long positionToDecrement = positionPage.get(pageOffset);
       if (positionToDecrement == EMPTY) {
-         // if empty, we do not need to copy anything.
+         // truncating to an index larger than last appended (example, snapshot transfer from leader -> follower)
+         // nothing to copy
          return new FilePositionCache(logIndex);
       }
       // copy from cacheIndex until lastNotEmptyIndex
