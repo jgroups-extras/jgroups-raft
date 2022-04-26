@@ -83,9 +83,9 @@ public interface Log extends Closeable {
 
     /**
      * Truncates the log up to (and excluding) index. All entries < index are removed. First = index.
-     * @param index If greater than commit_index, commit_index will be used instead
+     * @param index_exclusive If greater than commit_index, commit_index will be used instead
      */
-    void truncate(int index);
+    void truncate(int index_exclusive);
 
 
     /**

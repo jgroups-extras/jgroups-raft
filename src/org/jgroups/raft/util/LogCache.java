@@ -147,9 +147,9 @@ public class LogCache implements Log {
         return e;
     }
 
-    public void truncate(int index) {
-        log.truncate(index);
-        cache.dropHeadUntil(index);
+    public void truncate(int index_exclusive) {
+        log.truncate(index_exclusive);
+        cache.dropHeadUntil(index_exclusive);
         // todo: first_appended should be set to the return value of truncate() (once it has been changed)
         first_appended=log.firstAppended();
         last_appended = log.lastAppended();

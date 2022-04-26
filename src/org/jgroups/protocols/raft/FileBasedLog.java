@@ -191,10 +191,10 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void truncate(int index) {
-      assert index >= firstAppended();
+   public void truncate(int index_exclusive) {
+      assert index_exclusive >= firstAppended();
       try {
-         checkLogEntryStorageStarted().removeOld(index);
+         checkLogEntryStorageStarted().removeOld(index_exclusive);
       } catch (IOException e) {
          e.printStackTrace();
       }
@@ -226,6 +226,12 @@ public class FileBasedLog implements Log {
    @Override
    public void forEach(ObjIntConsumer<LogEntry> function) {
       forEach(function, firstAppended(), lastAppended());
+   }
+
+   @Override
+   public String toString() {
+      return String.format("first=%d, commit=%d, last-appended=%d, term=%d (size=%d)",
+                           firstAppended(), commitIndex(), lastAppended(), currentTerm, size());
    }
 
    private MetadataStorage checkMetadataStarted() {

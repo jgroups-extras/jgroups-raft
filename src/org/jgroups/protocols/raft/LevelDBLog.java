@@ -192,31 +192,31 @@ public class LevelDBLog implements Log {
     }
 
     @Override
-    public void truncate(int upto_index) {
-        if(upto_index< firstAppended)
+    public void truncate(int index_exclusive) {
+        if(index_exclusive < firstAppended)
             return;
 
-        if(upto_index > commitIndex) {
+        if(index_exclusive > commitIndex) {
             log.warn("upto_index (%d) is higher than commit-index (%d); only truncating up to %d",
-                     upto_index, commitIndex, commitIndex);
-            upto_index=commitIndex;
+                     index_exclusive, commitIndex, commitIndex);
+            index_exclusive=commitIndex;
         }
 
         WriteBatch batch=null;
         try {
             batch = db.createWriteBatch();
-            for(int index=firstAppended; index < upto_index; index++) {
+            for(int index=firstAppended; index < index_exclusive; index++) {
                 batch.delete(fromIntToByteArray(index));
             }
-            batch.put(FIRSTAPPENDED, fromIntToByteArray(upto_index));
+            batch.put(FIRSTAPPENDED, fromIntToByteArray(index_exclusive));
 
-            if (lastAppended < upto_index) {
-                lastAppended = upto_index;
-                batch.put(LASTAPPENDED, fromIntToByteArray(upto_index));
+            if (lastAppended < index_exclusive) {
+                lastAppended =index_exclusive;
+                batch.put(LASTAPPENDED, fromIntToByteArray(index_exclusive));
             }
 
             db.write(batch, write_options);
-            firstAppended=upto_index;
+            firstAppended=index_exclusive;
         }
         finally {
             Util.close(batch);

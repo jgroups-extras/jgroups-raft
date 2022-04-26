@@ -126,16 +126,16 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public synchronized void truncate(int index) {
-        if(index > commit_index)
-            index=commit_index;
+    public synchronized void truncate(int index_exclusive) {
+        if(index_exclusive > commit_index)
+            index_exclusive=commit_index;
         LogEntry[] tmp=new LogEntry[entries.length];
-        int idx=index- first_appended;
+        int idx=index_exclusive - first_appended;
         System.arraycopy(entries, idx, tmp, 0, entries.length - idx);
         entries=tmp;
-        first_appended=index;
-        if (last_appended < index) {
-            last_appended = index;
+        first_appended=index_exclusive;
+        if (last_appended < index_exclusive) {
+            last_appended =index_exclusive;
         }
     }
 
