@@ -76,7 +76,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * @return The counter implementation
      */
     public Counter getOrCreateCounter(String name, long initial_value) throws Exception {
-        invoke(Command.create, name, false, initial_value);
+        if(!counters.containsKey(name))
+            invoke(Command.create, name, false, initial_value);
         return new CounterImpl(name, this);
     }
 
