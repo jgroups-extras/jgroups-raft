@@ -87,6 +87,14 @@ public interface Log extends Closeable {
      */
     void truncate(int index_exclusive);
 
+    /**
+     * Clears all entries and sets first_appended/last_appended/commit_index to index and appends entry at index. The
+     * next entry will be appended at last_appended+1.<br/>
+     * Use when a snapshot has been received by a follower, after setting the snapshot, to basically create a new log
+     * @param index The new index
+     * @param entry The entry to append
+     */
+    void reinitializeTo(int index, LogEntry entry);
 
     /**
      * Delete all entries starting from start_index (including the entry at start_index).

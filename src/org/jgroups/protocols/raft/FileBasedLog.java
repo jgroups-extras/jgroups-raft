@@ -201,6 +201,11 @@ public class FileBasedLog implements Log {
    }
 
    @Override
+   public void reinitializeTo(int index, LogEntry entry) {
+
+   }
+
+   @Override
    public void deleteAllEntriesStartingFrom(int start_index) {
       assert start_index > commitIndex; // can we delete committed entries!? See org.jgroups.tests.LogTest.testDeleteEntriesFromFirst
       assert start_index >= firstAppended();

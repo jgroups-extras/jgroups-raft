@@ -211,12 +211,33 @@ public class LevelDBLog implements Log {
             batch.put(FIRSTAPPENDED, fromIntToByteArray(index_exclusive));
 
             if (lastAppended < index_exclusive) {
-                lastAppended =index_exclusive;
+                lastAppended=index_exclusive;
                 batch.put(LASTAPPENDED, fromIntToByteArray(index_exclusive));
             }
 
             db.write(batch, write_options);
             firstAppended=index_exclusive;
+        }
+        finally {
+            Util.close(batch);
+        }
+    }
+
+    @Override
+    public void reinitializeTo(int index, LogEntry le) {
+        WriteBatch batch=null;
+        try {
+            batch=db.createWriteBatch();
+            for(int i=firstAppended; i <= lastAppended; i++)
+                batch.delete(fromIntToByteArray(i));
+
+            append(index, LogEntries.create(le));
+            byte[] idx=fromIntToByteArray(index);
+            batch.put(FIRSTAPPENDED, idx);
+            batch.put(COMMITINDEX, idx);
+            batch.put(LASTAPPENDED, idx);
+            firstAppended=commitIndex=lastAppended=index;
+            db.write(batch, write_options);
         }
         finally {
             Util.close(batch);

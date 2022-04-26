@@ -6,6 +6,10 @@ import org.jgroups.Message;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
 
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
+
 /**
  * Implements the behavior of a RAFT follower
  * @author Bela Ban
@@ -30,19 +34,18 @@ public class Follower extends RaftImpl {
         }
         Address sender=msg.src();
         try {
+            // Read into state machine
             ByteArrayDataInputStream in=new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength());
             sm.readContentFrom(in);
 
-            raft.doSnapshot();
+            // Write to snapshot, replace existing file is present
+            writeSnapshotTo(raft.snapshotName(), msg.getArray(), msg.getOffset(), msg.getLength());
 
-            // insert a dummy entry
+            // insert a dummy entry at last_included_index and set first/last/commit to it
             Log log=raft.log();
-            LogEntries le=LogEntries.create(new LogEntry(last_included_term, null));
-            log.append(last_included_index, le);
-            raft.last_appended=last_included_index;
-            log.commitIndex(last_included_index);
-            raft.commit_index=last_included_index;
-            log.truncate(last_included_index);
+            LogEntry le=new LogEntry(last_included_term, null);
+            log.reinitializeTo(last_included_index, le);
+            raft.commit_index=raft.last_appended=last_included_index;
 
             raft.getLog().debug("%s: applied snapshot (%s) from %s; last_appended=%d, commit_index=%d",
                                 raft.getAddress(), Util.printBytes(msg.getLength()), msg.src(), raft.lastAppended(),
@@ -54,6 +57,12 @@ public class Follower extends RaftImpl {
         }
         catch(Exception ex) {
             raft.getLog().error("%s: failed applying snapshot from %s: %s", raft.getAddress(), sender, ex);
+        }
+    }
+
+    protected static void writeSnapshotTo(String snapshot_name, byte[] buf, int offset, int length) throws IOException {
+        try(OutputStream output=new FileOutputStream(snapshot_name)) {
+            output.write(buf, offset, length);
         }
     }
 }

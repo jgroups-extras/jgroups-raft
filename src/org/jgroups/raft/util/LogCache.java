@@ -19,7 +19,7 @@ import java.util.function.ObjIntConsumer;
 public class LogCache implements Log {
     private static final int DEFAULT_MAX_SIZE = 1024;
     protected final Log                            log;
-    protected final ArrayRingBuffer<LogEntry>      cache;
+    protected ArrayRingBuffer<LogEntry>            cache;
     protected int                                  max_size;
     protected int                                  current_term, commit_index, first_appended, last_appended;
     protected Address                              voted_for;
@@ -153,6 +153,17 @@ public class LogCache implements Log {
         // todo: first_appended should be set to the return value of truncate() (once it has been changed)
         first_appended=log.firstAppended();
         last_appended = log.lastAppended();
+    }
+
+    @Override
+    public void reinitializeTo(int index, LogEntry le) {
+        log.reinitializeTo(index, le);
+        cache.clear();
+        cache=new ArrayRingBuffer<>(max_size, index);
+        cache.add(le);
+        first_appended=log.firstAppended();
+        commit_index=log.commitIndex();
+        last_appended=log.lastAppended();
     }
 
     public void deleteAllEntriesStartingFrom(int start_index) {

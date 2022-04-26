@@ -2,6 +2,7 @@ package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.ObjIntConsumer;
@@ -137,6 +138,13 @@ public class InMemoryLog implements Log {
         if (last_appended < index_exclusive) {
             last_appended =index_exclusive;
         }
+    }
+
+    @Override
+    public void reinitializeTo(int index, LogEntry entry) {
+        Arrays.fill(entries, null);
+        first_appended=commit_index=last_appended=index;
+        current_term=0;
     }
 
     @Override
