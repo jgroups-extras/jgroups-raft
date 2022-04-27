@@ -66,7 +66,15 @@
     <developers>
         <developer>
             <name>Bela Ban</name>
-            <email>belaban@yahoo.com</email>
+            <email>bban@redhat.com</email>
+        </developer>
+        <developer>
+            <name>Pedro Ruivo</name>
+            <email>pruivo@redhat.com</email>
+        </developer>
+        <developer>
+            <name>Francesco Nigro</name>
+            <email>fnigro@redhat.com</email>
         </developer>
         <developer>
             <name>Ugo Landini</name>
