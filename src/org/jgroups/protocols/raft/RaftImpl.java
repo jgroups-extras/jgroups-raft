@@ -81,8 +81,20 @@ public abstract class RaftImpl {
     public void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
     }
 
-    public void handleInstallSnapshotRequest(Message msg, int term, Address leader,
-                                             int last_included_index, int last_included_term) {
+    /**
+     * Called when a snapshot sent by the leader is received by a follower. The follower needs to overwrite its
+     * snapshot file with the received bytes and reinitialize its log to last_inluded_index and create a dummy
+     * LogEntry with last_included_term at last_included_index. This is needed by the next
+     * {@link RaftImpl#handleAppendEntriesRequest(LogEntries, Address, int, int, int, int)} call to compare to
+     * the previous index and term.
+     * @param msg The snapshot message sent by the leader
+     * @param leader The leader (= sender of the message)
+     * @param last_included_index The last index that's reflected in the state (=snapshot) sent by the leader. Indices
+     *                            first_appended, commit_index and last_appended have to be set to last_included_index
+     * @param last_included_term The last included term. The dummy entry needs to have this term, for comparison
+     *                           in the next handleAppendRequest() call.
+     */
+    public void handleInstallSnapshotRequest(Message msg, Address leader, int last_included_index, int last_included_term) {
 
     }
 

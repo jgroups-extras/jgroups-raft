@@ -744,7 +744,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         else if(hdr instanceof InstallSnapshotRequest) {
             InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
-            ri.handleInstallSnapshotRequest(msg, req.curr_term, req.leader, req.last_included_index, req.last_included_term);
+            ri.handleInstallSnapshotRequest(msg, req.leader, req.last_included_index, req.last_included_term);
         }
         else
             log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());

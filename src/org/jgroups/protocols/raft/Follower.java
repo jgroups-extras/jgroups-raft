@@ -19,14 +19,8 @@ public class Follower extends RaftImpl {
     public Follower(RAFT raft) {super(raft);}
 
     @Override
-    public void handleInstallSnapshotRequest(Message msg, int term, Address leader,
+    public void handleInstallSnapshotRequest(Message msg, Address leader,
                                              int last_included_index, int last_included_term) {
-        // 1. read the state (in the message's buffer) and apply it to the state machine (clear the SM before?)
-
-        // 2. Delete the log (if it exists) and create a new log. Append a dummy entry at last_included_index with an
-        //    empty buffer and term=last_included_term
-        //    - first_appended=last_appended=commit_index=last_included_index
-
         StateMachine sm;
         if((sm=raft.state_machine) == null) {
             raft.getLog().error("%s: no state machine set, cannot install snapshot", raft.getAddress());
