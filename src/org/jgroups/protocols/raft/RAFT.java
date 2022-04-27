@@ -125,6 +125,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Number of successful AppendEntriesRequests")
     protected int                       num_successful_append_requests;
 
+    @ManagedAttribute(description="Number of snapshot messages received (by a follower)")
+    protected int                       num_snapshot_received;
+
     @ManagedAttribute(description="Average AppendEntries batch size")
     protected CounterPerf.AverageMinMax avg_append_entries_batch_size=new CounterPerf.AverageMinMax();
 
@@ -249,7 +252,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public void resetStats() {
         super.resetStats();
         num_snapshots=num_resends=num_successful_append_requests=num_failed_append_requests_not_found
-          =num_failed_append_requests_wrong_term=0;
+          =num_failed_append_requests_wrong_term=num_snapshot_received=0;
         if(log_impl instanceof LogCache)
             ((LogCache)log_impl).resetStats();
         drained_total.reset(); drained_avg.clear(); drained_down.reset(); drained_up.reset();
