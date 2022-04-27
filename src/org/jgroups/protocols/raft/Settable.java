@@ -3,6 +3,8 @@ package org.jgroups.protocols.raft;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Interface to make changes to the Raft state machine. All changes are made through the leader, which appends the change
@@ -22,7 +24,7 @@ public interface Settable {
      */
     default byte[] set(byte[] buf, int offset, int length) throws Exception {
         CompletableFuture<byte[]> future=setAsync(buf, offset, length);
-        return future.get();
+        return progressiveWait(future);
     }
 
     /**
@@ -38,7 +40,82 @@ public interface Settable {
      */
     default byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
         CompletableFuture<byte[]> future=setAsync(buf, offset, length);
-        return future.get(timeout, unit);
+        return progressiveWait(future, timeout, unit);
+    }
+
+    int MAX_SPINS = (Runtime.getRuntime().availableProcessors() < 2) ? 0 : 32;
+
+    static byte[] progressiveWait(CompletableFuture<byte[]> future) throws Exception {
+        byte[] result = future.getNow(null);
+        if (result != null) {
+            return result;
+        }
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException();
+        }
+        int maxSpins = MAX_SPINS;
+        int maxYield = MAX_SPINS == 0 ? 0 : maxSpins + 20;
+        int maxTinyPark = MAX_SPINS == 0 ? 0 : maxYield + 900;
+        int idleCount = 0;
+        while (true) {
+            result = future.getNow(null);
+            if (result != null) {
+                return result;
+            }
+            if (idleCount < maxSpins) {
+                idleCount++;
+                Thread.onSpinWait();
+            } else if (idleCount < maxYield) {
+                idleCount++;
+                Thread.yield();
+            } else if (idleCount < maxTinyPark) {
+                idleCount++;
+                LockSupport.parkNanos(1);
+            } else {
+                // just sit
+                return future.get();
+            }
+        }
+    }
+
+    static byte[] progressiveWait(CompletableFuture<byte[]> future, long timeout, TimeUnit unit) throws Exception {
+        byte[] result = future.getNow(null);
+        if (result != null) {
+            return result;
+        }
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException();
+        }
+        final long startTime = System.nanoTime();
+        final long timeoutNanos = unit.toNanos(timeout);
+        int maxSpins = MAX_SPINS;
+        int maxYield = MAX_SPINS == 0 ? 0 : maxSpins + 20;
+        int maxTinyPark = MAX_SPINS == 0 ? 0 : maxYield + 900;
+        int idleCount = 0;
+        while (true) {
+            final long elapsed = System.nanoTime() - startTime;
+            final long remaining = timeoutNanos - elapsed;
+            if (remaining <= 0) {
+                throw new TimeoutException();
+            }
+            result = future.getNow(null);
+            if (result != null) {
+                return result;
+            }
+            if (idleCount < maxSpins) {
+                idleCount++;
+                Thread.onSpinWait();
+            } else if (idleCount < maxYield) {
+                idleCount++;
+                Thread.yield();
+            } else if (idleCount < maxTinyPark) {
+                idleCount++;
+                LockSupport.parkNanos(1);
+            } else {
+                // just sit
+                return future.get(remaining, TimeUnit.NANOSECONDS);
+            }
+        }
     }
 
     /**

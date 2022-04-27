@@ -19,12 +19,14 @@ import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedTransferQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 import java.util.regex.Matcher;
@@ -178,6 +180,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @Property(description="Max size in items the processing queue can have",type=AttributeType.SCALAR)
     protected int                       processing_queue_max_size=9182;
 
+    protected final AtomicLong          submitted=new AtomicLong();
+    protected final AtomicLong          producerLimit=new AtomicLong();
+    protected final AtomicLong          consumed=new AtomicLong();
     /** All requests are added to this queue; a single thread processes this queue - hence no synchronization issues */
     protected BlockingQueue<Request>    processing_queue;
 
@@ -524,7 +529,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
             });
         }
-        processing_queue=new ArrayBlockingQueue<>(processing_queue_max_size);
+        processing_queue=new LinkedTransferQueue<>();
         runner=new Runner(new DefaultThreadFactory("runner", true, true),
                           "runner", this::processQueue, null);
     }
@@ -676,12 +681,33 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected void add(Request r) {
-        try {
-            processing_queue.put(r);
-        }
-        catch(InterruptedException ex) {
-            log.error("%s: failed adding %s to processing queue: %s", local_addr, r, ex);
-        }
+        final AtomicLong submitted = this.submitted;
+        final AtomicLong producerLimit = this.producerLimit;
+        final int capacity = this.processing_queue_max_size;
+        long produced;
+        do {
+            produced = submitted.get();
+            long limit = producerLimit.get();
+            if (produced >= limit) {
+                // is it full for real? let's check again
+                final long currentConsumed = consumed.get();
+                limit = currentConsumed + capacity;
+                if (produced >= limit) {
+                    // TODO implement some other cooperative mechanism to park for real!
+                    // maybe full -> let's linger!
+                    LockSupport.parkNanos(1);
+                    if (Thread.currentThread().isInterrupted()) {
+                        // silently drop
+                        return;
+                    }
+                    // retry!
+                    continue;
+                }
+                // update the limit for other(s) or this same thread
+                producerLimit.lazySet(limit);
+            }
+        } while (!submitted.compareAndSet(produced, produced + 1));
+        processing_queue.offer(r);
     }
 
     /** This method is always called by a single thread only, and does therefore not need to be reentrant */
@@ -755,6 +781,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected void processQueue() {
         Request first_req;
+        final AtomicLong consumed = this.consumed;
         try {
             first_req=processing_queue.poll(resend_interval, TimeUnit.MILLISECONDS);
             if(first_req == null) { // poll() timed out
@@ -762,27 +789,32 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     commit_table.forEach(this::sendAppendEntriesMessage);
                 return;
             }
+            consumed.lazySet(consumed.get() + 1);
             for(;;) {
                 remove_queue.clear();
                 if(first_req != null) {
                     remove_queue.add(first_req);
                     first_req=null;
                 }
-                processing_queue.drainTo(remove_queue);
+                int drained = processing_queue.drainTo(remove_queue);
+                if (drained > 0) {
+                    consumed.lazySet(consumed.get() + drained);
+                }
                 int num=remove_queue.size();
                 if(num > 0) {
                     drained_total.add(num);
                     drained_avg.add(num);
-
-                    final AtomicInteger down_r=new AtomicInteger(), up_r=new AtomicInteger();
-                    remove_queue.forEach(r -> {
-                        if(r instanceof DownRequest)
-                            down_r.incrementAndGet();
-                        else if(r instanceof UpRequest)
-                            up_r.incrementAndGet();
-                    });
-                    drained_down.add(down_r.get());
-                    drained_up.add(up_r.get());
+                    // collect stats
+                    int down_r = 0, up_r = 0;
+                    for (int i = 0, size = remove_queue.size(); i < size; i++) {
+                        Request r = remove_queue.get(i);
+                        if (r instanceof DownRequest)
+                            down_r++;
+                        else if (r instanceof UpRequest)
+                            up_r++;
+                    }
+                    drained_down.add(down_r);
+                    drained_up.add(up_r);
                 }
                 if(remove_queue.isEmpty())
                     return;
