@@ -164,6 +164,7 @@ public class LogCache implements Log {
         first_appended=log.firstAppended();
         commit_index=log.commitIndex();
         last_appended=log.lastAppended();
+        current_term = log.currentTerm();
     }
 
     public void deleteAllEntriesStartingFrom(int start_index) {

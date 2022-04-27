@@ -18,8 +18,6 @@ import java.util.function.ObjIntConsumer;
  */
 public class FileBasedLog implements Log {
 
-   private final Object metadataLock = new Object();
-
    private File logDir;
    private Address votedFor;
    private int commitIndex;
@@ -202,7 +200,22 @@ public class FileBasedLog implements Log {
 
    @Override
    public void reinitializeTo(int index, LogEntry entry) {
+      try {
+         MetadataStorage metadataStorage = checkMetadataStarted();
+         checkLogEntryStorageStarted().reinitializeTo(index, entry);
 
+         // update commit index
+         metadataStorage.setCommitIndex(index);
+         commitIndex = index;
+
+         // update term
+         if (currentTerm != entry.term()) {
+            metadataStorage.setCurrentTerm(entry.term());
+            currentTerm = entry.term();
+         }
+      } catch (IOException e) {
+         e.printStackTrace();
+      }
    }
 
    @Override
@@ -235,10 +248,10 @@ public class FileBasedLog implements Log {
 
    @Override
    public String toString() {
-      if(logEntryStorage == null)
-         return "<not initialized yet>";
-      return String.format("first=%d, commit=%d, last-appended=%d, term=%d (size=%d)",
-                           firstAppended(), commitIndex(), lastAppended(), currentTerm, size());
+      if (logEntryStorage == null)
+         return "FileLog: <not initialized yet>";
+      return String.format("FileLog: first=%d, commit=%d, last-appended=%d, term=%d (size=%d)",
+            firstAppended(), commitIndex(), lastAppended(), currentTerm, size());
    }
 
    private MetadataStorage checkMetadataStarted() {

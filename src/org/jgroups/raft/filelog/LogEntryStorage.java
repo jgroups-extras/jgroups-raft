@@ -39,7 +39,7 @@ public class LogEntryStorage {
       this.fsync = fsync;
       positionCache = new FilePositionCache(0);
       fileStorage = new FileStorage(new File(parentDir, FILE_NAME), DEFAULT_WRITE_AHEAD_BYTES);
-  }
+   }
 
    public void open() throws IOException {
       fileStorage.open();
@@ -98,7 +98,7 @@ public class LogEntryStorage {
 
    public int write(int startIndex, LogEntries entries) throws IOException {
       if (startIndex == 1) {
-            return appendWithoutOverwriteCheck(entries, 1, 0);
+         return appendWithoutOverwriteCheck(entries, 1, 0);
       }
       // find previous entry to append
       long previousPosition = positionCache.getPosition(startIndex - 1);
@@ -122,7 +122,8 @@ public class LogEntryStorage {
    }
 
    /**
-    * This is not used but for testing, hence it's not using any batching optimization as {@link #appendWithoutOverwriteCheck} does.
+    * This is not used but for testing, hence it's not using any batching optimization as
+    * {@link #appendWithoutOverwriteCheck} does.
     */
    private int appendOverwriteCheck(LogEntry[] entries, int index, long position) throws IOException {
       int term = 0;
@@ -160,11 +161,13 @@ public class LogEntryStorage {
       }
       final long startPosition = position;
       final ByteBuffer batchBuffer = fileStorage.ioBufferWith(batchBytes);
-      int size=entries.size(), i=0;
-      for (LogEntry entry: entries) {
+      int size = entries.size(), i = 0;
+      for (LogEntry entry : entries) {
          Header header = new Header(position, index, entry);
          header.writeTo(batchBuffer);
-         batchBuffer.put(entry.command(), entry.offset(), entry.length());
+         if (entry.length() > 0) {
+            batchBuffer.put(entry.command(), entry.offset(), entry.length());
+         }
          setFilePosition(header.index, header.position);
          term = Math.max(entry.term(), term);
          position = header.nextPosition();
@@ -211,6 +214,32 @@ public class LogEntryStorage {
       if (lastAppended < index) {
          lastAppended = index;
       }
+   }
+
+   public void reinitializeTo(int index, LogEntry firstEntry) throws IOException {
+      // remove the content of the file
+      fileStorage.truncateTo(0);
+      // first appended is set in the constructor
+      positionCache = new FilePositionCache(index);
+
+      int batchBytes = Header.getTotalLength(firstEntry.length());
+      final ByteBuffer batchBuffer = fileStorage.ioBufferWith(batchBytes);
+      Header header = new Header(0, index, firstEntry);
+      header.writeTo(batchBuffer);
+
+      if (firstEntry.length() > 0) {
+         batchBuffer.put(firstEntry.command(), firstEntry.offset(), firstEntry.length());
+      }
+
+      fileStorage.write(0);
+      setFilePosition(index, 0);
+      if (fsync) {
+         fileStorage.flush();
+      }
+
+      // set last appended
+      lastAppended = index;
+      lastAppendedHeader = header;
    }
 
    public int removeNew(int index) throws IOException {
