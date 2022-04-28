@@ -326,23 +326,24 @@ public class RaftTest {
     }
 
 
-    protected static void assertIndices(int expected_last, int expected_commit, int expected_term, RAFT... rafts) {
-        for(RAFT r: rafts) {
-            assert r.lastAppended() == expected_last
-              : String.format("RAFT.last_appended=%d, expected=%d", r.lastAppended(), expected_last);
-            assert r.log().lastAppended() == expected_last
-              : String.format("RAFT.log=%s, expected last=%d", r.log(), expected_last);
+    protected static void assertIndices(int expected_last, int expected_commit, int expected_term, RAFT r) {
+        Util.waitUntilTrue(1000, 50, () -> r.lastAppended() == expected_last &&
+          r.commitIndex() == expected_commit && r.currentTerm() == expected_term &&
+          r.log().lastAppended() == expected_last && r.log().commitIndex() == expected_commit);
+        assert r.lastAppended() == expected_last
+          : String.format("RAFT.last_appended=%d, expected=%d", r.lastAppended(), expected_last);
+        assert r.log().lastAppended() == expected_last
+          : String.format("RAFT.log=%s, expected last=%d", r.log(), expected_last);
 
-            assert r.commitIndex() == expected_commit
-              : String.format("RAFT.commit=%d, expected=%d", r.commitIndex(), expected_commit);
-            assert r.log().commitIndex() == expected_commit
-              : String.format("RAFT.log=%s, expected commit=%d", r.commitIndex(), expected_commit);
+        assert r.commitIndex() == expected_commit
+          : String.format("RAFT.commit=%d, expected=%d", r.commitIndex(), expected_commit);
+        assert r.log().commitIndex() == expected_commit
+          : String.format("RAFT.log.commit-index=%d, expected commit=%d", r.log().commitIndex(), expected_commit);
 
-            assert r.currentTerm() == expected_term
-              : String.format("RAFT.term=%d, expected=%d", r.currentTerm(), expected_term);
-            assert r.log().currentTerm() == expected_term
-              : String.format("RAFT.log=%s, expected term=%d", r.log(), expected_term);
-        }
+        assert r.currentTerm() == expected_term
+          : String.format("RAFT.term=%d, expected=%d", r.currentTerm(), expected_term);
+        assert r.log().currentTerm() == expected_term
+          : String.format("RAFT.log=%s, expected term=%d", r.log(), expected_term);
     }
 
     protected static void assertCommitTableIndeces(Address member, RAFT r, int commit_index, int match_index, int next_index) {

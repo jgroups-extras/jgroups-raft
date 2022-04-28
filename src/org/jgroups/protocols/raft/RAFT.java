@@ -717,7 +717,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
-            handleCommit(highest_committed);
+            commitLogTo(highest_committed);
     }
 
     public void handleUpRequest(Message msg, RaftHeader hdr) {
@@ -852,7 +852,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
-            handleCommit(highest_committed);
+            commitLogTo(highest_committed);
     }
 
     /** Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31) */
@@ -1023,50 +1023,19 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /**
-     * Received a majority of votes for the entry at index. Note that indices may be received out of order, e.g. if
-     * we have modifications at indices 4, 5 and 6, entry[5] might get a majority of votes (=committed)
-     * before entry[3] and entry[6].<p/>
-     * The following things are done:
-     * <ul>
-     *     <li>See if commit_index can be moved to index (incr commit_index until a non-committed entry is encountered)</li>
-     *     <li>For each committed entry, apply the modification at entry[index] to the state machine</li>
-     *     <li>For each committed entry, notify the client and set the result (CompletableFuture)</li>
-     * </ul>
-     * @param index The index of the committed entry.
+     * Tries to move commit_index up to index_inclusive, apply the entries in [commit_index+1 .. index_inclusive]
+     * to the state machine and notify the clients for each entry. There is no need to check if an entry is committed
+     * in RequestTable, as this was done before calling this method.
+     * @param index_inclusive The index to which to move commit_index
      */
-    protected void handleCommit(int index) {
-        try {
-            for(int i=commit_index + 1; i <= Math.min(index, last_appended); i++) {
-                if(!request_table.isCommitted(i))
-                    break; // stop at the first uncommitted request
-                applyCommit(i);
-                commit_index=Math.max(commit_index, i);
-            }
-        }
-        catch(Throwable t) {
-            log.error("failed applying commit %d: %s", index, t);
-        }
-    }
-
-    /**
-     * Tries to advance commit_index up to leader_commit, applying all uncommitted log entries to the state machine
-     * @param leader_commit The commit index of the leader
-     */
-    protected RAFT commitLogTo(int leader_commit) {
-        int old_commit=commit_index, to=Math.min(last_appended, leader_commit);
-        try {
-            for(int i=commit_index+1; i <= to; i++) {
-                applyCommit(i);
-                commit_index=Math.max(commit_index, i);
-            }
-        }
-        catch(Throwable t) {
-            log.error("%s: failed moving commit_index from (exclusive) %d to (inclusive) %d " +
-                        "(last_appended=%d, leader's commit_index=%d, failed at commit_index %d)): %s",
-                      local_addr, old_commit, to, last_appended, leader_commit, commit_index+1,  t);
-        }
+    protected RAFT commitLogTo(int index_inclusive) {
+        int to=Math.min(last_appended, index_inclusive);
+        int last_successful_apply=applyCommits(to);
+        commit_index=Math.max(commit_index, last_successful_apply);
+        log_impl.commitIndex(commit_index);
         return this;
     }
+
 
     /** Appends to the log and returns true if added or false if not (e.g. because the entry already existed */
     protected boolean append(int index, LogEntries entries) {
@@ -1098,34 +1067,47 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
+    /**
+     * Applies log entries [commit_index+1 .. to_inclusive] to the state machine and notifies clients in RequestTable.
+     * @param to_inclusive The end index (inclusive) of the log entries to apply
+     * @return The last index of the range of log entries that was successfuly applied (normally this is to_inclusive)
+     */
+    protected int applyCommits(int to_inclusive) {
+        int last_successful_apply=commit_index;
+        for(int i=commit_index+1; i <= to_inclusive; i++) {
+            try {
+                applyCommit(i);
+                last_successful_apply=i;
+            }
+            catch(Throwable t) {
+                log.error("%s: failed moving commit_index to %d: %s", local_addr, to_inclusive, t);
+                return last_successful_apply;
+            }
+        }
+        return last_successful_apply;
+    }
+
     /** Applies the commit at index */
     protected void applyCommit(int index) throws Exception {
         // Apply the modifications to the state machine
         LogEntry log_entry=log_impl.get(index);
         if(log_entry == null)
             throw new IllegalStateException(local_addr + ": log entry for index " + index + " not found in log");
-        if(state_machine == null)
-            throw new IllegalStateException(local_addr + ": state machine is null");
         byte[] rsp=null;
         if(log_entry.internal) {
-            try {
-                InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
-                                                                  log_entry.offset, log_entry.length);
-                cmd.execute(this);
-            }
-            catch(Throwable t) {
-                log.error("%s: failed unmarshalling internal command: %s", local_addr, t);
-            }
+            InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
+                                                              log_entry.offset, log_entry.length);
+            cmd.execute(this);
         }
         else
             rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
-
-        log_impl.commitIndex(index);
 
         // Notify the client's CompletableFuture and then remove the entry in the client request table
         if(request_table != null)
             request_table.notifyAndRemove(index, rsp);
     }
+
+
 
     public void handleView(View view) {
         boolean check_view=this.view != null && this.view.size() < view.size();

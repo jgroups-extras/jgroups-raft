@@ -65,7 +65,7 @@ public class ArrayRingBufferTest {
 
       ret=rb.remove(5);
       assert ret == 5;
-      assert rb.size() == 8;
+      assert rb.size() == 8 : String.format("size should be 8 but is %d", rb.size());
    }
 
    public void testShouldUseAvailableCapacity() {
