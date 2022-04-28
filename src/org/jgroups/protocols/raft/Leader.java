@@ -44,7 +44,7 @@ public class Leader extends RaftImpl {
             case OK:
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
                 if(reqtab.add(result.index, sender_raft_id, raft.majority())) {
-                    raft.handleCommit(result.index);
+                    raft.commitLogTo(result.index);
                     if(raft.send_commits_immediately)
                         sendCommitMessageToFollowers();
                 }
