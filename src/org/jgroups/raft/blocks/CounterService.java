@@ -1,16 +1,25 @@
 package org.jgroups.raft.blocks;
 
+import org.jgroups.Global;
 import org.jgroups.JChannel;
+import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.RaftHandle;
-import org.jgroups.util.*;
+import org.jgroups.raft.util.CompletableFutures;
+import org.jgroups.util.AsciiString;
+import org.jgroups.util.Bits;
+import org.jgroups.util.ByteArrayDataInputStream;
+import org.jgroups.util.ByteArrayDataOutputStream;
+import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -30,7 +39,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     // keys: counter names, values: counter values
     protected final Map<String,Long> counters=new HashMap<>();
 
-    protected enum Command {create, delete, get, set, compareAndSet, incrementAndGet, decrementAndGet, addAndGet}
+    protected enum Command {create, delete, get, set, compareAndSet, incrementAndGet, decrementAndGet, addAndGet, compareAndSwap}
 
 
     public CounterService(JChannel ch) {
@@ -163,6 +172,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                 v1=Bits.readLongCompressed(in);
                 retval=_add(name, v1);
                 return Util.objectToByteBuffer(retval);
+            case compareAndSwap:
+                return Util.objectToByteBuffer(_compareAndSwap(name, Bits.readLongCompressed(in), Bits.readLongCompressed(in)));
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
         }
@@ -250,6 +261,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                     sb.append(print(cmd, name, 0, in));
                     break;
                 case compareAndSet:
+                case compareAndSwap:
                     sb.append(print(cmd, name, 2, in));
                     break;
                 default:
@@ -286,6 +298,126 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         byte[] buf=out.buffer();
         byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
         return ignore_return_value? null: Util.objectFromByteBuffer(rsp);
+    }
+
+    /*
+     Async operations
+     */
+
+    /**
+     * Returns an {@link AsyncCounter} instance of the counter.
+     * <p>
+     * This is local operation, and it does not create the counter in the raft log.
+     *
+     * @param name Name of the counter, different counters have to have different names.
+     * @return The {@link AsyncCounter} instance
+     */
+    public AsyncCounter asyncCounter(String name) {
+        return new AsyncCounterImpl(this, name);
+    }
+
+    /**
+     * Returns an existing counter, or creates a new one if none exists.
+     * <p>
+     * This is a cluster-wide operation which would fail if no leader is elected.
+     *
+     * @param name         Name of the counter, different counters have to have different names
+     * @param initialValue The initial value of a new counter if there is no existing counter. Ignored if the counter
+     *                     already exists
+     * @return The {@link AsyncCounter} implementation.
+     */
+    public CompletionStage<AsyncCounter> getOrCreateAsyncCounter(String name, long initialValue) {
+        synchronized (counters) {
+            if (counters.containsKey(name)) {
+                return CompletableFuture.completedFuture(asyncCounter(name));
+            }
+        }
+        return invokeAsync(Command.create, new AsciiString(name), initialValue)
+              .thenApply(__ -> asyncCounter(name));
+    }
+
+    protected CompletionStage<Long> asyncGet(AsciiString name) {
+        return invokeAsyncAndGet(Command.get, name);
+    }
+
+    protected CompletionStage<Void> asyncSet(AsciiString name, long value) {
+        return invokeAsync(Command.set, name, value);
+    }
+
+    public CompletionStage<Long> asyncIncrementAndGet(AsciiString name) {
+        return invokeAsyncAndGet(Command.incrementAndGet, name);
+    }
+
+    public CompletionStage<Long> asyncDecrementAndGet(AsciiString name) {
+        return invokeAsyncAndGet(Command.decrementAndGet, name);
+    }
+
+    protected CompletionStage<Long> asyncAddAndGet(AsciiString name, long delta) {
+        return delta == 0 ?
+              asyncGet(name) :
+              invokeAsyncAddAndGet(name, delta);
+    }
+
+    protected CompletionStage<Long> asyncCompareAndSwap(AsciiString name, long expected, long value) {
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE + Bits.size(expected) + Bits.size(value));
+        try {
+            writeCommandAndName(out, Command.compareAndSwap.ordinal(), name);
+            Bits.writeLongCompressed(expected, out);
+            Bits.writeLongCompressed(value, out);
+            return setAsyncWithTimeout(out).thenApply(CounterService::readLong);
+        } catch (Exception ex) {
+            return CompletableFutures.completeExceptionally(ex);
+        }
+    }
+
+    protected CompletionStage<Long> invokeAsyncAndGet(Command command, AsciiString name) {
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE);
+        try {
+            writeCommandAndName(out, command.ordinal(), name);
+            return setAsyncWithTimeout(out).thenApply(CounterService::readLong);
+        } catch (Exception ex) {
+            return CompletableFutures.completeExceptionally(ex);
+        }
+    }
+
+    protected CompletionStage<Long> invokeAsyncAddAndGet(AsciiString name, long arg) {
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE + Bits.size(arg));
+        try {
+            writeCommandAndName(out, Command.addAndGet.ordinal(), name);
+            Bits.writeLongCompressed(arg, out);
+            return setAsyncWithTimeout(out).thenApply(CounterService::readLong);
+        } catch (Exception ex) {
+            return CompletableFutures.completeExceptionally(ex);
+        }
+    }
+
+    protected CompletionStage<Void> invokeAsync(Command command, AsciiString name, long arg) {
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE + Bits.size(arg));
+        try {
+            writeCommandAndName(out, command.ordinal(), name);
+            Bits.writeLongCompressed(arg, out);
+            return setAsyncWithTimeout(out).thenApply(CompletableFutures.toVoidFunction());
+        } catch (Exception ex) {
+            return CompletableFutures.completeExceptionally(ex);
+        }
+    }
+
+    private static void writeCommandAndName(ByteArrayDataOutputStream out, int command, AsciiString name) throws IOException {
+        out.writeByte(command);
+        Bits.writeAsciiString(name, out);
+    }
+
+    private CompletionStage<byte[]> setAsyncWithTimeout(ByteArrayDataOutputStream out) throws Exception {
+        return raft.setAsync(out.buffer(), 0, out.position())
+              .orTimeout(repl_timeout, TimeUnit.MILLISECONDS);
+    }
+
+    private static Long readLong(byte[] rsp) {
+        try {
+            return Util.objectFromByteBuffer(rsp);
+        } catch (IOException | ClassNotFoundException e) {
+            throw CompletableFutures.wrapAsCompletionException(e);
+        }
     }
 
     protected static String print(Command command, String name, int num_args, DataInput in) {
@@ -355,6 +487,18 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         }
     }
 
-
+    protected long _compareAndSwap(String name, long expected, long value) {
+        synchronized (counters) {
+            Long existing = counters.get(name);
+            if (existing == null) {
+                // TODO is it ok to return 0?
+                return expected == 0 ? 1: 0;
+            }
+            if (existing == expected) {
+                counters.put(name, value);
+            }
+            return existing;
+        }
+    }
 
 }
