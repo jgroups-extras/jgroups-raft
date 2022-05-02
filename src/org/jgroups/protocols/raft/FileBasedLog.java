@@ -1,6 +1,5 @@
 package org.jgroups.protocols.raft;
 
-import org.apache.commons.io.FileUtils;
 import org.jgroups.Address;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
@@ -95,7 +94,7 @@ public class FileBasedLog implements Log {
             entryStorage.delete();
          }
          if (logDir != null) {
-            FileUtils.deleteDirectory(logDir);
+            logDir.delete(); // must be empty in order to be deleted
             logDir = null;
          }
       } catch (IOException e) {

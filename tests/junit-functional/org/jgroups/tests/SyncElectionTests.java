@@ -7,6 +7,7 @@ import org.jgroups.View;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
@@ -50,7 +51,7 @@ public class SyncElectionTests {
                 nodes[i]=null;
             }
             if(rafts[i] != null) {
-                rafts[i].deleteLog().deleteSnapshot();
+                Utils.deleteLogAndSnapshot(rafts[i]);
                 rafts[i]=null;
             }
             if(elections[i] != null) {

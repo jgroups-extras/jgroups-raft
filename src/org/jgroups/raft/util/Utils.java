@@ -2,6 +2,10 @@ package org.jgroups.raft.util;
 
 import org.jgroups.Address;
 import org.jgroups.View;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.RAFT;
+
+import java.io.File;
 
 /**
  * @author Bela Ban
@@ -29,4 +33,18 @@ public class Utils {
             return Majority.leader_lost;
         return Majority.no_change;
     }
+
+    public static void deleteLogAndSnapshot(RAFT r) throws Exception {
+        Log log=r != null? r.log() : null;
+        if(log != null) {
+            log.delete();
+            r.log(null);
+        }
+        String snapshot_name=r != null? r.snapshotName() : null;
+        if(snapshot_name != null) {
+            File file=new File(snapshot_name);
+            file.delete();
+        }
+    }
+
 }

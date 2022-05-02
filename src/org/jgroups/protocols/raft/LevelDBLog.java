@@ -1,11 +1,6 @@
 package org.jgroups.protocols.raft;
 
-import org.apache.commons.io.FileUtils;
-import org.iq80.leveldb.DB;
-import org.iq80.leveldb.DBIterator;
-import org.iq80.leveldb.Options;
-import org.iq80.leveldb.WriteBatch;
-import org.iq80.leveldb.WriteOptions;
+import org.iq80.leveldb.*;
 import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.util.Util;
@@ -84,7 +79,7 @@ public class LevelDBLog implements Log {
     public void delete() throws IOException {
         Util.close(this);
         log.trace("deleting DB directory: %s", dbFileName);
-        FileUtils.deleteDirectory(dbFileName);
+        factory.destroy(dbFileName, new Options());
     }
 
 

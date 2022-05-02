@@ -6,6 +6,7 @@ import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -33,7 +34,7 @@ public class DynamicMembershipTest {
     protected final List<String>   mbrs3 = Arrays.asList("A", "B", "C", "D", "E");
 
     @AfterMethod protected void destroy() throws Exception {
-        close(true, true, channels);
+        close(channels);
     }
 
 
@@ -50,7 +51,7 @@ public class DynamicMembershipTest {
             System.out.println("received exception as expected: " + e);
         }
         finally {
-            close(true, true, non_member);
+            close(non_member);
         }
     }
 
@@ -155,7 +156,7 @@ public class DynamicMembershipTest {
         // close non-leaders
         for(JChannel ch: channels)
             if(!ch.getAddress().equals(leader))
-                close(true, true, ch);
+                close(ch);
 
         RAFT raft=raft(leader);
         try { // this will fail as leader A stepped down when it found that the view's size dropped below the majority
@@ -304,19 +305,15 @@ public class DynamicMembershipTest {
         return ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
-    protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
+    protected static void close(JChannel... channels) {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            if(remove_log) {
-                try {
-                    raft.log().delete(); // remove log files after the run
-                }
-                catch(Exception ignored) {}
+            try {
+                Utils.deleteLogAndSnapshot(raft);
             }
-            if(remove_snapshot)
-                raft.deleteSnapshot();
+            catch(Exception ignored) {}
             Util.close(ch);
         }
     }

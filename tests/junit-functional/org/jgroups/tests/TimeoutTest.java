@@ -6,6 +6,7 @@ import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
@@ -26,7 +27,7 @@ public class TimeoutTest {
     @AfterMethod protected void destroy() throws Exception {
         for(JChannel ch: channels) {
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            raft.deleteLog().deleteSnapshot();
+            Utils.deleteLogAndSnapshot(raft);
         }
         Util.close(channels);
     }

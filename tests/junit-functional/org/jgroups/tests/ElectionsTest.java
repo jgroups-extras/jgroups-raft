@@ -4,7 +4,8 @@
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.*;
-import org.jgroups.util.Util;
+ import org.jgroups.raft.util.Utils;
+ import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -62,7 +63,7 @@ import java.util.function.Supplier;
 
      /** ELECTION should look for RAFT or its subclasses */
      public void testRAFTSubclass() throws Exception {
-         close(true, true, c);
+         close(c);
          c=createWithRAFTSubclass("C");
          c.connect(CLUSTER);
      }
@@ -96,22 +97,18 @@ import java.util.function.Supplier;
          for(JChannel ch: channels) {
              if(ch == null)
                  continue;
-             close(remove_log, remove_snapshot, ch);
+             close(ch);
          }
      }
 
-     protected static void close(boolean remove_log, boolean remove_snapshot, JChannel ch) {
+     protected static void close(JChannel ch) {
          if(ch == null)
              return;
          RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-         if(remove_log) {
-             try {
-                 raft.log().delete(); // remove log files after the run
-             }
-             catch(Exception ignored) {}
+         try {
+             Utils.deleteLogAndSnapshot(raft);
          }
-         if(remove_snapshot)
-             raft.deleteSnapshot();
+         catch(Exception ignored) {}
          Util.close(ch);
      }
 

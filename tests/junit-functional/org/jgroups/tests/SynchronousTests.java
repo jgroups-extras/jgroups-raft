@@ -6,6 +6,7 @@ import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.CounterStateMachine;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.util.Bits;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
@@ -69,16 +70,13 @@ public class SynchronousTests {
         if(node_c != null) {
             node_c.stop();
             node_c.destroy();
-            raft_c.deleteLog();
-            raft_c.deleteSnapshot();
+            Utils.deleteLogAndSnapshot(raft_c);
         }
         Util.close(node_b, node_a);
         node_b.destroy();
         node_a.destroy();
-        raft_a.deleteLog();
-        raft_a.deleteSnapshot();
-        raft_b.deleteLog();
-        raft_b.deleteSnapshot();
+        Utils.deleteLogAndSnapshot(raft_a);
+        Utils.deleteLogAndSnapshot(raft_b);
         cluster.clear();
     }
 
@@ -469,8 +467,7 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 4, 5, 6);
 
         raft_b.stop();
-        raft_b.log().delete();
-        raft_b.deleteSnapshot();
+        Utils.deleteLogAndSnapshot(raft_b);
         raft_b.log(null); // required to re-initialize the log
         ((CounterStateMachine)raft_b.stateMachine()).reset();
         raft_b.stateMachineLoaded(false);

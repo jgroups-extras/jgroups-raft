@@ -8,6 +8,7 @@ import org.jgroups.protocols.TP;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.ProtocolStack;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
@@ -32,7 +33,7 @@ public class VoteTest {
 
     @AfterMethod protected void destroy() {
         if(channels != null)
-            close(true, true, channels);
+            close(channels);
     }
 
 
@@ -47,7 +48,7 @@ public class VoteTest {
             System.out.println("received exception as expected: " + e);
         }
         finally {
-            close(true, true, non_member);
+            close(non_member);
         }
     }
 
@@ -295,21 +296,17 @@ public class VoteTest {
         return ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
-    protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
+    protected static void close(JChannel... channels) {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
             ProtocolStack stack=ch.getProtocolStack();
             stack.removeProtocol(DISCARD.class);
             RAFT raft=stack.findProtocol(RAFT.class);
-            if(remove_log) {
-                try {
-                    raft.log().delete(); // remove log files after the run
-                }
-                catch(Exception ignored) {}
+            try {
+                Utils.deleteLogAndSnapshot(raft);
             }
-            if(remove_snapshot)
-                raft.deleteSnapshot();
+            catch(Exception ignored) {}
             Util.close(ch);
         }
     }

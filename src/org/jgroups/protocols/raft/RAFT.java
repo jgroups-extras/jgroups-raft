@@ -410,20 +410,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return this;
     }
 
-    public RAFT deleteSnapshot() {
-        File file=new File(snapshot_name);
-        file.delete();
-        return this;
-    }
-
-    public RAFT deleteLog() throws Exception {
-        if(log_impl != null) {
-            log_impl.delete();
-            log_impl=null;
-        }
-        return this;
-    }
-
     public void logEntries(ObjIntConsumer<LogEntry> func) {
         log_impl.forEach(func);
     }

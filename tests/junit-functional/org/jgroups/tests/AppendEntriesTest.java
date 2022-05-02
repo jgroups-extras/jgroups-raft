@@ -8,7 +8,8 @@ import org.jgroups.protocols.TP;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
-import org.jgroups.stack.ProtocolStack;
+ import org.jgroups.raft.util.Utils;
+ import org.jgroups.stack.ProtocolStack;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -45,7 +46,7 @@ public class AppendEntriesTest {
 
     @AfterMethod
     protected void destroy() {
-        close(true, true, c, b, a);
+        close(c, b, a);
     }
 
     public void testSingleMember() throws Exception  {
@@ -104,7 +105,7 @@ public class AppendEntriesTest {
      */
     public void testNonCommitWithoutMajority() throws Exception {
         init(true);
-        close(true, true, b, c);
+        close(b, c);
         as.timeout(500);
 
         for(int i=1; i <= 3; i++) {
@@ -130,7 +131,7 @@ public class AppendEntriesTest {
         assertSame(as, bs, cs);
 
         // Now C leaves
-        close(true, true, c);
+        close(c);
 
         // A and B commit entries 3-5
         for(int i=3; i <= 5; i++)
@@ -245,7 +246,7 @@ public class AppendEntriesTest {
      */
     public void testInstallSnapshotInC() throws Exception {
         init(true);
-        close(true, true, c);
+        close(c);
         for(int i=1; i <= 5; i++)
             as.put(i,i);
         assertSame(as, bs);
@@ -617,19 +618,15 @@ public class AppendEntriesTest {
     }
 
 
-    protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
+    protected static void close(JChannel... channels) {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            if(remove_log) {
-                try {
-                    raft.log().delete(); // remove log files after the run
-                }
-                catch(Exception ignored) {}
+            try {
+                Utils.deleteLogAndSnapshot(raft);
             }
-            if(remove_snapshot)
-                raft.deleteSnapshot();
+            catch(Exception ignored) {}
             Util.close(ch);
         }
     }

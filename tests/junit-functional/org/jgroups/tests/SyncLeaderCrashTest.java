@@ -7,6 +7,7 @@ import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.CounterStateMachine;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
 import org.jgroups.util.ExtendedUUID;
@@ -62,7 +63,7 @@ public class SyncLeaderCrashTest {
                 nodes[i]=null;
             }
             if(rafts[i] != null) {
-                rafts[i].deleteLog().deleteSnapshot();
+                Utils.deleteLogAndSnapshot(rafts[i]);
                 rafts[i]=null;
             }
             if(elections[i] != null) {
@@ -85,7 +86,7 @@ public class SyncLeaderCrashTest {
                 r.impl().handleAppendEntriesRequest(entries, a,i-1, prev_term, 9, 4);
             }
         }
-        kill(0, true);
+        kill(0);
         View v=View.create(b, view_id++, b,c);
         cluster.handleView(v);
         waitUntilVotingThreadHasStopped();
@@ -255,7 +256,7 @@ public class SyncLeaderCrashTest {
         return list.stream().mapToInt(Integer::intValue).toArray();
     }
 
-    protected void kill(int index, boolean remove_log) throws Exception {
+    protected void kill(int index) throws Exception {
         cluster.remove(nodes[index].getAddress());
         nodes[index].stop();
         nodes[index].destroy();
@@ -265,8 +266,7 @@ public class SyncLeaderCrashTest {
             elections[index]=null;
         }
         if(rafts[index] != null) {
-            if(remove_log)
-                rafts[index].deleteLog().deleteSnapshot();
+            Utils.deleteLogAndSnapshot(rafts[index]);
             rafts[index]=null;
         }
         sms[index]=null;

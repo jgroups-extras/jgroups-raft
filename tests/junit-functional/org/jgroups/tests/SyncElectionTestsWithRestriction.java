@@ -6,6 +6,7 @@ import org.jgroups.View;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
@@ -54,7 +55,7 @@ public class SyncElectionTestsWithRestriction {
                 nodes[i]=null;
             }
             if(rafts[i] != null) {
-                rafts[i].deleteLog().deleteSnapshot();
+                Utils.deleteLogAndSnapshot(rafts[i]);
                 rafts[i]=null;
             }
             if(elections[i] != null) {
@@ -82,7 +83,7 @@ public class SyncElectionTestsWithRestriction {
     public void testScenarioD() throws Exception {
         createScenarioC();
         System.out.printf("-- Initial:\n%s\n", printTerms());
-        kill(0, true);
+        kill(0);
         makeLeader(4);
         View v=View.create(s5, view_id++, s5,s2,s3,s4);
         cluster.handleView(v);
@@ -118,7 +119,7 @@ public class SyncElectionTestsWithRestriction {
         r1.flushCommitTable(s3);
 
         System.out.printf("-- Initial:\n%s\n", printTerms());
-        kill(0, true);
+        kill(0);
         v=View.create(s2, view_id++, s2,s3,s4,s5);
         cluster.handleView(v);
         System.out.printf("-- After killing S1:\n%s\n", printTerms());
@@ -228,7 +229,7 @@ public class SyncElectionTestsWithRestriction {
         return list.stream().mapToInt(Integer::intValue).toArray();
     }
 
-    protected void kill(int index, boolean remove_log) throws Exception {
+    protected void kill(int index) throws Exception {
         cluster.remove(nodes[index].getAddress());
         nodes[index].stop();
         nodes[index].destroy();
@@ -238,8 +239,7 @@ public class SyncElectionTestsWithRestriction {
             elections[index]=null;
         }
         if(rafts[index] != null) {
-            if(remove_log)
-                rafts[index].deleteLog().deleteSnapshot();
+            Utils.deleteLogAndSnapshot(rafts[index]);
             rafts[index]=null;
         }
     }
