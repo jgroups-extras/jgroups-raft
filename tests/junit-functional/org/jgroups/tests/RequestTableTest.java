@@ -60,6 +60,6 @@ public class RequestTableTest {
             table.create(i, "A", future, 1);
         IntStream.rangeClosed(1,5).parallel().forEach(i -> table.notifyAndRemove(i, "bb".getBytes()));
         Util.waitUntilTrue(5000, 200, () -> table.size() == 0);
-        assert table.size() == 0;
+        assert table.size() == 0 : String.format("table size should be %d but is %d", 0, table.size());
     }
 }

@@ -831,11 +831,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         int curr_index=last_appended+1;
         LogEntry entry=log_impl.get(prev_index);
         int prev_term=entry != null? entry.term : 0;
-        // Appends N entries
-        last_appended=log_impl.append(curr_index, entries);
-        int batch_size=entries.size();
-        num_successful_append_requests+=batch_size;
-        avg_append_entries_batch_size.add(batch_size);
 
         // Multicast an AppendEntries message (exclude self)
         Message msg=new ObjectMessage(null, entries)
@@ -843,6 +838,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                                                   current_term, commit_index))
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         down_prot.down(msg);
+
+        // Appends entries to my own log
+        last_appended=log_impl.append(curr_index, entries);
+        int batch_size=entries.size();
+        num_successful_append_requests+=batch_size;
+        avg_append_entries_batch_size.add(batch_size);
 
         snapshotIfNeeded(length);
 
