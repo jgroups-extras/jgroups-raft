@@ -786,28 +786,23 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             down++;
         else if(first_req instanceof UpRequest)
             up++;
-        for(;;) {
-            Request r;
-            while ((r = processing_queue.poll()) != null) {
-                if (r instanceof DownRequest)
-                    down++;
-                else if (r instanceof UpRequest)
-                    up++;
-                remove_queue.add(r);
-            }
-            final int total = remove_queue.size();
-            if (total == 0) {
-                return;
-            }
-            drained_total.add(total);
-            drained_avg.add(total);
-            drained_up.add(up);
-            drained_down.add(down);
-            try {
-                process(remove_queue);
-            } finally {
-                remove_queue.clear();
-            }
+        Request r;
+        while ((r = processing_queue.poll()) != null) {
+            if(r instanceof DownRequest)
+                down++;
+            else if(r instanceof UpRequest)
+                up++;
+            remove_queue.add(r);
+        }
+        final int total = remove_queue.size();
+        drained_total.add(total);
+        drained_avg.add(total);
+        drained_up.add(up);
+        drained_down.add(down);
+        try {
+            process(remove_queue);
+        } finally {
+            remove_queue.clear();
         }
     }
 
