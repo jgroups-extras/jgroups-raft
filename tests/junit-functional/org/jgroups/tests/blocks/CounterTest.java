@@ -16,8 +16,14 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -126,22 +132,207 @@ public class CounterTest {
         assertValues(counters, -2);
     }
 
+    public void testChainAddAndGet() {
+        List<AsyncCounter> counters = createAsyncCounters("chain-add-and-get");
+
+        CompletionStage<Long> stage = counters.get(0).addAndGet(5)
+                .thenCompose(value -> counters.get(0).addAndGet(value));
+        stage.thenAccept(value -> assertEquals(10L, (long) value)).toCompletableFuture().join();
+
+        List<CompletionStage<Boolean>> checkValueStage = new ArrayList<>(counters.size());
+        Function<Long, Boolean> isTen = value -> value == 10;
+        for (AsyncCounter c : counters) {
+            checkValueStage.add(c.get().thenApply(isTen));
+        }
+        for (CompletionStage<Boolean> c : checkValueStage) {
+            assertTrue(c.toCompletableFuture().join());
+        }
+        assertAsyncValues(counters, 10);
+    }
+
+    public void testCombineCounters() {
+        List<AsyncCounter> counters1 = createAsyncCounters("combine-1");
+        List<AsyncCounter> counters2 = createAsyncCounters("combine-2");
+
+        long delta1 = Util.random(100);
+        long delta2 = Util.random(100);
+
+        CompletionStage<Long> stage1 = counters1.get(0).addAndGet(delta1);
+        CompletionStage<Long> stage2 = counters2.get(1).addAndGet(delta2);
+
+        stage1.thenCombine(stage2, Math::max)
+                .thenAccept(value -> assertEquals(Math.max(delta1, delta2), (long) value))
+                .toCompletableFuture().join();
+
+        assertAsyncValues(counters1, delta1);
+        assertAsyncValues(counters2, delta2);
+    }
+
+    public void testCompareAndSwapChained() {
+        List<AsyncCounter> counters = createAsyncCounters("cas-chained");
+
+        final long initialValue = 100;
+        final long finalValue = 10;
+
+        counters.get(0).set(initialValue).toCompletableFuture().join();
+
+        AtomicLong rv = new AtomicLong();
+        boolean result = counters.get(0).compareAndSwap(1, finalValue)
+                .thenCompose(rValue -> {
+                    rv.set(rValue);
+                    return counters.get(0).compareAndSwap(rValue, finalValue);
+                })
+                .thenApply(value -> value == initialValue)
+                .toCompletableFuture()
+                .join();
+
+        assertTrue(result);
+        assertEquals(initialValue, rv.longValue());
+        assertAsyncValues(counters, finalValue);
+    }
+
+    public void testCompareAndSetChained() {
+        List<AsyncCounter> counters = createAsyncCounters("casb-chained");
+        final AsyncCounter counter = counters.get(0);
+
+        final long initialValue = 100;
+        final long finalValue = 10;
+
+        counter.set(initialValue).toCompletableFuture().join();
+
+        boolean result = counter.compareAndSet(1, finalValue)
+                .thenCompose(success -> {
+                    if (success) {
+                        // should not reach here
+                        return CompletableFutures.completedFalse();
+                    }
+                    return counter.get().thenCompose(value -> counter.compareAndSet(value, finalValue));
+                })
+                .toCompletableFuture()
+                .join();
+
+        assertTrue(result);
+        assertAsyncValues(counters, finalValue);
+    }
+
+    public void testAsyncIncrementPerf() {
+        List<AsyncCounter> counters = createAsyncCounters("async-perf-1");
+        final AsyncCounter counter = counters.get(0);
+        final long maxValue = 10_000;
+
+        CompletableFuture<Long> stage = CompletableFutures.completedNull();
+        Function<Long, CompletionStage<Long>> increment = __ -> counter.incrementAndGet();
+
+        long start = System.currentTimeMillis();
+
+        for (int i = 0; i < maxValue; ++i) {
+            stage = stage.thenCompose(increment);
+        }
+
+        long loopEnd = System.currentTimeMillis() - start;
+
+        stageEquals(maxValue, stage);
+
+        long waitEnd = System.currentTimeMillis() - start;
+
+        System.out.printf("async perf: val=%d, loop time=%d ms, total time=%d\n", counter.get().toCompletableFuture().join(), loopEnd, waitEnd);
+        assertAsyncValues(counters, maxValue);
+    }
+
+    public void testSyncIncrementPerf() {
+        List<SyncCounter> counters = createCounters("sync-perf-1");
+        final SyncCounter counter = counters.get(0);
+        final long maxValue = 10_000;
+
+        long start = System.currentTimeMillis();
+        for (int i = 0; i < maxValue; ++i) {
+            counter.incrementAndGet();
+        }
+        long time = System.currentTimeMillis() - start;
+
+        System.out.printf("sync perf: val=%d, time=%d ms\n", counter.get(), time);
+        assertValues(counters, maxValue);
+    }
+
+    public void testConcurrentCas() {
+        List<AsyncCounter> counters = createAsyncCounters("ccas");
+        final long maxValue = 10_000;
+
+        List<CompletionStage<Long>> results = new ArrayList<>(counters.size());
+        List<AtomicInteger> successes = new ArrayList<>(counters.size());
+
+        long start = System.currentTimeMillis();
+
+        for (AsyncCounter c : counters) {
+            AtomicInteger s = new AtomicInteger();
+            successes.add(s);
+            results.add(compareAndSwap(c, 0, 1, maxValue, s));
+        }
+
+        long loopEnd = System.currentTimeMillis() - start;
+
+        for (CompletionStage<Long> c : results) {
+            stageEquals(maxValue, c);
+        }
+
+        long waitEnd = System.currentTimeMillis() - start;
+
+        System.out.printf("cas async perf: val=%d, loop time=%d ms, total time=%d\n", counters.get(0).get().toCompletableFuture().join(), loopEnd, waitEnd);
+        assertAsyncValues(counters, maxValue);
+
+        long casCount = 0;
+        for (int i = 0; i < successes.size(); ++i) {
+            System.out.printf("cas results for node %d: %d CAS succeed%n", i, successes.get(i).intValue());
+            casCount += successes.get(i).longValue();
+        }
+        assertEquals(maxValue, casCount);
+    }
+
+    private static CompletionStage<Long> compareAndSwap(AsyncCounter counter, long expected, long update, long maxValue, AtomicInteger successes) {
+        return counter.compareAndSwap(expected, update)
+                .thenCompose(value -> {
+                    // cas is successful if return value is equals to expected
+                    if (value == expected) {
+                        successes.incrementAndGet();
+                    }
+                    return value < maxValue ?
+                            compareAndSwap(counter, value, value + 1, maxValue, successes) :
+                            CompletableFuture.completedFuture(value);
+                });
+    }
+
+    private static void stageEquals(long value, CompletionStage<Long> stage) {
+        assertEquals(value, (long) stage.toCompletableFuture().join());
+    }
+
     private static void assertValues(List<SyncCounter> counters, long expectedValue) {
         for (SyncCounter counter : counters) {
             assertEquals(expectedValue, counter.get());
         }
     }
 
+    private static void assertAsyncValues(List<AsyncCounter> counters, long expectedValue) {
+        for (AsyncCounter counter : counters) {
+            stageEquals(expectedValue, counter.get());
+        }
+    }
+
     private List<SyncCounter> createCounters(String name) {
+        return Stream.of(service_a, service_b, service_c)
+                .map(counterService -> createCounter(name, counterService))
+                .map(AsyncCounter::sync)
+                .collect(Collectors.toList());
+    }
+
+    private List<AsyncCounter> createAsyncCounters(String name) {
         return Stream.of(service_a, service_b, service_c)
                 .map(counterService -> createCounter(name, counterService))
                 .collect(Collectors.toList());
     }
 
-    private static SyncCounter createCounter(String name, CounterService counterService) {
-        return CompletableFutures.join(counterService.getOrCreateAsyncCounter(name, 0)).sync();
+    private static AsyncCounter createCounter(String name, CounterService counterService) {
+        return CompletableFutures.join(counterService.getOrCreateAsyncCounter(name, 0));
     }
-
 
     private static JChannel createChannel(int id, final List<String> members) throws Exception {
         String name = members.get(id);

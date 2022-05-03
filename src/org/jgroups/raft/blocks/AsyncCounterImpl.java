@@ -21,7 +21,6 @@ public class AsyncCounterImpl implements AsyncCounter {
     private final Sync sync;
 
     public AsyncCounterImpl(CounterService raftCounterService, String name) {
-        System.out.println(name);
         this.raftCounterService = raftCounterService;
         this.name = name;
         this.asciiName = new AsciiString(name);

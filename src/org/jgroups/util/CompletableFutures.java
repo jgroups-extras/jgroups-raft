@@ -16,6 +16,8 @@ public enum CompletableFutures {
     INSTANCE;
 
     private static final CompletableFuture<?> NULL = CompletableFuture.completedFuture(null);
+    private static final CompletableFuture<Boolean> TRUE_CF = CompletableFuture.completedFuture(Boolean.TRUE);
+    private static final CompletableFuture<Boolean> FALSE_CF = CompletableFuture.completedFuture(Boolean.FALSE);
     private static final Consumer<?> VOID_CONSUMER = o -> {
     };
     private static final Function<?, ?> NULL_FUNCTION = o -> null;
@@ -86,6 +88,14 @@ public enum CompletableFutures {
     public static <T> Function<T, Void> toVoidFunction() {
         //noinspection unchecked
         return (Function<T, Void>) NULL_FUNCTION;
+    }
+
+    public static CompletableFuture<Boolean> completedTrue() {
+        return TRUE_CF;
+    }
+
+    public static CompletableFuture<Boolean> completedFalse() {
+        return FALSE_CF;
     }
 
 }
