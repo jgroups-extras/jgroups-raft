@@ -343,7 +343,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public String role()            {return impl.getClass().getSimpleName();}
 
     @ManagedOperation(description="Dumps the commit table")
-    public String dumpCommitTable() {return commit_table != null? "\n" + commit_table : "n/a";}
+    public String dumpCommitTable() {return commit_table != null? "\n" + commit_table.toString() : "n/a";}
 
     @ManagedAttribute(description="Number of log entries in the log")
     public int logSize()            {return log_impl.size();}
@@ -515,8 +515,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
             });
         }
-        processing_queue=UnsafeAccess.UNSAFE != null ? new MpscArrayQueue<>(processing_queue_max_size)
-          : new MpscAtomicArrayQueue<>(processing_queue_max_size);
+        processing_queue = UnsafeAccess.UNSAFE != null ? new MpscArrayQueue<>(processing_queue_max_size) : new MpscAtomicArrayQueue<>(processing_queue_max_size);
         runner=new Runner(new DefaultThreadFactory("runner", true, true),
                           "runner", this::processQueue, null);
     }
@@ -668,20 +667,21 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected void add(Request r) {
-        Thread currentThread=null;
-        final MessagePassingQueue<Request> q=this.processing_queue;
+        Thread currentThread = null;
+        final MessagePassingQueue<Request> processing_queue = this.processing_queue;
         try {
-            while(!q.offer(r)) {
-                if(currentThread == null)
-                    currentThread=Thread.currentThread();
-                if(currentThread.isInterrupted()) {
+            while (!processing_queue.offer(r)) {
+                if (currentThread == null) {
+                    currentThread = Thread.currentThread();
+                }
+                if (currentThread.isInterrupted()) {
                     log.error("%s: failed adding %s to processing queue because interrupted", local_addr, r);
                     return;
                 }
-                LockSupport.parkNanos(1L); // backpressure producer: we're full!
+                // backpressure producer: we're full!
+                LockSupport.parkNanos(1L);
             }
-        }
-        finally {
+        } finally {
             LockSupport.unpark(parkedConsumer);
         }
     }
@@ -757,61 +757,63 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected void processQueue() {
         assert parkedConsumer == null;
-        final MessagePassingQueue<Request> q=this.processing_queue;
-        Request first_req=q.poll();
-        if(first_req == null) {
-            parkedConsumer=Thread.currentThread();
+        final MessagePassingQueue<Request> processing_queue = this.processing_queue;
+        Request first_req = processing_queue.poll();
+        if (first_req == null) {
+            final Thread currentThread = Thread.currentThread();
+            parkedConsumer = currentThread;
             try {
-                first_req=q.poll();
-                if(first_req == null) {
+                first_req = processing_queue.poll();
+                if (first_req == null) {
                     LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(resend_interval));
-                    first_req=q.poll();
-                    if(first_req == null) {
+                    first_req = processing_queue.poll();
+                    if (first_req == null) {
                         if(commit_table != null)
                             commit_table.forEach(this::sendAppendEntriesMessage);
                         return;
                     }
                 }
-            }
-            finally {
-                parkedConsumer=null;
+            } finally {
+                parkedConsumer = null;
             }
         }
-        final List<Request> rq=this.remove_queue;
-        assert rq.isEmpty();
-        rq.add(first_req);
-        int down=0, up=0;
+        final List<Request> remove_queue = this.remove_queue;
+        assert remove_queue.isEmpty();
+        remove_queue.add(first_req);
+        int down = 0;
+        int up = 0;
         if(first_req instanceof DownRequest)
             down++;
         else if(first_req instanceof UpRequest)
             up++;
         for(;;) {
             Request r;
-            while((r=q.poll()) != null) {
-                if(r instanceof DownRequest)
+            while ((r = processing_queue.poll()) != null) {
+                if (r instanceof DownRequest)
                     down++;
-                else if(r instanceof UpRequest)
+                else if (r instanceof UpRequest)
                     up++;
-                rq.add(r);
+                remove_queue.add(r);
             }
-            final int total=rq.size();
-            if(total == 0)
+            final int total = remove_queue.size();
+            if (total == 0) {
                 return;
+            }
             drained_total.add(total);
             drained_avg.add(total);
             drained_up.add(up);
             drained_down.add(down);
             try {
-                process(rq);
+                process(remove_queue);
+            } finally {
+                remove_queue.clear();
             }
-            finally {
-                rq.clear();
-            }
-            down=up=0;
+            down = 0;
+            up = 0;
         }
     }
 
-    protected void process(List<Request> q) {
+    protected void process (List<Request> q) {
         RequestTable<String> reqtab=request_table;
         LogEntries           entries=new LogEntries();
         int                  index=last_appended+1, length=0;
