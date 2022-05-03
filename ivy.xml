@@ -17,6 +17,7 @@
         <dependency org="org.apache.logging.log4j"  name="log4j-api"      rev="2.17.1"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-core"     rev="2.17.1"/>
         <dependency org="org.fusesource.leveldbjni" name="leveldbjni-all" rev="1.8"/>
+        <dependency org="org.jctools"               name="jctools-core"   rev="3.3.0"/>
         <dependency org="org.testng"                name="testng"         rev="6.14.+"/>
         <dependency org="com.beust"                 name="jcommander"     rev="1.+"/>
         <dependency org="net.jcip"                  name="jcip-annotations" rev="1.0"/>
