@@ -1,9 +1,5 @@
 package org.jgroups.protocols.raft;
 
-import org.jctools.queues.MessagePassingQueue;
-import org.jctools.queues.MpscArrayQueue;
-import org.jctools.queues.atomic.MpscAtomicArrayQueue;
-import org.jctools.util.UnsafeAccess;
 import org.jgroups.*;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
@@ -23,11 +19,12 @@ import java.net.InetAddress;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
-import java.util.concurrent.locks.LockSupport;
 import java.util.function.Function;
 import java.util.function.ObjIntConsumer;
 import java.util.regex.Matcher;
@@ -182,9 +179,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected int                       processing_queue_max_size=9182;
 
     /** All requests are added to this queue; a single thread processes this queue - hence no synchronization issues */
-    protected MessagePassingQueue<Request> processing_queue;
-
-    private volatile Thread             parkedConsumer;
+    protected BlockingQueue<Request>    processing_queue;
 
     protected final List<Request>       remove_queue=new ArrayList<>();
 
@@ -515,7 +510,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
             });
         }
-        processing_queue = UnsafeAccess.UNSAFE != null ? new MpscArrayQueue<>(processing_queue_max_size) : new MpscAtomicArrayQueue<>(processing_queue_max_size);
+        processing_queue=new ArrayBlockingQueue<>(processing_queue_max_size);
         runner=new Runner(new DefaultThreadFactory("runner", true, true),
                           "runner", this::processQueue, null);
     }
@@ -667,22 +662,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected void add(Request r) {
-        Thread currentThread = null;
-        final MessagePassingQueue<Request> processing_queue = this.processing_queue;
         try {
-            while (!processing_queue.offer(r)) {
-                if (currentThread == null) {
-                    currentThread = Thread.currentThread();
-                }
-                if (currentThread.isInterrupted()) {
-                    log.error("%s: failed adding %s to processing queue because interrupted", local_addr, r);
-                    return;
-                }
-                // backpressure producer: we're full!
-                LockSupport.parkNanos(1L);
-            }
-        } finally {
-            LockSupport.unpark(parkedConsumer);
+            processing_queue.put(r);
+        }
+        catch(InterruptedException ex) {
+            log.error("%s: failed adding %s to processing queue: %s", local_addr, r, ex);
         }
     }
 
@@ -756,53 +740,43 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected void processQueue() {
-        assert parkedConsumer == null;
-        final MessagePassingQueue<Request> processing_queue = this.processing_queue;
-        Request first_req = processing_queue.poll();
-        if (first_req == null) {
-            final Thread currentThread = Thread.currentThread();
-            parkedConsumer = currentThread;
-            try {
-                first_req = processing_queue.poll();
-                if (first_req == null) {
-                    LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(resend_interval));
-                    first_req = processing_queue.poll();
-                    if (first_req == null) {
-                        if(commit_table != null)
-                            commit_table.forEach(this::sendAppendEntriesMessage);
-                        return;
-                    }
+        Request first_req;
+        try {
+            first_req=processing_queue.poll(resend_interval, TimeUnit.MILLISECONDS);
+            if(first_req == null) { // poll() timed out
+                if(commit_table != null)
+                    commit_table.forEach(this::sendAppendEntriesMessage);
+                return;
+            }
+            for(;;) {
+                remove_queue.clear();
+                if(first_req != null) {
+                    remove_queue.add(first_req);
+                    first_req=null;
                 }
-            } finally {
-                parkedConsumer = null;
+                processing_queue.drainTo(remove_queue);
+                int num=remove_queue.size();
+                if(num > 0) {
+                    drained_total.add(num);
+                    drained_avg.add(num);
+
+                    final AtomicInteger down_r=new AtomicInteger(), up_r=new AtomicInteger();
+                    remove_queue.forEach(r -> {
+                        if(r instanceof DownRequest)
+                            down_r.incrementAndGet();
+                        else if(r instanceof UpRequest)
+                            up_r.incrementAndGet();
+                    });
+                    drained_down.add(down_r.get());
+                    drained_up.add(up_r.get());
+                }
+                if(remove_queue.isEmpty())
+                    return;
+                else
+                    process(remove_queue);
             }
         }
-        final List<Request> remove_queue = this.remove_queue;
-        assert remove_queue.isEmpty();
-        remove_queue.add(first_req);
-        int down = 0;
-        int up = 0;
-        if(first_req instanceof DownRequest)
-            down++;
-        else if(first_req instanceof UpRequest)
-            up++;
-        Request r;
-        while ((r = processing_queue.poll()) != null) {
-            if(r instanceof DownRequest)
-                down++;
-            else if(r instanceof UpRequest)
-                up++;
-            remove_queue.add(r);
-        }
-        final int total = remove_queue.size();
-        drained_total.add(total);
-        drained_avg.add(total);
-        drained_up.add(up);
-        drained_down.add(down);
-        try {
-            process(remove_queue);
-        } finally {
-            remove_queue.clear();
+        catch(InterruptedException ignored) {
         }
     }
 

@@ -21,7 +21,6 @@
         <jgroups.version>5.2.2.Final</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
         <commons-io.version>2.7</commons-io.version>
-        <jctools.version>3.3.0</jctools.version>
         <log4j.version>2.17.1</log4j.version>
         <jmh.version>1.34</jmh.version>
         <mashona.version>1.1.0</mashona.version>
@@ -165,11 +164,6 @@
             <groupId>org.fusesource.leveldbjni</groupId>
             <artifactId>leveldbjni-all</artifactId>
             <version>${leveldbjni.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.jctools</groupId>
-            <artifactId>jctools-core</artifactId>
-            <version>${jctools.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
