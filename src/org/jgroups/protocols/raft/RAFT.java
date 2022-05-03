@@ -129,7 +129,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected int                       num_snapshot_received;
 
     @ManagedAttribute(description="Average AppendEntries batch size")
-    protected CounterPerf.AverageMinMax avg_append_entries_batch_size=new CounterPerf.AverageMinMax();
+    protected AverageMinMax avg_append_entries_batch_size=new AverageMinMax();
 
     @ManagedAttribute(description="Number of failed AppendEntriesRequests because the entry wasn't found in the log")
     protected int                       num_failed_append_requests_not_found;

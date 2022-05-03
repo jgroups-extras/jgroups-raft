@@ -6,6 +6,7 @@ import org.jgroups.blocks.MethodCall;
 import org.jgroups.blocks.RequestOptions;
 import org.jgroups.blocks.ResponseMode;
 import org.jgroups.blocks.RpcDispatcher;
+import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.TP;
@@ -20,13 +21,9 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
-
-import static org.jgroups.util.Util.printTime;
 
 
 /**
@@ -144,49 +141,31 @@ public class CounterPerf implements Receiver {
 
     public UpdateResult startTest() throws Throwable {
         System.out.printf("running for %d seconds\n", time);
-        final CountDownLatch latch=new CountDownLatch(1);
-        counter=counter_service.getOrCreateCounter("counter", 0);
+        AsyncCounter counter= CompletableFutures.join(counter_service.getOrCreateAsyncCounter("counter", 0));
+        try (CounterBenchmark benchmark = new SyncBenchmark()) {
+            benchmark.init(num_threads, thread_factory, this::getDelta, counter);
 
-        Updater[] updaters=new Updater[num_threads];
-        Thread[]  threads=new Thread[num_threads];
-        for(int i=0; i < threads.length; i++) {
-            updaters[i]=new Updater(latch);
-            threads[i]=thread_factory.newThread(updaters[i]);
-            threads[i].setName("updater-" + (i+1));
-            threads[i].start(); // waits on latch
+            long start = System.currentTimeMillis();
+            benchmark.start();
+
+            long interval = (long) ((time * 1000.0) / 10.0);
+            for (int i = 1; i <= 10; i++) {
+                Util.sleep(interval);
+                System.out.printf("%d: %s\n", i, printAverage(start, benchmark));
+            }
+
+            benchmark.stop();
+            benchmark.join();
+            long total_time = System.currentTimeMillis() - start;
+
+            System.out.println();
+            AverageMinMax avg_incrs = benchmark.getResults(print_updaters, avgMinMax -> print(avgMinMax, print_details));
+            if (print_updaters)
+                System.out.printf("\navg over all updaters: %s\n", print(avg_incrs, print_details));
+
+            System.out.printf("\ndone (in %s ms)\n", total_time);
+            return new UpdateResult(benchmark.getTotalUpdates(), total_time, avg_incrs);
         }
-
-        long start=System.currentTimeMillis();
-        latch.countDown();
-        long interval=(long)((time * 1000.0) / 10.0);
-        for(int i=1; i <= 10; i++) {
-            Util.sleep(interval);
-            System.out.printf("%d: %s\n", i, printAverage(start, updaters));
-        }
-
-        for(Updater updater: updaters)
-            updater.stop();
-        for(Thread t: threads)
-            t.join();
-        long total_time=System.currentTimeMillis() - start;
-
-        System.out.println();
-        AverageMinMax avg_incrs=null;
-        for(int i=0; i < updaters.length; i++) {
-            Updater updater=updaters[i];
-            if(print_updaters)
-                System.out.printf("updater %s: updates %s\n", threads[i].getId(),
-                                  print(updater.avg_updatetime, print_details));
-            if(avg_incrs == null)
-                avg_incrs=updater.avgUpdateTime();
-            else
-                avg_incrs.merge(updater.avgUpdateTime());
-        }
-        if(print_updaters)
-            System.out.printf("\navg over all updaters: %s\n", print(avg_incrs, print_details));
-
-        System.out.printf("\ndone (in %s ms)\n", total_time);
-        return new UpdateResult(getTotalUpdates(updaters), total_time, avg_incrs);
     }
 
     public void quitAll() {
@@ -195,19 +174,11 @@ public class CounterPerf implements Receiver {
         System.exit(0);
     }
 
-    protected String printAverage(long start_time, Updater[] updaters) {
+    protected String printAverage(long start_time, CounterBenchmark benchmark) {
         long tmp_time=System.currentTimeMillis() - start_time;
-        long incrs=getTotalUpdates(updaters);
+        long incrs=benchmark.getTotalUpdates();
         double incrs_sec=incrs / (tmp_time / 1000.0);
         return String.format("%,.0f updates/sec (%,d updates)", incrs_sec, incrs);
-    }
-
-    protected long getTotalUpdates(Updater[] updaters) {
-        long total=0;
-        if(updaters != null)
-            for(Updater incr: updaters)
-                total+=incr.numUpdates();
-        return total;
     }
 
 
@@ -307,8 +278,8 @@ public class CounterPerf implements Receiver {
 
 
     /** Kicks off the benchmark on all cluster nodes */
-    void startBenchmark() throws Exception {
-        RspList<UpdateResult> responses=null;
+    void startBenchmark() {
+        RspList<UpdateResult> responses;
         try {
             RequestOptions options=new RequestOptions(ResponseMode.GET_ALL, 0)
               .flags(Message.Flag.OOB, Message.Flag.DONT_BUNDLE, Message.Flag.NO_FC);
@@ -362,7 +333,7 @@ public class CounterPerf implements Receiver {
     }
 
     protected static String print(AverageMinMax avg, boolean details) {
-        return details? String.format("min/avg/max = %s", avg.toString(TimeUnit.NANOSECONDS)) :
+        return details? String.format("min/avg/max = %s", avg.toString()) :
           String.format("%s", Util.printTime(avg.average(), TimeUnit.NANOSECONDS));
     }
 
@@ -382,47 +353,6 @@ public class CounterPerf implements Receiver {
         return (int)(Util.tossWeightedCoin(.5)? -random : random);
     }
 
-
-
-    protected class Updater implements Runnable {
-        private final CountDownLatch latch;
-        private long                 num_updates;
-        private final AverageMinMax  avg_updatetime=new AverageMinMax(); // in ns
-        private volatile boolean     running=true;
-
-
-        public Updater(CountDownLatch latch) {
-            this.latch=latch;
-        }
-
-        public long          numUpdates()       {return num_updates;}
-        public AverageMinMax avgUpdateTime()    {return avg_updatetime;}
-        public void          stop()             {running=false;}
-
-        public void run() {
-            try {
-                latch.await();
-            }
-            catch(InterruptedException e) {
-                e.printStackTrace();
-            }
-
-            while(running) {
-                try {
-                    int delta=getDelta();
-                    long start=System.nanoTime();
-                    counter.addAndGet(delta);
-                    long incr_time=System.nanoTime()-start;
-                    avg_updatetime.add(incr_time);
-                    num_updates++;
-                }
-                catch(Throwable t) {
-                    if(running)
-                        t.printStackTrace();
-                }
-            }
-        }
-    }
 
     protected static class UpdateResult implements Streamable {
         protected long          num_updates;
@@ -457,96 +387,6 @@ public class CounterPerf implements Receiver {
             return String.format("%,.2f updates/sec (%,d updates, %s / update)", total_reqs_per_sec, num_updates,
                                  Util.printTime(avg_updates.average(), TimeUnit.NANOSECONDS));
         }
-    }
-
-    // todo: copied from JGroups; remove when 5.2.2.Final is used
-    public static class AverageMinMax extends Average {
-        protected long       min=Long.MAX_VALUE, max=0;
-        protected List<Long> values;
-
-        public long          min()                        {return min;}
-        public long          max()                        {return max;}
-        public boolean       usePercentiles()             {return values != null;}
-        public AverageMinMax usePercentiles(int capacity) {values=capacity > 0? new ArrayList<>(capacity) : null; return this;}
-
-        public <T extends Average> T add(long num) {
-            super.add(num);
-            min=Math.min(min, num);
-            max=Math.max(max, num);
-            if(values != null)
-                values.add(num);
-            return (T)this;
-        }
-
-        public <T extends Average> T merge(T other) {
-            if(other.count() == 0)
-                return (T)this;
-            super.merge(other);
-            if(other instanceof AverageMinMax) {
-                AverageMinMax o=(AverageMinMax)other;
-                this.min=Math.min(min, o.min());
-                this.max=Math.max(max, o.max());
-                if(this.values != null)
-                    this.values.addAll(o.values);
-            }
-            return (T)this;
-        }
-
-        public void clear() {
-            super.clear();
-            if(values != null)
-                values.clear();
-            min=Long.MAX_VALUE; max=0;
-        }
-
-        public String percentiles() {
-            if(values == null) return "n/a";
-            Collections.sort(values);
-            double stddev=stddev();
-            return String.format("stddev: %.2f, 50: %d, 90: %d, 99: %d, 99.9: %d, 99.99: %d, 99.999: %d, 100: %d\n",
-                                 stddev, p(50), p(90), p(99), p(99.9), p(99.99), p(99.999), p(100));
-        }
-
-        public String toString() {
-            return count == 0? "n/a" : String.format("min/avg/max=%,d/%,.2f/%,d", min, getAverage(), max);
-        }
-
-        public String toString(TimeUnit u) {
-            if(count == 0)
-                return "n/a";
-            return String.format("%s/%s/%s", printTime(min, u), printTime(getAverage(), u), printTime(max, u));
-        }
-
-        public void writeTo(DataOutput out) throws IOException {
-            super.writeTo(out);
-            Bits.writeLongCompressed(min, out);
-            Bits.writeLongCompressed(max, out);
-        }
-
-        public void readFrom(DataInput in) throws IOException {
-            super.readFrom(in);
-            min=Bits.readLongCompressed(in);
-            max=Bits.readLongCompressed(in);
-        }
-
-
-        protected long p(double percentile) {
-            if(values == null)
-                return -1;
-            int size=values.size();
-            int index=(int)(size * (percentile/100.0));
-            return values.get(index-1);
-        }
-
-        protected double stddev() {
-            if(values == null) return -1.0;
-            double av=average();
-            int size=values.size();
-            double variance=values.stream().map(v -> (v - av)*(v - av)).reduce(0.0, Double::sum) / size;
-            return Math.sqrt(variance);
-        }
-
-
     }
 
 
