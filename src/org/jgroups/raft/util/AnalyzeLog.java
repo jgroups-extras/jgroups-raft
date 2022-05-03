@@ -5,6 +5,8 @@ import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.raft.blocks.CounterService;
+import org.jgroups.util.ByteArray;
+import org.jgroups.util.ByteArrayDataInputStream;
 
 import java.io.*;
 import java.lang.reflect.Method;
@@ -63,13 +65,18 @@ public class AnalyzeLog {
     }
 
     protected void _analyze(String path) throws Exception {
-        try(Log l=createLog();DataInputStream snapshot=createSnapshotInput(path)) {
+        try(Log l=createLog()) {
             l.init(path, null);
             long first=l.firstAppended(), commit=l.commitIndex(), last=l.lastAppended(), term=l.currentTerm();
             Address votedfor=l.votedFor();
 
-            if(snapshot_reader != null && snapshot != null)
-                System.out.printf("----------\nsnapshot: %s\n-----------\n", snapshot_reader.apply(snapshot));
+            if(snapshot_reader != null) {
+                ByteArray sn=l.getSnapshot();
+                if(sn != null) {
+                    DataInput snapshot=new ByteArrayDataInputStream(sn.getArray(), sn.getOffset(), sn.getLength());
+                    System.out.printf("----------\nsnapshot: %s\n-----------\n", snapshot_reader.apply(snapshot));
+                }
+            }
 
             System.out.printf("first=%d, commit-index=%d, last-appended=%d, term=%d, voted-for=%s\n",
                               first, commit, last, term, votedfor);
@@ -95,11 +102,6 @@ public class AnalyzeLog {
         return log_class.getDeclaredConstructor().newInstance();
     }
 
-    protected static DataInputStream createSnapshotInput(String path) throws FileNotFoundException {int index=path.indexOf(".log");
-        if(index < 0) return null;
-        String snapshot_name=String.format("%s.snapshot", path.substring(0, index));
-        return new File(snapshot_name).exists()? new DataInputStream(new FileInputStream(snapshot_name)) : null;
-    }
 
 
     public static void main(String[] args) throws Exception {

@@ -311,7 +311,7 @@ public class DynamicMembershipTest {
                 continue;
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
             try {
-                Utils.deleteLogAndSnapshot(raft);
+                Utils.deleteLog(raft);
             }
             catch(Exception ignored) {}
             Util.close(ch);

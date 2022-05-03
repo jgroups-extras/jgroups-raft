@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
+import org.jgroups.util.ByteArray;
 
 import java.io.File;
 import java.io.IOException;
@@ -26,6 +27,8 @@ public class FileBasedLog implements Log {
    private boolean fsync = DEFAULT_FSYNC;
    private MetadataStorage metadataStorage;
    private LogEntryStorage logEntryStorage;
+
+   private ByteArray snapshot; // todo: incorrect: removed when the snapshot() methods have been implemented correctly
 
    @Override
    public void init(String log_name, Map<String, String> args) throws Exception {
@@ -160,6 +163,14 @@ public class FileBasedLog implements Log {
    @Override
    public int lastAppended() {
       return checkLogEntryStorageStarted().getLastAppended();
+   }
+
+   public void setSnapshot(ByteArray sn) {
+      snapshot=sn;
+   }
+
+   public ByteArray getSnapshot() {
+      return snapshot;
    }
 
    @Override

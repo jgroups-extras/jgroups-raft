@@ -63,7 +63,7 @@ public class SyncLeaderCrashTest {
                 nodes[i]=null;
             }
             if(rafts[i] != null) {
-                Utils.deleteLogAndSnapshot(rafts[i]);
+                Utils.deleteLog(rafts[i]);
                 rafts[i]=null;
             }
             if(elections[i] != null) {
@@ -266,7 +266,7 @@ public class SyncLeaderCrashTest {
             elections[index]=null;
         }
         if(rafts[index] != null) {
-            Utils.deleteLogAndSnapshot(rafts[index]);
+            Utils.deleteLog(rafts[index]);
             rafts[index]=null;
         }
         sms[index]=null;

@@ -3,12 +3,9 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
+import org.jgroups.util.ByteArray;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
-
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
 
 /**
  * Implements the behavior of a RAFT follower
@@ -29,11 +26,9 @@ public class Follower extends RaftImpl {
         Address sender=msg.src();
         try {
             // Read into state machine
-            ByteArrayDataInputStream in=new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength());
-            sm.readContentFrom(in);
-
-            // Write to snapshot, replace existing file is present
-            writeSnapshotTo(raft.snapshotName(), msg.getArray(), msg.getOffset(), msg.getLength());
+            ByteArray sn=new ByteArray(msg.getArray(), msg.getOffset(), msg.getLength());
+            raft.log().setSnapshot(sn);
+            sm.readContentFrom(new ByteArrayDataInputStream(sn.getArray(), sn.getOffset(), sn.getLength()));
 
             // insert a dummy entry at last_included_index and set first/last/commit to it
             Log log=raft.log();
@@ -54,9 +49,4 @@ public class Follower extends RaftImpl {
         }
     }
 
-    protected static void writeSnapshotTo(String snapshot_name, byte[] buf, int offset, int length) throws IOException {
-        try(OutputStream output=new FileOutputStream(snapshot_name)) {
-            output.write(buf, offset, length);
-        }
-    }
 }

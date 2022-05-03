@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.iq80.leveldb.*;
 import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
+import org.jgroups.util.ByteArray;
 import org.jgroups.util.Util;
 
 import java.io.File;
@@ -27,6 +28,7 @@ public class LevelDBLog implements Log {
     private static final byte[] CURRENTTERM   = "CT".getBytes();
     private static final byte[] COMMITINDEX   = "CX".getBytes();
     private static final byte[] VOTEDFOR      = "VF".getBytes();
+    private static final byte[] SNAPSHOT      = "SN".getBytes();
 
     private DB                 db;
     private File               dbFileName;
@@ -130,6 +132,14 @@ public class LevelDBLog implements Log {
         return this;
     }
 
+    public void setSnapshot(ByteArray ba) {
+        db.put(SNAPSHOT, ba.getBytes());
+    }
+
+    public ByteArray getSnapshot() {
+        byte[] snapshot=db.get(SNAPSHOT);
+        return snapshot != null? new ByteArray(snapshot) : null;
+    }
 
     @Override
     public int append(int index, LogEntries entries) {

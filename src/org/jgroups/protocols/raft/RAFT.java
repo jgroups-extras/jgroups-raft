@@ -16,8 +16,6 @@ import org.jgroups.util.*;
 
 import java.io.*;
 import java.net.InetAddress;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -100,9 +98,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description="The name of the log")
     protected String                    log_name;
-
-    @ManagedAttribute(description="The name of the snapshot")
-    protected String                    snapshot_name;
 
     @Property(description="Interval (ms) at which AppendEntries messages are resent to members with missing log entries",
       type=AttributeType.TIME)
@@ -189,7 +184,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
 
     /* ============================== EXPERIMENTAL - most of these metrics will be removed again ================== */
-    // Todo: remove
     @ManagedAttribute
     final LongAdder     drained_total=new LongAdder();
 
@@ -218,8 +212,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public String       logPrefix()                   {return log_prefix;}
     public RAFT         logPrefix(String name)        {log_prefix=name; return this;}
     public String       logName()                     {return log_name;}
-
-    public String       snapshotName()                {return snapshot_name;}
     public long         resendInterval()              {return resend_interval;}
     public RAFT         resendInterval(long val)      {resend_interval=val; return this;}
     public boolean      sendCommitsImmediately()      {return send_commits_immediately;}
@@ -338,7 +330,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public String role()            {return impl.getClass().getSimpleName();}
 
     @ManagedOperation(description="Dumps the commit table")
-    public String dumpCommitTable() {return commit_table != null? "\n" + commit_table.toString() : "n/a";}
+    public String dumpCommitTable() {return commit_table != null? "\n" + commit_table : "n/a";}
 
     @ManagedAttribute(description="Number of log entries in the log")
     public int logSize()            {return log_impl.size();}
@@ -462,12 +454,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(state_machine == null || state_machine_loaded)
             return;
         int snapshot_offset=0;  // 0 when no snapshot is present, 1 otherwise
-        try(InputStream input=new FileInputStream(snapshot_name)) {
-            state_machine.readContentFrom(new DataInputStream(input));
+        ByteArray sn=log_impl.getSnapshot();
+        if(sn != null) {
+            ByteArrayDataInputStream in=new ByteArrayDataInputStream(sn.getArray(), sn.getOffset(), sn.getLength());
+            state_machine.readContentFrom(in);
             snapshot_offset=1;
-            log.debug("%s: initialized state machine from snapshot %s", local_addr, snapshot_name);
-        }
-        catch(FileNotFoundException fne) {
+            log.debug("%s: initialized state machine from snapshot (%d bytes)", local_addr, sn.getLength());
         }
 
         int from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;
@@ -537,9 +529,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
             if(log_prefix == null)
                 log_prefix=raft_id;
-            snapshot_name=log_prefix;
             log_name=createLogName(log_prefix, "log");
-            snapshot_name=createLogName(snapshot_name, "snapshot");
             log_impl.init(log_name, args);
         }
 
@@ -550,8 +540,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         commit_index=log_impl.commitIndex();
         current_term=log_impl.currentTerm();
         log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
-        if(snapshot_name != null)
-            initStateMachineFromLog();
+        initStateMachineFromLog();
         curr_log_size=logSizeInBytes();
         log_impl.useFsync(_log_use_fsync);
 
@@ -974,15 +963,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected void doSnapshot() throws Exception {
         if(state_machine == null)
             throw new IllegalStateException("state machine is null");
-        try (OutputStream output=new FileOutputStream(snapshot_name)) {
-            state_machine.writeContentTo(new DataOutputStream(output));
-        }
-        log_impl.truncate(commitIndex());
-    }
 
-    protected boolean snapshotExists() {
-        File file=new File(snapshot_name);
-        return file.exists();
+        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
+        state_machine.writeContentTo(out);
+        log_impl.setSnapshot(out.getBuffer()); // todo: combine these 2 methods?
+        log_impl.truncate(commitIndex());
     }
 
     protected void sendSnapshotTo(Address dest) throws Exception {
@@ -994,9 +979,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             LogEntry last_committed_entry=log_impl.get(commitIndex());
             int last_index=commit_index, last_term=last_committed_entry.term;
             doSnapshot();
-
-            byte[] data=Files.readAllBytes(Paths.get(snapshot_name));
-            log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.length), dest);
+            ByteArray data=log_impl.getSnapshot();
+            log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.getLength()), dest);
             Message msg=new BytesMessage(dest, data)
               .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
             down_prot.down(msg);

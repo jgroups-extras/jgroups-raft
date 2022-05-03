@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.util.ByteArray;
 
 import java.io.Closeable;
 import java.util.Map;
@@ -59,6 +60,18 @@ public interface Log extends Closeable {
     /** Returns the index of the last append entry<br/>
      * This value is set by {@link #append(int,LogEntries)} */
     int lastAppended();
+
+    /**
+     * Stores a snapshot in the log.
+     * @param sn The snapshot data
+     */
+    void setSnapshot(ByteArray sn);
+
+    /**
+     * Gets the snapshot from the log
+     * @return The snapshot, or null if not existing
+     */
+    ByteArray getSnapshot();
 
     /**
      * Append the entries starting at index. Advance last_appended by the number of entries appended.

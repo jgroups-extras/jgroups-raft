@@ -51,7 +51,7 @@ public class SyncElectionTests {
                 nodes[i]=null;
             }
             if(rafts[i] != null) {
-                Utils.deleteLogAndSnapshot(rafts[i]);
+                Utils.deleteLog(rafts[i]);
                 rafts[i]=null;
             }
             if(elections[i] != null) {

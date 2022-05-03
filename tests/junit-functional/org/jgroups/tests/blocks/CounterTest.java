@@ -39,7 +39,7 @@ public class CounterTest {
         for (JChannel ch : Arrays.asList(c, b, a)) {
             RAFT raft = ch.getProtocolStack().findProtocol(RAFT.class);
             try {
-                Utils.deleteLogAndSnapshot(raft);
+                Utils.deleteLog(raft);
             } catch (Exception ignored) {
             }
             Util.close(ch);

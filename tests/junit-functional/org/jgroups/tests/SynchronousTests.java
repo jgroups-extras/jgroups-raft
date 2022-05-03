@@ -70,13 +70,13 @@ public class SynchronousTests {
         if(node_c != null) {
             node_c.stop();
             node_c.destroy();
-            Utils.deleteLogAndSnapshot(raft_c);
+            Utils.deleteLog(raft_c);
         }
         Util.close(node_b, node_a);
         node_b.destroy();
         node_a.destroy();
-        Utils.deleteLogAndSnapshot(raft_a);
-        Utils.deleteLogAndSnapshot(raft_b);
+        Utils.deleteLog(raft_a);
+        Utils.deleteLog(raft_b);
         cluster.clear();
     }
 
@@ -467,7 +467,7 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 4, 5, 6);
 
         raft_b.stop();
-        Utils.deleteLogAndSnapshot(raft_b);
+        Utils.deleteLog(raft_b);
         raft_b.log(null); // required to re-initialize the log
         ((CounterStateMachine)raft_b.stateMachine()).reset();
         raft_b.stateMachineLoaded(false);

@@ -304,7 +304,7 @@ public class VoteTest {
             stack.removeProtocol(DISCARD.class);
             RAFT raft=stack.findProtocol(RAFT.class);
             try {
-                Utils.deleteLogAndSnapshot(raft);
+                Utils.deleteLog(raft);
             }
             catch(Exception ignored) {}
             Util.close(ch);

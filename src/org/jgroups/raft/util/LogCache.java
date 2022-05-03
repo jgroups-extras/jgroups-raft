@@ -4,6 +4,7 @@ import org.jgroups.Address;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.util.ByteArray;
 
 import java.io.IOException;
 import java.util.Map;
@@ -100,6 +101,14 @@ public class LogCache implements Log {
 
     public int lastAppended() {
         return last_appended;
+    }
+
+    public void setSnapshot(ByteArray ba) {
+        log.setSnapshot(ba); // the LogCache doesn't cache snapshots; this operation isn't frequent anyway
+    }
+
+    public ByteArray getSnapshot() {
+        return log.getSnapshot();
     }
 
     @Override

@@ -27,7 +27,7 @@ public class TimeoutTest {
     @AfterMethod protected void destroy() throws Exception {
         for(JChannel ch: channels) {
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            Utils.deleteLogAndSnapshot(raft);
+            Utils.deleteLog(raft);
         }
         Util.close(channels);
     }
