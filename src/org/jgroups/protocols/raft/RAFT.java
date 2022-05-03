@@ -808,8 +808,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             } finally {
                 remove_queue.clear();
             }
-            down = 0;
-            up = 0;
         }
     }
 
