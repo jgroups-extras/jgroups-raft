@@ -354,7 +354,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     protected CompletionStage<Long> asyncCompareAndSwap(AsciiString name, long expected, long value) {
-        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE + Bits.size(expected) + Bits.size(value));
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE + Bits.size(expected) + Bits.size(value));
         try {
             writeCommandAndName(out, Command.compareAndSwap.ordinal(), name);
             Bits.writeLongCompressed(expected, out);
@@ -366,7 +366,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     protected CompletionStage<Long> invokeAsyncAndGet(Command command, AsciiString name) {
-        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE);
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE);
         try {
             writeCommandAndName(out, command.ordinal(), name);
             return setAsyncWithTimeout(out).thenApply(CounterService::readLong);
@@ -376,7 +376,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     protected CompletionStage<Long> invokeAsyncAddAndGet(AsciiString name, long arg) {
-        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE + Bits.size(arg));
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE + Bits.size(arg));
         try {
             writeCommandAndName(out, Command.addAndGet.ordinal(), name);
             Bits.writeLongCompressed(arg, out);
@@ -387,7 +387,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     protected CompletionStage<Void> invokeAsync(Command command, AsciiString name, long arg) {
-        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(name.length() + Global.BYTE_SIZE + Bits.size(arg));
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE + Bits.size(arg));
         try {
             writeCommandAndName(out, command.ordinal(), name);
             Bits.writeLongCompressed(arg, out);
