@@ -3,7 +3,7 @@ package org.jgroups.raft.demos;
 import org.jgroups.JChannel;
 import org.jgroups.Receiver;
 import org.jgroups.View;
-import org.jgroups.blocks.atomic.Counter;
+import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.util.Util;
@@ -37,7 +37,7 @@ public class CounterServiceDemo {
 
 
     protected void loop() throws Exception {
-        Counter counter=counter_service.counter("counter");
+        SyncCounter counter=(SyncCounter)counter_service.counter("counter");
         boolean looping=true;
         while(looping) {
             try {

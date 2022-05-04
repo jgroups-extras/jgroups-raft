@@ -7,7 +7,7 @@ import org.jgroups.blocks.RequestOptions;
 import org.jgroups.blocks.ResponseMode;
 import org.jgroups.blocks.RpcDispatcher;
 import org.jgroups.blocks.atomic.AsyncCounter;
-import org.jgroups.blocks.atomic.Counter;
+import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.TP;
 import org.jgroups.raft.blocks.CounterService;
@@ -43,7 +43,7 @@ public class CounterPerf implements Receiver {
     protected volatile boolean     looping=true;
     protected ThreadFactory        thread_factory;
     protected CounterService       counter_service;
-    protected Counter              counter;
+    protected SyncCounter          counter;
 
     // ============ configurable properties ==================
     @Property protected int     num_threads=100;

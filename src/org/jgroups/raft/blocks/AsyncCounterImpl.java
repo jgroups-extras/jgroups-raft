@@ -69,6 +69,10 @@ public class AsyncCounterImpl implements AsyncCounter {
         return sync;
     }
 
+    public AsyncCounter async() {
+        return this;
+    }
+
     private final class Sync implements SyncCounter {
 
         @Override
@@ -99,6 +103,10 @@ public class AsyncCounterImpl implements AsyncCounter {
         @Override
         public AsyncCounter async() {
             return AsyncCounterImpl.this;
+        }
+
+        public SyncCounter sync() {
+            return this;
         }
     }
 }

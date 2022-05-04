@@ -8,12 +8,8 @@ import java.util.concurrent.CompletionStage;
  * @author Pedro Ruivo
  * @since 5.2
  */
-public interface AsyncCounter {
+public interface AsyncCounter extends Counter {
 
-    /**
-     * @return The counter's name.
-     */
-    String getName();
 
     /**
      * Gets the current value of the counter.
@@ -77,10 +73,5 @@ public interface AsyncCounter {
      * @return A {@link CompletionStage} that is completed with the updated counter's value.
      */
     CompletionStage<Long> addAndGet(long delta);
-
-    /**
-     * @return a synchronous wrapper around this instance.
-     */
-    SyncCounter sync();
 
 }

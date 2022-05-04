@@ -7,9 +7,7 @@ package org.jgroups.blocks.atomic;
  * @author Pedro Ruivo
  * @since 5.2
  */
-public interface SyncCounter {
-
-    String getName();
+public interface SyncCounter extends Counter {
 
     /**
      * Gets the current value of the counter
@@ -72,10 +70,4 @@ public interface SyncCounter {
      * @return the updated value
      */
     long addAndGet(long delta);
-
-    /**
-     * @return an asynchronous wrapper around this instance.
-     */
-    AsyncCounter async();
-
 }

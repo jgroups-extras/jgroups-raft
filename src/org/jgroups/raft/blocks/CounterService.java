@@ -4,6 +4,7 @@ import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.Counter;
+import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.util.*;
@@ -79,7 +80,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * if the counter already exists
      * @return The counter implementation
      */
-    public Counter getOrCreateCounter(String name, long initial_value) throws Exception {
+    public SyncCounter getOrCreateCounter(String name, long initial_value) throws Exception {
         if(!counters.containsKey(name))
             invoke(Command.create, name, false, initial_value);
         return new CounterImpl(name, this);
@@ -113,6 +114,11 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public boolean compareAndSet(String name, long expect, long update) throws Exception {
         Object retval=invoke(Command.compareAndSet, name, false, expect, update);
         return (boolean)retval;
+    }
+
+    public long compareAndSwap(String name, long expect, long update) throws Exception {
+        Object retval=invoke(Command.compareAndSwap, name, false, expect, update);
+        return (long)retval;
     }
 
     public long incrementAndGet(String name) throws Exception {

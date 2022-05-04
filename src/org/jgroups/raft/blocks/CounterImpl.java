@@ -1,12 +1,13 @@
 package org.jgroups.raft.blocks;
 
-import org.jgroups.blocks.atomic.Counter;
+import org.jgroups.blocks.atomic.AsyncCounter;
+import org.jgroups.blocks.atomic.SyncCounter;
 
 /**
  * @author Bela Ban
  * @since  0.2
  */
-public class CounterImpl implements Counter {
+public class CounterImpl implements SyncCounter {
     protected final String         name;
     protected final CounterService counter_service; // to delegate all commands to
 
@@ -16,6 +17,14 @@ public class CounterImpl implements Counter {
     }
 
     @Override public String getName() {return name;}
+
+    public SyncCounter sync() {
+        return this;
+    }
+
+    public AsyncCounter async() {
+        return new AsyncCounterImpl(counter_service, name);
+    }
 
     @Override
     public long get() {
@@ -41,6 +50,15 @@ public class CounterImpl implements Counter {
     public boolean compareAndSet(long expect, long update) {
         try {
             return counter_service.compareAndSet(name, expect, update);
+        }
+        catch(Exception ex) {
+            throw new RuntimeException(ex);
+        }
+    }
+
+    public long compareAndSwap(long expect, long update) {
+        try {
+            return counter_service.compareAndSwap(name, expect, update);
         }
         catch(Exception ex) {
             throw new RuntimeException(ex);
