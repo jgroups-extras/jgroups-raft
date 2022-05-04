@@ -21,9 +21,11 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 
 
 /**
@@ -50,6 +52,7 @@ public class CounterPerf implements Receiver {
     @Property protected boolean print_details;
     @Property protected long    timeout=60000; // ms
     @Property protected int     range=10;
+    @Property protected String  benchmark="sync";
     // ... add your own here, just don't forget to annotate them with @Property
     // =======================================================
 
@@ -59,14 +62,16 @@ public class CounterPerf implements Receiver {
     private static final short SET                   =  2;
     private static final short QUIT_ALL              =  3;
 
-    protected static final Field NUM_THREADS, TIME, TIMEOUT, PRINT_INVOKERS, PRINT_DETAILS, RANGE;
+    protected static final Field NUM_THREADS, TIME, TIMEOUT, PRINT_INVOKERS, PRINT_DETAILS, RANGE, BENCHMARK;
 
 
     protected static final String format=
       "[1] Start test [2] View [4] Threads (%d) [6] Time (%s) [r] Range (%d)" +
         "\n[t] incr timeout (%s) [d] details (%b)  [i] print updaters (%b)" +
+        "\n[b] benchmark mode (%s)" +
         "\n[v] Version [x] Exit [X] Exit all %s";
 
+    private static final Map<String, Supplier<CounterBenchmark>> BENCHMARKS_MODES;
 
     static {
         try {
@@ -81,8 +86,13 @@ public class CounterPerf implements Receiver {
             PRINT_INVOKERS=Util.getField(CounterPerf.class, "print_updaters", true);
             PRINT_DETAILS=Util.getField(CounterPerf.class, "print_details", true);
             RANGE=Util.getField(CounterPerf.class, "range", true);
+            BENCHMARK = Util.getField(CounterPerf.class, "benchmark", true);
             PerfUtil.init();
             ClassConfigurator.addIfAbsent((short)1050, UpdateResult.class);
+
+            BENCHMARKS_MODES = new HashMap<>();
+            BENCHMARKS_MODES.put("sync", SyncBenchmark::new);
+            BENCHMARKS_MODES.put("async", AsyncCounterBenchmark::new);
         }
         catch(Exception e) {
             throw new RuntimeException(e);
@@ -141,8 +151,16 @@ public class CounterPerf implements Receiver {
 
     public UpdateResult startTest() throws Throwable {
         System.out.printf("running for %d seconds\n", time);
+
+        Supplier<CounterBenchmark> benchmarkSupplier = BENCHMARKS_MODES.get(benchmark.toLowerCase());
+        if (benchmarkSupplier == null) {
+            String msg = String.format("Benchmark %s not found!", benchmark);
+            System.out.println(msg);
+            throw new IllegalArgumentException(msg);
+        }
+
         AsyncCounter counter= CompletableFutures.join(counter_service.getOrCreateAsyncCounter("counter", 0));
-        try (CounterBenchmark benchmark = new SyncBenchmark()) {
+        try (CounterBenchmark benchmark = benchmarkSupplier.get()) {
             benchmark.init(num_threads, thread_factory, this::getDelta, counter);
 
             long start = System.currentTimeMillis();
@@ -219,7 +237,7 @@ public class CounterPerf implements Receiver {
                 long cnt=getCounter();
                 int c=Util.keyPress(String.format(format, num_threads, Util.printTime(time, TimeUnit.MILLISECONDS),
                                                   range, Util.printTime(timeout, TimeUnit.MILLISECONDS),
-                                                  print_details, print_updaters,
+                                                  print_details, print_updaters, benchmark,
                                                   cnt < 0? "\n" : String.format(" (counter=%d)\n", cnt)));
                 switch(c) {
                     case '1':
@@ -245,6 +263,9 @@ public class CounterPerf implements Receiver {
                         break;
                     case 'r':
                         changeFieldAcrossCluster(RANGE, Util.readIntFromStdin("range: "));
+                        break;
+                    case 'b':
+                        changeFieldAcrossCluster(BENCHMARK, Util.readStringFromStdin("benchmark mode: "));
                         break;
                     case 'v':
                         System.out.printf("Version: %s, Java version: %s\n", Version.printVersion(),
