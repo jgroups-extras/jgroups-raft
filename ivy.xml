@@ -24,6 +24,7 @@
         <dependency org="org.openjdk.jmh"           name="jmh-generator-annprocess" rev="1.34"/>
         <dependency org="io.mashona"                name="mashona-logwriting"       rev="1.1.0"/>
         <dependency org="org.jboss.logging"         name="jboss-logging"            rev="3.4.1.Final"/>
+        <dependency org="org.hdrhistogram"          name="HdrHistogram"             rev="2.1.12"/>
 
     </dependencies>
 </ivy-module>
