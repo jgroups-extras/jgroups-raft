@@ -185,7 +185,17 @@ public class LogCache implements Log {
     }
 
     public void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
-        log.forEach(function, start_index, end_index); // don't cache; this function is not called frequently
+        int from=Math.max(start_index, Math.max(first_appended,1));
+        int to=Math.min(end_index, last_appended);
+        for(int i=from; i <= to; i++) {
+            try {
+                LogEntry l=get(i);
+                function.accept(l, i);
+            }
+            catch(Exception ex) {
+                throw new RuntimeException("failed deserializing LogRecord " + i, ex);
+            }
+        }
     }
 
     public void forEach(ObjIntConsumer<LogEntry> function) {

@@ -21,21 +21,6 @@ public class CommitTableTest {
     protected static final Address a=Util.createRandomAddress("A"), b=Util.createRandomAddress("B"),
       c=Util.createRandomAddress("C"), d=Util.createRandomAddress("D"), e=Util.createRandomAddress("E");
 
-    public void testSnapshotInProgress() {
-        CommitTable tab=new CommitTable(Arrays.asList(a, b), 5);
-        boolean flag=tab.snapshotInProgress(a, true);
-        assert flag;
-
-        flag=tab.snapshotInProgress(a,true);
-        assert !flag;
-
-        flag=tab.snapshotInProgress(a,false);
-        assert flag;
-
-        flag=tab.snapshotInProgress(a,false);
-        assert !flag;
-    }
-
 
     public void testAddition() {
         CommitTable table=new CommitTable(Arrays.asList(a,b,c), 5);

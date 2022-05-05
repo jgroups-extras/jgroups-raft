@@ -167,8 +167,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="The number of times AppendEntriesRequests were resent")
     protected int                       num_resends;
 
-    protected boolean                   snapshotting;
-
     @Property(description="Max size in items the processing queue can have",type=AttributeType.SCALAR)
     protected int                       processing_queue_max_size=9182;
 
@@ -432,18 +430,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /** Creates a snapshot and truncates the log. See https://github.com/belaban/jgroups-raft/issues/7 for details */
     @ManagedOperation(description="Creates a new snapshot and truncates the log")
     public synchronized void snapshot() throws Exception {
-        if(snapshotting) {
-            log.error("%s: cannot create snapshot; snapshot is being created by another thread");
-            return;
-        }
-        try {
-            snapshotting=true;
-            doSnapshot();
-            num_snapshots++;
-        }
-        finally {
-            snapshotting=false;
-        }
+        if(state_machine == null)
+            throw new IllegalStateException("state machine is null");
+
+        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
+        state_machine.writeContentTo(out);
+        log_impl.setSnapshot(out.getBuffer()); // todo: combine these 2 methods?
+        log_impl.truncate(commitIndex());
+        num_snapshots++;
     }
 
     /** Loads the log entries from [first .. commit_index] into the state machine */
@@ -819,14 +813,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         num_successful_append_requests+=batch_size;
         avg_append_entries_batch_size.add(batch_size);
 
-        snapshotIfNeeded(length);
-
         // see if we can already commit some entries
         int highest_committed=prev_index+1;
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
             commitLogTo(highest_committed);
+        snapshotIfNeeded(length);
     }
 
     /** Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31) */
@@ -869,14 +862,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      */
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry e) {
         if(e.nextIndex() < log().firstAppended()) {
-            if(e.snapshotInProgress(true)) {
-                try {
-                    sendSnapshotTo(member); // will reset snapshot_in_progress
-                }
-                catch(Exception ex) {
-                    log.error("%s: failed sending snapshot to %s: next_index=%d, first_applied=%d",
-                              local_addr, member, e.nextIndex(), log().firstAppended());
-                }
+            try {
+                sendSnapshotTo(member); // will reset snapshot_in_progress
+            }
+            catch(Exception ex) {
+                log.error("%s: failed sending snapshot to %s: next_index=%d, first_applied=%d",
+                          local_addr, member, e.nextIndex(), log().firstAppended());
             }
             return;
         }
@@ -959,36 +950,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
 
-    protected void doSnapshot() throws Exception {
-        if(state_machine == null)
-            throw new IllegalStateException("state machine is null");
-
-        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
-        state_machine.writeContentTo(out);
-        log_impl.setSnapshot(out.getBuffer()); // todo: combine these 2 methods?
-        log_impl.truncate(commitIndex());
-    }
-
     protected void sendSnapshotTo(Address dest) throws Exception {
-        try {
-            if(snapshotting)
-                return;
-            snapshotting=true;
-
-            LogEntry last_committed_entry=log_impl.get(commitIndex());
-            int last_index=commit_index, last_term=last_committed_entry.term;
-            doSnapshot();
-            ByteArray data=log_impl.getSnapshot();
-            log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.getLength()), dest);
-            Message msg=new BytesMessage(dest, data)
-              .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
-            down_prot.down(msg);
-        }
-        finally {
-            snapshotting=false;
-            if(commit_table != null)
-                commit_table.snapshotInProgress(dest, false);
-        }
+        LogEntry last_committed_entry=log_impl.get(commitIndex());
+        int last_index=commit_index, last_term=last_committed_entry.term;
+        snapshot();
+        ByteArray data=log_impl.getSnapshot();
+        log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.getLength()), dest);
+        Message msg=new BytesMessage(dest, data)
+          .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
+        down_prot.down(msg);
     }
 
     /**

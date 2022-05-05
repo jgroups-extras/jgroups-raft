@@ -51,18 +51,12 @@ public class CommitTable {
         return this;
     }
 
-    public boolean snapshotInProgress(Address mbr, boolean flag) {
-        Entry entry=map.get(mbr);
-        return entry != null && entry.snapshotInProgress(flag);
-    }
-
 
     /** Applies a function to all elements of the commit table */
     public void forEach(BiConsumer<Address,Entry> function) {
         for(Map.Entry<Address,Entry> entry: map.entrySet()) {
             Entry val=entry.getValue();
-            if(!val.snapshot_in_progress)
-                function.accept(entry.getKey(), val);
+            function.accept(entry.getKey(), val);
         }
     }
 
@@ -81,8 +75,6 @@ public class CommitTable {
 
         protected int     next_index;   // the next index to send; initialized to last_appended +1
 
-        protected boolean snapshot_in_progress; // set when a snapshot is being installed
-
         // set to true when next_index was decremented, so we only send a single entry on the next resend interval;
         // set to false when we receive an AppendEntries(true) response
         protected boolean send_single_msg;
@@ -99,12 +91,6 @@ public class CommitTable {
         public boolean sendSingleMessage()             {return send_single_msg;}
         public Entry   sendSingleMessage(boolean flag) {this.send_single_msg=flag; return this;}
 
-        public boolean snapshotInProgress(boolean flag) {
-            if(snapshot_in_progress == flag)
-                return false;
-            snapshot_in_progress=flag;
-            return true;
-        }
 
         public void assertInvariant() {
             assert commit_index <= match_index && match_index <= next_index : this;
@@ -113,8 +99,6 @@ public class CommitTable {
         @Override public String toString() {
             StringBuilder sb=new StringBuilder("commit-index=").append(commit_index)
               .append(", match-index=").append(match_index).append(", next-index=").append(next_index);
-            if(snapshot_in_progress)
-                sb.append(" [snapshotting]");
             if(send_single_msg)
                 sb.append(" [send-single-msg]");
             return sb.toString();
