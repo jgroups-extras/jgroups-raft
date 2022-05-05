@@ -84,6 +84,10 @@ public class LogEntryStorage {
       return lastAppended;
    }
 
+   public long getCachedFileSize() {
+      return fileStorage.getCachedFileSize();
+   }
+
    public LogEntry getLogEntry(int index) throws IOException {
       long position = positionCache.getPosition(index);
       if (position < 0) {

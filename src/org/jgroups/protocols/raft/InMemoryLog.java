@@ -195,6 +195,16 @@ public class InMemoryLog implements Log {
         forEach(function, Math.max(1, first_appended), last_appended);
     }
 
+    public long sizeInBytes() {
+        long size=0;
+        int start_index=Math.max(first_appended, 1);
+        for(int i=start_index; i <= last_appended; i++) {
+            LogEntry entry=entries[i];
+            if(entry != null)
+                size+=entry.length;
+        }
+        return size;
+    }
 
     @Override
     public String toString() {

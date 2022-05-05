@@ -26,10 +26,10 @@ public class LogTest {
 
     @DataProvider static Object[][] logProvider() {
         return new Object[][] {
-          {new LevelDBLog()},
-          {new InMemoryLog()},
-          {new FileBasedLog()},
-          {new LogCache(new LevelDBLog(), 100)}
+          {new LevelDBLog().useFsync(true)},
+          {new InMemoryLog().useFsync(true)},
+          {new FileBasedLog().useFsync(true)},
+          {new LogCache(new LevelDBLog().useFsync(true), 512)}
         };
     }
 
@@ -348,6 +348,21 @@ public class LogTest {
         log.commitIndex(3);
         log.truncate(3); // excluding 3
         assert log.size() == 6;
+    }
+
+    public void testSizeInBytes(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        assert log.sizeInBytes() == 0;
+        byte[] buf=new byte[50];
+        final int NUM=100;
+        LogEntries le=new LogEntries();
+        for(int i=0; i < NUM; i++)
+            le.add(new LogEntry(1, buf));
+        int last=log.append(1, le);
+        assert last == NUM;
+        long size_in_bytes=log.sizeInBytes();
+        assert size_in_bytes >= buf.length * NUM;
     }
 
 

@@ -196,6 +196,25 @@ public class LevelDBLog implements Log {
         this.forEach(function, Math.max(1, firstAppended), lastAppended);
     }
 
+    public long sizeInBytes() {
+        // hmm, the code below doesn't work and always returns 0 (even when log_use_fsync is true)!
+        /*byte[] from_bytes=fromIntToByteArray(firstAppended), to_bytes=fromIntToByteArray(lastAppended);
+        long[] sizes=db.getApproximateSizes(new Range(from_bytes, to_bytes)); // hope this is not O(n)!
+        return sizes[0];*/
+
+        // this code below may not be so efficient...
+        long size=0;
+        int start_index=Math.max(firstAppended, 1);
+        DBIterator it=db.iterator();  // ((DBIterator)it).seekToFirst();
+        it.seek(fromIntToByteArray(start_index));
+        for(int i=start_index; i <= lastAppended && it.hasNext(); i++) {
+            Map.Entry<byte[],byte[]> e=it.next();
+            byte[] v=e.getValue();
+            size+=v != null? v.length : 0;
+        }
+        return size;
+    }
+
     @Override
     public void truncate(int index_exclusive) {
         if(index_exclusive < firstAppended)

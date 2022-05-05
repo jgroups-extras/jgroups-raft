@@ -130,8 +130,11 @@ public interface Log extends Closeable {
     /** Applies a function to all elements in range [first_appended .. last_appended] */
     void forEach(ObjIntConsumer<LogEntry> function);
 
+    /** The number of entries in the log */
     default int size() {
         int last=lastAppended(), first=firstAppended();
         return first == 0? last : last-first+1;
     }
+
+    long sizeInBytes();
 }

@@ -114,7 +114,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected boolean                   _log_use_fsync;
 
     @ManagedAttribute(description="The current size of the log in bytes",type=AttributeType.BYTES)
-    protected int                       curr_log_size; // keeps counts of the bytes added to the log
+    protected long                      curr_log_size; // keeps counts of the bytes added to the log
 
     @ManagedAttribute(description="Number of successful AppendEntriesRequests")
     protected int                       num_successful_append_requests;
@@ -215,7 +215,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public RAFT         sendCommitsImmediately(boolean v) {send_commits_immediately=v; return this;}
     public int          maxLogSize()                  {return max_log_size;}
     public RAFT         maxLogSize(int val)           {max_log_size=val; return this;}
-    public int          currentLogSize()              {return curr_log_size;}
+    public long         currentLogSize()              {return curr_log_size;}
     @ManagedAttribute(description="Number of pending requests")
     public int          requestTableSize()            {return request_table != null? request_table.size() : 0;}
     public int          numSnapshots()                {return num_snapshots;}
@@ -346,10 +346,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     /** This is a managed operation because it should invoked sparingly (costly) */
     @ManagedOperation(description="Number of bytes in the log")
-    public int logSizeInBytes() {
-        final AtomicInteger count=new AtomicInteger(0);
-        log_impl.forEach((entry,index) -> count.addAndGet(entry.length()));
-        return count.intValue();
+    public long logSizeInBytes() {
+        return log_impl.sizeInBytes();
     }
 
     @ManagedOperation(description="Dumps the last N log entries")
@@ -998,7 +996,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 this.log.debug("%s: current log size is %d, exceeding max_log_size of %d: creating snapshot",
                                local_addr, curr_log_size, max_log_size);
                 snapshot();
-                curr_log_size=logSizeInBytes();
+                // curr_log_size=logSizeInBytes();
+                // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
+                // behind last-appended, then this may perform the next truncation later than it should
+                curr_log_size=0;
             }
             catch(Exception ex) {
                 log.error("%s: failed snapshotting log: %s", local_addr, ex);

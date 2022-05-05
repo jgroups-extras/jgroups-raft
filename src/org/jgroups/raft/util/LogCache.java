@@ -202,6 +202,10 @@ public class LogCache implements Log {
         forEach(function, first_appended, last_appended);
     }
 
+    public long sizeInBytes() {
+        return log.sizeInBytes();
+    }
+
     public void close() throws IOException {
         log.close();
         cache.clear();

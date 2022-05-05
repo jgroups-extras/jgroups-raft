@@ -256,6 +256,11 @@ public class FileBasedLog implements Log {
       forEach(function, firstAppended(), lastAppended());
    }
 
+
+   public long sizeInBytes() {
+      return logEntryStorage.getCachedFileSize();
+   }
+
    @Override
    public String toString() {
       if (logEntryStorage == null)
