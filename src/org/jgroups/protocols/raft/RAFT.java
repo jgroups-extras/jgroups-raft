@@ -7,14 +7,13 @@ import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
-import org.jgroups.perf.CounterPerf;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.*;
 
-import java.io.*;
+import java.io.File;
 import java.net.InetAddress;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
