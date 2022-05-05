@@ -7,6 +7,11 @@ import org.jgroups.util.ByteArray;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.function.ObjIntConsumer;
 
@@ -18,6 +23,8 @@ import java.util.function.ObjIntConsumer;
  */
 public class FileBasedLog implements Log {
 
+   private static final String SNAPSHOT_FILE_NAME = "state_snapshot.raft";
+
    private File logDir;
    private Address votedFor;
    private int commitIndex;
@@ -27,8 +34,6 @@ public class FileBasedLog implements Log {
    private boolean fsync = DEFAULT_FSYNC;
    private MetadataStorage metadataStorage;
    private LogEntryStorage logEntryStorage;
-
-   private ByteArray snapshot; // todo: incorrect: removed when the snapshot() methods have been implemented correctly
 
    @Override
    public void init(String log_name, Map<String, String> args) throws Exception {
@@ -96,6 +101,7 @@ public class FileBasedLog implements Log {
          if (entryStorage != null) {
             entryStorage.delete();
          }
+         Files.deleteIfExists(snapshotPath());
          if (logDir != null) {
             logDir.delete(); // must be empty in order to be deleted
             logDir = null;
@@ -166,11 +172,42 @@ public class FileBasedLog implements Log {
    }
 
    public void setSnapshot(ByteArray sn) {
-      snapshot=sn;
+      Path snapshotPath = snapshotPath();
+      try {
+         if (Files.exists(snapshotPath)) {
+            // write to temporary file first
+            Path tmp = Files.createTempFile(logDir.toPath(), null, null);
+            writeSnapshot(sn, tmp);
+            // do we need atomic move?
+            Files.move(tmp, snapshotPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+         } else {
+            writeSnapshot(sn, snapshotPath);
+         }
+      } catch (IOException e) {
+         throw new RuntimeException(e);
+      }
    }
 
    public ByteArray getSnapshot() {
-      return snapshot;
+      Path snapshotPath = snapshotPath();
+      if (Files.exists(snapshotPath)) {
+         try {
+            return new ByteArray(Files.readAllBytes(snapshotPath));
+         } catch (IOException e) {
+            throw new RuntimeException(e);
+         }
+      }
+      return null;
+   }
+
+   private Path snapshotPath() {
+      return logDir.toPath().resolve(SNAPSHOT_FILE_NAME);
+   }
+
+   private static void writeSnapshot(ByteArray snapshot, Path path) throws IOException {
+      try (OutputStream os = Files.newOutputStream(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
+         os.write(snapshot.getArray(), snapshot.getOffset(), snapshot.getLength());
+      }
    }
 
    @Override
