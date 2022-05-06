@@ -2,9 +2,7 @@ package org.jgroups.perf;
 
 import org.HdrHistogram.AbstractHistogram;
 import org.HdrHistogram.Histogram;
-import org.jgroups.blocks.atomic.AsyncCounter;
-import org.jgroups.blocks.atomic.SyncCounter;
-import org.jgroups.util.AverageMinMax;
+import org.jgroups.blocks.atomic.Counter;
 
 import java.util.concurrent.ThreadFactory;
 import java.util.function.Function;
@@ -14,20 +12,21 @@ import java.util.function.LongSupplier;
  * Benchmark implementation used by {@link CounterPerf}.
  * <p>
  * A new instance is created when "start benchmark" command is created.
- * After creation, {@link #init(int, ThreadFactory, LongSupplier, AsyncCounter)} is invoked with the benchmark settings follow by {@link #start()}.
+ * After creation, {@link #init(int, ThreadFactory, LongSupplier, Counter)} is invoked with the benchmark settings follow by {@link #start()}.
  * The benchmark runs for some time and then {@link #stop()} and {@link #join()} are invoked.
  */
 public interface CounterBenchmark extends AutoCloseable {
 
     /**
      * Initializes with the benchmark settings.
-     *
-     * @param concurrency   The number of concurrent updaters.
+     *  @param concurrency   The number of concurrent updaters.
      * @param threadFactory The thread factory (if it needs to create threads).
      * @param deltaSupplier For each "add" operation, the delta from this {@link LongSupplier} must be used.
-     * @param counter       The {@link AsyncCounter} to benchmark. Note that the {@link SyncCounter} is available using {@link AsyncCounter#sync()}.
+     * @param counter       The {@link Counter} to benchmark. Note that the {@link org.jgroups.blocks.atomic.SyncCounter}
+     *                      or {@link org.jgroups.blocks.atomic.AsyncCounter} instances can be gotten by calling
+     *                      {@link Counter#sync()} or {@link Counter#async()}, respectively
      */
-    void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, AsyncCounter counter);
+    void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, Counter counter);
 
     /**
      * Signals the test start.

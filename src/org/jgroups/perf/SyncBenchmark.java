@@ -2,7 +2,7 @@ package org.jgroups.perf;
 
 import org.HdrHistogram.AbstractHistogram;
 import org.HdrHistogram.Histogram;
-import org.jgroups.blocks.atomic.AsyncCounter;
+import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.blocks.atomic.SyncCounter;
 
 import java.util.Arrays;
@@ -20,7 +20,7 @@ public class SyncBenchmark implements CounterBenchmark {
     private BenchmarkRun benchmarkRun;
 
     @Override
-    public void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, AsyncCounter counter) {
+    public void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, Counter counter) {
         benchmarkRun = new BenchmarkRun(concurrency, counter.sync(), threadFactory, deltaSupplier);
     }
 

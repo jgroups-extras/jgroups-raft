@@ -8,7 +8,6 @@ import org.jgroups.blocks.MethodCall;
 import org.jgroups.blocks.RequestOptions;
 import org.jgroups.blocks.ResponseMode;
 import org.jgroups.blocks.RpcDispatcher;
-import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.TP;
@@ -167,25 +166,24 @@ public class CounterPerf implements Receiver {
             throw new IllegalArgumentException(msg);
         }
 
-        AsyncCounter counter= CompletableFutures.join(counter_service.getOrCreateAsyncCounter("counter", 0));
-        try (CounterBenchmark benchmark = benchmarkSupplier.get()) {
-            benchmark.init(num_threads, thread_factory, this::getDelta, counter);
+        try (CounterBenchmark bm = benchmarkSupplier.get()) {
+            bm.init(num_threads, thread_factory, this::getDelta, counter);
 
             long start = System.currentTimeMillis();
-            benchmark.start();
+            bm.start();
 
             long interval = (long) ((time * 1000.0) / 10.0);
             for (int i = 1; i <= 10; i++) {
                 Util.sleep(interval);
-                System.out.printf("%d: %s\n", i, printAverage(start, benchmark));
+                System.out.printf("%d: %s\n", i, printAverage(start, bm));
             }
 
-            benchmark.stop();
-            benchmark.join();
+            bm.stop();
+            bm.join();
             long total_time = System.currentTimeMillis() - start;
 
             System.out.println();
-            Histogram avg_incrs = benchmark.getResults(print_updaters, avgMinMax -> print(avgMinMax, print_details));
+            Histogram avg_incrs = bm.getResults(print_updaters, avgMinMax -> print(avgMinMax, print_details));
             if (print_updaters)
                 System.out.printf("\navg over all updaters: %s\n", print(avg_incrs, print_details));
 
@@ -202,7 +200,7 @@ public class CounterPerf implements Receiver {
                 }
             }
 
-            return new UpdateResult(benchmark.getTotalUpdates(), total_time, avg_incrs);
+            return new UpdateResult(bm.getTotalUpdates(), total_time, avg_incrs);
         }
     }
 
@@ -212,7 +210,7 @@ public class CounterPerf implements Receiver {
         System.exit(0);
     }
 
-    protected String printAverage(long start_time, CounterBenchmark benchmark) {
+    protected static String printAverage(long start_time, CounterBenchmark benchmark) {
         long tmp_time=System.currentTimeMillis() - start_time;
         long incrs=benchmark.getTotalUpdates();
         double incrs_sec=incrs / (tmp_time / 1000.0);
