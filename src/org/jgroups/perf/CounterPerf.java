@@ -252,13 +252,22 @@ public class CounterPerf implements Receiver {
 
 
     public void eventLoop() {
+        boolean counter_available;
+        long cnt=0;
         while(looping) {
             try {
-                long cnt=getCounter();
+                try {
+                    cnt=getCounter();
+                    counter_available=true;
+                }
+                catch(Throwable t) {
+                    counter_available=false;
+                }
+
                 int c=Util.keyPress(String.format(format, num_threads, Util.printTime(time, TimeUnit.MILLISECONDS),
                                                   range, Util.printTime(timeout, TimeUnit.MILLISECONDS),
                                                   print_details, print_updaters, benchmark,
-                                                  cnt < 0? "\n" : String.format(" (counter=%d)\n", cnt)));
+                                                  counter_available? String.format(" (counter=%d)\n", cnt) : "\n"));
                 switch(c) {
                     case '1':
                         startBenchmark();
@@ -379,20 +388,25 @@ public class CounterPerf implements Receiver {
           String.format("%s", Util.printTime(avg, TimeUnit.NANOSECONDS));
     }
 
-    protected long getCounter() {
-        try {
-            if(counter == null)
-                counter=counter_service.getOrCreateCounter("counter", 0);
-            return counter.get();
-        }
-        catch(Exception ignored) {
-            return -1;
-        }
+    protected long getCounter() throws Exception {
+        if(counter == null)
+            counter=counter_service.getOrCreateCounter("counter", 0);
+        return counter.get();
     }
 
     protected int getDelta() {
         long random=Util.random(range);
-        return (int)(Util.tossWeightedCoin(.5)? -random : random);
+        return (int)(tossWeightedCoin(.5)? -random : random);
+    }
+
+    public static boolean tossWeightedCoin(double probability) {
+        if(probability >= 1)
+            return true;
+        if(probability <= 0)
+            return false;
+        long r=Util.random(1000);
+        long cutoff=(long)(probability * 1000);
+        return r < cutoff;
     }
 
 
