@@ -1,7 +1,9 @@
 package org.jgroups.perf;
 
+import org.HdrHistogram.AbstractHistogram;
+import org.HdrHistogram.AtomicHistogram;
+import org.HdrHistogram.Histogram;
 import org.jgroups.blocks.atomic.AsyncCounter;
-import org.jgroups.util.AverageMinMax;
 import org.jgroups.util.CompletableFutures;
 
 import java.util.ArrayList;
@@ -24,7 +26,7 @@ public class AsyncCounterBenchmark implements CounterBenchmark {
     private AsyncCounter counter;
     private final AtomicBoolean stop = new AtomicBoolean(false);
     private final LongAdder updates = new LongAdder();
-    private final AverageMinMax updateTimes = new AverageMinMax();
+    private final AtomicHistogram histogram = HistogramUtil.createAtomic();
 
     @Override
     public void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, AsyncCounter counter) {
@@ -61,10 +63,8 @@ public class AsyncCounterBenchmark implements CounterBenchmark {
     }
 
     @Override
-    public AverageMinMax getResults(boolean printUpdaters, Function<AverageMinMax, String> timePrinter) {
-        synchronized (updateTimes) {
-            return updateTimes;
-        }
+    public Histogram getResults(boolean printUpdaters, Function<AbstractHistogram, String> timePrinter) {
+        return histogram;
     }
 
     @Override
@@ -75,10 +75,7 @@ public class AsyncCounterBenchmark implements CounterBenchmark {
 
     private void updateTime(long timeNanos) {
         updates.increment();
-        synchronized (updateTimes) {
-            // AverageMinMax is not thread safe!
-            updateTimes.add(timeNanos);
-        }
+        histogram.recordValue(timeNanos);
     }
 
     private CompletionStage<Void> updateCounter(AsyncCounter counter, long start) {

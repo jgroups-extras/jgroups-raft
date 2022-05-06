@@ -1,8 +1,9 @@
 package org.jgroups.perf;
 
+import org.HdrHistogram.AbstractHistogram;
+import org.HdrHistogram.Histogram;
 import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.SyncCounter;
-import org.jgroups.util.AverageMinMax;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -47,15 +48,17 @@ public class SyncBenchmark implements CounterBenchmark {
     }
 
     @Override
-    public AverageMinMax getResults(boolean printUpdaters, Function<AverageMinMax, String> timePrinter) {
-        return Arrays.stream(benchmarkRun.updaters)
+    public Histogram getResults(boolean printUpdaters, Function<AbstractHistogram, String> timePrinter) {
+        Histogram global = HistogramUtil.create();
+        Arrays.stream(benchmarkRun.updaters)
                 .filter(Objects::nonNull)
                 .map(updater -> {
                     if (printUpdaters)
-                        System.out.printf("updater %s: updates %s\n", updater.thread.getId(), timePrinter.apply(updater.updateTime));
-                    return updater.updateTime;
-                }).reduce(new AverageMinMax(), AverageMinMax::merge);
-
+                        System.out.printf("updater %s: updates %s\n", updater.thread.getId(), timePrinter.apply(updater.histogram));
+                    return updater.histogram;
+                })
+                .forEach(global::add);
+        return global;
     }
 
     @Override
@@ -102,12 +105,12 @@ public class SyncBenchmark implements CounterBenchmark {
 
     private static class Updater implements Runnable {
         final CountDownLatch latch;
-        final AverageMinMax updateTime = new AverageMinMax(); // in ns
         final SyncCounter counter;
         final LongSupplier deltaSupplier;
         final Thread thread;
         long num_updates;
         volatile boolean running = true;
+        final Histogram histogram = HistogramUtil.create();
 
 
         public Updater(CountDownLatch latch, SyncCounter counter, LongSupplier deltaSupplier, ThreadFactory threadFactory) {
@@ -138,7 +141,7 @@ public class SyncBenchmark implements CounterBenchmark {
                     long start = System.nanoTime();
                     counter.addAndGet(delta);
                     long incr_time = System.nanoTime() - start;
-                    updateTime.add(incr_time);
+                    histogram.recordValue(incr_time);
                     num_updates++;
                 } catch (Throwable t) {
                     if (running)

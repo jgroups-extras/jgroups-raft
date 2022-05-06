@@ -1,5 +1,7 @@
 package org.jgroups.perf;
 
+import org.HdrHistogram.AbstractHistogram;
+import org.HdrHistogram.Histogram;
 import org.jgroups.*;
 import org.jgroups.annotations.Property;
 import org.jgroups.blocks.MethodCall;
@@ -20,6 +22,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -44,6 +47,7 @@ public class CounterPerf implements Receiver {
     protected ThreadFactory        thread_factory;
     protected CounterService       counter_service;
     protected SyncCounter          counter;
+    private volatile String        histogramPath;
 
     // ============ configurable properties ==================
     @Property protected int     num_threads=100;
@@ -100,7 +104,11 @@ public class CounterPerf implements Receiver {
     }
 
 
-    public void init(String props, String name, int bind_port, boolean use_fibers) throws Throwable {
+    public void init(String props, String name, int bind_port, boolean use_fibers, String histogram_path) throws Throwable {
+        histogramPath = histogram_path;
+        if (histogramPath != null) {
+            System.out.println("Histogram enabled! Will be stored into " + histogramPath);
+        }
         thread_factory=new DefaultThreadFactory("updater", false, true)
           .useFibers(use_fibers);
         if(use_fibers && Util.fibersAvailable())
@@ -177,11 +185,23 @@ public class CounterPerf implements Receiver {
             long total_time = System.currentTimeMillis() - start;
 
             System.out.println();
-            AverageMinMax avg_incrs = benchmark.getResults(print_updaters, avgMinMax -> print(avgMinMax, print_details));
+            Histogram avg_incrs = benchmark.getResults(print_updaters, avgMinMax -> print(avgMinMax, print_details));
             if (print_updaters)
                 System.out.printf("\navg over all updaters: %s\n", print(avg_incrs, print_details));
 
             System.out.printf("\ndone (in %s ms)\n", total_time);
+
+            if (histogramPath != null) {
+                String fileName = String.format("histogram_%s_%s.hgrm", counter_service.raftId(), this.benchmark);
+                Path filePath = Path.of(histogramPath, fileName);
+                System.out.println("Storing histogram to " + filePath.toAbsolutePath());
+                try {
+                    HistogramUtil.writeTo(avg_incrs, filePath.toFile());
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+
             return new UpdateResult(benchmark.getTotalUpdates(), total_time, avg_incrs);
         }
     }
@@ -313,7 +333,7 @@ public class CounterPerf implements Receiver {
 
         long total_incrs=0;
         long total_time=0;
-        AverageMinMax avg_incrs=null;
+        Histogram globalHistogram=null;
 
         System.out.println("\n======================= Results: ===========================");
         for(Map.Entry<Address,Rsp<UpdateResult>> entry: responses.entrySet()) {
@@ -323,10 +343,10 @@ public class CounterPerf implements Receiver {
             if(result != null) {
                 total_incrs+=result.num_updates;
                 total_time+=result.total_time;
-                if(avg_incrs == null)
-                    avg_incrs=result.avg_updates;
+                if(globalHistogram == null)
+                    globalHistogram=result.histogram;
                 else
-                    avg_incrs.merge(result.avg_updates);
+                    globalHistogram.add(result.histogram);
             }
             System.out.println(mbr + ": " + result);
         }
@@ -334,7 +354,7 @@ public class CounterPerf implements Receiver {
         System.out.println("\n");
         System.out.println(Util.bold(String.format("Throughput: %,.2f updates/sec/node\n" +
                                                    "Time:       %s / update\n",
-                                                   total_reqs_sec, print(avg_incrs, print_details))));
+                                                   total_reqs_sec, print(globalHistogram, print_details))));
         System.out.println("\n\n");
     }
     
@@ -353,9 +373,10 @@ public class CounterPerf implements Receiver {
         }
     }
 
-    protected static String print(AverageMinMax avg, boolean details) {
-        return details? String.format("min/avg/max = %s", avg.toString()) :
-          String.format("%s", Util.printTime(avg.average(), TimeUnit.NANOSECONDS));
+    protected static String print(AbstractHistogram histogram, boolean details) {
+        double avg = histogram.getMean();
+        return details? String.format("min/avg/max = %d/%f/%s", histogram.getMinValue(), avg, histogram.getMaxValue()) :
+          String.format("%s", Util.printTime(avg, TimeUnit.NANOSECONDS));
     }
 
     protected long getCounter() {
@@ -378,41 +399,41 @@ public class CounterPerf implements Receiver {
     protected static class UpdateResult implements Streamable {
         protected long          num_updates;
         protected long          total_time;     // in ms
-        protected AverageMinMax avg_updates; // in ns
+        protected Histogram     histogram; // in ns
 
         public UpdateResult() {
         }
 
-        public UpdateResult(long num_updates, long total_time, AverageMinMax avg_updates) {
+        public UpdateResult(long num_updates, long total_time, Histogram histogram) {
             this.num_updates=num_updates;
             this.total_time=total_time;
-            this.avg_updates=avg_updates;
+            this.histogram=histogram;
         }
 
         @Override
         public void writeTo(DataOutput out) throws IOException {
             Bits.writeLongCompressed(num_updates, out);
             Bits.writeLongCompressed(total_time, out);
-            Util.writeStreamable(avg_updates, out);
+            Util.objectToStream(histogram, out);
         }
 
         @Override
         public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
             num_updates=Bits.readLongCompressed(in);
             total_time=Bits.readLongCompressed(in);
-            avg_updates=Util.readStreamable(AverageMinMax::new, in);
+            histogram = Util.objectFromStream(in);
         }
 
         public String toString() {
             double total_reqs_per_sec=num_updates / (total_time / 1000.0);
             return String.format("%,.2f updates/sec (%,d updates, %s / update)", total_reqs_per_sec, num_updates,
-                                 Util.printTime(avg_updates.average(), TimeUnit.NANOSECONDS));
+                                 Util.printTime(histogram.getMean(), TimeUnit.NANOSECONDS));
         }
     }
 
 
     public static void main(String[] args) throws IOException, ClassNotFoundException {
-        String  props=null, name=null;
+        String  props=null, name=null, histogram_path = null;
         boolean run_event_loop=true, use_fibers=true;
         int port=0;
 
@@ -437,6 +458,10 @@ public class CounterPerf implements Receiver {
                 use_fibers=Boolean.parseBoolean(args[++i]);
                 continue;
             }
+            if ("-histogram".equals(args[i])) {
+                histogram_path = args[++i];
+                continue;
+            }
             help();
             return;
         }
@@ -447,7 +472,7 @@ public class CounterPerf implements Receiver {
         CounterPerf test=null;
         try {
             test=new CounterPerf();
-            test.init(props, name, port, use_fibers);
+            test.init(props, name, port, use_fibers, histogram_path);
             if(run_event_loop)
                 test.eventLoop();
             else {
@@ -464,7 +489,7 @@ public class CounterPerf implements Receiver {
 
     static void help() {
         System.out.println("CounterPerf [-props <props>] [-name name] [-nohup] [-port <bind port>] " +
-                             "[-use_fibers <true|false>]");
+                             "[-use_fibers <true|false>] [-histogram /path/to/write/log]");
     }
 
 

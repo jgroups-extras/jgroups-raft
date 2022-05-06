@@ -1,5 +1,7 @@
 package org.jgroups.perf;
 
+import org.HdrHistogram.AbstractHistogram;
+import org.HdrHistogram.Histogram;
 import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.util.AverageMinMax;
@@ -53,8 +55,9 @@ public interface CounterBenchmark extends AutoCloseable {
      * Returns the results of the run.
      *
      * @param printUpdaters If supported and if {@code true}, print to {@link System#out} each updater result.
-     * @param timePrinter   {@link Function} to use to print each updater {@link AverageMinMax} result.
-     * @return The {@link AverageMinMax} with the results of all updaters.
+     * @param timePrinter   {@link Function} to use to print each updater {@link AbstractHistogram} result.
+     * @return The {@link Histogram} with the results of all updaters.
      */
-    AverageMinMax getResults(boolean printUpdaters, Function<AverageMinMax, String> timePrinter);
+    Histogram getResults(boolean printUpdaters, Function<AbstractHistogram, String> timePrinter);
+
 }
