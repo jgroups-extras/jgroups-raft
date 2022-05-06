@@ -4,9 +4,9 @@ import org.jgroups.Address;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
-import org.jgroups.util.ByteArray;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.ObjIntConsumer;
@@ -103,11 +103,11 @@ public class LogCache implements Log {
         return last_appended;
     }
 
-    public void setSnapshot(ByteArray ba) {
-        log.setSnapshot(ba); // the LogCache doesn't cache snapshots; this operation isn't frequent anyway
+    public void setSnapshot(ByteBuffer sn) {
+        log.setSnapshot(sn); // the LogCache doesn't cache snapshots; this operation isn't frequent anyway
     }
 
-    public ByteArray getSnapshot() {
+    public ByteBuffer getSnapshot() {
         return log.getSnapshot();
     }
 

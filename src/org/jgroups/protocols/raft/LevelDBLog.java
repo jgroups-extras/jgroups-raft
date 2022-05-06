@@ -3,11 +3,11 @@ package org.jgroups.protocols.raft;
 import org.iq80.leveldb.*;
 import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
-import org.jgroups.util.ByteArray;
 import org.jgroups.util.Util;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.ObjIntConsumer;
@@ -132,13 +132,25 @@ public class LevelDBLog implements Log {
         return this;
     }
 
-    public void setSnapshot(ByteArray ba) {
-        db.put(SNAPSHOT, ba.getBytes());
+    public void setSnapshot(ByteBuffer sn) {
+        byte[] snapshot;
+        if(sn.isDirect())
+            snapshot=Util.bufferToArray(sn);
+        else {
+            if(sn.arrayOffset() > 0 || sn.capacity() != sn.remaining()) {
+                int len=sn.remaining();
+                snapshot=new byte[len];
+                System.arraycopy(sn.array(), sn.arrayOffset(), snapshot, 0, len);
+            }
+            else
+                snapshot=sn.array();
+        }
+        db.put(SNAPSHOT, snapshot);
     }
 
-    public ByteArray getSnapshot() {
+    public ByteBuffer getSnapshot() {
         byte[] snapshot=db.get(SNAPSHOT);
-        return snapshot != null? new ByteArray(snapshot) : null;
+        return snapshot != null? ByteBuffer.wrap(snapshot) : null;
     }
 
     @Override

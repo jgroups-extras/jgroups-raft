@@ -1,8 +1,8 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
-import org.jgroups.util.ByteArray;
 
+import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -22,7 +22,7 @@ public class InMemoryLog implements Log {
     protected int          last_appended;
     protected int          commit_index;
     protected LogEntry[]   entries;
-    protected ByteArray    snapshot;
+    protected ByteBuffer   snapshot;
 
     // keeps all logs, keyed by name
     public static final Map<String,Log> logs=new ConcurrentHashMap<>();
@@ -104,12 +104,12 @@ public class InMemoryLog implements Log {
     public int lastAppended() {return last_appended;}
 
 
-    public void setSnapshot(ByteArray ba) {
-        this.snapshot=ba;
+    public void setSnapshot(ByteBuffer sn) {
+        this.snapshot=sn;
     }
 
-    public ByteArray getSnapshot() {
-        return snapshot;
+    public ByteBuffer getSnapshot() {
+        return snapshot != null? snapshot.duplicate() : null;
     }
 
     @Override

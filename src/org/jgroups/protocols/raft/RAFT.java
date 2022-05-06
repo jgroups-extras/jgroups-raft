@@ -15,6 +15,7 @@ import org.jgroups.util.*;
 
 import java.io.File;
 import java.net.InetAddress;
+import java.nio.ByteBuffer;
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -433,7 +434,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
         state_machine.writeContentTo(out);
-        log_impl.setSnapshot(out.getBuffer()); // todo: combine these 2 methods?
+        ByteBuffer buf=ByteBuffer.wrap(out.buffer(), 0, out.position());
+        log_impl.setSnapshot(buf);
         log_impl.truncate(commitIndex());
         num_snapshots++;
     }
@@ -445,12 +447,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(state_machine == null || state_machine_loaded)
             return;
         int snapshot_offset=0;  // 0 when no snapshot is present, 1 otherwise
-        ByteArray sn=log_impl.getSnapshot();
+        ByteBuffer sn=log_impl.getSnapshot();
         if(sn != null) {
-            ByteArrayDataInputStream in=new ByteArrayDataInputStream(sn.getArray(), sn.getOffset(), sn.getLength());
+            ByteArrayDataInputStream in=new ByteArrayDataInputStream(sn);
             state_machine.readContentFrom(in);
             snapshot_offset=1;
-            log.debug("%s: initialized state machine from snapshot (%d bytes)", local_addr, sn.getLength());
+            log.debug("%s: initialized state machine from snapshot (%d bytes)", local_addr, sn.position());
         }
 
         int from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;
@@ -952,8 +954,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         LogEntry last_committed_entry=log_impl.get(commitIndex());
         int last_index=commit_index, last_term=last_committed_entry.term;
         snapshot();
-        ByteArray data=log_impl.getSnapshot();
-        log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.getLength()), dest);
+        ByteBuffer data=log_impl.getSnapshot();
+        log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.position()), dest);
         Message msg=new BytesMessage(dest, data)
           .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
         down_prot.down(msg);

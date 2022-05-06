@@ -5,11 +5,11 @@ import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.raft.blocks.CounterService;
-import org.jgroups.util.ByteArray;
 import org.jgroups.util.ByteArrayDataInputStream;
 
-import java.io.*;
+import java.io.DataInput;
 import java.lang.reflect.Method;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringJoiner;
@@ -71,9 +71,9 @@ public class AnalyzeLog {
             Address votedfor=l.votedFor();
 
             if(snapshot_reader != null) {
-                ByteArray sn=l.getSnapshot();
+                ByteBuffer sn=l.getSnapshot();
                 if(sn != null) {
-                    DataInput snapshot=new ByteArrayDataInputStream(sn.getArray(), sn.getOffset(), sn.getLength());
+                    DataInput snapshot=new ByteArrayDataInputStream(sn);
                     System.out.printf("----------\nsnapshot: %s\n-----------\n", snapshot_reader.apply(snapshot));
                 }
             }

@@ -3,11 +3,11 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
-import org.jgroups.util.ByteArray;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.channels.ByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -171,7 +171,7 @@ public class FileBasedLog implements Log {
       return checkLogEntryStorageStarted().getLastAppended();
    }
 
-   public void setSnapshot(ByteArray sn) {
+   public void setSnapshot(ByteBuffer sn) {
       Path snapshotPath = snapshotPath();
       try {
          if (Files.exists(snapshotPath)) {
@@ -188,11 +188,11 @@ public class FileBasedLog implements Log {
       }
    }
 
-   public ByteArray getSnapshot() {
+   public ByteBuffer getSnapshot() {
       Path snapshotPath = snapshotPath();
       if (Files.exists(snapshotPath)) {
          try {
-            return new ByteArray(Files.readAllBytes(snapshotPath));
+            return ByteBuffer.wrap(Files.readAllBytes(snapshotPath));
          } catch (IOException e) {
             throw new RuntimeException(e);
          }
@@ -204,9 +204,9 @@ public class FileBasedLog implements Log {
       return logDir.toPath().resolve(SNAPSHOT_FILE_NAME);
    }
 
-   private static void writeSnapshot(ByteArray snapshot, Path path) throws IOException {
-      try (OutputStream os = Files.newOutputStream(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
-         os.write(snapshot.getArray(), snapshot.getOffset(), snapshot.getLength());
+   private static void writeSnapshot(ByteBuffer snapshot, Path path) throws IOException {
+      try(ByteChannel ch=Files.newByteChannel(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
+         ch.write(snapshot);
       }
    }
 

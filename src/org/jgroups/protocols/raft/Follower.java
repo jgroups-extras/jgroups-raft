@@ -3,9 +3,10 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
-import org.jgroups.util.ByteArray;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
+
+import java.nio.ByteBuffer;
 
 /**
  * Implements the behavior of a RAFT follower
@@ -26,9 +27,9 @@ public class Follower extends RaftImpl {
         Address sender=msg.src();
         try {
             // Read into state machine
-            ByteArray sn=new ByteArray(msg.getArray(), msg.getOffset(), msg.getLength());
+            ByteBuffer sn=ByteBuffer.wrap(msg.getArray(), msg.getOffset(), msg.getLength());
             raft.log().setSnapshot(sn);
-            sm.readContentFrom(new ByteArrayDataInputStream(sn.getArray(), sn.getOffset(), sn.getLength()));
+            sm.readContentFrom(new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength()));
 
             // insert a dummy entry at last_included_index and set first/last/commit to it
             Log log=raft.log();
