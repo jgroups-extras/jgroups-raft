@@ -182,6 +182,17 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
 
     /* ============================== EXPERIMENTAL - most of these metrics will be removed again ================== */
+
+    @ManagedAttribute(description="Size of remove-queue")
+    public int removeQueueSize() {
+        return remove_queue.size();
+    }
+
+    @ManagedAttribute(description="Size of processing queue")
+    public int processingQueueSize() {
+        return processing_queue.size();
+    }
+
     @ManagedAttribute
     final LongAdder     drained_total=new LongAdder();
 
