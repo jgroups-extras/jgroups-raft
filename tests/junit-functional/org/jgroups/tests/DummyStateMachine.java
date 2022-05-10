@@ -1,6 +1,6 @@
 package org.jgroups.tests;
 
-import org.jgroups.protocols.raft.StateMachine;
+import org.jgroups.raft.StateMachine;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -10,7 +10,9 @@ import java.io.DataOutput;
  * @since  1.0.5
  */
 public class DummyStateMachine implements StateMachine {
-    public byte[] apply(byte[] data, int offset, int length) throws Exception {return new byte[0];}
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+        return serialize_response? new byte[0] : null;
+    }
     public void readContentFrom(DataInput in) throws Exception {}
     public void writeContentTo(DataOutput out) throws Exception {}
 }

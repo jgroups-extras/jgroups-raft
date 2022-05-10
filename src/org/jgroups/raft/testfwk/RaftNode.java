@@ -3,7 +3,8 @@ package org.jgroups.raft.testfwk;
 import org.jgroups.*;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.Settable;
+import org.jgroups.raft.Options;
+import org.jgroups.raft.Settable;
 import org.jgroups.stack.Protocol;
 
 import java.io.Closeable;
@@ -107,8 +108,8 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
         return null;
     }
 
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
-        return raft.setAsync(buf, offset, length);
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Options options) throws Exception {
+        return raft.setAsync(buf, offset, length, false, options);
     }
 
 

@@ -9,6 +9,7 @@ import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.pbcast.NAKACK2;
 import org.jgroups.protocols.pbcast.STABLE;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.raft.Options;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.CounterStateMachine;
@@ -21,6 +22,7 @@ import org.testng.annotations.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -276,10 +278,6 @@ public class RaftTest {
     }
 
 
-
-
-
-
     /** Tests appending with correct prev_index, but incorrect term */
     public void testAppendWrongTermOnlyOneTerm() throws Exception {
 
@@ -312,6 +310,30 @@ public class RaftTest {
         assertIndices(5, 5, 22, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 5, 5, 6);
     }
+
+
+    public void testSimpleAppendOnFollower() throws Exception {
+        CompletableFuture<byte[]> f=addAsync(rhb, 5);
+        assert f != null;
+        int prev_value=Bits.readInt(f.get(), 0);
+        assert prev_value == 0;
+        assert sma.counter() == 5;
+        assert smb.counter() == 0; // not yet committed
+
+        f=addAsync(rhb, 5);
+        prev_value=Bits.readInt(f.get(), 0);
+        assert prev_value == 5;
+        assert sma.counter() == 10;
+        assert smb.counter() == 5; // not yet committed
+
+        f=addAsync(rhb, 5, Options.create(true));
+        assert f != null;
+        byte[] res=f.get();
+        assert res == null;
+        assert sma.counter() == 15;
+        assert smb.counter() == 10; // not yet committed
+    }
+
 
     protected static void sendAppendEntriesRequest(RAFT r, int prev_index, int prev_term, int curr_term, int commit_index) {
         byte[] val=new byte[Integer.BYTES];
@@ -363,6 +385,16 @@ public class RaftTest {
         Bits.writeInt(delta, val, 0);
         byte[] retval=rh.set(val, 0, val.length, 5, TimeUnit.SECONDS);
         return Bits.readInt(retval, 0);
+    }
+
+    protected static CompletableFuture<byte[]> addAsync(RaftHandle handle, int delta) throws Exception {
+        return addAsync(handle, delta, null);
+    }
+
+    protected static CompletableFuture<byte[]> addAsync(RaftHandle handle, int delta, Options opts) throws Exception {
+        byte[] buf=new byte[Integer.BYTES];
+        Bits.writeInt(delta, buf, 0);
+        return handle.setAsync(buf, 0, buf.length, opts);
     }
 
     protected static JChannel create(String name, long resend_interval, int max_log_size) throws Exception {

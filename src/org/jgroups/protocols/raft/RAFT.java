@@ -7,6 +7,9 @@ import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.raft.Options;
+import org.jgroups.raft.Settable;
+import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RequestTable;
@@ -132,7 +135,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Number of failed AppendEntriesRequests because the prev entry's term didn't match")
     protected int                       num_failed_append_requests_wrong_term;
 
-    protected StateMachine              state_machine;
+    protected StateMachine state_machine;
 
     protected boolean                   state_machine_loaded;
 
@@ -477,7 +480,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 if(log_entry.internal)
                     executeInternalCommand(null, log_entry.command, log_entry.offset, log_entry.length);
                 else {
-                    state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
+                    state_machine.apply(log_entry.command, log_entry.offset, log_entry.length, true);
                     count++;
                 }
             }
@@ -627,11 +630,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * @return A CompletableFuture. Can be used to wait for the result (sync). A blocking caller could call
      *         set(), then call future.get() to block for the result.
      */
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) {
-        return setAsync(buf, offset, length, false);
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Options options) {
+        return setAsync(buf, offset, length, false, options);
     }
 
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, boolean internal) {
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, boolean internal, Options options) {
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
         if(buf == null)
@@ -643,9 +646,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return retval;
         }
         if(synchronous) // set only for testing purposes
-            handleDownRequest(retval, buf, offset, length, internal);
+            handleDownRequest(retval, buf, offset, length, internal, options);
         else
-            add(new DownRequest(retval, buf, offset, length, internal)); // will call handleDownRequest()
+            add(new DownRequest(retval, buf, offset, length, internal, options)); // will call handleDownRequest()
         return retval; // 4. Return CompletableFuture
     }
 
@@ -664,7 +667,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /** This method is always called by a single thread only, and does therefore not need to be reentrant */
-    protected void handleDownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length, boolean internal) {
+    protected void handleDownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length,
+                                     boolean internal, Options opts) {
         if(leader == null || !Objects.equals(leader,local_addr))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
 
@@ -680,7 +684,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         num_successful_append_requests+=entries.size();
 
         // 2. Add the request to the client table, so we can return results to clients when done
-        reqtab.create(curr_index, raft_id, f, majority());
+        reqtab.create(curr_index, raft_id, f, majority(), opts);
 
         // 3. Multicast an AppendEntries message (exclude self)
         Message msg=new ObjectMessage(null, entries)
@@ -696,7 +700,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
-            commitLogTo(highest_committed);
+            commitLogTo(highest_committed, true);
     }
 
     public void handleUpRequest(Message msg, RaftHeader hdr) {
@@ -789,7 +793,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     entries.add(new LogEntry(current_term, dr.buf, dr.offset, dr.length, dr.internal));
 
                     // Add the request to the client table, so we can return results to clients when done
-                    reqtab.create(index++, raft_id, dr.f, majority());
+                    reqtab.create(index++, raft_id, dr.f, majority(), dr.options);
                     length+=dr.length;
                 }
             }
@@ -829,7 +833,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
-            commitLogTo(highest_committed);
+            commitLogTo(highest_committed, true);
         snapshotIfNeeded(length);
     }
 
@@ -917,7 +921,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         InternalCommand cmd=new InternalCommand(type, name);
         byte[] buf=Util.streamableToByteBuffer(cmd);
-        return setAsync(buf, 0, buf.length, true);
+        return setAsync(buf, 0, buf.length, true, null);
     }
 
     protected void resend(Address target, int index) {
@@ -977,10 +981,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * to the state machine and notify the clients for each entry. There is no need to check if an entry is committed
      * in RequestTable, as this was done before calling this method.
      * @param index_inclusive The index to which to move commit_index
+     * @param serialize_response When true, the response of applying a change to the state machine needs to be serialized
+     *                           into a byte[] array, otherwise null can be returned (reducing serialization cost)
      */
-    protected RAFT commitLogTo(int index_inclusive) {
+    protected RAFT commitLogTo(int index_inclusive, boolean serialize_response) {
         int to=Math.min(last_appended, index_inclusive);
-        int last_successful_apply=applyCommits(to);
+        int last_successful_apply=applyCommits(to, serialize_response);
         commit_index=Math.max(commit_index, last_successful_apply);
         log_impl.commitIndex(commit_index);
         return this;
@@ -1023,13 +1029,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /**
      * Applies log entries [commit_index+1 .. to_inclusive] to the state machine and notifies clients in RequestTable.
      * @param to_inclusive The end index (inclusive) of the log entries to apply
+     * @param serialize_response Whether or not {@link StateMachine#apply(byte[], int, int, boolean)} needs to return a serialized
+     *                           response
      * @return The last index of the range of log entries that was successfuly applied (normally this is to_inclusive)
      */
-    protected int applyCommits(int to_inclusive) {
+    protected int applyCommits(int to_inclusive, boolean serialize_response) {
         int last_successful_apply=commit_index;
         for(int i=commit_index+1; i <= to_inclusive; i++) {
             try {
-                applyCommit(i);
+                applyCommit(i, serialize_response);
                 last_successful_apply=i;
             }
             catch(Throwable t) {
@@ -1041,23 +1049,35 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /** Applies the commit at index */
-    protected void applyCommit(int index) throws Exception {
+    protected void applyCommit(int index, boolean serialize_response) throws Exception {
         // Apply the modifications to the state machine
         LogEntry log_entry=log_impl.get(index);
         if(log_entry == null)
             throw new IllegalStateException(local_addr + ": log entry for index " + index + " not found in log");
         byte[] rsp=null;
+        RequestTable.Entry<String> entry=request_table != null? request_table.remove(index) : null;
         if(log_entry.internal) {
-            InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
-                                                              log_entry.offset, log_entry.length);
-            cmd.execute(this);
+            try {
+                InternalCommand cmd=Util.streamableFromByteBuffer(InternalCommand.class, log_entry.command,
+                                                                  log_entry.offset, log_entry.length);
+                cmd.execute(this);
+            }
+            catch(Throwable t) {
+                notify(entry, t);
+            }
         }
-        else
-            rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length);
-
-        // Notify the client's CompletableFuture and then remove the entry in the client request table
-        if(request_table != null)
-            request_table.notifyAndRemove(index, rsp);
+        else {
+            Options opts=entry != null? entry.options() : null;
+            if(opts != null && opts.ignoreReturnValue())
+                serialize_response=false;
+            try {
+                rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length, serialize_response);
+            }
+            catch(Throwable t) {
+                notify(entry, t);
+            }
+        }
+        notify(entry, rsp);
     }
 
 
@@ -1092,6 +1112,16 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(new_term > 0)
             currentTerm(new_term);
         return leader(new_leader);
+    }
+
+    protected static <T> void notify(RequestTable.Entry<T> e, byte[] rsp) {
+        if(e != null)
+            e.notify(rsp);
+    }
+
+    protected static <T> void notify(RequestTable.Entry<T> e, Throwable t) {
+        if(e != null)
+            e.notify(t);
     }
 
     protected RAFT changeRole(Role new_role) {
@@ -1215,13 +1245,16 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         final byte[]                    buf;
         final int                       offset, length;
         final boolean                   internal;
+        final Options                   options;
 
-        public DownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length, boolean internal) {
+        public DownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length,
+                           boolean internal, Options opts) {
             this.f=f;
             this.buf=buf;
             this.offset=offset;
             this.length=length;
             this.internal=internal;
+            this.options=opts;
         }
 
         public String toString() {

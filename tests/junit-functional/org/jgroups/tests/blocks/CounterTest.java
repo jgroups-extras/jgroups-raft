@@ -8,6 +8,7 @@ import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
+import org.jgroups.raft.Options;
 import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.util.CompletableFutures;
@@ -130,6 +131,54 @@ public class CounterTest {
 
         assertEquals(2, counters.get(2).compareAndSwap(2, -2));
         assertValues(counters, -2);
+    }
+
+    public void testIgnoreReturnValue() {
+        List<SyncCounter> counters=createCounters("ignore");
+        SyncCounter counter=counters.get(1);
+        long ret=counter.incrementAndGet();
+
+        counter=counter.withOptions(Options.create(true));
+        ret=counter.incrementAndGet();
+        assert ret == 0;
+
+        ret=counter.addAndGet(10);
+        assert ret == 0;
+        ret=counter.get();
+        assert ret == 12;
+
+        ret=counter.getLocal();
+        assert ret == 12;
+
+        boolean rc=counter.compareAndSet(12, 15);
+        assert !rc;
+
+        ret=counter.get();
+        assert ret == 15;
+
+        counter.set(20);
+        ret=counter.get();
+        assert ret == 20;
+
+        AsyncCounter ctr=counter.async();
+        CompletionStage<Long> f=ctr.addAndGet(5);
+        Long val=CompletableFutures.join(f);
+        assert val == null;
+        f=ctr.get();
+        ret=CompletableFutures.join(f);
+        assert ret == 25;
+        f=ctr.getLocal();
+        ret=CompletableFutures.join(f);
+        assert ret == 25;
+        f=ctr.incrementAndGet();
+        val=CompletableFutures.join(f);
+        assert val == null;
+        ctr.set(30);
+        assert CompletableFutures.join(ctr.get()) == 30;
+
+        counter=counter.withOptions(Options.create(false));
+        ret=counter.decrementAndGet();
+        assert ret == 29;
     }
 
     public void testChainAddAndGet() {

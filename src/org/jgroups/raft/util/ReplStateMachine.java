@@ -1,6 +1,6 @@
 package org.jgroups.raft.util;
 
-import org.jgroups.protocols.raft.StateMachine;
+import org.jgroups.raft.StateMachine;
 import org.jgroups.util.Bits;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
@@ -21,7 +21,7 @@ public class ReplStateMachine<K,V> implements StateMachine {
     public static final int REMOVE = 2;
 
     @Override
-    public byte[] apply(byte[] data, int offset, int length) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(data, offset, length);
         byte command=in.readByte();
         switch(command) {
@@ -32,13 +32,13 @@ public class ReplStateMachine<K,V> implements StateMachine {
                 synchronized(map) {
                     old_val=map.put(key, val);
                 }
-                return old_val == null? null : Util.objectToByteBuffer(old_val);
+                return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
             case REMOVE:
                 key=Util.objectFromStream(in);
                 synchronized(map) {
                     old_val=map.remove(key);
                 }
-                return old_val == null? null : Util.objectToByteBuffer(old_val);
+                return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
         }

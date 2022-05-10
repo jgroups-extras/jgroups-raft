@@ -1,7 +1,10 @@
 package org.jgroups.raft.util;
 
 
-import java.util.*;
+import org.jgroups.raft.Options;
+
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -20,7 +23,11 @@ public class RequestTable<T> {
 
 
     public void create(int index, T vote, CompletableFuture<byte[]> future, int majority) {
-        Entry<T> entry=new Entry<>(future);
+        create(index, vote, future, majority, null);
+    }
+
+    public void create(int index, T vote, CompletableFuture<byte[]> future, int majority, Options opts) {
+        Entry<T> entry=new Entry<>(future, opts);
         if (requests == null) {
             requests = new ArrayRingBuffer<>(index);
         }
@@ -67,22 +74,20 @@ public class RequestTable<T> {
 
     /** number of requests being processed */
     public int size() {
-        if (requests == null) {
+        if(requests == null)
             return 0;
-        }
         return requests.size();
+    }
+
+    public Entry<T> remove(int index) {
+        return requests != null? requests.remove(index) : null;
     }
 
     /** Notifies the CompletableFuture and then removes the entry for index */
     public void notifyAndRemove(int index, byte[] response) {
-        if (requests == null) {
-            return;
-        }
-        final Entry<?> entry = requests.remove(index);
-        if (entry != null) {
-            if (entry.client_future != null)
-                entry.client_future.complete(response);
-        }
+        Entry<?> entry=remove(index);
+        if(entry != null && entry.client_future != null)
+            entry.client_future.complete(response);
     }
 
     public String toString() {
@@ -95,22 +100,36 @@ public class RequestTable<T> {
     }
 
 
-    protected static class Entry<T> {
+    public static class Entry<T> {
         // the future has been returned to the caller, and needs to be notified when we've reached a majority
         protected final CompletableFuture<byte[]> client_future;
         protected final Set<T>                    votes=new HashSet<>();
+        protected final Options                   opts;
         protected boolean                         committed;
 
-        public Entry(CompletableFuture<byte[]> client_future) {
+        public Entry(CompletableFuture<byte[]> client_future, Options opts) {
             this.client_future=client_future;
+            this.opts=opts;
         }
 
-        protected boolean add(T vote, int majority) {
+        public Options options() {return opts;}
+
+        public boolean add(T vote, int majority) {
             return votes.add(vote) && votes.size() >= majority && commit();
         }
 
+        public void notify(byte[] result) {
+            if(client_future != null)
+                client_future.complete(result);
+        }
+
+        public void notify(Throwable t) {
+            if(client_future != null)
+                client_future.completeExceptionally(t);
+        }
+
         // returns true only the first time the entry is committed
-        protected boolean commit() {
+        public boolean commit() {
             boolean prev_committed = committed;
             committed=true;
             return !prev_committed;
@@ -118,7 +137,7 @@ public class RequestTable<T> {
 
         @Override
         public String toString() {
-            return "committed=" + committed + ", votes=" + votes;
+            return String.format("committed=%b, votes=%s %s", committed, votes, opts != null? opts.toString() : "");
         }
     }
 }

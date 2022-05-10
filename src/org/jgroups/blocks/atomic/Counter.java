@@ -1,5 +1,7 @@
 package org.jgroups.blocks.atomic;
 
+import org.jgroups.raft.Options;
+
 /**
  * Base interface for all counters
  * @author Bela Ban
@@ -24,5 +26,13 @@ public interface Counter {
      * @return
      */
     AsyncCounter  async();
+
+    /**
+     * Returns an instance of a counter with the given options
+     * @param opts The options
+     * @param <T> The type of the counter, e.g. {@link AsyncCounter} or {@link SyncCounter}
+     * @return The counter of the given type
+     */
+    <T extends Counter> T withOptions(Options opts);
 
 }

@@ -1,7 +1,7 @@
 package org.jgroups.raft.util;
 
 import org.jgroups.protocols.raft.LogEntry;
-import org.jgroups.protocols.raft.StateMachine;
+import org.jgroups.raft.StateMachine;
 import org.jgroups.util.Bits;
 
 import java.io.DataInput;
@@ -22,7 +22,7 @@ public class CounterStateMachine implements StateMachine {
     public int additions()    {return additions.get();}
     public int subtractions() {return subtractions.get();}
 
-    public byte[] apply(byte[] data, int offset, int length) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
         int val=Bits.readInt(data, offset);
         if(val < 0)
             subtractions.incrementAndGet();
@@ -30,6 +30,8 @@ public class CounterStateMachine implements StateMachine {
             additions.incrementAndGet();
         int old_counter=counter.get();
         counter.addAndGet(val);
+        if(!serialize_response)
+            return null;
         byte[] retval=new byte[Integer.BYTES];
         Bits.writeInt(old_counter, retval, 0);
         return retval;

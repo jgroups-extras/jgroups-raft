@@ -1,4 +1,4 @@
-package org.jgroups.protocols.raft;
+package org.jgroups.raft;
 
 
 import java.util.concurrent.CompletableFuture;
@@ -41,13 +41,19 @@ public interface Settable {
         return future.get(timeout, unit);
     }
 
+
+    default CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
+        return setAsync(buf, offset, length, null);
+    }
+
     /**
      * Asynchronous set, returns immediately with a CompletableFuture. To wait for the result,
      * {@link CompletableFuture#get()} or {@link CompletableFuture#get(long, TimeUnit)} can be called.
      * @param buf The buffer (usually a serialized command) which represent the change to be applied to all state machines
      * @param offset The offset into the buffer
      * @param length he number of bytes to be used in the buffer, starting at offset
+     * @param options Options to pass to the call, may be null
      * @return A CompletableFuture which can be used to fetch the result.
      */
-    CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception;
+    CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Options options) throws Exception;
 }

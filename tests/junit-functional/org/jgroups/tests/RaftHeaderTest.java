@@ -2,6 +2,7 @@ package org.jgroups.tests;
 
 import org.jgroups.Global;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.raft.Options;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 import org.testng.annotations.Test;
@@ -44,11 +45,13 @@ public class RaftHeaderTest {
         _testSize(hdr, InstallSnapshotRequest.class);
     }
 
-    public static void testRedirectHeader() throws Exception {
-        REDIRECT.RedirectHeader hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.SET_REQ, 22, true);
+    public void testRedirectHeader() throws Exception {
+        REDIRECT.RedirectHeader hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.REQ, 22, true);
         _testSize(hdr, REDIRECT.RedirectHeader.class);
+        hdr.options(Options.create(true));
 
-        hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.RSP, 322649, false);
+        hdr=new REDIRECT.RedirectHeader(REDIRECT.RequestType.RSP, 322649, false)
+          .options(Options.create(true));
         _testSize(hdr, REDIRECT.RedirectHeader.class);
     }
 

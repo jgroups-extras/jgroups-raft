@@ -21,6 +21,12 @@ public interface AsyncCounter extends Counter {
     }
 
     /**
+     * Returns the local value of the counter; the returned value may be stale
+     * @return The local counter value
+     */
+    CompletionStage<Long> getLocal();
+
+    /**
      * Sets the counter to a new value.
      *
      * @return A {@link CompletionStage} that is completed with the counter's value is updated.

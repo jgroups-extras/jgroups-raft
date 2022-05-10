@@ -1,10 +1,13 @@
 package org.jgroups.raft.blocks;
 
 import org.jgroups.blocks.atomic.AsyncCounter;
+import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.blocks.atomic.SyncCounter;
+import org.jgroups.raft.Options;
 import org.jgroups.util.AsciiString;
 import org.jgroups.util.CompletableFutures;
 
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 
@@ -14,54 +17,45 @@ import java.util.concurrent.CompletionStage;
  * @since 1.0.9
  */
 public class AsyncCounterImpl implements AsyncCounter {
+    private final CounterService counterService;
+    private final AsciiString    asciiName;
+    private final Sync           sync;
+    private Options              options=new Options();
 
-    private final CounterService raftCounterService;
-    private final String name;
-    private final AsciiString asciiName;
-    private final Sync sync;
 
-    public AsyncCounterImpl(CounterService raftCounterService, String name) {
-        this.raftCounterService = raftCounterService;
-        this.name = name;
-        this.asciiName = new AsciiString(name);
+    public AsyncCounterImpl(CounterService counterService, String name) {
+        this.counterService=counterService;
+        this.asciiName = new AsciiString(Objects.requireNonNull(name));
         this.sync = new Sync();
     }
 
     @Override
     public String getName() {
-        return name;
+        return asciiName.toString();
     }
 
     @Override
     public CompletionStage<Long> get() {
-        return raftCounterService.allowDirtyReads() ?
-                CompletableFuture.completedFuture(raftCounterService._get(name)) :
-                raftCounterService.asyncGet(asciiName);
+        return counterService.allowDirtyReads() ? getLocal() : counterService.asyncGet(asciiName);
+    }
+
+    public CompletionStage<Long> getLocal() {
+        return CompletableFuture.completedFuture(counterService._get(asciiName.toString()));
     }
 
     @Override
     public CompletionStage<Void> set(long new_value) {
-        return raftCounterService.asyncSet(asciiName, new_value);
+        return counterService.asyncSet(asciiName, new_value);
     }
 
     @Override
     public CompletionStage<Long> compareAndSwap(long expect, long update) {
-        return raftCounterService.asyncCompareAndSwap(asciiName, expect, update);
-    }
-
-    @Override
-    public CompletionStage<Long> incrementAndGet() {
-        return raftCounterService.asyncIncrementAndGet(asciiName);
-    }
-
-    @Override
-    public CompletionStage<Long> decrementAndGet() {
-        return raftCounterService.asyncDecrementAndGet(asciiName);
+        return counterService.asyncCompareAndSwap(asciiName, expect, update, options);
     }
 
     @Override
     public CompletionStage<Long> addAndGet(long delta) {
-        return raftCounterService.asyncAddAndGet(asciiName, delta);
+        return counterService.asyncAddAndGet(asciiName, delta, options);
     }
 
     @Override
@@ -69,20 +63,36 @@ public class AsyncCounterImpl implements AsyncCounter {
         return sync;
     }
 
+    @Override
     public AsyncCounter async() {
         return this;
+    }
+
+    @Override
+    public <T extends Counter> T withOptions(Options opts) {
+        if(opts != null)
+            this.options=opts;
+        return (T)this;
+    }
+
+    public String toString() {
+        return String.valueOf(CompletableFutures.join(AsyncCounterImpl.this.getLocal()));
     }
 
     private final class Sync implements SyncCounter {
 
         @Override
         public String getName() {
-            return name;
+            return asciiName.toString();
         }
 
         @Override
         public long get() {
             return CompletableFutures.join(AsyncCounterImpl.this.get());
+        }
+
+        public long getLocal() {
+            return CompletableFutures.join(AsyncCounterImpl.this.getLocal());
         }
 
         @Override
@@ -92,12 +102,16 @@ public class AsyncCounterImpl implements AsyncCounter {
 
         @Override
         public long compareAndSwap(long expect, long update) {
-            return CompletableFutures.join(AsyncCounterImpl.this.compareAndSwap(expect, update));
+            CompletionStage<Long> f=AsyncCounterImpl.this.compareAndSwap(expect, update);
+            Long retval=CompletableFutures.join(f);
+            return retval == null? 0 : retval;
         }
 
         @Override
         public long addAndGet(long delta) {
-            return CompletableFutures.join(AsyncCounterImpl.this.addAndGet(delta));
+            CompletionStage<Long> f=AsyncCounterImpl.this.addAndGet(delta);
+            Long retval=CompletableFutures.join(f);
+            return retval == null? 0 : retval; // 0 as a valid result from the cast of null?
         }
 
         @Override
@@ -105,8 +119,20 @@ public class AsyncCounterImpl implements AsyncCounter {
             return AsyncCounterImpl.this;
         }
 
+        @Override
         public SyncCounter sync() {
             return this;
+        }
+
+        @Override
+        public <T extends Counter> T withOptions(Options opts) {
+            if(opts != null)
+                AsyncCounterImpl.this.options=opts;
+            return (T)this;
+        }
+
+        public String toString() {
+            return AsyncCounterImpl.this.toString();
         }
     }
 }

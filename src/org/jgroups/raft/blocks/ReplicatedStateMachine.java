@@ -3,7 +3,7 @@ package org.jgroups.raft.blocks;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.InternalCommand;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.StateMachine;
+import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.util.Bits;
 import org.jgroups.util.ByteArrayDataInputStream;
@@ -127,7 +127,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     /**
      * Adds a key value pair to the state machine. The data is not added directly, but sent to the RAFT leader and only
      * added to the hashmap after the change has been committed (by majority decision). The actual change will be
-     * applied with callback {@link #apply(byte[],int,int)}.
+     * applied with callback {@link StateMachine#apply(byte[], int, int, boolean)}.
      *
      * @param key The key to be added.
      * @param val The value to be added
@@ -170,7 +170,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     ///////////////////////////////////////// StateMachine callbacks /////////////////////////////////////
 
-    @Override public byte[] apply(byte[] data, int offset, int length) throws Exception {
+    @Override public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(data, offset, length);
         byte command=in.readByte();
         switch(command) {
@@ -182,14 +182,14 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
                     old_val=map.put(key, val);
                 }
                 notifyPut(key, val, old_val);
-                return old_val == null? null : Util.objectToByteBuffer(old_val);
+                return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
             case REMOVE:
                 key=Util.objectFromStream(in);
                 synchronized(map) {
                     old_val=map.remove(key);
                 }
                 notifyRemove(key, old_val);
-                return old_val == null? null : Util.objectToByteBuffer(old_val);
+                return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
         }

@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
+import org.jgroups.raft.StateMachine;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
 

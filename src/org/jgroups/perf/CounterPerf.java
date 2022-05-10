@@ -66,7 +66,7 @@ public class CounterPerf implements Receiver {
     private static final short QUIT_ALL              =  3;
 
     protected static final Field NUM_THREADS, TIME, TIMEOUT, PRINT_INVOKERS, PRINT_DETAILS, RANGE, BENCHMARK;
-
+    protected static final String COUNTER="counter";
 
     protected static final String format=
       "[1] Start test [2] View [4] Threads (%d) [6] Time (%s) [r] Range (%d)" +
@@ -74,7 +74,7 @@ public class CounterPerf implements Receiver {
         "\n[b] benchmark mode (%s)" +
         "\n[v] Version [x] Exit [X] Exit all %s";
 
-    private static final Map<String, Supplier<CounterBenchmark>> BENCHMARKS_MODES;
+    private static final Map<String, Supplier<CounterBenchmark>> BENCHMARKS_MODES=new HashMap<>();
 
     static {
         try {
@@ -93,7 +93,6 @@ public class CounterPerf implements Receiver {
             PerfUtil.init();
             ClassConfigurator.addIfAbsent((short)1050, UpdateResult.class);
 
-            BENCHMARKS_MODES = new HashMap<>();
             BENCHMARKS_MODES.put("sync", SyncBenchmark::new);
             BENCHMARKS_MODES.put("async", AsyncCounterBenchmark::new);
         }
@@ -388,13 +387,16 @@ public class CounterPerf implements Receiver {
 
     protected long getCounter() throws Exception {
         if(counter == null)
-            counter=counter_service.getOrCreateCounter("counter", 0);
+            counter=counter_service.getOrCreateCounter(COUNTER, 0);
         return counter.get();
     }
 
     protected int getDelta() {
         long random=Util.random(range);
-        return (int)(tossWeightedCoin(.5)? -random : random);
+        int retval=(int)(tossWeightedCoin(.5)? -random : random);
+        if(retval < 0 && counter.getLocal() < 0)
+            retval=-retval;
+        return retval;
     }
 
     public static boolean tossWeightedCoin(double probability) {
@@ -404,7 +406,7 @@ public class CounterPerf implements Receiver {
             return false;
         long r=Util.random(1000);
         long cutoff=(long)(probability * 1000);
-        return r < cutoff;
+        return r <= cutoff;
     }
 
 

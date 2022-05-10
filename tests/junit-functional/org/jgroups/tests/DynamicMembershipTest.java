@@ -11,12 +11,14 @@ import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Tests the addServer() / removeServer) functionality
@@ -102,8 +104,7 @@ public class DynamicMembershipTest {
     /**
      * {A,B,C} +D +E +F +G +H +I +J
      */
-    public void testAddServerSimultaneously()
-            throws Exception {
+    public void testAddServerSimultaneously() throws Exception {
         init("A", "B", "C");
         leader = leader(10000, 500, channels);
         System.out.println("leader = " + leader);
@@ -116,30 +117,27 @@ public class DynamicMembershipTest {
 
         final List<String> newServers = Arrays.asList("D", "E", "F", "G", "H", "I", "J");
         final CountDownLatch addServerLatch = new CountDownLatch(1);
-        final CountDownLatch completionLatch = new CountDownLatch(newServers.size());
-        final AtomicBoolean success = new AtomicBoolean(true);
 
         for (String newServer : newServers) {
             new Thread(() -> {
                 try {
                     addServerLatch.await();
                     raft.addServer(newServer);
-                    if (raft.requestTableSize() > 1){
-                        success.compareAndSet(true, false);
-                    }
-                } catch (IllegalStateException e) {
-
-                } catch (Exception e) {
-                    e.printStackTrace();
                 }
-                completionLatch.countDown();
+                catch (Throwable t) {
+                    t.printStackTrace();
+                }
             }).start();
         }
-
         addServerLatch.countDown();
-        completionLatch.await();
 
-        assert success.get();
+        List<String> expected_mbrs=new ArrayList<>();
+        for(int i=0; i < 10; i++)
+            expected_mbrs.add(String.valueOf((char)('A' + i)));
+
+        assertMembers(20000, 500, expected_mbrs, 6, channels);
+        System.out.printf("\nmembers:\n%s\n", Stream.of(rafts).map(r -> String.format("%s: %s", r.getAddress(), r.members()))
+          .collect(Collectors.joining("\n")));
     }
 
     /**
@@ -218,8 +216,8 @@ public class DynamicMembershipTest {
     protected static Address leader(long timeout, long interval, JChannel ... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
-            for(JChannel ch : channels) {
-                if(ch.isConnected() && raft(ch).leader() != null)
+            for(JChannel ch: channels) {
+                if(ch.isConnected() && raft(ch).isLeader())
                     return raft(ch).leader();
             }
             Util.sleep(interval);

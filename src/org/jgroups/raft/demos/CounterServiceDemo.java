@@ -37,7 +37,7 @@ public class CounterServiceDemo {
 
 
     protected void loop() throws Exception {
-        SyncCounter counter=(SyncCounter)counter_service.counter("counter");
+        SyncCounter counter=counter_service.getOrCreateCounter("counter", 0);
         boolean looping=true;
         while(looping) {
             try {
@@ -51,7 +51,7 @@ public class CounterServiceDemo {
                 switch(key) {
                     case '0':
                         long initial_value=Util.readLongFromStdin("initial value: ");
-                        counter_service.getOrCreateCounter("counter", initial_value);
+                        counter=counter_service.getOrCreateCounter("counter", initial_value);
                         break;
                     case '1':
                         long val=counter.incrementAndGet();
@@ -95,9 +95,10 @@ public class CounterServiceDemo {
                     case '7':
                         NUM=Util.readIntFromStdin("num: ");
                         System.out.println();
+                        final SyncCounter ctr=counter;
                         for(int i=1; i <= NUM; i++) {
                             Thread t=new Thread(() -> {
-                                long ret=counter.incrementAndGet();
+                                long ret=ctr.incrementAndGet();
                                 System.out.printf("[%d] val=%d\n", Thread.currentThread().getId(), ret);
                             });
                             t.start();

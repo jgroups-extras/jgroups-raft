@@ -17,6 +17,12 @@ public interface SyncCounter extends Counter {
     long get();
 
     /**
+     * Gets the current local value of the counter; this is purely local and the value may be stale
+     * @return The current local value of the counter
+     */
+    long getLocal();
+
+    /**
      * Sets the counter to a new value
      *
      * @param new_value The new value

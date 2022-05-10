@@ -3,10 +3,14 @@ package org.jgroups.raft.blocks;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.blocks.atomic.AsyncCounter;
-import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.blocks.atomic.SyncCounter;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.InternalCommand;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.Role;
+import org.jgroups.raft.Options;
 import org.jgroups.raft.RaftHandle;
+import org.jgroups.raft.StateMachine;
 import org.jgroups.util.*;
 
 import java.io.DataInput;
@@ -25,17 +29,19 @@ import java.util.stream.Collectors;
  * @since  0.2
  */
 public class CounterService implements StateMachine, RAFT.RoleChange {
-    protected JChannel   ch;
-    protected RaftHandle raft;
-    protected long       repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
+    protected JChannel               ch;
+    protected RaftHandle             raft;
+    protected long                   repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
 
     /** If true, reads can return the local counter value directly. Else, reads have to go through the leader */
-    protected boolean  allow_dirty_reads=true;
+    protected boolean                allow_dirty_reads=true;
+
+    protected final Options          default_options=Options.create(false);
 
     // keys: counter names, values: counter values
     protected final Map<String,Long> counters=new HashMap<>();
 
-    protected enum Command {create, delete, get, set, compareAndSet, incrementAndGet, decrementAndGet, addAndGet, compareAndSwap}
+    protected enum Command {create, delete, get, set, addAndGet, compareAndSwap}
 
 
     public CounterService(JChannel ch) {
@@ -61,16 +67,6 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public CounterService raftId(String id)             {raft.raftId(id); return this;}
 
 
-    /**
-     * Returns an instance of the counter. This is local operation which never fails and don't create a record in the
-     * log. For cluster-wide operation call getOrCreateCounter(name, initial_value).
-     * @param name Name of the counter, different counters have to have different names
-     * @return The counter instance
-     */
-    public Counter counter(String name) {
-        return new CounterImpl(name, this);
-    }
-
 
     /**
      * Returns an existing counter, or creates a new one if none exists. This is a cluster-wide operation which would
@@ -83,7 +79,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public SyncCounter getOrCreateCounter(String name, long initial_value) throws Exception {
         if(!counters.containsKey(name))
             invoke(Command.create, name, false, initial_value);
-        return new CounterImpl(name, this);
+        return new AsyncCounterImpl(this, name).sync();
     }
 
   
@@ -102,83 +98,39 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
 
-    public long get(String name) throws Exception {
-        Object retval=allow_dirty_reads? _get(name) : invoke(Command.get, name, false);
-        return (long)retval;
-    }
-
-    public void set(String name, long new_value) throws Exception {
-        invoke(Command.set, name, true, new_value);
-    }
-
-    public boolean compareAndSet(String name, long expect, long update) throws Exception {
-        Object retval=invoke(Command.compareAndSet, name, false, expect, update);
-        return (boolean)retval;
-    }
-
-    public long compareAndSwap(String name, long expect, long update) throws Exception {
-        Object retval=invoke(Command.compareAndSwap, name, false, expect, update);
-        return (long)retval;
-    }
-
-    public long incrementAndGet(String name) throws Exception {
-        Object retval=invoke(Command.incrementAndGet, name, false);
-        return (long)retval;
-    }
-
-    public long decrementAndGet(String name) throws Exception {
-        Object retval=invoke(Command.decrementAndGet, name, false);
-        return (long)retval;
-    }
-
-    public long addAndGet(String name, long delta) throws Exception {
-        Object retval=invoke(Command.addAndGet, name, false, delta);
-        return (long)retval;
-    }
-
-
     @Override
-    public byte[] apply(byte[] data, int offset, int length) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(data, offset, length);
         Command command=Command.values()[in.readByte()];
         String name=Bits.readAsciiString(in).toString();
-        long v1, v2, retval;
+        long val;
+        Object retval=null;
         switch(command) {
             case create:
-                v1=Bits.readLongCompressed(in);
-                retval=_create(name, v1);
-                return Util.objectToByteBuffer(retval);
+                val=Bits.readLongCompressed(in);
+                retval=_create(name, val);
+                break;
             case delete:
                 _delete(name);
                 break;
             case get:
                 retval=_get(name);
-                return Util.objectToByteBuffer(retval);
-            case set:
-                v1=Bits.readLongCompressed(in);
-                _set(name, v1);
                 break;
-            case compareAndSet:
-                v1=Bits.readLongCompressed(in);
-                v2=Bits.readLongCompressed(in);
-                boolean success=_cas(name, v1, v2);
-                return Util.objectToByteBuffer(success);
-            case incrementAndGet:
-                retval=_add(name, +1L);
-                return Util.objectToByteBuffer(retval);
-            case decrementAndGet:
-                retval=_add(name, -1L);
-                return Util.objectToByteBuffer(retval);
+            case set:
+                val=Bits.readLongCompressed(in);
+                _set(name, val);
+                break;
             case addAndGet:
-                v1=Bits.readLongCompressed(in);
-                retval=_add(name, v1);
-                return Util.objectToByteBuffer(retval);
+                val=Bits.readLongCompressed(in);
+                retval=_add(name, val);
+                break;
             case compareAndSwap:
-                return Util.objectToByteBuffer(_compareAndSwap(name, Bits.readLongCompressed(in), Bits.readLongCompressed(in)));
+                retval=_compareAndSwap(name, Bits.readLongCompressed(in), Bits.readLongCompressed(in));
+                break;
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
         }
-        return Util.objectToByteBuffer(null);
+        return serialize_response? Util.objectToByteBuffer(retval) : null;
     }
 
 
@@ -257,11 +209,6 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                     break;
                 case delete:
                 case get:
-                case incrementAndGet:
-                case decrementAndGet:
-                    sb.append(print(cmd, name, 0, in));
-                    break;
-                case compareAndSet:
                 case compareAndSwap:
                     sb.append(print(cmd, name, 2, in));
                     break;
@@ -338,55 +285,47 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     protected CompletionStage<Long> asyncGet(AsciiString name) {
-        return invokeAsyncAndGet(Command.get, name);
+        return invokeAsyncAndGet(Command.get, name, default_options); // ignoring the return value doesn't make sense!
     }
 
     protected CompletionStage<Void> asyncSet(AsciiString name, long value) {
         return invokeAsync(Command.set, name, value);
     }
 
-    public CompletionStage<Long> asyncIncrementAndGet(AsciiString name) {
-        return invokeAsyncAndGet(Command.incrementAndGet, name);
-    }
-
-    public CompletionStage<Long> asyncDecrementAndGet(AsciiString name) {
-        return invokeAsyncAndGet(Command.decrementAndGet, name);
-    }
-
-    protected CompletionStage<Long> asyncAddAndGet(AsciiString name, long delta) {
+    protected CompletionStage<Long> asyncAddAndGet(AsciiString name, long delta, Options opts) {
         return delta == 0 ?
               asyncGet(name) :
-              invokeAsyncAddAndGet(name, delta);
+              invokeAsyncAddAndGet(name, delta, opts);
     }
 
-    protected CompletionStage<Long> asyncCompareAndSwap(AsciiString name, long expected, long value) {
+    protected CompletionStage<Long> asyncCompareAndSwap(AsciiString name, long expected, long value, Options opts) {
         ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE + Bits.size(expected) + Bits.size(value));
         try {
             writeCommandAndName(out, Command.compareAndSwap.ordinal(), name);
             Bits.writeLongCompressed(expected, out);
             Bits.writeLongCompressed(value, out);
-            return setAsyncWithTimeout(out).thenApply(CounterService::readLong);
+            return setAsyncWithTimeout(out, opts).thenApply(CounterService::readLong);
         } catch (Exception ex) {
             return CompletableFutures.completeExceptionally(ex);
         }
     }
 
-    protected CompletionStage<Long> invokeAsyncAndGet(Command command, AsciiString name) {
+    protected CompletionStage<Long> invokeAsyncAndGet(Command command, AsciiString name, Options opts) {
         ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE);
         try {
             writeCommandAndName(out, command.ordinal(), name);
-            return setAsyncWithTimeout(out).thenApply(CounterService::readLong);
+            return setAsyncWithTimeout(out, opts).thenApply(CounterService::readLong);
         } catch (Exception ex) {
             return CompletableFutures.completeExceptionally(ex);
         }
     }
 
-    protected CompletionStage<Long> invokeAsyncAddAndGet(AsciiString name, long arg) {
+    protected CompletionStage<Long> invokeAsyncAddAndGet(AsciiString name, long arg, Options opts) {
         ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE + Bits.size(arg));
         try {
             writeCommandAndName(out, Command.addAndGet.ordinal(), name);
             Bits.writeLongCompressed(arg, out);
-            return setAsyncWithTimeout(out).thenApply(CounterService::readLong);
+            return setAsyncWithTimeout(out, opts).thenApply(CounterService::readLong);
         } catch (Exception ex) {
             return CompletableFutures.completeExceptionally(ex);
         }
@@ -397,7 +336,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         try {
             writeCommandAndName(out, command.ordinal(), name);
             Bits.writeLongCompressed(arg, out);
-            return setAsyncWithTimeout(out).thenApply(CompletableFutures.toVoidFunction());
+            return setAsyncWithTimeout(out, default_options).thenApply(CompletableFutures.toVoidFunction());
         } catch (Exception ex) {
             return CompletableFutures.completeExceptionally(ex);
         }
@@ -408,8 +347,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         Bits.writeAsciiString(name, out);
     }
 
-    private CompletionStage<byte[]> setAsyncWithTimeout(ByteArrayDataOutputStream out) throws Exception {
-        return raft.setAsync(out.buffer(), 0, out.position())
+    private CompletionStage<byte[]> setAsyncWithTimeout(ByteArrayDataOutputStream out, Options opts) throws Exception {
+        return raft.setAsync(out.buffer(), 0, out.position(), opts)
               .orTimeout(repl_timeout, TimeUnit.MILLISECONDS);
     }
 
@@ -466,17 +405,6 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         }
     }
 
-    protected boolean _cas(String name, long expected, long value) {
-        synchronized(counters) {
-            Long existing_value=counters.get(name);
-            if(existing_value == null) return false;
-            if(existing_value == expected) {
-                counters.put(name, value);
-                return true;
-            }
-            return false;
-        }
-    }
 
     protected long _add(String name, long delta) {
         synchronized(counters) {

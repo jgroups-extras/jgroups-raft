@@ -2,6 +2,7 @@ package org.jgroups.tests;
 
 import org.jgroups.*;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.raft.Options;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.CommitTable;
@@ -48,7 +49,6 @@ public class SynchronousTests {
 
     @BeforeMethod protected void init(Object[] args) throws Exception {
         // args is the arguments from each test method
-        //noinspection unchecked
         logClass = (Class<? extends Log>) args[0];
         view=View.create(a, 1, a,b);
         raft_a=createRAFT(a, "A", mbrs).stateMachine(sma=new CounterStateMachine()).setLeaderAndTerm(a).logClass(logClass.getCanonicalName());
@@ -224,7 +224,7 @@ public class SynchronousTests {
         // now apply the updates on the leader
         raft_a.currentTerm(30);
         for(int i=16; i <= 18; i++)
-            addAsync(1);
+            addAsync(raft_a,1, Options.create(false));
         raft_a.flushCommitTable(b); // first time: get correct last_appended (18)
         raft_a.flushCommitTable(b); // second time: send missing messages up to and including last_appended (18)
         // assertCommitTableIndeces(b, raft_a, 17, 18, 19);
@@ -501,6 +501,29 @@ public class SynchronousTests {
         assertCommitTableIndeces(b, raft_a, 9, 10, 11);
     }
 
+    public void testIgnoreResponse(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        CompletableFuture<byte[]> f=addAsync(raft_a, 5, Options.create(false));
+        assert f != null;
+        int prev_value=Bits.readInt(f.get(), 0);
+        assert prev_value == 0;
+        assert sma.counter() == 5;
+        assert smb.counter() == 0;
+
+        f=addAsync(raft_a, 5, Options.create(false));
+        byte[] rsp=f.get();
+        prev_value=Bits.readInt(rsp, 0);
+        assert prev_value == 5;
+        assert sma.counter() == 10;
+        assert smb.counter() == 5;
+
+        f=addAsync(raft_a, 5, Options.create(true));
+        assert f != null;
+        rsp=f.get();
+        assert rsp == null;
+        assert sma.counter() == 15;
+        assert smb.counter() == 10;
+    }
+
 
     protected static RAFT createRAFT(Address addr, String name, List<String> members) {
         return new RAFT().raftId(name).members(members).logPrefix("synctest-" + name)
@@ -526,9 +549,9 @@ public class SynchronousTests {
         return Bits.readInt(retval, 0);
     }
 
-    protected void addAsync(int delta) throws Exception {
+    protected static CompletableFuture<byte[]> addAsync(RAFT r, int delta, Options opts) throws Exception {
         byte[] buf=num(delta);
-        raft_a.setAsync(buf, 0, buf.length);
+        return r.setAsync(buf, 0, buf.length, opts);
     }
 
     protected static void sendAppendEntriesRequest(RAFT r, int prev_index, int prev_term, int curr_term, int commit_index) {

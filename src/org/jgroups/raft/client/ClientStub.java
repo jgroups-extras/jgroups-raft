@@ -3,7 +3,8 @@ package org.jgroups.raft.client;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.CLIENT;
-import org.jgroups.protocols.raft.Settable;
+import org.jgroups.raft.Options;
+import org.jgroups.raft.Settable;
 import org.jgroups.util.DefaultThreadFactory;
 import org.jgroups.util.Runner;
 import org.jgroups.util.Util;
@@ -68,7 +69,7 @@ public class ClientStub implements Settable, Closeable {
     }
 
     @Override
-    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
+    public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Options ignored) throws Exception {
         return setAsync(CLIENT.RequestType.set_req, buf, offset, length);
     }
 

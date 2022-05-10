@@ -5,6 +5,7 @@ import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.raft.Settable;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
@@ -64,7 +65,7 @@ public class CLIENT extends Protocol implements Runnable {
     @Property(description="Number of bytes of the server socket's receive buffer",type=AttributeType.BYTES)
     protected int               recv_buf_size;
 
-    protected Settable          settable;
+    protected Settable settable;
     protected DynamicMembership dyn_membership;
     protected ServerSocket      sock;
     protected ExecutorService   thread_pool; // to handle requests
