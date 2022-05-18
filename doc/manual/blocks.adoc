@@ -46,22 +46,117 @@ There's a demo `ReplicatedStateMachineDemo` which can be used to interactively u
 [[CounterService]]
 === CounterService
 
-`CounterService` provides a replicated counter which can get be set, get and compare-and-set, implementing JGroups'
-`Counter` interface:
+`CounterService` provides a replicated counter which can be used in a synchronous (`SyncCounter`) and asynchronous
+(`AsyncCounter`) mode. The base interface is `Counter`:
 
 [source,java]
 ----
 public interface Counter {
-    public long    get();
-    public void    set(long new_value);
-    public boolean compareAndSet(long expect, long update);
-    public long    incrementAndGet();
-    public long    decrementAndGet();
-    public long    addAndGet(long delta);
+    String                getName();
+    SyncCounter           sync();
+    AsyncCounter          async();
+    <T extends Counter> T withOptions(Options opts);
 }
 ----
 
-A `Counter` implementation is created via the `CounterService` building block (edited):
+The `sync()` and `async()` methods can be used to switch between the modes. The `withOptions()` method can be used to
+make a counter ignore return values (see below).
+
+
+
+==== Synchronous counters
+Synchronous counters block until an operation has completed, and return a value. The interface `SyncCounter` is:
+
+[source,java]
+----
+public interface SyncCounter extends Counter {
+    long            get();
+    long            getLocal();
+    void            set(long new_value);
+    default boolean compareAndSet(long exp, long upd) {return compareAndSwap(exp, upd) == exp;}
+    long            compareAndSwap(long expect, long update);
+    default long    incrementAndGet() {return addAndGet(1L);}
+    default long    decrementAndGet() {return addAndGet(-1L);}
+    long            addAndGet(long delta);
+}
+----
+
+The methods are:
+
+[%autowidth]
+|====
+| Name | Description
+
+| `get` | Returns the value of the counter. If the CounterService allows for dirty reads (see below), `getLocal()` is
+          called. Otherwise, a remote get request is sent to the leader.
+| `getLocal` | Returns the value of the counter. This call is purely local and may return a stale value.
+| `set` | Sets the value of the counter
+| `compareAndSet` | Atomically updates the counter using a CAS operation
+| `compareAndSwap` | Atomically updates the counter using a compare-and-swap operation
+| `incrementAndGet` | Atomically increments the counter and returns the new value
+| `decrementAndGet` | Atomically decrements the counter and returns the new value
+| `addAndGet` | Atomically adds the given value to the current value
+|====
+
+The synchronous methods block until consensus has been reached. This means that a method (e.g. `addAndGet()`) may block
+indefinitely, e.g. when less than a majority of members have ack'ed the change.
+
+
+
+==== Asynchronous counters
+
+Asynchronous counters are defined in `AsyncCounter`:
+
+[source,java]
+----
+public interface AsyncCounter extends Counter {
+    default CompletionStage<Long>    get() {return addAndGet(0);}
+    CompletionStage<Long>            getLocal();
+    CompletionStage<Void>            set(long new_value);
+
+    default CompletionStage<Boolean> compareAndSet(long expect, long update) {
+        return compareAndSwap(expect, update).thenApply(value -> value == expect);
+    }
+    CompletionStage<Long>            compareAndSwap(long expect, long update);
+    default CompletionStage<Long> incrementAndGet() {
+        return addAndGet(1);
+    }
+    default CompletionStage<Long>    decrementAndGet() {
+        return addAndGet(-1);
+    }
+    CompletionStage<Long>            addAndGet(long delta);
+}
+----
+
+The semantics of the methods correspond to their synchronous counterparts, but they return a `CompletionStage` instead
+of the value. An example is shown below:
+
+[source,java]
+----
+public void testCompareAndSwapChained() {
+    AsyncCounter counter=counter_service.getOrCreateCounte("ctr", 0).async();
+    final long initialValue = 100;
+    final long finalValue = 10;
+
+    counter.set(initialValue).toCompletableFuture().join();
+
+    AtomicLong rv = new AtomicLong();
+    boolean result = counter.compareAndSwap(1, finalValue)
+            .thenCompose(rValue -> {
+                rv.set(rValue);
+                return counters.get(0).compareAndSwap(rValue, finalValue);
+            })
+            .thenApply(value -> value == initialValue)
+            .toCompletableFuture()
+            .join();
+
+    assert result;
+    assert initialValue == rv.longValue();
+}
+----
+
+
+A `Counter` implementation is created via the `CounterService` building block:
 
 [source,java]
 ----
@@ -101,12 +196,12 @@ shows how to use this:
 ----
 protected void start(String raft_id) throws Exception {
     JChannel ch=new JChannel("raft.xml").name(raft_id);
-    CounterService cs=new CounterService(ch);               // <1>
+    CounterService cs=new CounterService(ch);                   // <1>
     ch.connect("counter-cluster");
-    Counter counter=cs.getOrCreateCounter("mycounter", 1);  // <2>
-    counter.incrementAndGet();                              // <3>
-    counter.compareAndSet(2, 5);                            // <4>
-    long current_value=counter.get();                       // <5>
+    SyncCounter counter=cs.getOrCreateCounter("mycounter", 1);  // <2>
+    counter.incrementAndGet();                                  // <3>
+    counter.compareAndSet(2, 5);                                // <4>
+    long current_value=counter.get();                           // <5>
 }
 ----
 <1> First a `CounterService` is created and given a reference to a channel
@@ -141,6 +236,37 @@ release of jgroups-raft, the mechanism for client reads as suggested in the Raft
 https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
 
 NOTE: Non-dirty reads has not yet been implemented in `ReplicatedStateMachine`.
+
+==== Ignoring return values
+Sometimes, a caller is not interested in the result of an operation. E.g. a stress test may want to update a counter
+many times, e.g. with many different threads, and only then fetch the final counter value. When this is the case,
+an _option_ can be used with a counter:
+
+[source,java]
+----
+public void testIgnoreReturnValue() {
+    SyncCounter counter=counter_service.getOrCreateCounter("ctr", 0);
+    long ret=counter.incrementAndGet(); // <1>
+
+    counter=counter.withOptions(Options.create(true)); // <2>
+    ret=counter.incrementAndGet(); // <3>
+    assert ret == 0;
+    ret=counter.getLocal(); // <4>
+}
+----
+
+In (1), a counter is incremented and the new value returned. This returns `1`
+
+In (2) , a counter is created with an `Option`, which declares that return values are to be ignored. Consequently,
+when we increment the counter in (3), the return value is `0`, although the counter was indeed incremented, as
+shown when fetching the value in (4).
+
+Returning `0` may not be the most clever use of options, but is the result of autoboxing a `null` `Long` value into
+a `long`. The idea is that the result of an operation that has this option set, should not be assigned to a variable.
+
+When the ignore-return-value option is set, `REDIRECT` doesn't need to serialize and send the result from the leader
+to the follower, and `RAFT` does not need to serialize the result into a `byte[]` array, either. The cost reduction
+here may not be insignificant, depending on the (serialized) size of the result values and the frequency of operations.
 
 
 === Cluster singleton service

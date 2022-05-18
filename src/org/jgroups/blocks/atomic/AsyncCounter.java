@@ -79,5 +79,4 @@ public interface AsyncCounter extends Counter {
      * @return A {@link CompletionStage} that is completed with the updated counter's value.
      */
     CompletionStage<Long> addAndGet(long delta);
-
 }

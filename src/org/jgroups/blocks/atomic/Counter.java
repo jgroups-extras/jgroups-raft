@@ -34,5 +34,4 @@ public interface Counter {
      * @return The counter of the given type
      */
     <T extends Counter> T withOptions(Options opts);
-
 }
