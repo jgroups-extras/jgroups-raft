@@ -5,6 +5,7 @@ import org.HdrHistogram.AtomicHistogram;
 import org.HdrHistogram.Histogram;
 import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.Counter;
+import org.jgroups.raft.Options;
 import org.jgroups.util.CompletableFutures;
 
 import java.util.ArrayList;
@@ -33,7 +34,7 @@ public class AsyncCounterBenchmark implements CounterBenchmark {
     public void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, Counter counter) {
         this.concurrency = concurrency;
         this.deltaSupplier = deltaSupplier;
-        this.counter = counter.async();
+        this.counter = counter.async().withOptions(Options.create(true));
         requests = new ArrayList<>(concurrency);
     }
 

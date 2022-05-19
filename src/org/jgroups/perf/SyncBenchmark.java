@@ -4,6 +4,7 @@ import org.HdrHistogram.AbstractHistogram;
 import org.HdrHistogram.Histogram;
 import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.blocks.atomic.SyncCounter;
+import org.jgroups.raft.Options;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -73,12 +74,8 @@ public class SyncBenchmark implements CounterBenchmark {
     private static class BenchmarkRun {
         final CountDownLatch countDownLatch;
         final Updater[] updaters;
-        final SyncCounter counter;
-        final LongSupplier deltaSupplier;
 
         BenchmarkRun(int numberOfThreads, SyncCounter counter, ThreadFactory threadFactory, LongSupplier deltaSupplier) {
-            this.counter = counter;
-            this.deltaSupplier = deltaSupplier;
             countDownLatch = new CountDownLatch(1);
             updaters = new Updater[numberOfThreads];
             for (int i = 0; i < updaters.length; ++i) {
@@ -115,7 +112,7 @@ public class SyncBenchmark implements CounterBenchmark {
 
         public Updater(CountDownLatch latch, SyncCounter counter, LongSupplier deltaSupplier, ThreadFactory threadFactory) {
             this.latch = latch;
-            this.counter = counter;
+            this.counter = counter.withOptions(Options.create(true));
             this.deltaSupplier = deltaSupplier;
             this.thread = threadFactory.newThread(this);
         }
