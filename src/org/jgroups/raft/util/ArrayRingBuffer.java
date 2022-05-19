@@ -26,7 +26,6 @@ public final class ArrayRingBuffer<T> {
       this(0, headSequence);
    }
 
-   @SuppressWarnings("unchecked")
    public ArrayRingBuffer(final int initialSize, final long headSequence) {
       this.elements = (T[]) (initialSize == 0 ? EMPTY : new Object[initialSize]);
       this.headSequence = headSequence;
@@ -37,7 +36,20 @@ public final class ArrayRingBuffer<T> {
    }
 
    public int size() {
-      return (int) (tailSequence - headSequence);
+      return size(true);
+   }
+
+   public int size(boolean count_null_elements) {
+      if(count_null_elements)
+         return (int) (tailSequence - headSequence);
+      int size=0;
+      final T[] els=this.elements;
+      for(long i=headSequence; i < tailSequence; i++) {
+         final T e = els[bufferOffset(i)];
+         if(e != null)
+            size++;
+      }
+      return size;
    }
 
    public long getTailSequence() {
@@ -83,10 +95,7 @@ public final class ArrayRingBuffer<T> {
    }
 
    public boolean contains(final long index) {
-      if (index < tailSequence && index >= headSequence) {
-         return true;
-      }
-      return false;
+      return index < tailSequence && index >= headSequence;
    }
 
    public void dropTailToHead() {
@@ -262,7 +271,7 @@ public final class ArrayRingBuffer<T> {
    }
 
    public String toString() {
-      return String.format("[%s..%s] (%s elements)", headSequence, tailSequence, size());
+      return String.format("[%s..%s] (%s elements)", headSequence, tailSequence, size(false));
    }
 
    private void growCapacity(int delta) {
@@ -273,7 +282,6 @@ public final class ArrayRingBuffer<T> {
          // see ArrayList::newCapacity
          throw new OutOfMemoryError();
       }
-      @SuppressWarnings("unchecked")
       final T[] newElements = (T[]) new Object[newCapacity];
       final int size = size();
       final long headSequence = this.headSequence;

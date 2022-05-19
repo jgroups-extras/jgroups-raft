@@ -56,16 +56,21 @@ public class ArrayRingBufferTest {
       for(int i=1; i <= 10; i++)
          rb.set(i, i);
       assert rb.size() == 10;
+      assert rb.size(false) == 10;
       Integer ret=rb.remove(0);
       assert ret == null;
 
       ret=rb.remove(1); // head
       assert ret == 1;
       assert rb.size() == 9;
+      assert rb.size(false) == 9;
 
       ret=rb.remove(5);
       assert ret == 5;
-      assert rb.size() == 8 : String.format("size should be 8 but is %d", rb.size());
+      assert rb.size(false) == 8 : String.format("size should be 8 but is %d", rb.size(false));
+
+      rb.set(5, 5);
+      assert rb.size(false) == 9;
    }
 
    public void testShouldUseAvailableCapacity() {
@@ -135,6 +140,7 @@ public class ArrayRingBufferTest {
       }
       rb.dropTailTo(7);
       Assert.assertEquals(rb.size(), 3);
+      assert rb.size(false) == 3;
       Assert.assertEquals(rb.get(4), Integer.valueOf(4));
       Assert.assertEquals(rb.get(5), Integer.valueOf(5));
       Assert.assertEquals(rb.get(6), Integer.valueOf(6));

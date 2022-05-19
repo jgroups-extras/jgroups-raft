@@ -227,7 +227,7 @@ public class LogCache implements Log {
 
     public String toString() {
         return String.format("first=%d commit=%d last=%d term=%d (%d entries, max-size=%d)",
-                             first_appended, commit_index, last_appended, current_term, cache.size(), max_size);
+                             first_appended, commit_index, last_appended, current_term, cache.size(false), max_size);
     }
 
     public String toStringDetails() {

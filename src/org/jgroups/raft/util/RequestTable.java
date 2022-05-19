@@ -76,7 +76,7 @@ public class RequestTable<T> {
     public int size() {
         if(requests == null)
             return 0;
-        return requests.size();
+        return requests.size(false);
     }
 
     public Entry<T> remove(int index) {
