@@ -37,7 +37,7 @@ public class CounterServiceDemo {
 
 
     protected void loop() throws Exception {
-        SyncCounter counter=counter_service.getOrCreateCounter("counter", 0);
+        SyncCounter counter=null;
         boolean looping=true;
         while(looping) {
             try {
@@ -48,6 +48,8 @@ public class CounterServiceDemo {
                         ", commit-index=" + counter_service.commitIndex() +
                         ", log size=" + logSize() + "\n");
 
+                if(counter == null)
+                    counter=counter_service.getOrCreateCounter("counter", 0);
                 switch(key) {
                     case '0':
                         long initial_value=Util.readLongFromStdin("initial value: ");
