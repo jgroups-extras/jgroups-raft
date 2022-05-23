@@ -6,6 +6,7 @@ import org.jgroups.raft.Options;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Supplier;
 
 /**
  * Keeps track of AppendRequest messages and responses. Each AppendEntry request is keyed by the index at which
@@ -22,11 +23,11 @@ public class RequestTable<T> {
     protected ArrayRingBuffer<Entry<T>> requests;
 
 
-    public void create(int index, T vote, CompletableFuture<byte[]> future, int majority) {
+    public void create(int index, T vote, CompletableFuture<byte[]> future, Supplier<Integer> majority) {
         create(index, vote, future, majority, null);
     }
 
-    public void create(int index, T vote, CompletableFuture<byte[]> future, int majority, Options opts) {
+    public void create(int index, T vote, CompletableFuture<byte[]> future, Supplier<Integer> majority, Options opts) {
         Entry<T> entry=new Entry<>(future, opts);
         if (requests == null) {
             requests = new ArrayRingBuffer<>(index);
@@ -39,7 +40,7 @@ public class RequestTable<T> {
      * Adds a response to the response set. If the majority has been reached, returns true
      * @return True if a majority has been reached, false otherwise. Note that this is done <em>exactly once</em>
      */
-    public boolean add(int index, T sender, int majority) {
+    public boolean add(int index, T sender, Supplier<Integer> majority) {
         // we're getting an ack for index, but we also need to ack entries lower than index (if any, should only
         // happen on leader change): https://github.com/belaban/jgroups-raft/issues/122
         if (requests == null) {
@@ -107,6 +108,7 @@ public class RequestTable<T> {
         protected final Options                   opts;
         protected boolean                         committed;
 
+
         public Entry(CompletableFuture<byte[]> client_future, Options opts) {
             this.client_future=client_future;
             this.opts=opts;
@@ -114,8 +116,8 @@ public class RequestTable<T> {
 
         public Options options() {return opts;}
 
-        public boolean add(T vote, int majority) {
-            return votes.add(vote) && votes.size() >= majority && commit();
+        public boolean add(T vote, final Supplier<Integer> majority) {
+            return votes.add(vote) && votes.size() >= majority.get() && commit();
         }
 
         public void notify(byte[] result) {

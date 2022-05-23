@@ -7,6 +7,7 @@ import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.raft.util.Utils;
+import org.jgroups.util.CompletableFutures;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -118,11 +120,13 @@ public class DynamicMembershipTest {
         final List<String> newServers = Arrays.asList("D", "E", "F", "G", "H", "I", "J");
         final CountDownLatch addServerLatch = new CountDownLatch(1);
 
-        for (String newServer : newServers) {
+        for (String newServer: newServers) {
             new Thread(() -> {
                 try {
                     addServerLatch.await();
-                    raft.addServer(newServer);
+                    CompletableFuture<byte[]> f=raft.addServer(newServer);
+                    CompletableFutures.join(f);
+                    System.out.printf("[%d]: added %s successfully\n", Thread.currentThread().getId(), newServer);
                 }
                 catch (Throwable t) {
                     t.printStackTrace();
