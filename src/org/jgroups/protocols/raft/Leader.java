@@ -8,12 +8,16 @@ import org.jgroups.raft.util.RequestTable;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
 
+import java.util.function.Supplier;
+
 /**
  * Implements the behavior of a RAFT leader
  * @author Bela Ban
  * @since  0.1
  */
 public class Leader extends RaftImpl {
+    protected final Supplier<Integer> majority=() -> raft.majority();
+
     public Leader(RAFT raft) {
         super(raft);
     }
@@ -43,7 +47,7 @@ public class Leader extends RaftImpl {
         switch(result.result) {
             case OK:
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
-                if(reqtab.add(result.index, sender_raft_id, raft.majority())) {
+                if(reqtab.add(result.index, sender_raft_id, this.majority)) {
                     raft.commitLogTo(result.index, true);
                     if(raft.send_commits_immediately)
                         sendCommitMessageToFollowers();

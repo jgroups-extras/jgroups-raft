@@ -684,7 +684,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         num_successful_append_requests+=entries.size();
 
         // 2. Add the request to the client table, so we can return results to clients when done
-        reqtab.create(curr_index, raft_id, f, majority(), opts);
+        reqtab.create(curr_index, raft_id, f, this::majority, opts);
 
         // 3. Multicast an AppendEntries message (exclude self)
         Message msg=new ObjectMessage(null, entries)
@@ -793,7 +793,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     entries.add(new LogEntry(current_term, dr.buf, dr.offset, dr.length, dr.internal));
 
                     // Add the request to the client table, so we can return results to clients when done
-                    reqtab.create(index++, raft_id, dr.f, majority(), dr.options);
+                    reqtab.create(index++, raft_id, dr.f, this::majority, dr.options);
                     length+=dr.length;
                 }
             }
@@ -841,7 +841,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected void createRequestTable() {
         request_table=new RequestTable<>();
         for(int i=this.commit_index+1; i <= this.last_appended; i++)
-            request_table.create(i, raft_id, null, majority());
+            request_table.create(i, raft_id, null, this::majority);
     }
 
     protected void createCommitTable() {
