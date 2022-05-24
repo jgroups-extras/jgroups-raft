@@ -34,8 +34,6 @@ public class DynamicMembershipTest {
     protected Address              leader;
     protected static final String  CLUSTER=DynamicMembershipTest.class.getSimpleName();
     protected final List<String>   mbrs  = Arrays.asList("A", "B", "C");
-    protected final List<String>   mbrs2 = Arrays.asList("A", "B", "C", "D");
-    protected final List<String>   mbrs3 = Arrays.asList("A", "B", "C", "D", "E");
 
     @AfterMethod protected void destroy() throws Exception {
         close(channels);
@@ -72,7 +70,10 @@ public class DynamicMembershipTest {
         }
     }
 
-    /** {A,B,C} +D +E -E -D */
+    /** {A,B,C} +D +E -E -D. Note that we can _add_ a 6th server, as adding it requires the majority of the existing
+     * servers (3 of 5). However, _removing_ the 6th server won't work, as we require the majority (4 of 6) to remove
+     * the 6th server. This is because we only have 3 'real' channels (members).
+     */
     public void testSimpleAddAndRemove() throws Exception {
         init("A", "B", "C");
         leader=leader(10000, 500, channels);
@@ -82,25 +83,26 @@ public class DynamicMembershipTest {
         assertSameLeader(leader, channels);
         assertMembers(5000, 500, mbrs, 2, channels);
 
-        System.out.println("\nAdding server D");
+        List<String> new_mbrs=List.of("D", "E");
         RAFT raft=raft(leader);
-        raft.addServer("D");
-        assertMembers(10000, 500, mbrs2, 3, channels);
+        List<String> expected_mbrs=new ArrayList<>(mbrs);
 
-        System.out.println("\nAdding server E");
-        raft=raft(leader);
-        raft.addServer("E");
-        assertMembers(10000, 500, mbrs3, 3, channels);
+        // adding:
+        for(String mbr: new_mbrs) {
+            System.out.printf("\nAdding %s\n", mbr);
+            raft.addServer(mbr);
+            expected_mbrs.add(mbr);
+            assertMembers(10000, 500, expected_mbrs, expected_mbrs.size()/2+1, channels);
+        }
 
-        System.out.println("\nRemoving server E");
-        raft=raft(leader);
-        raft.removeServer("E");
-        assertMembers(10000, 500, mbrs2, 3, channels);
-
-        System.out.println("\nRemoving server D");
-        raft=raft(leader);
-        raft.removeServer("D");
-        assertMembers(10000, 500, mbrs, 2, channels);
+        // removing:
+        for(int i=new_mbrs.size()-1; i >= 0; i--) {
+            String mbr=new_mbrs.get(i);
+            System.out.printf("\nRemoving %s\n", mbr);
+            raft.removeServer(mbr);
+            expected_mbrs.remove(mbr);
+            assertMembers(10000, 500, expected_mbrs, expected_mbrs.size()/2+1, channels);
+        }
     }
 
     /**
@@ -121,17 +123,17 @@ public class DynamicMembershipTest {
         final CountDownLatch addServerLatch = new CountDownLatch(1);
 
         for (String newServer: newServers) {
-            new Thread(() -> {
-                try {
-                    addServerLatch.await();
+           // new Thread(() -> {
+             //   try {
+               //     addServerLatch.await();
                     CompletableFuture<byte[]> f=raft.addServer(newServer);
                     CompletableFutures.join(f);
                     System.out.printf("[%d]: added %s successfully\n", Thread.currentThread().getId(), newServer);
-                }
-                catch (Throwable t) {
-                    t.printStackTrace();
-                }
-            }).start();
+                //}
+                //catch (Throwable t) {
+                  //  t.printStackTrace();
+                //}
+            //}).start();
         }
         addServerLatch.countDown();
 
