@@ -183,6 +183,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected boolean                   synchronous; // used by the synchronous execution framework (only for testing)
 
+    // used to add/remove servers one-by-one
+    protected CompletableFuture<byte[]> add_server_future=CompletableFuture.completedFuture(null);
 
     /* ============================== EXPERIMENTAL - most of these metrics will be removed again ================== */
 
@@ -559,6 +561,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @Override public void stop() {
         super.stop();
+        add_server_future.complete(null);
         runner.stop();
         impl.destroy();
         Util.close(log_impl);
@@ -921,7 +924,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         InternalCommand cmd=new InternalCommand(type, name);
         byte[] buf=Util.streamableToByteBuffer(cmd);
-        return setAsync(buf, 0, buf.length, true, null);
+
+        // only add/remove one server at a time (https://github.com/belaban/jgroups-raft/issues/175)
+        return add_server_future=add_server_future
+          .thenCompose(s -> setAsync(buf, 0, buf.length, true, null));
     }
 
     protected void resend(Address target, int index) {

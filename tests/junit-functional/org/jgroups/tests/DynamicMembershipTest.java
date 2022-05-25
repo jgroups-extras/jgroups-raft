@@ -32,8 +32,8 @@ public class DynamicMembershipTest {
     protected JChannel[]           channels;
     protected RAFT[]               rafts;
     protected Address              leader;
+    protected List<String>         mbrs;
     protected static final String  CLUSTER=DynamicMembershipTest.class.getSimpleName();
-    protected final List<String>   mbrs  = Arrays.asList("A", "B", "C");
 
     @AfterMethod protected void destroy() throws Exception {
         close(channels);
@@ -50,17 +50,18 @@ public class DynamicMembershipTest {
             assert false : "Starting a non-member should throw an exception";
         }
         catch(Exception e) {
-            System.out.println("received exception as expected: " + e);
+            System.out.println("received exception (as expected): " + e);
         }
         finally {
             close(non_member);
         }
     }
 
-    /** Starts only 1 member: no leader. Calling {@link org.jgroups.protocols.raft.RAFT#addServer(String)} must throw an exception */
+    /** Calls addServer() on non-leader. Calling {@link org.jgroups.protocols.raft.RAFT#addServer(String)}
+     * must throw an exception */
     public void testMembershipChangeOnNonLeader() throws Exception {
-        init("A");
-        RAFT raft=raft(channels[0]);
+        init("A","B");
+        RAFT raft=raft(channels[1]);  // non-leader B
         try {
             raft.addServer("X");
             assert false : "Calling RAFT.addServer() on a non-leader must throw an exception";
@@ -81,7 +82,7 @@ public class DynamicMembershipTest {
         assert leader != null;
         waitUntilAllRaftsHaveLeader(channels);
         assertSameLeader(leader, channels);
-        assertMembers(5000, 500, mbrs, 2, channels);
+        assertMembers(5000, 200, mbrs, 2, channels);
 
         List<String> new_mbrs=List.of("D", "E");
         RAFT raft=raft(leader);
@@ -92,7 +93,7 @@ public class DynamicMembershipTest {
             System.out.printf("\nAdding %s\n", mbr);
             raft.addServer(mbr);
             expected_mbrs.add(mbr);
-            assertMembers(10000, 500, expected_mbrs, expected_mbrs.size()/2+1, channels);
+            assertMembers(10000, 200, expected_mbrs, expected_mbrs.size()/2+1, channels);
         }
 
         // removing:
@@ -101,7 +102,7 @@ public class DynamicMembershipTest {
             System.out.printf("\nRemoving %s\n", mbr);
             raft.removeServer(mbr);
             expected_mbrs.remove(mbr);
-            assertMembers(10000, 500, expected_mbrs, expected_mbrs.size()/2+1, channels);
+            assertMembers(10000, 200, expected_mbrs, expected_mbrs.size()/2+1, channels);
         }
     }
 
@@ -109,39 +110,37 @@ public class DynamicMembershipTest {
      * {A,B,C} +D +E +F +G +H +I +J
      */
     public void testAddServerSimultaneously() throws Exception {
-        init("A", "B", "C");
+        init("A", "B", "C", "D");
         leader = leader(10000, 500, channels);
         System.out.println("leader = " + leader);
         assert leader != null;
         waitUntilAllRaftsHaveLeader(channels);
         assertSameLeader(leader, channels);
-        assertMembers(5000, 500, mbrs, 2, channels);
+        assertMembers(5000, 500, mbrs, mbrs.size()/2+1, channels);
 
         final RAFT raft = raft(leader);
 
-        final List<String> newServers = Arrays.asList("D", "E", "F", "G", "H", "I", "J");
+        final List<String> newServers = Arrays.asList("E", "F", "G");
         final CountDownLatch addServerLatch = new CountDownLatch(1);
 
         for (String newServer: newServers) {
-           // new Thread(() -> {
-             //   try {
-               //     addServerLatch.await();
+            new Thread(() -> {
+                try {
+                    addServerLatch.await();
                     CompletableFuture<byte[]> f=raft.addServer(newServer);
                     CompletableFutures.join(f);
                     System.out.printf("[%d]: added %s successfully\n", Thread.currentThread().getId(), newServer);
-                //}
-                //catch (Throwable t) {
-                  //  t.printStackTrace();
-                //}
-            //}).start();
+                }
+                catch (Throwable t) {
+                    t.printStackTrace();
+                }
+            }).start();
         }
         addServerLatch.countDown();
 
-        List<String> expected_mbrs=new ArrayList<>();
-        for(int i=0; i < 10; i++)
-            expected_mbrs.add(String.valueOf((char)('A' + i)));
-
-        assertMembers(20000, 500, expected_mbrs, 6, channels);
+        List<String> expected_mbrs=new ArrayList<>(this.mbrs);
+        expected_mbrs.addAll(newServers);
+        assertMembers(20000, 500, expected_mbrs, expected_mbrs.size()/2+1, channels);
         System.out.printf("\nmembers:\n%s\n", Stream.of(rafts).map(r -> String.format("%s: %s", r.getAddress(), r.members()))
           .collect(Collectors.joining("\n")));
     }
@@ -186,6 +185,8 @@ public class DynamicMembershipTest {
 
         // Now create and connect C
         channels=Arrays.copyOf(channels, 3);
+        if(!this.mbrs.contains("C"))
+            this.mbrs.add("C");
         channels[2]=create("C");
 
         assertMembers(10000, 500, mbrs, 2, channels);
@@ -195,6 +196,7 @@ public class DynamicMembershipTest {
     }
 
     protected void init(String ... nodes) throws Exception {
+        mbrs=new ArrayList<>(List.of(nodes));
         channels=new JChannel[nodes.length];
         rafts=new RAFT[nodes.length];
         for(int i=0; i < nodes.length; i++) {
@@ -213,7 +215,8 @@ public class DynamicMembershipTest {
 
     protected static JChannel create(String[] names, int index) throws Exception {
         RAFT raft=new RAFT().members(Arrays.asList(names)).raftId(names[index]).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(names[index] + "-" + CLUSTER);
+          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(names[index] + "-" + CLUSTER)
+          .resendInterval(500);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(names[index]);
         ch.connect(CLUSTER);
         return ch;
