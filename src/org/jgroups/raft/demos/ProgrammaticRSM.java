@@ -293,12 +293,12 @@ public class ProgrammaticRSM {
         }
     }
 
-    protected static int firstApplied() {
+    protected static long firstApplied() {
         RAFT raft=rsm.channel().getProtocolStack().findProtocol(RAFT.class);
         return raft.log().firstAppended();
     }
 
-    protected static int logSize() {
+    protected static long logSize() {
         return rsm.logSize();
     }
 

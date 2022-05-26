@@ -35,7 +35,7 @@ import java.util.function.Supplier;
      }
 
      @AfterMethod protected void destroy() {
-         close(true, true, c,b,a);
+         close(c, b, a);
      }
 
 
@@ -93,7 +93,7 @@ import java.util.function.Supplier;
      }
 
 
-     protected static void close(boolean remove_log, boolean remove_snapshot, JChannel... channels) {
+     protected static void close(JChannel... channels) {
          for(JChannel ch: channels) {
              if(ch == null)
                  continue;
@@ -115,7 +115,7 @@ import java.util.function.Supplier;
      protected static void setLog(JChannel ch, int... terms) {
          RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
          Log log=raft.log();
-         int index=log.lastAppended();
+         long index=log.lastAppended();
          LogEntries le=new LogEntries();
          for(int term: terms)
              le.add(new LogEntry(term, BUF));

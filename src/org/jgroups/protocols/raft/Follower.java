@@ -19,7 +19,7 @@ public class Follower extends RaftImpl {
 
     @Override
     public void handleInstallSnapshotRequest(Message msg, Address leader,
-                                             int last_included_index, int last_included_term) {
+                                             long last_included_index, long last_included_term) {
         StateMachine sm;
         if((sm=raft.state_machine) == null) {
             raft.getLog().error("%s: no state machine set, cannot install snapshot", raft.getAddress());

@@ -21,24 +21,24 @@ public class CommitTable {
     protected final ConcurrentMap<Address,Entry> map=new ConcurrentHashMap<>();
 
 
-    public CommitTable(List<Address> members, int next_index) {
+    public CommitTable(List<Address> members, long next_index) {
         adjust(members, next_index);
     }
 
     public Set<Address> keys()         {return map.keySet();}
     public Entry        get(Address a) {return map.get(a);}
 
-    public void adjust(List<Address> members, int next_index) {
+    public void adjust(List<Address> members, long next_index) {
         map.keySet().retainAll(members);
         // entry is only created if mbr is not in map, reducing unneeded creations
         members.forEach(mbr -> map.computeIfAbsent(mbr, k -> new Entry(next_index)));
     }
 
-    public CommitTable update(Address member, int match_index, int next_index, int commit_index, boolean single_resend) {
+    public CommitTable update(Address member, long match_index, long next_index, long commit_index, boolean single_resend) {
         return update(member, match_index, next_index, commit_index, single_resend, false);
     }
 
-    public CommitTable update(Address member, int match_index, int next_index, int commit_index,
+    public CommitTable update(Address member, long match_index, long next_index, long commit_index,
                               boolean single_resend, boolean overwrite) {
         Entry e=map.get(member);
         if(e == null)
@@ -69,24 +69,24 @@ public class CommitTable {
 
 
     public static class Entry {
-        protected int     commit_index; // the commit index of the given member
+        protected long    commit_index; // the commit index of the given member
 
-        protected int     match_index;  // the index of the highest entry known to be replicated to the member
+        protected long    match_index;  // the index of the highest entry known to be replicated to the member
 
-        protected int     next_index;   // the next index to send; initialized to last_appended +1
+        protected long    next_index;   // the next index to send; initialized to last_appended +1
 
         // set to true when next_index was decremented, so we only send a single entry on the next resend interval;
         // set to false when we receive an AppendEntries(true) response
         protected boolean send_single_msg;
 
-        public Entry(int next_index) {this.next_index=next_index;}
+        public Entry(long next_index) {this.next_index=next_index;}
 
-        public int     commitIndex()                   {return commit_index;}
-        public Entry   commitIndex(int idx)            {this.commit_index=idx; return this;}
-        public int     matchIndex()                    {return match_index;}
-        public Entry   matchIndex(int idx)             {this.match_index=idx; return this;}
-        public int     nextIndex()                     {return next_index;}
-        public Entry   nextIndex(int idx)              {next_index=idx; return this;}
+        public long    commitIndex()                   {return commit_index;}
+        public Entry   commitIndex(long idx)           {this.commit_index=idx; return this;}
+        public long    matchIndex()                    {return match_index;}
+        public Entry   matchIndex(long idx)            {this.match_index=idx; return this;}
+        public long    nextIndex()                     {return next_index;}
+        public Entry   nextIndex(long idx)             {next_index=idx; return this;}
 
         public boolean sendSingleMessage()             {return send_single_msg;}
         public Entry   sendSingleMessage(boolean flag) {this.send_single_msg=flag; return this;}

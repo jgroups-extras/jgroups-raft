@@ -748,7 +748,8 @@ public class AppendEntriesTest {
         assertEquals(log.currentTerm(), term);
     }
 
-    protected static void assertCommitIndex(long timeout, long interval, int expected_commit, int expected_applied, JChannel... channels) {
+    protected static void assertCommitIndex(long timeout, long interval, long expected_commit, long expected_applied,
+                                            JChannel... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;
@@ -773,12 +774,13 @@ public class AppendEntriesTest {
         return ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
-    protected static AppendResult append(RaftImpl impl, int index, int prev_term, LogEntry entry, Address leader, int leader_commit) throws Exception {
+    protected static AppendResult append(RaftImpl impl, long index, long prev_term, LogEntry entry, Address leader,
+                                         long leader_commit) throws Exception {
         return append(impl, entry.command(), leader, Math.max(0, index-1), prev_term, entry.term(), leader_commit);
     }
 
     protected static AppendResult append(RaftImpl impl, byte[] data, Address leader,
-                                         int prev_log_index, int prev_log_term, int entry_term, int leader_commit) throws Exception {
+                                         long prev_log_index, long prev_log_term, long entry_term, long leader_commit) throws Exception {
         int len=data != null? data.length : 0;
         LogEntries entries=new LogEntries().add(new LogEntry(entry_term, data, 0, len));
         return impl.handleAppendEntriesRequest(entries, leader, prev_log_index, prev_log_term, entry_term, leader_commit);

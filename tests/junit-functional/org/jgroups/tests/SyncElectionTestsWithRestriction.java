@@ -88,11 +88,11 @@ public class SyncElectionTestsWithRestriction {
         View v=View.create(s5, view_id++, s5,s2,s3,s4);
         cluster.handleView(v);
         System.out.printf("-- After killing S1 and making S5 leader:\n%s\n", printTerms());
-        assertTerms(null, new int[]{1,2}, new int[]{1,2}, new int[]{1}, new int[]{1,3});
+        assertTerms(null, new long[]{1,2}, new long[]{1,2}, new long[]{1}, new long[]{1,3});
         RAFT r5=rafts[4];
         r5.flushCommitTable();
         System.out.printf("-- After S1 resending messages:\n%s\n\n", printTerms());
-        int[] expected={1,3};
+        long[] expected={1,3};
         assertTerms(null, expected, expected, expected, expected);
     }
 
@@ -123,7 +123,7 @@ public class SyncElectionTestsWithRestriction {
         v=View.create(s2, view_id++, s2,s3,s4,s5);
         cluster.handleView(v);
         System.out.printf("-- After killing S1:\n%s\n", printTerms());
-        assertTerms(null, new int[]{1,2,4}, new int[]{1,2,4}, new int[]{1}, new int[]{1,3});
+        assertTerms(null, new long[]{1,2,4}, new long[]{1,2,4}, new long[]{1}, new long[]{1,3});
 
         // start voting to find current leader:
         ELECTION e2=elections[1];
@@ -143,7 +143,7 @@ public class SyncElectionTestsWithRestriction {
         for(int i=1; i <= 3; i++)
             leader_raft.flushCommitTable();
 
-        int[] expected={1,2,4};
+        long[] expected={1,2,4};
         assertTerms(null, expected, expected, expected, expected);
     }
 
@@ -173,13 +173,13 @@ public class SyncElectionTestsWithRestriction {
         }
     }
 
-    protected void assertTerms(int[] ... exp_terms) {
+    protected void assertTerms(long[] ... exp_terms) {
         int index=0;
-        for(int[] expected_terms: exp_terms) {
+        for(long[] expected_terms: exp_terms) {
             RAFT r=rafts[index++];
             if(r == null && expected_terms == null)
                 continue;
-            int[] actual_terms=terms(r);
+            long[] actual_terms=terms(r);
             assert Arrays.equals(expected_terms, actual_terms) :
               String.format("%s: expected terms: %s, actual terms: %s", r.getAddress(),
                             Arrays.toString(expected_terms), Arrays.toString(actual_terms));
@@ -219,14 +219,14 @@ public class SyncElectionTestsWithRestriction {
         return sb.toString();
     }
 
-    protected static int[] terms(RAFT r) {
+    protected static long[] terms(RAFT r) {
         Log l=r.log();
-        List<Integer> list=new ArrayList<>(l.size());
+        List<Long> list=new ArrayList<>((int)l.size());
         for(int i=1; i <= l.lastAppended(); i++) {
             LogEntry e=l.get(i);
             list.add(e.term());
         }
-        return list.stream().mapToInt(Integer::intValue).toArray();
+        return list.stream().mapToLong(Long::longValue).toArray();
     }
 
     protected void kill(int index) throws Exception {

@@ -37,7 +37,7 @@ public class Leader extends RaftImpl {
 
 
     @Override
-    public void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
+    public void handleAppendEntriesResponse(Address sender, long term, AppendResult result) {
         RequestTable<String> reqtab=raft.request_table;
         if(reqtab == null)
             throw new IllegalStateException("request table cannot be null in leader");
@@ -69,7 +69,7 @@ public class Leader extends RaftImpl {
 
     private void sendCommitMessageToFollower(Address member, CommitTable.Entry entry) {
         if(raft.commit_index > entry.commitIndex()) {
-            int cterm=raft.currentTerm();
+            long cterm=raft.currentTerm();
             short id=raft.getId();
             Address leader=raft.getAddress();
             Message msg=new ObjectMessage(member, null)

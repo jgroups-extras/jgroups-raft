@@ -270,7 +270,7 @@ public class DynamicMembershipTest {
         }
     }
 
-    protected static void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
+    protected static void assertCommitIndex(long timeout, long interval, long expected_commit, JChannel... channels) {
         long target_time=System.currentTimeMillis() + timeout;
         while(System.currentTimeMillis() <= target_time) {
             boolean all_ok=true;

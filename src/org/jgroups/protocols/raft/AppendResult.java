@@ -22,31 +22,31 @@ public class AppendResult implements Streamable {
     /** The index of the last appended entry if success == true. If success is false, the first index for
      * non-matching term. If index == 0, this means the follower doesn't have a log and needs to run the
      * InstallSnapshot protocol to fetch the initial snapshot */
-    protected int     index;
+    protected long    index;
 
     /** The commit_index of the follower */
-    protected int     commit_index;
+    protected long    commit_index;
 
     /** Ignored if success == true. If success is false, the non-matching term. */
-    protected int     non_matching_term; // todo: needed ?
+    protected long    non_matching_term; // todo: needed ?
 
     public AppendResult() {}
 
-    public AppendResult(Result result, int index) {
+    public AppendResult(Result result, long index) {
         this.result=result;
         this.index=index;
     }
 
-    public AppendResult(Result result, int index, int non_matching_term) {
+    public AppendResult(Result result, long index, long non_matching_term) {
         this(result, index);
         this.non_matching_term=non_matching_term;
     }
 
-    public boolean      success()           {return result != null && result == Result.OK;}
-    public int          index()             {return index;}
-    public int          commitIndex()       {return commit_index;}
-    public int          nonMatchingTerm()   {return non_matching_term;}
-    public AppendResult commitIndex(int ci) {this.commit_index=ci; return this;}
+    public boolean      success()            {return result != null && result == Result.OK;}
+    public long         index()              {return index;}
+    public long         commitIndex()        {return commit_index;}
+    public long         nonMatchingTerm()    {return non_matching_term;}
+    public AppendResult commitIndex(long ci) {this.commit_index=ci; return this;}
 
     public int size() {
         return Bits.size(result.ordinal()) + Bits.size(index) + Bits.size(commit_index) + Bits.size(non_matching_term);
@@ -54,17 +54,17 @@ public class AppendResult implements Streamable {
 
     public void writeTo(DataOutput out) throws IOException {
         Bits.writeIntCompressed(result.ordinal(), out);
-        Bits.writeIntCompressed(index, out);
-        Bits.writeIntCompressed(commit_index, out);
-        Bits.writeIntCompressed(non_matching_term, out);
+        Bits.writeLongCompressed(index, out);
+        Bits.writeLongCompressed(commit_index, out);
+        Bits.writeLongCompressed(non_matching_term, out);
     }
 
     public void readFrom(DataInput in) throws IOException {
         int ordinal=Bits.readIntCompressed(in);
         result=Result.values()[ordinal];
-        index=Bits.readIntCompressed(in);
-        commit_index=Bits.readIntCompressed(in);
-        non_matching_term=Bits.readIntCompressed(in);
+        index=Bits.readLongCompressed(in);
+        commit_index=Bits.readLongCompressed(in);
+        non_matching_term=Bits.readLongCompressed(in);
     }
 
 

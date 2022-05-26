@@ -17,7 +17,7 @@ public class AppendEntriesResponse extends RaftHeader {
     protected AppendResult result;
 
     public AppendEntriesResponse() {}
-    public AppendEntriesResponse(int term, AppendResult result) {super(term); this.result=result;}
+    public AppendEntriesResponse(long term, AppendResult result) {super(term); this.result=result;}
 
     public short getMagicId() {
         return RAFT.APPEND_ENTRIES_RSP;

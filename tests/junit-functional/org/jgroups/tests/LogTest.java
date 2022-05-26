@@ -46,7 +46,7 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         log.currentTerm(22);
-        int current_term=log.currentTerm();
+        long current_term=log.currentTerm();
         assertEquals(current_term, 22);
 
         log.votedFor(addr);
@@ -249,7 +249,7 @@ public class LogTest {
         log.init(filename, null);
         byte[] buf=new byte[10];
         append(log, 1, buf, 1, 1, 1, 2, 2,2,2,3,4,5);
-        int last_appended=log.lastAppended();
+        long last_appended=log.lastAppended();
         log.commitIndex(last_appended);
         log.truncate(log.commitIndex());
         log.close();
@@ -293,7 +293,7 @@ public class LogTest {
         log.reinitializeTo(5, new LogEntry(10, null));
         assertIndices(5, 5, 5, 10);
         assert log.size() == 1;
-        int last=log.append(6, LogEntries.create(new LogEntry(15, null)));
+        long last=log.append(6, LogEntries.create(new LogEntry(15, null)));
         assert last == 6;
         assert log.size() == 2;
         assertIndices(5,6,5,15);
@@ -359,7 +359,7 @@ public class LogTest {
         LogEntries le=new LogEntries();
         for(int i=0; i < NUM; i++)
             le.add(new LogEntry(1, buf));
-        int last=log.append(1, le);
+        long last=log.append(1, le);
         assert last == NUM;
         long size_in_bytes=log.sizeInBytes();
         assert size_in_bytes >= buf.length * NUM;

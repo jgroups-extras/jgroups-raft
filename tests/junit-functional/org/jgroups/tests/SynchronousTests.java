@@ -138,7 +138,7 @@ public class SynchronousTests {
         assertIndices(1004, 1003, TERM, raft_b);
         assertCommitTableIndeces(b, raft_a, 1003, 1004, 1005);
 
-        int current_term=raft_a.currentTerm(), expected_term;
+        long current_term=raft_a.currentTerm(), expected_term;
         raft_a.currentTerm(expected_term=current_term + 10);
 
         for(int i=1; i <= 7; i++)
@@ -216,7 +216,7 @@ public class SynchronousTests {
 
         // send a correct index, but incorrect prev_term:
         int incorrect_prev_term=24;
-        int commit_index=raft_a.commitIndex(), prev_index=18;
+        long commit_index=raft_a.commitIndex(), prev_index=18;
 
         sendAppendEntriesRequest(raft_a, prev_index, incorrect_prev_term, 30, commit_index);
         assertCommitTableIndeces(b, raft_a, 14, 14, 15);
@@ -267,8 +267,8 @@ public class SynchronousTests {
         for(int i=1; i <= 3; i++)
             add(1);
 
-        int last_correct_append_index=raft_a.lastAppended(); // 6
-        int index=last_correct_append_index+1;
+        long last_correct_append_index=raft_a.lastAppended(); // 6
+        long index=last_correct_append_index+1;
 
         // add some incorrect entries with term=5 to B:
         RaftImpl impl=raft_b.impl();
@@ -554,7 +554,7 @@ public class SynchronousTests {
         return r.setAsync(buf, 0, buf.length, opts);
     }
 
-    protected static void sendAppendEntriesRequest(RAFT r, int prev_index, int prev_term, int curr_term, int commit_index) {
+    protected static void sendAppendEntriesRequest(RAFT r, long prev_index, long prev_term, long curr_term, long commit_index) {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
@@ -566,7 +566,7 @@ public class SynchronousTests {
         r.getDownProtocol().down(msg);
     }
 
-    protected static void assertIndices(int expected_last, int expected_commit, int expected_term, RAFT... rafts) {
+    protected static void assertIndices(long expected_last, long expected_commit, long expected_term, RAFT... rafts) {
         for(RAFT r: rafts) {
             assert r.lastAppended() == expected_last
               : String.format("RAFT.last_appended=%d, expected=%d", r.lastAppended(), expected_last);
@@ -585,7 +585,7 @@ public class SynchronousTests {
         }
     }
 
-    protected static LogEntries createLogEntries(int curr_term, byte[] buf) {
+    protected static LogEntries createLogEntries(long curr_term, byte[] buf) {
         return new LogEntries().add(new LogEntry(curr_term, buf));
     }
 

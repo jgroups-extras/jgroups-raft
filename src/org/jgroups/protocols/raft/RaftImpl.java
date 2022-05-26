@@ -37,9 +37,9 @@ public abstract class RaftImpl {
      * @return AppendResult A result (true or false), or null if the request was ignored (e.g. due to lower term)
      */
     public AppendResult handleAppendEntriesRequest(LogEntries entries, Address leader,
-                                                   int prev_index, int prev_term, int entry_term, int leader_commit) {
+                                                   long prev_index, long prev_term, long entry_term, long leader_commit) {
         raft.leader(leader);
-        int curr_index=prev_index+1;
+        long curr_index=prev_index+1;
         // we got an empty AppendEntries message containing only leader_commit, or the index is below the commit index
         if(entries == null || curr_index <= raft.commitIndex()) {
             raft.commitLogTo(leader_commit, false);
@@ -67,7 +67,7 @@ public abstract class RaftImpl {
               .commitIndex(raft.commitIndex());
         }
         raft.num_failed_append_requests_wrong_term++;
-        int conflicting_index=getFirstIndexOfConflictingTerm(prev_index, prev.term);
+        long conflicting_index=getFirstIndexOfConflictingTerm(prev_index, prev.term);
         if(conflicting_index <= raft.commitIndex()) {
             raft.getLog().error("%s: cannot delete entries <= %d as commit_index is higher: log=%s",
                                 raft.getAddress(), conflicting_index, raft.log_impl);
@@ -78,7 +78,7 @@ public abstract class RaftImpl {
         return new AppendResult(FAIL_CONFLICTING_PREV_TERM, conflicting_index, prev.term).commitIndex(raft.commitIndex());
     }
 
-    public void handleAppendEntriesResponse(Address sender, int term, AppendResult result) {
+    public void handleAppendEntriesResponse(Address sender, long term, AppendResult result) {
     }
 
     /**
@@ -94,18 +94,18 @@ public abstract class RaftImpl {
      * @param last_included_term The last included term. The dummy entry needs to have this term, for comparison
      *                           in the next handleAppendRequest() call.
      */
-    public void handleInstallSnapshotRequest(Message msg, Address leader, int last_included_index, int last_included_term) {
+    public void handleInstallSnapshotRequest(Message msg, Address leader, long last_included_index, long last_included_term) {
 
     }
 
 
     /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log,
      * not not going lower than commit-index */
-    protected int getFirstIndexOfConflictingTerm(int start_index, int conflicting_term) {
+    protected long getFirstIndexOfConflictingTerm(long start_index, long conflicting_term) {
         Log log=raft.log_impl;
-        int first=Math.max(1, log.firstAppended()), last=log.lastAppended(), commit_index=log.commitIndex();
-        int retval=Math.min(start_index, last);
-        for(int i=retval; i >= first && i > commit_index; i--) {
+        long first=Math.max(1, log.firstAppended()), last=log.lastAppended(), commit_index=log.commitIndex();
+        long retval=Math.min(start_index, last);
+        for(long i=retval; i >= first && i > commit_index; i--) {
             LogEntry entry=log.get(i);
             if(entry == null || entry.term != conflicting_term)
                 break;

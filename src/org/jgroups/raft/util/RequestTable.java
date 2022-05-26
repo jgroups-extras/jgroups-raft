@@ -23,11 +23,11 @@ public class RequestTable<T> {
     protected ArrayRingBuffer<Entry<T>> requests;
 
 
-    public void create(int index, T vote, CompletableFuture<byte[]> future, Supplier<Integer> majority) {
+    public void create(long index, T vote, CompletableFuture<byte[]> future, Supplier<Integer> majority) {
         create(index, vote, future, majority, null);
     }
 
-    public void create(int index, T vote, CompletableFuture<byte[]> future, Supplier<Integer> majority, Options opts) {
+    public void create(long index, T vote, CompletableFuture<byte[]> future, Supplier<Integer> majority, Options opts) {
         Entry<T> entry=new Entry<>(future, opts);
         if (requests == null) {
             requests = new ArrayRingBuffer<>(index);
@@ -40,7 +40,7 @@ public class RequestTable<T> {
      * Adds a response to the response set. If the majority has been reached, returns true
      * @return True if a majority has been reached, false otherwise. Note that this is done <em>exactly once</em>
      */
-    public boolean add(int index, T sender, Supplier<Integer> majority) {
+    public boolean add(long index, T sender, Supplier<Integer> majority) {
         // we're getting an ack for index, but we also need to ack entries lower than index (if any, should only
         // happen on leader change): https://github.com/belaban/jgroups-raft/issues/122
         if (requests == null) {
@@ -61,7 +61,7 @@ public class RequestTable<T> {
     }
 
     /** Whether or not the entry at index is committed */
-    public boolean isCommitted(int index) {
+    public boolean isCommitted(long index) {
         if (requests == null) {
             return false;
         }
@@ -80,12 +80,12 @@ public class RequestTable<T> {
         return requests.size(false);
     }
 
-    public Entry<T> remove(int index) {
+    public Entry<T> remove(long index) {
         return requests != null? requests.remove(index) : null;
     }
 
     /** Notifies the CompletableFuture and then removes the entry for index */
-    public void notifyAndRemove(int index, byte[] response) {
+    public void notifyAndRemove(long index, byte[] response) {
         Entry<?> entry=remove(index);
         if(entry != null && entry.client_future != null)
             entry.client_future.complete(response);

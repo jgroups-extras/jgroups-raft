@@ -81,7 +81,7 @@ public class SyncLeaderCrashTest {
         for(RAFT r: rafts) {
             for(int i=5; i <= 7; i++) {
                 Log l=r.log();
-                int prev_term=l.get(i-1).term();
+                long prev_term=l.get(i-1).term();
                 LogEntries entries=new LogEntries().add(new LogEntry(9, DATA));
                 r.impl().handleAppendEntriesRequest(entries, a,i-1, prev_term, 9, 4);
             }
@@ -137,7 +137,7 @@ public class SyncLeaderCrashTest {
         cluster.handleView(v);
         waitUntilVotingThreadHasStopped();
 
-        int[] terms={2,5,5,7};
+        long[] terms={2,5,5,7};
 
         RAFT r=rafts[0];
         assert r.isLeader();
@@ -177,13 +177,13 @@ public class SyncLeaderCrashTest {
         return val;
     }
 
-    protected void assertTerms(int[] ... exp_terms) {
+    protected void assertTerms(long[] ... exp_terms) {
         int index=0;
-        for(int[] expected_terms: exp_terms) {
+        for(long[] expected_terms: exp_terms) {
             RAFT r=rafts[index++];
             if(r == null && expected_terms == null)
                 continue;
-            int[] actual_terms=terms(r);
+            long[] actual_terms=terms(r);
             assert Arrays.equals(expected_terms, actual_terms) :
               String.format("%s: expected terms: %s, actual terms: %s", r.getAddress(),
                             Arrays.toString(expected_terms), Arrays.toString(actual_terms));
@@ -246,14 +246,14 @@ public class SyncLeaderCrashTest {
           .collect(Collectors.joining("\n"));
     }
 
-    protected static int[] terms(RAFT r) {
+    protected static long[] terms(RAFT r) {
         Log l=r.log();
-        List<Integer> list=new ArrayList<>(l.size());
+        List<Long> list=new ArrayList<>((int)l.size());
         for(int i=1; i <= l.lastAppended(); i++) {
             LogEntry e=l.get(i);
             list.add(e.term());
         }
-        return list.stream().mapToInt(Integer::intValue).toArray();
+        return list.stream().mapToLong(Long::longValue).toArray();
     }
 
     protected void kill(int index) throws Exception {

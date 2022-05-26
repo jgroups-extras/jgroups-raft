@@ -243,7 +243,7 @@ public class SyncElectionTests {
     }
 
     protected void assertSameTerm(Supplier<String> message) {
-        int term=-1;
+        long term=-1;
         for(int i=0; i < elections.length; i++) {
             if(elections[i] == null)
                 continue;

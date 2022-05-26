@@ -59,10 +59,10 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     public CounterService replTimeout(long timeout)     {this.repl_timeout=timeout; return this;}
     public boolean        allowDirtyReads()             {return allow_dirty_reads;}
     public CounterService allowDirtyReads(boolean flag) {allow_dirty_reads=flag; return this;}
-    public int            lastApplied()                 {return raft.lastApplied();}
-    public int            commitIndex()                 {return raft.commitIndex();}
+    public long           lastApplied()                 {return raft.lastApplied();}
+    public long           commitIndex()                 {return raft.commitIndex();}
     public void           snapshot() throws Exception   {raft.snapshot();}
-    public int            logSize()                     {return raft.logSize();}
+    public long           logSize()                     {return raft.logSize();}
     public String         raftId()                      {return raft.raftId();}
     public CounterService raftId(String id)             {raft.raftId(id); return this;}
 

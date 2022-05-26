@@ -5,7 +5,7 @@ import org.jgroups.Address;
 import java.io.Closeable;
 import java.nio.ByteBuffer;
 import java.util.Map;
-import java.util.function.ObjIntConsumer;
+import java.util.function.ObjLongConsumer;
 
 /**
  * The interface for a persistent log. See doc/design/Log.txt for details.
@@ -33,10 +33,10 @@ public interface Log extends Closeable {
     void delete() throws Exception;
 
     /** Returns the current term */
-    int currentTerm();
+    long currentTerm();
 
     /** Sets the current term */
-    Log currentTerm(int new_term);
+    Log currentTerm(long new_term);
 
     /** Returns the address of the candidate that this node voted for in the current term */
     Address votedFor();
@@ -45,21 +45,21 @@ public interface Log extends Closeable {
     Log votedFor(Address member);
 
     /** Returns the current commit index. (May get removed as the RAFT paper has this as in-memory attribute) */
-    int commitIndex();
+    long commitIndex();
 
     /**
      * Sets commitIndex to a new value
      * @param new_index The new index to set commitIndex to. May throw an exception if new_index > lastApplied()
      * @return the log
      */
-    Log commitIndex(int new_index);
+    Log commitIndex(long new_index);
 
     /** Returns the index of the first log entry */
-    int firstAppended();
+    long firstAppended();
 
     /** Returns the index of the last append entry<br/>
-     * This value is set by {@link #append(int,LogEntries)} */
-    int lastAppended();
+     * This value is set by {@link #append(long,LogEntries)} */
+    long lastAppended();
 
     /**
      * Stores a snapshot in the log.
@@ -82,9 +82,9 @@ public interface Log extends Closeable {
      * @param index The index at which to append the entries. Should be the same as lastAppended. LastAppended needs
      *              to be incremented by the number of entries appended
      * @param entries The entries to append
-     * @return int The index of the last appended entry
+     * @return long The index of the last appended entry
      */
-    int append(int index, LogEntries entries);
+    long append(long index, LogEntries entries);
 
 
     /**
@@ -92,13 +92,13 @@ public interface Log extends Closeable {
      * @param index The index
      * @return The LogEntry, or null if none is present at index.
      */
-    LogEntry get(int index);
+    LogEntry get(long index);
 
     /**
      * Truncates the log up to (and excluding) index. All entries < index are removed. First = index.
      * @param index_exclusive If greater than commit_index, commit_index will be used instead
      */
-    void truncate(int index_exclusive);
+    void truncate(long index_exclusive);
 
     /**
      * Clears all entries and sets first_appended/last_appended/commit_index to index and appends entry at index. The
@@ -108,7 +108,7 @@ public interface Log extends Closeable {
      * @param entry The entry to append
      * @throws Exception Thrown if this operation failed
      */
-    void reinitializeTo(int index, LogEntry entry) throws Exception;
+    void reinitializeTo(long index, LogEntry entry) throws Exception;
 
     /**
      * Delete all entries starting from start_index (including the entry at start_index).
@@ -116,7 +116,7 @@ public interface Log extends Closeable {
      *
      * @param start_index
      */
-    void deleteAllEntriesStartingFrom(int start_index);
+    void deleteAllEntriesStartingFrom(long start_index);
 
 
     /**
@@ -125,14 +125,14 @@ public interface Log extends Closeable {
      * @param start_index The start index. If smaller than first_appended, first_appended will be used
      * @param end_index The end index. If greater than last_appended, last_appended will be used
      */
-    void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index);
+    void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index);
 
     /** Applies a function to all elements in range [first_appended .. last_appended] */
-    void forEach(ObjIntConsumer<LogEntry> function);
+    void forEach(ObjLongConsumer<LogEntry> function);
 
     /** The number of entries in the log */
-    default int size() {
-        int last=lastAppended(), first=firstAppended();
+    default long size() {
+        long last=lastAppended(), first=firstAppended();
         return first == 0? last : last-first+1;
     }
 

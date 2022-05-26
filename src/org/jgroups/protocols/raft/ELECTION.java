@@ -141,7 +141,7 @@ public class ELECTION extends Protocol {
 
     protected void handleMessage(Message msg, RaftHeader hdr) {
         if(hdr instanceof LeaderElected) {
-            int term=hdr.currTerm();
+            long term=hdr.currTerm();
             Address leader=((LeaderElected)hdr).leader();
             stopVotingThread(); // only on the coord
             log.trace("%s <- %s: %s", local_addr, msg.src(), hdr);
@@ -167,13 +167,13 @@ public class ELECTION extends Protocol {
         if(log.isTraceEnabled())
             log.trace("%s <- %s: VoteRequest", local_addr, sender);
 
-        int new_term=raft.createNewTerm(); // increment the current term
+        long new_term=raft.createNewTerm(); // increment the current term
         Log log_impl=raft.log();
         if(log_impl == null)
             return;
-        int my_last_index=log_impl.lastAppended();
+        long my_last_index=log_impl.lastAppended();
         LogEntry entry=log_impl.get(my_last_index);
-        int my_last_term=entry != null? entry.term : 0;
+        long my_last_term=entry != null? entry.term : 0;
         new_term=Math.max(new_term, my_last_term+1);
         sendVoteResponse(sender, new_term, my_last_term, my_last_index);
     }
@@ -196,7 +196,7 @@ public class ELECTION extends Protocol {
         int majority=raft.majority();
         if(votes.numberOfValidResponses() >= majority) {
             Address leader=determineLeader();
-            int new_term=highestTerm();
+            long new_term=highestTerm();
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
                       local_addr, votes.getValidResults(), time, majority, leader, new_term);
             sendLeaderElectedMessage(leader, new_term); // send to all - self
@@ -223,20 +223,20 @@ public class ELECTION extends Protocol {
         return leader;
     }
 
-    protected int highestTerm() {
-        Optional<Integer> highest_term=votes.getResults().values().stream().filter(Objects::nonNull)
-          .map(RaftHeader::currTerm).max(Integer::compare);
-        return highest_term.orElse(0);
+    protected Long highestTerm() {
+        Optional<Long> highest_term=votes.getResults().values().stream().filter(Objects::nonNull)
+          .map(RaftHeader::currTerm).max(Long::compare);
+        return highest_term.orElse(0L);
     }
 
 
     /** Returns true if last_term greater than my own term, false if smaller. If they're equal, returns true if
      *  last_index is > my own last index, false otherwise
      */
-    protected boolean isHigher(int last_term, int last_index) {
-        int my_last_index=raft.log().lastAppended();
+    protected boolean isHigher(long last_term, long last_index) {
+        long my_last_index=raft.log().lastAppended();
         LogEntry entry=raft.log().get(my_last_index);
-        int my_last_term=entry != null? entry.term : 0;
+        long my_last_term=entry != null? entry.term : 0;
         if(last_term > my_last_term)
             return true;
         if(last_term < my_last_term)
@@ -244,10 +244,10 @@ public class ELECTION extends Protocol {
         return last_index > my_last_index;
     }
 
-    protected void sendVoteResponse(int term) {
-        int last_log_index=raft.log().lastAppended();
+    protected void sendVoteResponse(long term) {
+        long last_log_index=raft.log().lastAppended();
         LogEntry entry=raft.log().get(last_log_index);
-        int last_log_term=entry != null? entry.term() : 0;
+        long last_log_term=entry != null? entry.term() : 0;
         VoteResponse rsp=new VoteResponse(term, last_log_term, last_log_index);
         log.trace("%s -> all (-self): %s", local_addr, rsp);
         Message vote_req=new EmptyMessage(null).putHeader(id, rsp).setFlag(OOB);
@@ -261,14 +261,14 @@ public class ELECTION extends Protocol {
         down_prot.down(vote_req);
     }
 
-    protected void sendVoteResponse(Address dest, int term, int last_log_term, int last_log_index) {
+    protected void sendVoteResponse(Address dest, long term, long last_log_term, long last_log_index) {
         VoteResponse rsp=new VoteResponse(term, last_log_term, last_log_index);
         Message vote_rsp=new EmptyMessage(dest).putHeader(id, rsp).setFlag(OOB);
         down_prot.down(vote_rsp);
     }
 
     // sent reliably, so if a newly joined member drops it, it will get retransmitted
-    protected void sendLeaderElectedMessage(Address leader, int term) {
+    protected void sendLeaderElectedMessage(Address leader, long term) {
         RaftHeader hdr=new LeaderElected(leader).currTerm(term);
         Message msg=new EmptyMessage(null).putHeader(id, hdr).setFlag(DONT_LOOPBACK);
         log.trace("%s -> all (-self): %s", local_addr, hdr);

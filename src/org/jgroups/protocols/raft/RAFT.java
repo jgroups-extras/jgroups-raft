@@ -27,7 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Function;
-import java.util.function.ObjIntConsumer;
+import java.util.function.ObjLongConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -157,13 +157,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected volatile Address          leader;
 
     @ManagedAttribute(description="The current term. Incremented on leader change, or when a higher term is seen")
-    protected int                       current_term;
+    protected long                      current_term;
 
     @ManagedAttribute(description="Index of the highest log entry appended to the log",type=AttributeType.SCALAR)
-    protected int                       last_appended;
+    protected long                      last_appended;
 
     @ManagedAttribute(description="Index of the last committed log entry",type=AttributeType.SCALAR)
-    protected int                       commit_index;
+    protected long                      commit_index;
 
     @ManagedAttribute(description="The number of snapshots performed")
     protected int                       num_snapshots;
@@ -243,9 +243,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
     public CommitTable  commitTable()                 {return commit_table;}
-    public int          currentTerm()                 {return current_term;}
-    public int          lastAppended()                {return last_appended;}
-    public int          commitIndex()                 {return commit_index;}
+    public long         currentTerm()                 {return current_term;}
+    public long         lastAppended()                {return last_appended;}
+    public long         commitIndex()                 {return commit_index;}
     public Log          log()                         {return log_impl;}
     public RAFT         log(Log new_log)              {this.log_impl=new_log; return this;}
     public RAFT         addRoleListener(RoleChange c) {this.role_change_listeners.add(c); return this;}
@@ -328,7 +328,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * @param new_term The new term
      * @return -1 if new_term is smaller, 0 if equal and 1 if new_term is bigger
      */
-    public synchronized int currentTerm(final int new_term)  {
+    public synchronized long currentTerm(final long new_term)  {
         if(new_term < current_term)
             return -1;
         if(new_term > current_term) {
@@ -347,7 +347,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public String dumpCommitTable() {return commit_table != null? "\n" + commit_table : "n/a";}
 
     @ManagedAttribute(description="Number of log entries in the log")
-    public int logSize()            {return log_impl.size();}
+    public long logSize()           {return log_impl.size();}
 
     @ManagedAttribute(description="Describes the log")
     public String logDescription() {
@@ -368,9 +368,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     @ManagedOperation(description="Dumps the last N log entries")
-    public String dumpLog(int last_n) {
+    public String dumpLog(long last_n) {
         final StringBuilder sb=new StringBuilder();
-        int to=last_appended, from=Math.max(1, to-last_n);
+        long to=last_appended, from=Math.max(1, to-last_n);
         log_impl.forEach((entry,index) ->
                            sb.append("index=").append(index).append(", term=").append(entry.term()).append(" (")
                              .append(entry.command().length).append(" bytes)\n"),
@@ -414,11 +414,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return this;
     }
 
-    public void logEntries(ObjIntConsumer<LogEntry> func) {
+    public void logEntries(ObjLongConsumer<LogEntry> func) {
         log_impl.forEach(func);
     }
 
-    public synchronized int createNewTerm() {
+    public synchronized long createNewTerm() {
         return ++current_term;
     }
 
@@ -475,8 +475,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             log.debug("%s: initialized state machine from snapshot (%d bytes)", local_addr, sn.position());
         }
 
-        int from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;
-        for(int i=from; i <= to; i++) {
+        long from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;
+        for(long i=from; i <= to; i++) {
             LogEntry log_entry=log_impl.get(i);
             if(log_entry == null) {
                 log.error("%s: log entry for index %d not found in log", local_addr, i);
@@ -682,10 +682,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         RequestTable<String> reqtab=request_table;
 
         // 1. Append to the log
-        int prev_index=last_appended;
-        int curr_index=++last_appended;
+        long prev_index=last_appended;
+        long curr_index=++last_appended;
         LogEntry entry=log_impl.get(prev_index);
-        int prev_term=entry != null? entry.term : 0;
+        long prev_term=entry != null? entry.term : 0;
         LogEntries entries=new LogEntries().add(new LogEntry(current_term, buf, offset, length, internal));
         last_appended=log_impl.append(curr_index, entries);
         num_successful_append_requests+=entries.size();
@@ -703,7 +703,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         snapshotIfNeeded(length);
 
         // see if we can already commit some entries
-        int highest_committed=prev_index+1;
+        long highest_committed=prev_index+1;
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
@@ -787,7 +787,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected void process (List<Request> q) {
         RequestTable<String> reqtab=request_table;
         LogEntries           entries=new LogEntries();
-        int                  index=last_appended+1, length=0;
+        long                 index=last_appended+1;
+        int                  length=0;
 
         for(Request r: q) {
             try {
@@ -817,10 +818,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
 
         // Append to the log
-        int prev_index=last_appended;
-        int curr_index=last_appended+1;
+        long prev_index=last_appended;
+        long curr_index=last_appended+1;
         LogEntry entry=log_impl.get(prev_index);
-        int prev_term=entry != null? entry.term : 0;
+        long prev_term=entry != null? entry.term : 0;
 
         // Multicast an AppendEntries message (exclude self)
         Message msg=new ObjectMessage(null, entries)
@@ -836,7 +837,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         avg_append_entries_batch_size.add(batch_size);
 
         // see if we can already commit some entries
-        int highest_committed=prev_index+1;
+        long highest_committed=prev_index+1;
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
@@ -847,7 +848,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /** Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31) */
     protected void createRequestTable() {
         request_table=new RequestTable<>();
-        for(int i=this.commit_index+1; i <= this.last_appended; i++)
+        for(long i=this.commit_index+1; i <= this.last_appended; i++)
             request_table.create(i, raft_id, null, this::majority);
     }
 
@@ -894,15 +895,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return;
         }
         if(this.last_appended >= e.nextIndex()) {
-            int to=e.sendSingleMessage()? e.nextIndex() : last_appended;
-            int from=Math.max(e.nextIndex(),1);
+            long to=e.sendSingleMessage()? e.nextIndex() : last_appended;
+            long from=Math.max(e.nextIndex(),1);
             if(log.isTraceEnabled())
                 log.trace("%s: resending [%d..%d] to %s", local_addr, from, to, member);
             resend(member, from, to);
             return;
         }
         if(this.last_appended > e.matchIndex()) {
-            int index=this.last_appended;
+            long index=this.last_appended;
             if(index > 0) {
                 log.trace("%s: resending %d to %s", local_addr, index, member);
                 resend(member, index);
@@ -934,14 +935,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
           .thenCompose(s -> setAsync(buf, 0, buf.length, true, null));
     }
 
-    protected void resend(Address target, int index) {
+    protected void resend(Address target, long index) {
         LogEntry entry=log_impl.get(index);
         if(entry == null) {
             log.error("%s: resending of %d failed; entry not found", local_addr, index);
             return;
         }
         LogEntry prev=log_impl.get(index-1);
-        int prev_term=prev != null? prev.term : 0;
+        long prev_term=prev != null? prev.term : 0;
         LogEntries entries=new LogEntries().add(entry);
         Message msg=new ObjectMessage(target, entries)
           .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, index - 1, prev_term,
@@ -951,10 +952,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /** Resends all entries in range [from .. to] to target */
-    protected void resend(Address target, int from, int to) {
+    protected void resend(Address target, long from, long to) {
         LogEntries entries=new LogEntries();
-        int entry_term=0; // term of first entry to resend
-        for(int i=from; i <= to; i++) {
+        long entry_term=0; // term of first entry to resend
+        for(long i=from; i <= to; i++) {
             LogEntry e=log_impl.get(i);
             if(e == null) {
                 log.error("%s: resending of %d failed; entry not found", local_addr, i);
@@ -966,7 +967,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
 
         LogEntry prev=log_impl.get(from-1);
-        int prev_term=prev != null? prev.term : 0;
+        long prev_term=prev != null? prev.term : 0;
         Message msg=new ObjectMessage(target, entries)
           .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, from - 1, prev_term,
                                                   entry_term, commit_index));
@@ -977,7 +978,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected void sendSnapshotTo(Address dest) throws Exception {
         LogEntry last_committed_entry=log_impl.get(commitIndex());
-        int last_index=commit_index, last_term=last_committed_entry.term;
+        long last_index=commit_index, last_term=last_committed_entry.term;
         snapshot();
         ByteBuffer data=log_impl.getSnapshot();
         log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.position()), dest);
@@ -994,9 +995,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * @param serialize_response When true, the response of applying a change to the state machine needs to be serialized
      *                           into a byte[] array, otherwise null can be returned (reducing serialization cost)
      */
-    protected RAFT commitLogTo(int index_inclusive, boolean serialize_response) {
-        int to=Math.min(last_appended, index_inclusive);
-        int last_successful_apply=applyCommits(to, serialize_response);
+    protected RAFT commitLogTo(long index_inclusive, boolean serialize_response) {
+        long to=Math.min(last_appended, index_inclusive);
+        long last_successful_apply=applyCommits(to, serialize_response);
         commit_index=Math.max(commit_index, last_successful_apply);
         log_impl.commitIndex(commit_index);
         return this;
@@ -1004,7 +1005,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
 
     /** Appends to the log and returns true if added or false if not (e.g. because the entry already existed */
-    protected boolean append(int index, LogEntries entries) {
+    protected boolean append(long index, LogEntries entries) {
         if(index <= last_appended)
             return false;
         last_appended=log_impl.append(index, entries);
@@ -1012,7 +1013,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return true;
     }
 
-    protected void deleteAllLogEntriesStartingFrom(int index) {
+    protected void deleteAllLogEntriesStartingFrom(long index) {
         log_impl.deleteAllEntriesStartingFrom(index);
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
@@ -1039,9 +1040,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      *                           response
      * @return The last index of the range of log entries that was successfuly applied (normally this is to_inclusive)
      */
-    protected int applyCommits(int to_inclusive, boolean serialize_response) {
-        int last_successful_apply=commit_index;
-        for(int i=commit_index+1; i <= to_inclusive; i++) {
+    protected long applyCommits(long to_inclusive, boolean serialize_response) {
+        long last_successful_apply=commit_index;
+        for(long i=commit_index+1; i <= to_inclusive; i++) {
             try {
                 applyCommit(i, serialize_response);
                 last_successful_apply=i;
@@ -1055,7 +1056,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /** Applies the commit at index */
-    protected void applyCommit(int index, boolean serialize_response) throws Exception {
+    protected void applyCommit(long index, boolean serialize_response) throws Exception {
         // Apply the modifications to the state machine
         LogEntry log_entry=log_impl.get(index);
         if(log_entry == null)
@@ -1107,7 +1108,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /** Sets the new leader and term */
-    public RAFT setLeaderAndTerm(Address new_leader, int new_term) {
+    public RAFT setLeaderAndTerm(Address new_leader, long new_term) {
         if(Objects.equals(local_addr, new_leader)) {
             if(!isLeader())
                 log.debug("%s: becoming Leader", local_addr);

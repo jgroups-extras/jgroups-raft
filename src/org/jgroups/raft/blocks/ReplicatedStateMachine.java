@@ -46,11 +46,11 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     public void addNotificationListener(Notification<K,V> n)       {if(n != null) listeners.add(n);}
     public void removeNotificationListener(Notification<K,V> n)    {listeners.remove(n);}
     public void removeRoleChangeListener(RAFT.RoleChange listener) {raft.removeRoleListener(listener);}
-    public int  lastApplied()                                      {return raft.lastApplied();}
-    public int  commitIndex()                                      {return raft.commitIndex();}
+    public long lastApplied()                                      {return raft.lastApplied();}
+    public long commitIndex()                                      {return raft.commitIndex();}
     public JChannel channel()                                      {return ch;}
     public void snapshot() throws Exception                        {if(raft != null) raft.snapshot();}
-    public int  logSize()                                          {return raft != null? raft.logSize() : 0;}
+    public long logSize()                                          {return raft != null? raft.logSize() : 0;}
     public String raftId()                                         {return raft.raftId();}
     public ReplicatedStateMachine<K,V> raftId(String id)           {raft.raftId(id); return this;}
 

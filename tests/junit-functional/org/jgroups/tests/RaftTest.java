@@ -109,7 +109,7 @@ public class RaftTest {
         assertIndices(1004, 1003, 0, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 1003, 1004, 1005);
 
-        int current_term=raft_a.currentTerm(), expected_term;
+        long current_term=raft_a.currentTerm(), expected_term;
         raft_a.currentTerm(expected_term=current_term + 10);
 
         for(int i=1; i <= 7; i++)
@@ -188,8 +188,8 @@ public class RaftTest {
 
 
         // send a correct index, but incorrect prev_term:
-        int incorrect_prev_term=24;
-        int commit_index=raft_a.commitIndex(), prev_index=18;
+        long incorrect_prev_term=24;
+        long commit_index=raft_a.commitIndex(), prev_index=18;
 
         sendAppendEntriesRequest(raft_a, prev_index, incorrect_prev_term, 30, commit_index);
         Util.sleep(1000); // nothing changed
@@ -245,8 +245,8 @@ public class RaftTest {
         for(int i=1; i <= 3; i++)
             add(rha, 1);
 
-        int last_correct_append_index=raft_a.lastAppended(); // 6
-        int index=last_correct_append_index+1;
+        long last_correct_append_index=raft_a.lastAppended(); // 6
+        long index=last_correct_append_index+1;
 
         // add some incorrect entries with term=5 to B:
         RaftImpl impl=raft_b.impl();
@@ -335,7 +335,7 @@ public class RaftTest {
     }
 
 
-    protected static void sendAppendEntriesRequest(RAFT r, int prev_index, int prev_term, int curr_term, int commit_index) {
+    protected static void sendAppendEntriesRequest(RAFT r, long prev_index, long prev_term, long curr_term, long commit_index) {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
@@ -348,7 +348,7 @@ public class RaftTest {
     }
 
 
-    protected static void assertIndices(int expected_last, int expected_commit, int expected_term, RAFT r) {
+    protected static void assertIndices(long expected_last, long expected_commit, long expected_term, RAFT r) {
         Util.waitUntilTrue(1000, 50, () -> r.lastAppended() == expected_last &&
           r.commitIndex() == expected_commit && r.currentTerm() == expected_term &&
           r.log().lastAppended() == expected_last && r.log().commitIndex() == expected_commit);

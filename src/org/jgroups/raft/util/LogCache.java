@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.ObjIntConsumer;
+import java.util.function.ObjLongConsumer;
 
 /**
  * Bounded caching {@link org.jgroups.protocols.raft.Log} facade. Reads are returned from the cache (if available),
@@ -22,7 +22,7 @@ public class LogCache implements Log {
     protected final Log                            log;
     protected ArrayRingBuffer<LogEntry>            cache;
     protected int                                  max_size;
-    protected int                                  current_term, commit_index, first_appended, last_appended;
+    protected long                                 current_term, commit_index, first_appended, last_appended;
     protected Address                              voted_for;
     protected int                                  num_trims, num_hits, num_misses;
 
@@ -64,11 +64,11 @@ public class LogCache implements Log {
         cache.clear();
     }
 
-    public int currentTerm() {
+    public long currentTerm() {
         return current_term;
     }
 
-    public Log currentTerm(int new_term) {
+    public Log currentTerm(long new_term) {
         log.currentTerm(new_term);
         current_term=new_term; // if the above fails, current_term won't be set
         return this;
@@ -84,22 +84,22 @@ public class LogCache implements Log {
         return this;
     }
 
-    public int commitIndex() {
+    public long commitIndex() {
         return commit_index;
     }
 
-    public Log commitIndex(int new_index) {
+    public Log commitIndex(long new_index) {
         log.commitIndex(new_index);
         commit_index=new_index;
         cache.dropHeadUntil(new_index);
         return this;
     }
 
-    public int firstAppended() {
+    public long firstAppended() {
         return first_appended;
     }
 
-    public int lastAppended() {
+    public long lastAppended() {
         return last_appended;
     }
 
@@ -112,12 +112,12 @@ public class LogCache implements Log {
     }
 
     @Override
-    public int append(int index, LogEntries entries) {
+    public long append(long index, LogEntries entries) {
         last_appended=log.append(index, entries);
         current_term=log.currentTerm();
 
         for(LogEntry le: entries) {
-            final int logIndex = index++;
+            final long logIndex = index++;
             if (logIndex >= cache.getHeadSequence()) {
                 if (cache.availableCapacityWithoutResizing() == 0) {
                     // try trim here to see if we can save enlarging to happen
@@ -130,7 +130,7 @@ public class LogCache implements Log {
         return last_appended;
     }
 
-    public LogEntry get(int index) {
+    public LogEntry get(long index) {
         if(index > last_appended) // called by every append() to check if the entry is already present
             return null;
         if (index < cache.getHeadSequence()) {
@@ -156,7 +156,7 @@ public class LogCache implements Log {
         return e;
     }
 
-    public void truncate(int index_exclusive) {
+    public void truncate(long index_exclusive) {
         log.truncate(index_exclusive);
         cache.dropHeadUntil(index_exclusive);
         // todo: first_appended should be set to the return value of truncate() (once it has been changed)
@@ -165,7 +165,7 @@ public class LogCache implements Log {
     }
 
     @Override
-    public void reinitializeTo(int index, LogEntry le) throws Exception {
+    public void reinitializeTo(long index, LogEntry le) throws Exception {
         log.reinitializeTo(index, le);
         cache.clear();
         cache=new ArrayRingBuffer<>(max_size, index);
@@ -176,7 +176,7 @@ public class LogCache implements Log {
         current_term = log.currentTerm();
     }
 
-    public void deleteAllEntriesStartingFrom(int start_index) {
+    public void deleteAllEntriesStartingFrom(long start_index) {
         log.deleteAllEntriesStartingFrom(start_index);
         commit_index=log.commitIndex();
         last_appended=log.lastAppended();
@@ -184,10 +184,10 @@ public class LogCache implements Log {
         cache.dropTailTo(start_index);
     }
 
-    public void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
-        int from=Math.max(start_index, Math.max(first_appended,1));
-        int to=Math.min(end_index, last_appended);
-        for(int i=from; i <= to; i++) {
+    public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
+        long from=Math.max(start_index, Math.max(first_appended,1));
+        long to=Math.min(end_index, last_appended);
+        for(long i=from; i <= to; i++) {
             try {
                 LogEntry l=get(i);
                 function.accept(l, i);
@@ -198,7 +198,7 @@ public class LogCache implements Log {
         }
     }
 
-    public void forEach(ObjIntConsumer<LogEntry> function) {
+    public void forEach(ObjLongConsumer<LogEntry> function) {
         forEach(function, first_appended, last_appended);
     }
 

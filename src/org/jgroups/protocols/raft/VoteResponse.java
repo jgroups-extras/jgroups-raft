@@ -13,11 +13,11 @@ import java.util.function.Supplier;
  * @since  0.1
  */
 public class VoteResponse extends RaftHeader {
-    protected int last_log_term;  // term of the last log entry
-    protected int last_log_index; // index of the last log entry
+    protected long last_log_term;  // term of the last log entry
+    protected long last_log_index; // index of the last log entry
 
     public VoteResponse() {}
-    public VoteResponse(int term, int last_log_term, int last_log_index) {
+    public VoteResponse(long term, long last_log_term, long last_log_index) {
         super(term);
         this.last_log_term=last_log_term;
         this.last_log_index=last_log_index;
@@ -38,14 +38,14 @@ public class VoteResponse extends RaftHeader {
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
-        last_log_term=Bits.readIntCompressed(in);
-        last_log_index=Bits.readIntCompressed(in);
+        last_log_term=Bits.readLongCompressed(in);
+        last_log_index=Bits.readLongCompressed(in);
     }
 
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
-        Bits.writeIntCompressed(last_log_term, out);
-        Bits.writeIntCompressed(last_log_index, out);
+        Bits.writeLongCompressed(last_log_term, out);
+        Bits.writeLongCompressed(last_log_index, out);
     }
 
     public String toString() {

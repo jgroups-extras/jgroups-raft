@@ -258,7 +258,7 @@ public final class ArrayRingBuffer<T> {
    }
 
    /** Removes an element at index */
-   public T remove(int index) {
+   public T remove(long index) {
       if(isEmpty() || !contains(index))
          return null;
       final T[] elements = this.elements;

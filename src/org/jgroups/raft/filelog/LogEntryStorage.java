@@ -11,7 +11,7 @@ import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.util.Objects;
-import java.util.function.ObjIntConsumer;
+import java.util.function.ObjLongConsumer;
 
 /**
  * Stores the {@link LogEntry} into a file.
@@ -141,7 +141,7 @@ public class LogEntryStorage {
             fileStorage.write(header.position);
             buffer.clear();
             setFilePosition(header.index, header.position);
-            term = Math.max(entry.term(), term);
+            term =(int)Math.max(entry.term(), term);
          }
          position = header.nextPosition();
          ++index;
@@ -173,7 +173,7 @@ public class LogEntryStorage {
             batchBuffer.put(entry.command(), entry.offset(), entry.length());
          }
          setFilePosition(header.index, header.position);
-         term = Math.max(entry.term(), term);
+         term =(int)Math.max(entry.term(), term);
          position = header.nextPosition();
          if (i == (size - 1)) {
             lastAppendedHeader = header;
@@ -264,7 +264,7 @@ public class LogEntryStorage {
       return previousHeader.term;
    }
 
-   public void forEach(ObjIntConsumer<LogEntry> consumer, int startIndex, int endIndex) throws IOException {
+   public void forEach(ObjLongConsumer<LogEntry> consumer, int startIndex, int endIndex) throws IOException {
       startIndex = Math.max(Math.max(startIndex, getFirstAppended()), 1);
       long position = positionCache.getPosition(startIndex);
       if (position < 0) {
@@ -310,7 +310,7 @@ public class LogEntryStorage {
          this.position = position;
          this.magic = MAGIC_NUMBER;
          this.index = index;
-         this.term = entry.term();
+         this.term =(int)entry.term();
          this.dataLength = entry.length();
          this.totalLength = getTotalLength(dataLength);
       }

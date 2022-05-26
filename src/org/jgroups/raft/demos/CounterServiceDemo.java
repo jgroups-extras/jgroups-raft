@@ -126,12 +126,12 @@ public class CounterServiceDemo {
         System.out.println();
     }
 
-    protected int firstApplied() {
+    protected long firstApplied() {
         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
         return raft.log().firstAppended();
     }
 
-    protected int logSize() {
+    protected long logSize() {
         return counter_service.logSize();
     }
 

@@ -4,15 +4,15 @@ import org.jgroups.Global;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import static org.jgroups.raft.util.IntegerHelper.fromByteArrayToInt;
-import static org.jgroups.raft.util.IntegerHelper.fromIntToByteArray;
+import static org.jgroups.raft.util.LongHelper.fromByteArrayToLong;
+import static org.jgroups.raft.util.LongHelper.fromLongToByteArray;
 
 
 @Test(groups= Global.FUNCTIONAL,singleThreaded=true)
-public class IntegerHelperTest {
+public class LongHelperTest {
 
     public void testNull() {
-        Assert.assertEquals(0, fromByteArrayToInt(null));
+        Assert.assertEquals(0, fromByteArrayToLong(null));
     }
 
     public void testZeroConversion() {
@@ -24,7 +24,7 @@ public class IntegerHelperTest {
     }
 
     public void testMaxConversion() {
-        Assert.assertEquals(Integer.MAX_VALUE, convertToBytesAndBack(Integer.MAX_VALUE));
+        Assert.assertEquals(Long.MAX_VALUE, convertToBytesAndBack(Long.MAX_VALUE));
     }
 
     public void testNegativeConversion() {
@@ -32,13 +32,13 @@ public class IntegerHelperTest {
     }
 
     public void testMinConversion() {
-        Assert.assertEquals(Integer.MIN_VALUE, convertToBytesAndBack(Integer.MIN_VALUE));
+        Assert.assertEquals(Long.MIN_VALUE, convertToBytesAndBack(Long.MIN_VALUE));
     }
 
 
-    private static int convertToBytesAndBack(int number) {
-        byte[] b = fromIntToByteArray(number);
-        return fromByteArrayToInt(b);
+    private static long convertToBytesAndBack(long number) {
+        byte[] b = fromLongToByteArray(number);
+        return fromByteArrayToLong(b);
     }
 
 }

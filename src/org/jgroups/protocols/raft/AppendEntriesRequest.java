@@ -20,14 +20,14 @@ public class AppendEntriesRequest extends RaftHeader {
     protected Address    leader;         // probably not needed as msg.src() contains the leader's address already
 
     // the term of the entry; this differs from term, e.g. when a LogEntry is resent with entry_term=25 and term=30
-    protected int        entry_term;
-    protected int        prev_log_index;
-    protected int        prev_log_term;
-    protected int        leader_commit;  // the commit_index of the leader
+    protected long       entry_term;
+    protected long       prev_log_index;
+    protected long       prev_log_term;
+    protected long       leader_commit;  // the commit_index of the leader
 
     public AppendEntriesRequest() {}
-    public AppendEntriesRequest(Address leader, int current_term, int prev_log_index, int prev_log_term, int entry_term,
-                                int leader_commit) {
+    public AppendEntriesRequest(Address leader, long current_term, long prev_log_index, long prev_log_term,
+                                long entry_term, long leader_commit) {
         super(current_term);
         this.leader=leader;
         this.entry_term=entry_term;
@@ -54,20 +54,20 @@ public class AppendEntriesRequest extends RaftHeader {
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
-        Bits.writeIntCompressed(entry_term, out);
-        Bits.writeIntCompressed(prev_log_index, out);
-        Bits.writeIntCompressed(prev_log_term, out);
-        Bits.writeIntCompressed(leader_commit, out);
+        Bits.writeLongCompressed(entry_term, out);
+        Bits.writeLongCompressed(prev_log_index, out);
+        Bits.writeLongCompressed(prev_log_term, out);
+        Bits.writeLongCompressed(leader_commit, out);
     }
 
     @Override
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
-        entry_term=Bits.readIntCompressed(in);
-        prev_log_index=Bits.readIntCompressed(in);
-        prev_log_term=Bits.readIntCompressed(in);
-        leader_commit=Bits.readIntCompressed(in);
+        entry_term=Bits.readLongCompressed(in);
+        prev_log_index=Bits.readLongCompressed(in);
+        prev_log_term=Bits.readLongCompressed(in);
+        leader_commit=Bits.readLongCompressed(in);
     }
 
     @Override public String toString() {

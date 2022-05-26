@@ -16,13 +16,13 @@ import java.util.function.Supplier;
  */
 public class InstallSnapshotRequest extends RaftHeader {
     protected Address leader;
-    protected int     last_included_index;
-    protected int     last_included_term;
+    protected long    last_included_index;
+    protected long    last_included_term;
 
     public InstallSnapshotRequest() {}
-    public InstallSnapshotRequest(int term) {super(term);}
+    public InstallSnapshotRequest(long term) {super(term);}
 
-    public InstallSnapshotRequest(int term, Address leader, int last_included_index, int last_included_term) {
+    public InstallSnapshotRequest(long term, Address leader, long last_included_index, long last_included_term) {
         this(term);
         this.leader=leader;
         this.last_included_index=last_included_index;
@@ -46,16 +46,16 @@ public class InstallSnapshotRequest extends RaftHeader {
     public void writeTo(DataOutput out) throws IOException {
         super.writeTo(out);
         Util.writeAddress(leader, out);
-        Bits.writeIntCompressed(last_included_index, out);
-        Bits.writeIntCompressed(last_included_term, out);
+        Bits.writeLongCompressed(last_included_index, out);
+        Bits.writeLongCompressed(last_included_term, out);
     }
 
     @Override
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         super.readFrom(in);
         leader=Util.readAddress(in);
-        last_included_index=Bits.readIntCompressed(in);
-        last_included_term=Bits.readIntCompressed(in);
+        last_included_index=Bits.readLongCompressed(in);
+        last_included_term=Bits.readLongCompressed(in);
     }
 
     @Override

@@ -235,12 +235,12 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         }
     }
 
-    protected int firstApplied() {
+    protected long firstApplied() {
         RAFT raft=rsm.channel().getProtocolStack().findProtocol(RAFT.class);
         return raft.log().firstAppended();
     }
 
-    protected int logSize() {
+    protected long logSize() {
         return rsm.logSize();
     }
 

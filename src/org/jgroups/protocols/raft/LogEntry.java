@@ -15,7 +15,7 @@ import java.io.IOException;
  * @since  0.1
  */
 public class LogEntry implements SizeStreamable {
-    protected int     term;     // the term of this entry
+    protected long    term;     // the term of this entry
     protected byte[]  command;  // the command (interpreted by the state machine)
     protected int     offset;   // may get removed (always 0)
     protected int     length;   // may get removed (always command.length)
@@ -24,16 +24,16 @@ public class LogEntry implements SizeStreamable {
 
     public LogEntry() {}
 
-    public LogEntry(int term, byte[] command) {
+    public LogEntry(long term, byte[] command) {
         this(term, command, 0, command != null? command.length : 0);
     }
 
-    public LogEntry(int term, byte[] command, int offset, int length) {
+    public LogEntry(long term, byte[] command, int offset, int length) {
         this(term, command, offset, length, false);
     }
 
 
-    public LogEntry(int term, byte[] command, int offset, int length, boolean internal) {
+    public LogEntry(long term, byte[] command, int offset, int length, boolean internal) {
         this.term=term;
         this.command=command;
         this.offset=offset;
@@ -41,8 +41,8 @@ public class LogEntry implements SizeStreamable {
         this.internal=internal;
     }
 
-    public int      term()              {return term;}
-    public LogEntry term(int t)         {term=t; return this;}
+    public long     term()              {return term;}
+    public LogEntry term(long t)        {term=t; return this;}
     public byte[]   command()           {return command;}
     public int      offset()            {return offset;}
     public int      length()            {return length;}
@@ -57,13 +57,13 @@ public class LogEntry implements SizeStreamable {
     }
 
     public void writeTo(DataOutput out) throws IOException {
-        Bits.writeIntCompressed(term, out);
+        Bits.writeLongCompressed(term, out);
         Util.writeByteBuffer(command, offset, length, out);
         out.writeBoolean(internal);
     }
 
     public void readFrom(DataInput in) throws IOException {
-        term=Bits.readIntCompressed(in);
+        term=Bits.readLongCompressed(in);
         command=Util.readByteBuffer(in);
         offset=0;
         length=command != null? command.length : 0;

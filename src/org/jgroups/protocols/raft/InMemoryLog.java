@@ -6,7 +6,7 @@ import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.ObjIntConsumer;
+import java.util.function.ObjLongConsumer;
 
 /**
  * In-memory log implementation without any persistence. Used only by unit tests. Note that synchronization is
@@ -16,11 +16,11 @@ import java.util.function.ObjIntConsumer;
  */
 public class InMemoryLog implements Log {
     protected String       name; // the name of this log
-    protected int          current_term;
+    protected long         current_term;
     protected Address      voted_for;
-    protected int          first_appended;
-    protected int          last_appended;
-    protected int          commit_index;
+    protected long         first_appended;
+    protected long         last_appended;
+    protected long         commit_index;
     protected LogEntry[]   entries;
     protected ByteBuffer   snapshot;
 
@@ -71,10 +71,10 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public int currentTerm() {return current_term;}
+    public long currentTerm() {return current_term;}
 
     @Override
-    public synchronized Log currentTerm(int new_term) {
+    public synchronized Log currentTerm(long new_term) {
         current_term=new_term; return this;
     }
 
@@ -87,21 +87,18 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public int commitIndex() {return commit_index;}
+    public long commitIndex() {return commit_index;}
 
     @Override
-    public synchronized Log commitIndex(int new_index) {
-        //if(new_index > last_appended)
-          //  throw new IllegalStateException("commit_index (" + commit_index + ") cannot be set to " + new_index +
-            //                                  " as last_appended is " + last_appended);
+    public synchronized Log commitIndex(long new_index) {
         commit_index=new_index; return this;
     }
 
     @Override
-    public int firstAppended() {return first_appended;}
+    public long firstAppended() {return first_appended;}
 
     @Override
-    public int lastAppended() {return last_appended;}
+    public long lastAppended() {return last_appended;}
 
 
     public void setSnapshot(ByteBuffer sn) {
@@ -113,14 +110,14 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public synchronized int append(int index, LogEntries entries) {
+    public synchronized long append(long index, LogEntries entries) {
         int space_required=entries != null? entries.size() : 0;
-        int available_space=this.entries.length - 1 - last_appended;
+        long available_space=this.entries.length - 1 - last_appended;
         if(space_required > available_space)
-            expand(space_required - available_space +1);
+            expand((int)(space_required - available_space +1));
 
         for(LogEntry entry: entries) {
-            int idx=index-first_appended;
+            int idx=(int)(index-first_appended); // we cannot be more than 2^31 (max size of int) apart!
             this.entries[idx]=entry;
             last_appended=Math.max(last_appended, index);
             index++;
@@ -132,17 +129,17 @@ public class InMemoryLog implements Log {
 
 
     @Override
-    public synchronized LogEntry get(int index) {
-        int real_index=index - first_appended;
+    public synchronized LogEntry get(long index) {
+        int real_index=(int)(index - first_appended);
         return real_index < 0 || real_index >= entries.length? null : entries[real_index];
     }
 
     @Override
-    public synchronized void truncate(int index_exclusive) {
+    public synchronized void truncate(long index_exclusive) {
         if(index_exclusive > commit_index)
             index_exclusive=commit_index;
         LogEntry[] tmp=new LogEntry[entries.length];
-        int idx=index_exclusive - first_appended;
+        int idx=(int)(index_exclusive - first_appended);
         System.arraycopy(entries, idx, tmp, 0, entries.length - idx);
         entries=tmp;
         first_appended=index_exclusive;
@@ -152,15 +149,15 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public void reinitializeTo(int index, LogEntry entry) {
+    public void reinitializeTo(long index, LogEntry entry) {
         Arrays.fill(entries, null);
         first_appended=commit_index=last_appended=index;
         current_term=entry.term();
     }
 
     @Override
-    public synchronized void deleteAllEntriesStartingFrom(int start_index) {
-        int idx=start_index- first_appended;
+    public synchronized void deleteAllEntriesStartingFrom(long start_index) {
+        int idx=(int)(start_index- first_appended);
         if(idx < 0 || idx >= entries.length)
             return;
 
@@ -177,13 +174,13 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public synchronized void forEach(ObjIntConsumer<LogEntry> function, int start_index, int end_index) {
+    public synchronized void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
         if(start_index < first_appended)
             start_index=first_appended;
         if(end_index > last_appended)
             end_index=last_appended;
 
-        int start=Math.max(1, start_index)- first_appended, end=end_index- first_appended;
+        int start=(int)(Math.max(1, start_index)- first_appended), end=(int)(end_index- first_appended);
         for(int i=start; i <= end; i++) {
             LogEntry entry=entries[i];
             function.accept(entry, i);
@@ -191,13 +188,13 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public synchronized void forEach(ObjIntConsumer<LogEntry> function) {
+    public synchronized void forEach(ObjLongConsumer<LogEntry> function) {
         forEach(function, Math.max(1, first_appended), last_appended);
     }
 
     public long sizeInBytes() {
         long size=0;
-        int start_index=Math.max(first_appended, 1);
+        int start_index=(int)Math.max(first_appended, 1);
         for(int i=start_index; i <= last_appended; i++) {
             LogEntry entry=entries[i];
             if(entry != null)

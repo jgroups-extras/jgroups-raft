@@ -2,10 +2,12 @@ package org.jgroups.raft;
 
 import org.jgroups.Address;
 import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RAFT;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.function.ObjIntConsumer;
+import java.util.function.ObjLongConsumer;
 
 /**
  * Main interaction point for applications with jgroups-raft. Provides methods to make changes, register a state machine,
@@ -51,14 +53,14 @@ public class RaftHandle implements Settable {
     public RaftHandle   stateMachine(StateMachine sm)                {raft.stateMachine(sm); return this;}
     public RaftHandle   addRoleListener(RAFT.RoleChange listener)    {raft.addRoleListener(listener); return this;}
     public RaftHandle   removeRoleListener(RAFT.RoleChange listener) {raft.remRoleListener(listener); return this;}
-    public int          currentTerm()                                {return raft.currentTerm();}
-    public int          lastApplied()                                {return raft.lastAppended();}
-    public int          commitIndex()                                {return raft.commitIndex();}
+    public long         currentTerm()                                {return raft.currentTerm();}
+    public long         lastApplied()                                {return raft.lastAppended();}
+    public long         commitIndex()                                {return raft.commitIndex();}
     public void         snapshot() throws Exception                  {raft.snapshot();}
     public Log          log()                                        {return raft.log();}
-    public int          logSize()                                    {return raft.logSize();}
+    public long         logSize()                                    {return raft.logSize();}
 
-    public void logEntries(ObjIntConsumer<LogEntry> func) {
+    public void logEntries(ObjLongConsumer<LogEntry> func) {
         raft.logEntries(func);
     }
 
