@@ -454,6 +454,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         log_impl.setSnapshot(buf);
         log_impl.truncate(commitIndex());
         num_snapshots++;
+        // curr_log_size=logSizeInBytes();
+        // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
+        // behind last-appended, then this may perform the next truncation later than it should
+        curr_log_size=0;
     }
 
     /** Loads the log entries from [first .. commit_index] into the state machine */
@@ -1021,10 +1025,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 this.log.debug("%s: current log size is %d, exceeding max_log_size of %d: creating snapshot",
                                local_addr, curr_log_size, max_log_size);
                 snapshot();
-                // curr_log_size=logSizeInBytes();
-                // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
-                // behind last-appended, then this may perform the next truncation later than it should
-                curr_log_size=0;
             }
             catch(Exception ex) {
                 log.error("%s: failed snapshotting log: %s", local_addr, ex);
