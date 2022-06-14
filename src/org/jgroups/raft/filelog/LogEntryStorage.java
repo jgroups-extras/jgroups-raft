@@ -24,14 +24,14 @@ public class LogEntryStorage {
    private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
    private static final byte MAGIC_NUMBER = 0x01;
    private static final String FILE_NAME = "entries.raft";
-   private static final int HEADER_SIZE = Global.INT_SIZE * 4 + 1;
+   private static final int HEADER_SIZE = Global.INT_SIZE * 2 + Global.LONG_SIZE * 2 + 1;
    // this is the typical OS page size and SSD blck_size
    private static final int DEFAULT_WRITE_AHEAD_BYTES = 4096;
 
    private final FileStorage fileStorage;
    private FilePositionCache positionCache;
    private Header lastAppendedHeader;
-   private int lastAppended;
+   private long lastAppended;
    private boolean fsync;
 
    public LogEntryStorage(File parentDir, boolean fsync) {
@@ -53,7 +53,7 @@ public class LogEntryStorage {
       fileStorage.delete();
    }
 
-   public void reload(final int commitIndex) throws IOException {
+   public void reload() throws IOException {
       Header header = readHeader(0);
       if (header == null) {
          positionCache = new FilePositionCache(0);
@@ -76,11 +76,11 @@ public class LogEntryStorage {
       }
    }
 
-   public int getFirstAppended() {
+   public long getFirstAppended() {
       return positionCache.getFirstAppended();
    }
 
-   public int getLastAppended() {
+   public long getLastAppended() {
       return lastAppended;
    }
 
@@ -88,7 +88,7 @@ public class LogEntryStorage {
       return fileStorage.getCachedFileSize();
    }
 
-   public LogEntry getLogEntry(int index) throws IOException {
+   public LogEntry getLogEntry(long index) throws IOException {
       long position = positionCache.getPosition(index);
       if (position < 0) {
          return null;
@@ -100,7 +100,7 @@ public class LogEntryStorage {
       return header.readLogEntry(this);
    }
 
-   public int write(int startIndex, LogEntries entries) throws IOException {
+   public int write(long startIndex, LogEntries entries) throws IOException {
       if (startIndex == 1) {
          return appendWithoutOverwriteCheck(entries, 1, 0);
       }
@@ -119,7 +119,7 @@ public class LogEntryStorage {
       return appendWithoutOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
    }
 
-   private void setFilePosition(int index, long position) {
+   private void setFilePosition(long index, long position) {
       if (!positionCache.set(index, position)) {
          log.warn("Unable to set file position for index " + index + ". LogEntry is too old");
       }
@@ -129,7 +129,7 @@ public class LogEntryStorage {
     * This is not used but for testing, hence it's not using any batching optimization as
     * {@link #appendWithoutOverwriteCheck} does.
     */
-   private int appendOverwriteCheck(LogEntry[] entries, int index, long position) throws IOException {
+   private int appendOverwriteCheck(LogEntry[] entries, long index, long position) throws IOException {
       int term = 0;
       for (LogEntry entry : entries) {
          Header header = new Header(position, index, entry);
@@ -157,7 +157,7 @@ public class LogEntryStorage {
       return term;
    }
 
-   private int appendWithoutOverwriteCheck(LogEntries entries, int index, long position) throws IOException {
+   private int appendWithoutOverwriteCheck(LogEntries entries, long index, long position) throws IOException {
       int term = 0;
       int batchBytes = 0;
       for (LogEntry entry : entries) {
@@ -206,8 +206,8 @@ public class LogEntryStorage {
       return readHeader(this, position);
    }
 
-   public void removeOld(int index) throws IOException {
-      int indexToRemove = Math.min(lastAppended, index);
+   public void removeOld(long index) throws IOException {
+      long indexToRemove = Math.min(lastAppended, index);
       long pos = positionCache.getPosition(indexToRemove);
       if (pos > 0) {
          // if pos is < 0, means the entry does not exist
@@ -220,7 +220,7 @@ public class LogEntryStorage {
       }
    }
 
-   public void reinitializeTo(int index, LogEntry firstEntry) throws IOException {
+   public void reinitializeTo(long index, LogEntry firstEntry) throws IOException {
       // remove the content of the file
       fileStorage.truncateTo(0);
       // first appended is set in the constructor
@@ -246,7 +246,7 @@ public class LogEntryStorage {
       lastAppendedHeader = header;
    }
 
-   public int removeNew(int index) throws IOException {
+   public long removeNew(long index) throws IOException {
       // remove all?
       if (index == 1) {
          fileStorage.truncateTo(0);
@@ -264,7 +264,7 @@ public class LogEntryStorage {
       return previousHeader.term;
    }
 
-   public void forEach(ObjLongConsumer<LogEntry> consumer, int startIndex, int endIndex) throws IOException {
+   public void forEach(ObjLongConsumer<LogEntry> consumer, long startIndex, long endIndex) throws IOException {
       startIndex = Math.max(Math.max(startIndex, getFirstAppended()), 1);
       long position = positionCache.getPosition(startIndex);
       if (position < 0) {
@@ -301,16 +301,16 @@ public class LogEntryStorage {
       // magic is here in case we need to change the format!
       final byte magic;
       final int totalLength;
-      final int term;
-      final int index;
+      final long term;
+      final long index;
       final int dataLength;
 
-      Header(long position, int index, LogEntry entry) {
+      Header(long position, long index, LogEntry entry) {
          Objects.requireNonNull(entry);
          this.position = position;
          this.magic = MAGIC_NUMBER;
          this.index = index;
-         this.term =(int)entry.term();
+         this.term = entry.term();
          this.dataLength = entry.length();
          this.totalLength = getTotalLength(dataLength);
       }
@@ -323,16 +323,16 @@ public class LogEntryStorage {
          this.position = position;
          this.magic = buffer.get();
          this.totalLength = buffer.getInt();
-         this.term = buffer.getInt();
-         this.index = buffer.getInt();
+         this.term = buffer.getLong();
+         this.index = buffer.getLong();
          this.dataLength = buffer.getInt();
       }
 
       public void writeTo(ByteBuffer buffer) {
          buffer.put(magic);
          buffer.putInt(totalLength);
-         buffer.putInt(term);
-         buffer.putInt(index);
+         buffer.putLong(term);
+         buffer.putLong(index);
          buffer.putInt(dataLength);
       }
 
