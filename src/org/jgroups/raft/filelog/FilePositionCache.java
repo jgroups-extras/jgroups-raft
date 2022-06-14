@@ -89,19 +89,19 @@ public class FilePositionCache {
    }
 
    private final ArrayList<PositionPage> positionPages;
-   private final int firstLogIndex;
+   private final long firstLogIndex;
 
-   public FilePositionCache(int firstLogIndex) {
+   public FilePositionCache(long firstLogIndex) {
       this.positionPages = new ArrayList<>();
       this.firstLogIndex = firstLogIndex;
    }
 
-   public FilePositionCache(int firstLogIndex, int requiredPages) {
+   public FilePositionCache(long firstLogIndex, int requiredPages) {
       this.positionPages = new ArrayList<>(requiredPages);
       this.firstLogIndex = firstLogIndex;
    }
 
-   public int getFirstLogIndex() {
+   public long getFirstLogIndex() {
       return firstLogIndex;
    }
 
@@ -113,7 +113,7 @@ public class FilePositionCache {
       return cacheIndex & PAGE_MASK;
    }
 
-   public long getPosition(int logIndex) {
+   public long getPosition(long logIndex) {
       final int cacheIndex = toCacheIndex(logIndex);
       if (cacheIndex < 0) {
          return TOO_OLD;
@@ -151,7 +151,7 @@ public class FilePositionCache {
       return positionPage;
    }
 
-   public boolean set(int logIndex, long position) {
+   public boolean set(long logIndex, long position) {
       if (position < 0) {
          throw new IllegalArgumentException("position must be greater then zero");
       }
@@ -163,15 +163,15 @@ public class FilePositionCache {
       return true;
    }
 
-   private int toCacheIndex(int logIndex) {
-      return logIndex - firstLogIndex;
+   private int toCacheIndex(long logIndex) {
+      return (int) (logIndex - firstLogIndex);
    }
 
-   public int getFirstAppended() {
+   public long getFirstAppended() {
       return firstLogIndex;
    }
 
-   public boolean invalidateFrom(final int logIndex) {
+   public boolean invalidateFrom(final long logIndex) {
       final int cacheIndex = toCacheIndex(logIndex);
       if (cacheIndex < 0) {
          return false;
@@ -187,7 +187,7 @@ public class FilePositionCache {
       return clearSomething;
    }
 
-   public FilePositionCache createDeleteCopyFrom(int logIndex) {
+   public FilePositionCache createDeleteCopyFrom(long logIndex) {
       final int cacheIndex = toCacheIndex(logIndex);
       if (cacheIndex < 0) {
          throw new IllegalArgumentException();
@@ -214,7 +214,7 @@ public class FilePositionCache {
       // copy from cacheIndex until lastNotEmptyIndex
       final int oldPages = positionPages.size();
       final FilePositionCache newCache = new FilePositionCache(logIndex, oldPages - pageIndex);
-      int newLogIndex = logIndex;
+      long newLogIndex = logIndex;
       for (int offset = pageOffset; offset <= positionPage.lastNotEmptyOffset; offset++) {
          final long oldPosition = positionPage.get(offset);
          if (oldPosition != EMPTY) {

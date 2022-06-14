@@ -11,7 +11,6 @@ import java.nio.file.StandardOpenOption;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
-import org.jgroups.protocols.raft.Log;
 import org.jgroups.util.ByteBufferInputStream;
 import org.jgroups.util.Util;
 
@@ -30,9 +29,9 @@ public class MetadataStorage {
    // page 4 RAft original paper: COMMIT INDEX DOESN'T REQUIRE FDATASYNC
    private static final int COMMIT_INDEX_POS = 0;
    // page 4 RAft original paper: RARE BUT REQUIRES FDATASYNC
-   private static final int CURRENT_TERM_POS = COMMIT_INDEX_POS + Global.INT_SIZE;
+   private static final int CURRENT_TERM_POS = COMMIT_INDEX_POS + Global.LONG_SIZE;
    // Check if file length is != from the last FSYNC: this is variable-sized!
-   private static final int VOTED_FOR_POS = CURRENT_TERM_POS + Global.INT_SIZE;
+   private static final int VOTED_FOR_POS = CURRENT_TERM_POS + Global.LONG_SIZE;
    private final FileStorage fileStorage;
    // This won't need a sys-call for frequently accessed data
    private MappedByteBuffer commitAndTermBytes;
@@ -68,20 +67,20 @@ public class MetadataStorage {
       commitAndTermBytes = null;
    }
 
-   public int getCommitIndex() {
-      return commitAndTermBytes.getInt(COMMIT_INDEX_POS);
+   public long getCommitIndex() {
+      return commitAndTermBytes.getLong(COMMIT_INDEX_POS);
    }
 
-   public void setCommitIndex(int commitIndex) throws IOException {
-      commitAndTermBytes.putInt(COMMIT_INDEX_POS, commitIndex);
+   public void setCommitIndex(long commitIndex) throws IOException {
+      commitAndTermBytes.putLong(COMMIT_INDEX_POS, commitIndex);
    }
 
-   public int getCurrentTerm() {
-      return commitAndTermBytes.getInt(CURRENT_TERM_POS);
+   public long getCurrentTerm() {
+      return commitAndTermBytes.getLong(CURRENT_TERM_POS);
    }
 
-   public void setCurrentTerm(int term) throws IOException {
-      commitAndTermBytes.putInt(CURRENT_TERM_POS, term);
+   public void setCurrentTerm(long term) throws IOException {
+      commitAndTermBytes.putLong(CURRENT_TERM_POS, term);
       if (fsync) {
          commitAndTermBytes.force();
       }

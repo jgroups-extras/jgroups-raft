@@ -27,8 +27,8 @@ public class FileBasedLog implements Log {
 
    private File logDir;
    private Address votedFor;
-   private int commitIndex;
-   private int currentTerm;
+   private long commitIndex;
+   private long currentTerm;
 
    private static final boolean DEFAULT_FSYNC = true;
    private boolean fsync = DEFAULT_FSYNC;
@@ -54,7 +54,7 @@ public class FileBasedLog implements Log {
       currentTerm = metadataStorage.getCurrentTerm();
       votedFor = metadataStorage.getVotedFor();
 
-      logEntryStorage.reload(commitIndex);
+      logEntryStorage.reload();
    }
 
    @Override
@@ -116,7 +116,8 @@ public class FileBasedLog implements Log {
       return currentTerm;
    }
 
-   public Log _currentTerm(int new_term) {
+   @Override
+   public Log currentTerm(long new_term) {
       //assert new_term >= currentTerm;
       try {
          checkMetadataStarted().setCurrentTerm(new_term);
@@ -125,11 +126,6 @@ public class FileBasedLog implements Log {
       } catch (IOException e) {
          throw new IllegalStateException(e);
       }
-   }
-
-   @Override
-   public Log currentTerm(long new_term) {
-      return _currentTerm((int)new_term);
    }
 
    @Override
@@ -153,7 +149,8 @@ public class FileBasedLog implements Log {
       return commitIndex;
    }
 
-   public Log _commitIndex(int new_index) {
+   @Override
+   public Log commitIndex(long new_index) {
       assert new_index >= commitIndex;
       try {
          checkMetadataStarted().setCommitIndex(new_index);
@@ -162,11 +159,6 @@ public class FileBasedLog implements Log {
       } catch (IOException e) {
          throw new IllegalStateException();
       }
-   }
-
-   @Override
-   public Log commitIndex(long new_index) {
-      return _commitIndex((int)new_index);
    }
 
    @Override
@@ -218,27 +210,24 @@ public class FileBasedLog implements Log {
       }
    }
 
-   public int _append(int index, LogEntries entries) {
+   @Override
+   public long append(long index, LogEntries entries) {
       assert index > firstAppended();
       assert index > commitIndex();
       LogEntryStorage storage = checkLogEntryStorageStarted();
       try {
-         int term = storage.write(index, entries);
+         long term = storage.write(index, entries);
          if (currentTerm != term) {
             currentTerm(term);
          }
       } catch (IOException e) {
          e.printStackTrace();
       }
-      return (int)lastAppended();
+      return lastAppended();
    }
 
    @Override
-   public long append(long index, LogEntries entries) {
-      return _append((int)index, entries);
-   }
-
-   public LogEntry _get(int index) {
+   public LogEntry get(long index) {
       try {
          return checkLogEntryStorageStarted().getLogEntry(index);
       } catch (IOException e) {
@@ -247,12 +236,7 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public LogEntry get(long index) {
-      return _get((int)index);
-   }
-
-
-   public void _truncate(int index_exclusive) {
+   public void truncate(long index_exclusive) {
       assert index_exclusive >= firstAppended();
       try {
          checkLogEntryStorageStarted().removeOld(index_exclusive);
@@ -262,11 +246,7 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void truncate(long index_exclusive) {
-      _truncate((int)index_exclusive);
-   }
-
-   public void _reinitializeTo(int index, LogEntry entry) {
+   public void reinitializeTo(long index, LogEntry entry) {
       try {
          MetadataStorage metadataStorage = checkMetadataStarted();
          checkLogEntryStorageStarted().reinitializeTo(index, entry);
@@ -277,8 +257,8 @@ public class FileBasedLog implements Log {
 
          // update term
          if (currentTerm != entry.term()) {
-            metadataStorage.setCurrentTerm((int)entry.term());
-            currentTerm =(int)entry.term();
+            metadataStorage.setCurrentTerm(entry.term());
+            currentTerm = entry.term();
          }
       } catch (IOException e) {
          e.printStackTrace();
@@ -286,11 +266,7 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void reinitializeTo(long index, LogEntry entry) {
-      _reinitializeTo((int)index, entry);
-   }
-
-   public void _deleteAllEntriesStartingFrom(int start_index) {
+   public void deleteAllEntriesStartingFrom(long start_index) {
       assert start_index > commitIndex; // can we delete committed entries!? See org.jgroups.tests.LogTest.testDeleteEntriesFromFirst
       assert start_index >= firstAppended();
 
@@ -303,12 +279,7 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void deleteAllEntriesStartingFrom(long start_index) {
-      _deleteAllEntriesStartingFrom((int)start_index);
-   }
-
-
-   public void _forEach(ObjLongConsumer<LogEntry> function, int start_index, int end_index) {
+   public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
       try {
          checkLogEntryStorageStarted().forEach(function, start_index, end_index);
       } catch (IOException e) {
@@ -317,17 +288,8 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
-      _forEach(function, (int)start_index, (int)end_index);
-   }
-
-   public void _forEach(ObjLongConsumer<LogEntry> function) {
-      forEach(function, firstAppended(), lastAppended());
-   }
-
-   @Override
    public void forEach(ObjLongConsumer<LogEntry> function) {
-      _forEach(function);
+      forEach(function, firstAppended(), lastAppended());
    }
 
 
