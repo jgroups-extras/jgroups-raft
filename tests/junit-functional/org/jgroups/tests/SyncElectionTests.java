@@ -1,15 +1,13 @@
 package org.jgroups.tests;
 
-import org.jgroups.Address;
-import org.jgroups.Global;
-import org.jgroups.MergeView;
-import org.jgroups.View;
+import org.jgroups.*;
 import org.jgroups.protocols.raft.*;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.ExtendedUUID;
+import org.jgroups.util.ResponseCollector;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -190,10 +188,11 @@ public class SyncElectionTests {
 
         byte[] data=new byte[4];
         int[] terms={0,1,1,1,2,4,4,5,6,6};
-        RaftImpl impl=rafts[2].impl();
         for(int i=1; i < terms.length; i++) {
             LogEntries entries=new LogEntries().add(new LogEntry(terms[i], data));
-            impl.handleAppendEntriesRequest(entries, a, i - 1, terms[i - 1], terms[i], 0);
+            AppendEntriesRequest hdr=new AppendEntriesRequest(a,terms[i],i - 1,terms[i - 1],terms[i],0);
+            Message msg=new ObjectMessage(c, entries).putHeader(rafts[2].getId(), hdr);
+            cluster.send(msg);
         }
 
         View view=createView();
@@ -228,6 +227,55 @@ public class SyncElectionTests {
         assertOneLeader();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
+    }
+
+    /**
+     * Tests that a member cannot vote for more than 1 leader in the same term. A and B send a vote request to C;
+     * only A or B can receive a vote response from C, but not both.
+     */
+    public void testMultipleVotes() throws Exception {
+        createNode(0, "A");
+        createNode(1, "B");
+        createNode(2, "C");
+
+        ResponseCollector<VoteResponse> votes_a=elections[0].getVotes(), votes_b=elections[1].getVotes();
+        votes_a.reset(a,b,c);
+        votes_b.reset(a,b,c);
+
+        System.out.println("-- A and B: sending VoteRequests to C");
+        long term_a=rafts[0].createNewTerm();
+        long term_b=rafts[1].createNewTerm();
+        elections[0].down(new EmptyMessage(c).putHeader(elections[0].getId(), new VoteRequest(term_a)));
+        elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
+
+        System.out.printf("A: vote responses in term %d: %s\n", term_a, votes_a);
+        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        int total_rsps=votes_a.numberOfValidResponses() + votes_b.numberOfValidResponses();
+        assert total_rsps <= 1 : "A and B both received a vote response from C; this is invalid (Raft $3.4)";
+
+        // VoteRequest(term=0): will be dropped by C as C's current_term is 1
+        term_b--;
+        System.out.printf("-- B: sending VoteRequest to C (term=%d)\n", term_b);
+        elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
+        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        total_rsps=votes_b.numberOfValidResponses();
+        assert total_rsps == 0 : "B should have received no vote response from C";
+
+        // VoteRequest(term=1): will be dropped by C as C already voted (for A) in term 1
+        term_b++;
+        System.out.printf("-- B: sending VoteRequest to C (term=%d)\n", term_b);
+        elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
+        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        total_rsps=votes_b.numberOfValidResponses();
+        assert total_rsps == 0 : "B should have received no vote response from C";
+
+        // VoteRequest(term=2): C will vote for B, as term=2 is new, and C hasn't yet voted for anyone in term 2
+        term_b++;
+        System.out.printf("-- B: sending VoteRequest to C (term=%d)\n", term_b);
+        elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
+        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        total_rsps=votes_b.numberOfValidResponses();
+        assert total_rsps <= 1 : "B should have received a vote response from C";
     }
 
 

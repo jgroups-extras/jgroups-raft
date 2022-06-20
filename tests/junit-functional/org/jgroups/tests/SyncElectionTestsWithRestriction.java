@@ -19,13 +19,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Uses the synchronous test framework to test {@link ELECTION}. Tests the election restrictions described in 5.4.1
  * (Fig. 8) in the Raft paper [1]<br/>
- * [1]
+ * [1] https://raft.github.io/raft.pdf
  * @author Bela Ban
  * @since  1.0.7
  */
@@ -140,11 +141,12 @@ public class SyncElectionTestsWithRestriction {
         // first round adjusts match-index for S4 and deletes term=3 at index 2 on S5
         // second round sends term=2 at index 2
         // third round sends term=4 at index 3
-        for(int i=1; i <= 3; i++)
-            leader_raft.flushCommitTable();
-
+        //for(int i=1; i <= 3; i++)
+          //  leader_raft.flushCommitTable();
         long[] expected={1,2,4};
+        waitUntilTerms(10000,1000,expected,leader_raft::flushCommitTable);
         assertTerms(null, expected, expected, expected, expected);
+        System.out.printf("-- final terms:\n%s\n", printTerms());
     }
 
 
@@ -184,6 +186,28 @@ public class SyncElectionTestsWithRestriction {
               String.format("%s: expected terms: %s, actual terms: %s", r.getAddress(),
                             Arrays.toString(expected_terms), Arrays.toString(actual_terms));
         }
+    }
+
+    protected void waitUntilTerms(long timeout, long interval, long[] expexted_terms, Runnable action) {
+        waitUntilTrue(timeout, interval,
+                      () -> Stream.of(rafts).filter(Objects::nonNull)
+                        .allMatch(r -> Arrays.equals(terms(r),expexted_terms)),
+                      action);
+    }
+
+    public static boolean waitUntilTrue(long timeout, long interval, BooleanSupplier condition,
+                                        Runnable action) {
+        long target_time = System.currentTimeMillis() + timeout;
+
+        while(System.currentTimeMillis() <= target_time) {
+            if(condition.getAsBoolean())
+                return true;
+            if(action != null)
+                action.run();
+            Util.sleep(interval);
+        }
+
+        return false;
     }
 
     /** Make the node at index leader, and everyone else follower (ignores election) */

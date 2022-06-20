@@ -49,9 +49,10 @@ public class ELECTION extends Protocol {
 
     protected ResponseCollector<VoteResponse> votes=new ResponseCollector<>();
 
-    public long     voteTimeout() {return vote_timeout;}
-    public RAFT     raft()        {return raft;}
-    public ELECTION raft(RAFT r)  {raft=r; return this;}
+    public long                            voteTimeout() {return vote_timeout;}
+    public RAFT                            raft()        {return raft;}
+    public ELECTION                        raft(RAFT r)  {raft=r; return this;}
+    public ResponseCollector<VoteResponse> getVotes()    {return votes;} // use for testing only!
 
     public void resetStats() {
         super.resetStats();
@@ -149,7 +150,7 @@ public class ELECTION extends Protocol {
             return;
         }
         if(hdr instanceof VoteRequest) {
-            handleVoteRequest(msg.src());
+            handleVoteRequest(msg.src(), hdr.currTerm());
             return;
         }
         if(hdr instanceof VoteResponse) {
@@ -163,18 +164,34 @@ public class ELECTION extends Protocol {
      * Handle a received VoteRequest sent by the coordinator; send back the last log term and index
      * @param sender The sender of the VoteRequest
      */
-    protected void handleVoteRequest(Address sender) {
+    protected void handleVoteRequest(Address sender, long new_term) {
         if(log.isTraceEnabled())
-            log.trace("%s <- %s: VoteRequest", local_addr, sender);
+            log.trace("%s <- %s: VoteRequest(term=%d)", local_addr, sender, new_term);
 
-        long new_term=raft.createNewTerm(); // increment the current term
+        int result=raft.currentTerm(new_term);
+        switch(result) {
+            case -1: // new_term < current_term
+                log.trace("%s: received vote request from %s with term=%d (current_term=%d); dropping vote response",
+                         local_addr, sender, new_term, raft.currentTerm());
+                return;
+            case 1: // new_term > current_term
+                raft.votedFor(null);
+                break;
+        }
+
+        Address voted_for=raft.votedFor();
+        if(voted_for != null && !voted_for.equals(sender)) {
+            log.trace("%s: already voted (for %s) in term %d; dropping vote request from %s",
+                     local_addr, voted_for, new_term, sender);
+            return;
+        }
         Log log_impl=raft.log();
         if(log_impl == null)
             return;
+        raft.votedFor(sender);
         long my_last_index=log_impl.lastAppended();
         LogEntry entry=log_impl.get(my_last_index);
         long my_last_term=entry != null? entry.term : 0;
-        new_term=Math.max(new_term, my_last_term+1);
         sendVoteResponse(sender, new_term, my_last_term, my_last_index);
     }
 
@@ -184,10 +201,12 @@ public class ELECTION extends Protocol {
 
 
     protected void runVotingProcess() {
+        long new_term=raft.createNewTerm();
+        raft.votedFor(null);
         votes.reset(view.getMembersRaw());
         num_voting_rounds++;
         long start=System.currentTimeMillis();
-        sendVoteRequest();
+        sendVoteRequest(new_term);
 
         // wait for responses from all members or for vote_timeout ms, whichever happens first:
         votes.waitForAllResponses(vote_timeout);
@@ -196,7 +215,6 @@ public class ELECTION extends Protocol {
         int majority=raft.majority();
         if(votes.numberOfValidResponses() >= majority) {
             Address leader=determineLeader();
-            long new_term=highestTerm();
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
                       local_addr, votes.getValidResults(), time, majority, leader, new_term);
             sendLeaderElectedMessage(leader, new_term); // send to all - self
@@ -254,9 +272,9 @@ public class ELECTION extends Protocol {
         down_prot.down(vote_req);
     }
 
-    protected void sendVoteRequest() {
-        VoteRequest req=new VoteRequest();
-        log.trace("%s -> all (-self): %s", local_addr, req);
+    protected void sendVoteRequest(long new_term) {
+        VoteRequest req=new VoteRequest(new_term);
+        log.trace("%s -> all: %s", local_addr, req);
         Message vote_req=new EmptyMessage(null).putHeader(id, req).setFlag(OOB);
         down_prot.down(vote_req);
     }

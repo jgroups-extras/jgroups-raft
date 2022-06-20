@@ -76,7 +76,10 @@ public class TimeoutTest {
 
         long start=System.currentTimeMillis();
         Util.waitUntil(10000, 50, () -> Stream.of(rsms)
-          .allMatch(r -> r.get(NUM) != null && r.get(NUM)  == NUM));
+          .allMatch(r -> r.get(NUM) != null && r.get(NUM)  == NUM),
+                       () -> String.format("\n%s\n", Stream.of(rsms)
+                         .map(r -> String.format("%s: %s elements", r.channel().getAddress(), r.size()))
+                         .collect(Collectors.joining("\n"))));
         long time=System.currentTimeMillis()-start;
         System.out.printf("-- it took %d member(s) %d ms to get consistent caches\n", rsms.length, time);
 

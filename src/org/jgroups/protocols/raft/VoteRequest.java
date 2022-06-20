@@ -11,7 +11,7 @@ import java.util.function.Supplier;
 public class VoteRequest extends RaftHeader {
 
     public VoteRequest() {}
-    public VoteRequest(int term) {
+    public VoteRequest(long term) {
         super(term);
     }
 

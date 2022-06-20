@@ -27,14 +27,14 @@ In a nutshell
   the majority) is installed
 * New members get the term and the leader's address via a message from the current leader (LeaderElected)
 
-Voting is started by the coordinator; it solicits the votes of all members (including itself). The vote
-responses contain the current term (incremented by one), term of the last log entry and last log index for each member.
+Voting is started by the coordinator; it increments its term and solicits the votes of all members (including itself).
+The vote responses contain the term of the last log entry and the last log index for the responding member.
 
 The coordinator picks the member with the highest last term / last log index. If all members have the same terms and
 indices, the coordinator picks the oldest member (itself) as leader.
 
 If no responses from a majority of members have been received after a timeout, then voting continues; otherwise
-voting is stopped and a LeaderElected message (with the max of all current terms and the leader) is sent to all members
+voting is stopped and a LeaderElected message (with the new term and leader) is sent to all members
 
 
 
@@ -45,6 +45,7 @@ State
 -----
 - term: the current term
 - leader: the address of the leader
+- voted-for: the address of the member we voted for in the current term
 
 
 On reception of view change
@@ -55,14 +56,17 @@ On reception of view change
 
 Voting thread
 -------------
-- Periodically sends VoteRequest message to all members (+self)
+- Periodically: increment term and send a VoteRequest(term) to all members (+self)
 - Terminates when LeaderElected message is received, or on shutdown
 
-On reception of VoteRequest
----------------------------
-- Increment the current term
+On reception of VoteRequest(term)
+---------------------------------
+- If term < current_term: reject (don't send a VoteResponse)
+- Else:
+      - If term > current_term -> voted-for=null, current_term=term
+      - If voted-for == null or voted-for == vote requester -> set voted-for=vote requester, send VoteResponse
 - Send a VoteResponse (containing the current term and last log index and last log term) back to the sender
-  (Example current_term=26 (a number of elections have been held), last_log_index=2012, last_log_term=6)
+  (Example current_term=26 (the number of elections held so far), last_log_index=2012, last_log_term=6)
 
 
 On reception of VoteResponse
@@ -82,6 +86,12 @@ On reception of LeaderElected(leader,term) message
 - if(leader == self) -> become leader
 - Only on the coordinator: stop the Voting thread
 - Set term and leader
+
+
+Leader: on reception of any request(term)
+-----------------------------------------
+- If term > current_term -> step down as leader and become follower
+- If term < current_term -> reject / send negative rsp (depending on role and protocol (RAFT,ELECTION))
 
 
 

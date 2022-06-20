@@ -127,7 +127,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected int                       num_snapshot_received;
 
     @ManagedAttribute(description="Average AppendEntries batch size")
-    protected AverageMinMax avg_append_entries_batch_size=new AverageMinMax();
+    protected AverageMinMax             avg_append_entries_batch_size=new AverageMinMax();
 
     @ManagedAttribute(description="Number of failed AppendEntriesRequests because the entry wasn't found in the log")
     protected int                       num_failed_append_requests_not_found;
@@ -135,7 +135,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Number of failed AppendEntriesRequests because the prev entry's term didn't match")
     protected int                       num_failed_append_requests_wrong_term;
 
-    protected StateMachine state_machine;
+    protected StateMachine              state_machine;
 
     protected boolean                   state_machine_loaded;
 
@@ -158,6 +158,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description="The current term. Incremented on leader change, or when a higher term is seen")
     protected long                      current_term;
+
+    @ManagedAttribute(description="The member this member voted for in the current term")
+    protected Address                   voted_for;
 
     @ManagedAttribute(description="Index of the highest log entry appended to the log",type=AttributeType.SCALAR)
     protected long                      last_appended;
@@ -243,6 +246,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public StateMachine stateMachine()                {return state_machine;}
     public CommitTable  commitTable()                 {return commit_table;}
     public long         currentTerm()                 {return current_term;}
+    public Address      votedFor()                    {return voted_for;}
     public long         lastAppended()                {return last_appended;}
     public long         commitIndex()                 {return commit_index;}
     public Log          log()                         {return log_impl;}
@@ -321,22 +325,31 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return new ArrayList<>(members);
     }
 
-
     /**
      * Sets current_term if new_term is bigger
      * @param new_term The new term
      * @return -1 if new_term is smaller, 0 if equal and 1 if new_term is bigger
      */
-    public synchronized long currentTerm(final long new_term)  {
+    public synchronized int currentTerm(final long new_term)  {
         if(new_term < current_term)
             return -1;
         if(new_term > current_term) {
             log.trace("%s: changed term from %d -> %d", local_addr, current_term, new_term);
             current_term=new_term;
-            log_impl.currentTerm(new_term);
+            if(log_impl != null)
+                log_impl.currentTerm(new_term);
             return 1;
         }
         return 0;
+    }
+
+    public synchronized RAFT votedFor(Address mbr) {
+        if(Objects.equals(voted_for, mbr))
+            return this;
+        voted_for=mbr;
+        if(log_impl != null)
+            log_impl.votedFor(mbr);
+        return this;
     }
 
     @ManagedAttribute(description="The current role")
@@ -551,6 +564,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
         current_term=log_impl.currentTerm();
+        voted_for=log_impl.votedFor();
         log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
         initStateMachineFromLog();
         curr_log_size=logSizeInBytes();
@@ -713,9 +727,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         // if hdr.term < current_term -> drop message
         // if hdr.term > current_term -> set current_term and become Follower, accept message
         // if hdr.term == current_term -> accept message
-        if(currentTerm(hdr.curr_term) < 0)
+        int rc=currentTerm(hdr.curr_term);
+        if(rc < 0)
             return;
 
+        // same term (rc == 0)
         RaftImpl ri=impl;
         if(ri == null)
             return;
