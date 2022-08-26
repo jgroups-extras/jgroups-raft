@@ -518,6 +518,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             members.addAll(tmp);
         }
         computeMajority();
+        if(raft_id == null)
+            raft_id=InetAddress.getLocalHost().getHostName();
 
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         JChannel ch=stack != null? stack.getChannel() : null;
@@ -534,9 +536,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @Override public void start() throws Exception {
         super.start();
-
-        if(raft_id == null)
-            raft_id=InetAddress.getLocalHost().getHostName();
 
         if(!members.contains(raft_id))
             throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, members));
