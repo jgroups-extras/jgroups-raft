@@ -73,12 +73,6 @@ public enum CompletableFutures {
         return (Consumer<T>) VOID_CONSUMER;
     }
 
-    public static <T> CompletionStage<T> completeExceptionally(Throwable throwable) {
-        CompletableFuture<T> cf = new CompletableFuture<>();
-        cf.completeExceptionally(throwable);
-        return cf;
-    }
-
     public static CompletionException wrapAsCompletionException(Throwable throwable) {
         return throwable instanceof CompletionException ?
                 (CompletionException) throwable :
