@@ -29,7 +29,6 @@ import java.util.stream.Collectors;
  * @since  0.2
  */
 public class CounterService implements StateMachine, RAFT.RoleChange {
-    protected JChannel               ch;
     protected RaftHandle             raft;
     protected long                   repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
 
@@ -49,11 +48,10 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     public void setChannel(JChannel ch) {
-        this.ch=ch;
-        this.raft=new RaftHandle(this.ch, this);
-        raft.addRoleListener(this);
+        raft=new RaftHandle(ch, this).addRoleListener(this);
     }
 
+    public JChannel       channel()                     {return raft.channel();}
     public void           addRoleChangeListener(RAFT.RoleChange listener)  {raft.addRoleListener(listener);}
     public long           replTimeout()                 {return repl_timeout;}
     public CounterService replTimeout(long timeout)     {this.repl_timeout=timeout; return this;}
