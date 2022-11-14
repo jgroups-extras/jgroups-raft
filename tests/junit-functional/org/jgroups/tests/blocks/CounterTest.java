@@ -137,6 +137,7 @@ public class CounterTest {
         List<SyncCounter> counters=createCounters("ignore");
         SyncCounter counter=counters.get(1);
         long ret=counter.incrementAndGet();
+        assert ret == 1;
 
         counter=counter.withOptions(Options.create(true));
         ret=counter.incrementAndGet();
@@ -335,6 +336,39 @@ public class CounterTest {
             casCount += successes.get(i).longValue();
         }
         assertEquals(maxValue, casCount);
+    }
+
+    public void testDelete() throws Exception {
+        List<AsyncCounter> counters = createAsyncCounters("to-delete");
+        for (AsyncCounter counter : counters) {
+            assertEquals(0, counter.sync().get());
+        }
+
+        for (CounterService service : Arrays.asList(service_a, service_b, service_c)) {
+            assertTrue(service.printCounters().contains("to-delete"));
+        }
+
+        // blocks until majority
+        service_a.deleteCounter("to-delete");
+
+        // wait at most for 10 seconds
+        // delete may take a while to replicate
+        boolean counterRemoved = false;
+        String raftMemberWithCounter = null;
+        for (int i = 0; i< 10 && !counterRemoved; ++i) {
+            counterRemoved = true;
+            raftMemberWithCounter = null;
+            for (CounterService service : Arrays.asList(service_a, service_b, service_c)) {
+                if (service.printCounters().contains("to-delete")) {
+                    counterRemoved = false;
+                    raftMemberWithCounter = service.raftId();
+                }
+            }
+            if (!counterRemoved) {
+                Thread.sleep(1000);
+            }
+        }
+        assertTrue("Counter exists in " + raftMemberWithCounter, counterRemoved);
     }
 
     private static CompletionStage<Long> compareAndSwap(AsyncCounter counter, long expected, long update, long maxValue, AtomicInteger successes) {
