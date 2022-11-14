@@ -306,7 +306,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             Bits.writeLongCompressed(value, out);
             return setAsyncWithTimeout(out, opts).thenApply(CounterService::readLong);
         } catch (Exception ex) {
-            return CompletableFutures.completeExceptionally(ex);
+            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -316,7 +316,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             writeCommandAndName(out, command.ordinal(), name);
             return setAsyncWithTimeout(out, opts).thenApply(CounterService::readLong);
         } catch (Exception ex) {
-            return CompletableFutures.completeExceptionally(ex);
+            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -327,7 +327,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             Bits.writeLongCompressed(arg, out);
             return setAsyncWithTimeout(out, opts).thenApply(CounterService::readLong);
         } catch (Exception ex) {
-            return CompletableFutures.completeExceptionally(ex);
+            return CompletableFuture.failedFuture(ex);
         }
     }
 
@@ -338,7 +338,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             Bits.writeLongCompressed(arg, out);
             return setAsyncWithTimeout(out, default_options).thenApply(CompletableFutures.toVoidFunction());
         } catch (Exception ex) {
-            return CompletableFutures.completeExceptionally(ex);
+            return CompletableFuture.failedFuture(ex);
         }
     }
 
