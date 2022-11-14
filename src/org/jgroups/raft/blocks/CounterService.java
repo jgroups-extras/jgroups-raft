@@ -88,7 +88,24 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * @param name The name of the counter. No-op if the counter doesn't exist
      */
     public void deleteCounter(String name) throws Exception {
-        invoke(Command.delete, name, true);
+        CompletableFutures.join(deleteCounterAsync(name));
+    }
+
+    /**
+     * Deletes a counter instance.
+     *
+     * @param name The name of the counter. No-op if the counter doesn't exist
+     * @return Returns a {@link CompletionStage} which is completed when the majority reach consensus.
+     */
+    public CompletionStage<Void> deleteCounterAsync(String name) {
+        AsciiString counterName = new AsciiString(name);
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(counterName) + Global.BYTE_SIZE);
+        try {
+            writeCommandAndName(out, Command.delete.ordinal(), counterName);
+            return setAsyncWithTimeout(out, default_options).thenApply(CompletableFutures.toVoidFunction());
+        } catch (Exception ex) {
+            return CompletableFutures.completeExceptionally(ex);
+        }
     }
 
 
