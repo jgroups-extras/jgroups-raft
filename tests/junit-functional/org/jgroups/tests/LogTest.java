@@ -365,6 +365,26 @@ public class LogTest {
         assert size_in_bytes >= buf.length * NUM;
     }
 
+    public void testInternalCommand(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        assert log.sizeInBytes() == 0;
+        byte[] buf=new byte[10];
+        LogEntries entries = new LogEntries();
+
+        for (int i = 1; i<=10; i++) {
+            LogEntry entry = new LogEntry(i, buf);
+            entries.add(entry.internal((i & 1) == 0));
+        }
+
+        long last = log.append(1, entries);
+        assert last == entries.size() : "Not stored all entries";
+
+        log.forEach((e, l) -> {
+            assert e.internal() == ((l & 1) == 0) : "Entry not internal anymore!";
+        });
+    }
+
 
     protected static void append(final Log log, int start_index, final byte[] buf, int... terms) {
         LogEntries le=new LogEntries();
