@@ -24,7 +24,7 @@ public class LogEntryStorage {
    private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
    private static final byte MAGIC_NUMBER = 0x01;
    private static final String FILE_NAME = "entries.raft";
-   private static final int HEADER_SIZE = Global.INT_SIZE * 2 + Global.LONG_SIZE * 2 + 1;
+   private static final int HEADER_SIZE = Global.INT_SIZE * 2 + Global.LONG_SIZE * 2 + 1 + Global.BYTE_SIZE;
    // this is the typical OS page size and SSD blck_size
    private static final int DEFAULT_WRITE_AHEAD_BYTES = 4096;
 
@@ -297,6 +297,8 @@ public class LogEntryStorage {
    }
 
    private static class Header {
+      private static final byte SERIALIZED_TRUE = 0b1;
+      private static final byte SERIALIZED_FALSE = 0b0;
       final long position;
       // magic is here in case we need to change the format!
       final byte magic;
@@ -304,6 +306,7 @@ public class LogEntryStorage {
       final long term;
       final long index;
       final int dataLength;
+      final boolean internal;
 
       Header(long position, long index, LogEntry entry) {
          Objects.requireNonNull(entry);
@@ -312,6 +315,7 @@ public class LogEntryStorage {
          this.index = index;
          this.term = entry.term();
          this.dataLength = entry.length();
+         this.internal = entry.internal();
          this.totalLength = getTotalLength(dataLength);
       }
 
@@ -325,6 +329,7 @@ public class LogEntryStorage {
          this.totalLength = buffer.getInt();
          this.term = buffer.getLong();
          this.index = buffer.getLong();
+         this.internal = buffer.get() == SERIALIZED_TRUE;
          this.dataLength = buffer.getInt();
       }
 
@@ -333,6 +338,7 @@ public class LogEntryStorage {
          buffer.putInt(totalLength);
          buffer.putLong(term);
          buffer.putLong(index);
+         buffer.put(internal ? SERIALIZED_TRUE : SERIALIZED_FALSE);
          buffer.putInt(dataLength);
       }
 
@@ -358,7 +364,8 @@ public class LogEntryStorage {
          assert !data.hasArray();
          byte[] bytes = new byte[dataLength];
          data.get(bytes);
-         return new LogEntry(term, bytes);
+         LogEntry entry = new LogEntry(term, bytes);
+         return entry.internal(internal);
       }
 
       @Override
