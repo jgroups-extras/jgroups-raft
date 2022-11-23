@@ -2,9 +2,9 @@ package org.jgroups.perf;
 
 import org.HdrHistogram.AbstractHistogram;
 import org.HdrHistogram.Histogram;
-import org.jgroups.blocks.atomic.Counter;
 import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.raft.Options;
+import org.jgroups.raft.blocks.RaftCounter;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -21,7 +21,7 @@ public class SyncBenchmark implements CounterBenchmark {
     private BenchmarkRun benchmarkRun;
 
     @Override
-    public void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, Counter counter) {
+    public void init(int concurrency, ThreadFactory threadFactory, LongSupplier deltaSupplier, RaftCounter counter) {
         benchmarkRun = new BenchmarkRun(concurrency, counter.sync(), threadFactory, deltaSupplier);
     }
 
@@ -75,7 +75,7 @@ public class SyncBenchmark implements CounterBenchmark {
         final CountDownLatch countDownLatch;
         final Updater[] updaters;
 
-        BenchmarkRun(int numberOfThreads, SyncCounter counter, ThreadFactory threadFactory, LongSupplier deltaSupplier) {
+        BenchmarkRun(int numberOfThreads, RaftCounter counter, ThreadFactory threadFactory, LongSupplier deltaSupplier) {
             countDownLatch = new CountDownLatch(1);
             updaters = new Updater[numberOfThreads];
             for (int i = 0; i < updaters.length; ++i) {
@@ -110,9 +110,9 @@ public class SyncBenchmark implements CounterBenchmark {
         final Histogram histogram = HistogramUtil.create();
 
 
-        public Updater(CountDownLatch latch, SyncCounter counter, LongSupplier deltaSupplier, ThreadFactory threadFactory) {
+        public Updater(CountDownLatch latch, RaftCounter counter, LongSupplier deltaSupplier, ThreadFactory threadFactory) {
             this.latch = latch;
-            this.counter = counter.withOptions(Options.create(true));
+            this.counter = counter.sync().withOptions(Options.create(true));
             this.deltaSupplier = deltaSupplier;
             this.thread = threadFactory.newThread(this);
         }

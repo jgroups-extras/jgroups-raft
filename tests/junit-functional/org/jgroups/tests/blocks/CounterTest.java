@@ -10,6 +10,8 @@ import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.blocks.CounterService;
+import org.jgroups.raft.blocks.RaftAsyncCounter;
+import org.jgroups.raft.blocks.RaftSyncCounter;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.util.CompletableFutures;
 import org.jgroups.util.Util;
@@ -69,7 +71,7 @@ public class CounterTest {
     }
 
     public void testIncrement() {
-        List<SyncCounter> counters = createCounters("increment");
+        List<RaftSyncCounter> counters = createCounters("increment");
 
         assertEquals(1, counters.get(0).incrementAndGet());
         assertValues(counters, 1);
@@ -82,7 +84,7 @@ public class CounterTest {
     }
 
     public void testDecrement() {
-        List<SyncCounter> counters = createCounters("decrement");
+        List<RaftSyncCounter> counters = createCounters("decrement");
 
         assertEquals(-1, counters.get(0).decrementAndGet());
         assertValues(counters, -1);
@@ -95,7 +97,7 @@ public class CounterTest {
     }
 
     public void testSet() {
-        List<SyncCounter> counters = createCounters("set");
+        List<RaftSyncCounter> counters = createCounters("set");
 
         counters.get(0).set(10);
         assertValues(counters, 10);
@@ -108,7 +110,7 @@ public class CounterTest {
     }
 
     public void testCompareAndSet() {
-        List<SyncCounter> counters = createCounters("casb");
+        List<RaftSyncCounter> counters = createCounters("casb");
 
         assertTrue(counters.get(0).compareAndSet(0, 2));
         assertValues(counters, 2);
@@ -121,7 +123,7 @@ public class CounterTest {
     }
 
     public void testCompareAndSwap() {
-        List<SyncCounter> counters = createCounters("casl");
+        List<RaftSyncCounter> counters = createCounters("casl");
 
         assertEquals(0, counters.get(0).compareAndSwap(0, 2));
         assertValues(counters, 2);
@@ -134,8 +136,8 @@ public class CounterTest {
     }
 
     public void testIgnoreReturnValue() {
-        List<SyncCounter> counters=createCounters("ignore");
-        SyncCounter counter=counters.get(1);
+        List<RaftSyncCounter> counters=createCounters("ignore");
+        RaftSyncCounter counter=counters.get(1);
         long ret=counter.incrementAndGet();
         assert ret == 1;
 
@@ -161,15 +163,14 @@ public class CounterTest {
         ret=counter.get();
         assert ret == 20;
 
-        AsyncCounter ctr=counter.async();
+        RaftAsyncCounter ctr=counter.async();
         CompletionStage<Long> f=ctr.addAndGet(5);
         Long val=CompletableFutures.join(f);
         assert val == null;
         f=ctr.get();
         ret=CompletableFutures.join(f);
         assert ret == 25;
-        f=ctr.getLocal();
-        ret=CompletableFutures.join(f);
+        ret=ctr.getLocal();
         assert ret == 25;
         f=ctr.incrementAndGet();
         val=CompletableFutures.join(f);
@@ -290,7 +291,7 @@ public class CounterTest {
     }
 
     public void testSyncIncrementPerf() {
-        List<SyncCounter> counters = createCounters("sync-perf-1");
+        List<RaftSyncCounter> counters = createCounters("sync-perf-1");
         final SyncCounter counter = counters.get(0);
         final long maxValue = 10_000;
 
@@ -388,7 +389,7 @@ public class CounterTest {
         assertEquals(value, (long) stage.toCompletableFuture().join());
     }
 
-    private static void assertValues(List<SyncCounter> counters, long expectedValue) {
+    private static void assertValues(List<RaftSyncCounter> counters, long expectedValue) {
         for (SyncCounter counter : counters) {
             assertEquals(expectedValue, counter.get());
         }
@@ -400,10 +401,10 @@ public class CounterTest {
         }
     }
 
-    private List<SyncCounter> createCounters(String name) {
+    private List<RaftSyncCounter> createCounters(String name) {
         return Stream.of(service_a, service_b, service_c)
                 .map(counterService -> createCounter(name, counterService))
-                .map(AsyncCounter::sync)
+                .map(RaftAsyncCounter::sync)
                 .collect(Collectors.toList());
     }
 
@@ -413,7 +414,7 @@ public class CounterTest {
                 .collect(Collectors.toList());
     }
 
-    private static AsyncCounter createCounter(String name, CounterService counterService) {
+    private static RaftAsyncCounter createCounter(String name, CounterService counterService) {
         return CompletableFutures.join(counterService.getOrCreateAsyncCounter(name, 0));
     }
 

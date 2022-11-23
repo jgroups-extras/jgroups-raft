@@ -8,10 +8,10 @@ import org.jgroups.blocks.MethodCall;
 import org.jgroups.blocks.RequestOptions;
 import org.jgroups.blocks.ResponseMode;
 import org.jgroups.blocks.RpcDispatcher;
-import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.TP;
 import org.jgroups.raft.blocks.CounterService;
+import org.jgroups.raft.blocks.RaftCounter;
 import org.jgroups.tests.perf.PerfUtil;
 import org.jgroups.tests.perf.PerfUtil.Config;
 import org.jgroups.util.*;
@@ -45,7 +45,7 @@ public class CounterPerf implements Receiver {
     protected volatile boolean     looping=true;
     protected ThreadFactory        thread_factory;
     protected CounterService       counter_service;
-    protected SyncCounter          counter;
+    protected RaftCounter          counter;
     private volatile String        histogramPath;
 
     // ============ configurable properties ==================
@@ -388,7 +388,7 @@ public class CounterPerf implements Receiver {
     protected long getCounter() throws Exception {
         if(counter == null)
             counter=counter_service.getOrCreateCounter(COUNTER, 0);
-        return counter.get();
+        return counter.sync().get();
     }
 
     protected int getDelta() {

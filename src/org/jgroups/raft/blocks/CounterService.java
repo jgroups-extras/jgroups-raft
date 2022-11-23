@@ -2,8 +2,6 @@ package org.jgroups.raft.blocks;
 
 import org.jgroups.Global;
 import org.jgroups.JChannel;
-import org.jgroups.blocks.atomic.AsyncCounter;
-import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.protocols.raft.InternalCommand;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
@@ -74,7 +72,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * if the counter already exists
      * @return The counter implementation
      */
-    public SyncCounter getOrCreateCounter(String name, long initial_value) throws Exception {
+    public RaftSyncCounter getOrCreateCounter(String name, long initial_value) throws Exception {
         if(!counters.containsKey(name))
             invoke(Command.create, name, false, initial_value);
         return new AsyncCounterImpl(this, name).sync();
@@ -268,14 +266,14 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      */
 
     /**
-     * Returns an {@link AsyncCounter} instance of the counter.
+     * Returns an {@link RaftAsyncCounter} instance of the counter.
      * <p>
      * This is local operation, and it does not create the counter in the raft log.
      *
      * @param name Name of the counter, different counters have to have different names.
-     * @return The {@link AsyncCounter} instance
+     * @return The {@link RaftAsyncCounter} instance
      */
-    public AsyncCounter asyncCounter(String name) {
+    public RaftAsyncCounter asyncCounter(String name) {
         return new AsyncCounterImpl(this, name);
     }
 
@@ -287,9 +285,9 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * @param name         Name of the counter, different counters have to have different names
      * @param initialValue The initial value of a new counter if there is no existing counter. Ignored if the counter
      *                     already exists
-     * @return The {@link AsyncCounter} implementation.
+     * @return The {@link RaftAsyncCounter} implementation.
      */
-    public CompletionStage<AsyncCounter> getOrCreateAsyncCounter(String name, long initialValue) {
+    public CompletionStage<RaftAsyncCounter> getOrCreateAsyncCounter(String name, long initialValue) {
         synchronized (counters) {
             if (counters.containsKey(name)) {
                 return CompletableFuture.completedFuture(asyncCounter(name));
