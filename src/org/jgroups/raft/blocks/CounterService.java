@@ -102,7 +102,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
             writeCommandAndName(out, Command.delete.ordinal(), counterName);
             return setAsyncWithTimeout(out, default_options).thenApply(CompletableFutures.toVoidFunction());
         } catch (Exception ex) {
-            return CompletableFutures.completeExceptionally(ex);
+            return CompletableFuture.failedFuture(ex);
         }
     }
 
