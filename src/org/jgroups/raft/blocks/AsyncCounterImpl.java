@@ -1,8 +1,6 @@
 package org.jgroups.raft.blocks;
 
 import org.jgroups.blocks.atomic.AsyncCounter;
-import org.jgroups.blocks.atomic.Counter;
-import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.raft.Options;
 import org.jgroups.util.AsciiString;
 import org.jgroups.util.CompletableFutures;
@@ -16,7 +14,7 @@ import java.util.concurrent.CompletionStage;
  *
  * @since 1.0.9
  */
-public class AsyncCounterImpl implements AsyncCounter {
+public class AsyncCounterImpl implements RaftAsyncCounter {
     private final CounterService counterService;
     private final AsciiString    asciiName;
     private final Sync           sync;
@@ -36,11 +34,11 @@ public class AsyncCounterImpl implements AsyncCounter {
 
     @Override
     public CompletionStage<Long> get() {
-        return counterService.allowDirtyReads() ? getLocal() : counterService.asyncGet(asciiName);
+        return counterService.allowDirtyReads() ? CompletableFuture.completedFuture(getLocal()) : counterService.asyncGet(asciiName);
     }
 
-    public CompletionStage<Long> getLocal() {
-        return CompletableFuture.completedFuture(counterService._get(asciiName.toString()));
+    public long getLocal() {
+        return counterService._get(asciiName.toString());
     }
 
     @Override
@@ -59,27 +57,27 @@ public class AsyncCounterImpl implements AsyncCounter {
     }
 
     @Override
-    public SyncCounter sync() {
+    public RaftSyncCounter sync() {
         return sync;
     }
 
     @Override
-    public AsyncCounter async() {
+    public RaftAsyncCounter async() {
         return this;
     }
 
     @Override
-    public <T extends Counter> T withOptions(Options opts) {
+    public RaftAsyncCounter withOptions(Options opts) {
         if(opts != null)
             this.options=opts;
-        return (T)this;
+        return this;
     }
 
     public String toString() {
-        return String.valueOf(CompletableFutures.join(AsyncCounterImpl.this.getLocal()));
+        return String.valueOf(getLocal());
     }
 
-    private final class Sync implements SyncCounter {
+    private final class Sync implements RaftSyncCounter {
 
         @Override
         public String getName() {
@@ -92,7 +90,7 @@ public class AsyncCounterImpl implements AsyncCounter {
         }
 
         public long getLocal() {
-            return CompletableFutures.join(AsyncCounterImpl.this.getLocal());
+            return AsyncCounterImpl.this.getLocal();
         }
 
         @Override
@@ -115,20 +113,20 @@ public class AsyncCounterImpl implements AsyncCounter {
         }
 
         @Override
-        public AsyncCounter async() {
+        public RaftAsyncCounter async() {
             return AsyncCounterImpl.this;
         }
 
         @Override
-        public SyncCounter sync() {
+        public RaftSyncCounter sync() {
             return this;
         }
 
         @Override
-        public <T extends Counter> T withOptions(Options opts) {
+        public RaftSyncCounter withOptions(Options opts) {
             if(opts != null)
                 AsyncCounterImpl.this.options=opts;
-            return (T)this;
+            return this;
         }
 
         public String toString() {
