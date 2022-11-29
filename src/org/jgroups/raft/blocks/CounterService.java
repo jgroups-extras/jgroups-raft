@@ -3,6 +3,8 @@ package org.jgroups.raft.blocks;
 import net.jcip.annotations.GuardedBy;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
+import org.jgroups.blocks.atomic.CounterFunction;
+import org.jgroups.blocks.atomic.CounterView;
 import org.jgroups.protocols.raft.InternalCommand;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
@@ -38,7 +40,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     @GuardedBy("counters")
     protected final Map<String,Long> counters=new HashMap<>();
 
-    protected enum Command {create, delete, get, set, addAndGet, compareAndSwap}
+    protected enum Command {create, delete, get, set, addAndGet, compareAndSwap, updateFunction}
 
 
     public CounterService(JChannel ch) {
@@ -76,7 +78,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         return CompletableFutures.join(getOrCreateAsyncCounter(name, initial_value)).sync();
     }
 
-  
+
     /**
      * Deletes a counter instance (on the coordinator)
      * @param name The name of the counter. No-op if the counter doesn't exist
@@ -139,6 +141,9 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
                 break;
             case compareAndSwap:
                 retval=_compareAndSwap(name, Bits.readLongCompressed(in), Bits.readLongCompressed(in));
+                break;
+            case updateFunction:
+                retval=_update(name, Util.readGenericStreamable(in));
                 break;
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
@@ -308,6 +313,17 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         }
     }
 
+    protected <T extends Streamable> CompletionStage<T> asyncUpdate(AsciiString name, CounterFunction<T> function, Options options) {
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE + 128);
+        try {
+            writeCommandAndName(out, Command.updateFunction.ordinal(), name);
+            Util.writeGenericStreamable(function, out);
+            return setAsyncWithTimeout(out, options).thenApply(CounterService::safeStreamableFromBytes);
+        } catch (Throwable throwable) {
+            return CompletableFuture.failedFuture(throwable);
+        }
+    }
+
     protected CompletionStage<Long> invokeAsyncAndGet(Command command, AsciiString name, Options opts) {
         ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(name) + Global.BYTE_SIZE);
         try {
@@ -428,4 +444,44 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         }
     }
 
+    protected <T extends Streamable> T _update(String name, CounterFunction<T> function) {
+        synchronized (counters) {
+            long original = counters.getOrDefault(name, 0L);
+            CounterViewImpl view = new CounterViewImpl(original);
+            T result = function.apply(view);
+            counters.put(name, view.value);
+            return result;
+        }
+    }
+
+    private static <T extends Streamable> T safeStreamableFromBytes(byte[] bytes) {
+        if (bytes == null) {
+            // ignore return value
+            return null;
+        }
+        try {
+            return Util.objectFromByteBuffer(bytes);
+        } catch (IOException | ClassNotFoundException e) {
+            throw CompletableFutures.wrapAsCompletionException(e);
+        }
+    }
+
+    private static class CounterViewImpl implements CounterView {
+
+        long value;
+
+        CounterViewImpl(long value) {
+            this.value = value;
+        }
+
+        @Override
+        public long get() {
+            return value;
+        }
+
+        @Override
+        public void set(long value) {
+            this.value = value;
+        }
+    }
 }

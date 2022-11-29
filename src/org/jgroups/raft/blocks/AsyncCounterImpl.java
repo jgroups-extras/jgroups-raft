@@ -1,9 +1,11 @@
 package org.jgroups.raft.blocks;
 
 import org.jgroups.blocks.atomic.AsyncCounter;
+import org.jgroups.blocks.atomic.CounterFunction;
 import org.jgroups.raft.Options;
 import org.jgroups.util.AsciiString;
 import org.jgroups.util.CompletableFutures;
+import org.jgroups.util.Streamable;
 
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -65,6 +67,11 @@ public class AsyncCounterImpl implements RaftAsyncCounter {
     }
 
     @Override
+    public <T extends Streamable> CompletionStage<T> update(CounterFunction<T> updateFunction) {
+        return counterService.asyncUpdate(asciiName, updateFunction, options);
+    }
+
+    @Override
     public RaftSyncCounter sync() {
         return sync;
     }
@@ -118,6 +125,11 @@ public class AsyncCounterImpl implements RaftAsyncCounter {
             CompletionStage<Long> f=AsyncCounterImpl.this.addAndGet(delta);
             Long retval=CompletableFutures.join(f);
             return retval == null? 0 : retval; // 0 as a valid result from the cast of null?
+        }
+
+        @Override
+        public <T extends Streamable> T update(CounterFunction<T> updateFunction) {
+            return CompletableFutures.join(AsyncCounterImpl.this.update(updateFunction));
         }
 
         @Override
