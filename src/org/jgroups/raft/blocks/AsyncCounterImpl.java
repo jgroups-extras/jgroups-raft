@@ -18,13 +18,21 @@ public class AsyncCounterImpl implements RaftAsyncCounter {
     private final CounterService counterService;
     private final AsciiString    asciiName;
     private final Sync           sync;
-    private Options              options=new Options();
+    private final Options        options;
 
 
     public AsyncCounterImpl(CounterService counterService, String name) {
-        this.counterService=counterService;
-        this.asciiName = new AsciiString(Objects.requireNonNull(name));
-        this.sync = new Sync();
+        this(Objects.requireNonNull(counterService), new AsciiString(Objects.requireNonNull(name)), Options.DEFAULT_OPTIONS);
+    }
+
+    private AsyncCounterImpl(CounterService counterService, AsciiString asciiName, Options options) {
+        assert counterService != null;
+        assert asciiName != null;
+        assert options != null;
+        this.counterService = counterService;
+        this.asciiName = asciiName;
+        this.options = options;
+        sync = new Sync();
     }
 
     @Override
@@ -68,8 +76,8 @@ public class AsyncCounterImpl implements RaftAsyncCounter {
 
     @Override
     public RaftAsyncCounter withOptions(Options opts) {
-        if(opts != null)
-            this.options=opts;
+        if(opts != null && !options.equals(opts))
+            return new AsyncCounterImpl(counterService, asciiName, opts);
         return this;
     }
 
@@ -124,9 +132,7 @@ public class AsyncCounterImpl implements RaftAsyncCounter {
 
         @Override
         public RaftSyncCounter withOptions(Options opts) {
-            if(opts != null)
-                AsyncCounterImpl.this.options=opts;
-            return this;
+            return AsyncCounterImpl.this.withOptions(opts).sync();
         }
 
         public String toString() {
