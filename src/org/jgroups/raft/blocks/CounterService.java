@@ -1,5 +1,6 @@
 package org.jgroups.raft.blocks;
 
+import net.jcip.annotations.GuardedBy;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.InternalCommand;
@@ -33,9 +34,8 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     /** If true, reads can return the local counter value directly. Else, reads have to go through the leader */
     protected boolean                allow_dirty_reads=true;
 
-    protected final Options          default_options=Options.create(false);
-
     // keys: counter names, values: counter values
+    @GuardedBy("counters")
     protected final Map<String,Long> counters=new HashMap<>();
 
     protected enum Command {create, delete, get, set, addAndGet, compareAndSwap}
@@ -73,9 +73,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
      * @return The counter implementation
      */
     public RaftSyncCounter getOrCreateCounter(String name, long initial_value) throws Exception {
-        if(!counters.containsKey(name))
-            invoke(Command.create, name, false, initial_value);
-        return new AsyncCounterImpl(this, name).sync();
+        return CompletableFutures.join(getOrCreateAsyncCounter(name, initial_value)).sync();
     }
 
   
@@ -98,7 +96,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(Bits.size(counterName) + Global.BYTE_SIZE);
         try {
             writeCommandAndName(out, Command.delete.ordinal(), counterName);
-            return setAsyncWithTimeout(out, default_options).thenApply(CompletableFutures.toVoidFunction());
+            return setAsyncWithTimeout(out, Options.DEFAULT_OPTIONS).thenApply(CompletableFutures.toVoidFunction());
         } catch (Exception ex) {
             return CompletableFuture.failedFuture(ex);
         }
@@ -106,8 +104,10 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
 
     public String printCounters() {
-        return counters.entrySet().stream().map(e -> String.format("%s = %d", e.getKey(), e.getValue()))
-          .collect(Collectors.joining("\n"));
+        synchronized (counters) {
+            return counters.entrySet().stream().map(e -> String.format("%s = %d", e.getKey(), e.getValue()))
+                    .collect(Collectors.joining("\n"));
+        }
     }
 
 
@@ -163,11 +163,13 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
     @Override
     public void readContentFrom(DataInput in) throws Exception {
-        int size=in.readInt();
-        for(int i=0; i < size; i++) {
-            AsciiString name=Bits.readAsciiString(in);
-            Long value=Bits.readLongCompressed(in);
-            counters.put(name.toString(), value);
+        synchronized (counters) {
+            int size = in.readInt();
+            for (int i = 0; i < size; i++) {
+                AsciiString name = Bits.readAsciiString(in);
+                Long value = Bits.readLongCompressed(in);
+                counters.put(name.toString(), value);
+            }
         }
     }
 
@@ -244,23 +246,6 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         return printCounters();
     }
 
-    protected Object invoke(Command command, String name, boolean ignore_return_value, long ... values) throws Exception {
-        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(256);
-        try {
-            out.writeByte(command.ordinal());
-            Bits.writeAsciiString(new AsciiString(name), out);
-            for(long val: values)
-                Bits.writeLongCompressed(val, out);
-        }
-        catch(Exception ex) {
-            throw new Exception("serialization failure (cmd=" + command + ", name=" + name + "): " + ex);
-        }
-
-        byte[] buf=out.buffer();
-        byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
-        return ignore_return_value? null: Util.objectFromByteBuffer(rsp);
-    }
-
     /*
      Async operations
      */
@@ -298,7 +283,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     protected CompletionStage<Long> asyncGet(AsciiString name) {
-        return invokeAsyncAndGet(Command.get, name, default_options); // ignoring the return value doesn't make sense!
+        return invokeAsyncAndGet(Command.get, name, Options.DEFAULT_OPTIONS); // ignoring the return value doesn't make sense!
     }
 
     protected CompletionStage<Void> asyncSet(AsciiString name, long value) {
@@ -349,7 +334,7 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
         try {
             writeCommandAndName(out, command.ordinal(), name);
             Bits.writeLongCompressed(arg, out);
-            return setAsyncWithTimeout(out, default_options).thenApply(CompletableFutures.toVoidFunction());
+            return setAsyncWithTimeout(out, Options.DEFAULT_OPTIONS).thenApply(CompletableFutures.toVoidFunction());
         } catch (Exception ex) {
             return CompletableFuture.failedFuture(ex);
         }

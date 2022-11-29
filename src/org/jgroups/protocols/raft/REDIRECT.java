@@ -261,7 +261,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         protected RequestType type;
         protected int         corr_id;   // correlation ID at the sender, so responses can unblock requests (keyed by ID)
         protected boolean     exception; // true if RSP is an exception
-        protected Options     options=new Options();
+        protected Options     options=Options.DEFAULT_OPTIONS;
 
         public RedirectHeader() {}
 
@@ -283,7 +283,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
             return Global.BYTE_SIZE*2 + Bits.size(corr_id) + Global.BYTE_SIZE;
         }
 
-        public RedirectHeader options(Options opts) {if(opts != null) this.options=opts; return this;}
+        public RedirectHeader options(Options opts) {if(opts != null && !options.equals(opts)) this.options=opts; return this;}
         public Options        options()             {return this.options;}
 
         public void writeTo(DataOutput out) throws IOException {

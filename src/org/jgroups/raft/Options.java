@@ -13,6 +13,9 @@ import java.io.IOException;
  * @since  1.0.9
  */
 public class Options implements SizeStreamable {
+
+    public static final Options DEFAULT_OPTIONS = new Options();
+
     protected boolean ignore_return_value;
 
     public boolean ignoreReturnValue() {return ignore_return_value;}
@@ -37,5 +40,20 @@ public class Options implements SizeStreamable {
 
     public String toString() {
         return String.format("%s", ignore_return_value? "[ignore-retval]" : "");
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Options)) return false;
+
+        Options options = (Options) o;
+
+        return ignore_return_value == options.ignore_return_value;
+    }
+
+    @Override
+    public int hashCode() {
+        return (ignore_return_value ? 1 : 0);
     }
 }
