@@ -3,6 +3,8 @@ package org.jgroups.tests.blocks;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.blocks.atomic.AsyncCounter;
+import org.jgroups.blocks.atomic.CounterFunction;
+import org.jgroups.blocks.atomic.CounterView;
 import org.jgroups.blocks.atomic.SyncCounter;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.FileBasedLog;
@@ -14,11 +16,16 @@ import org.jgroups.raft.blocks.RaftAsyncCounter;
 import org.jgroups.raft.blocks.RaftSyncCounter;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.util.CompletableFutures;
+import org.jgroups.util.LongSizeStreamable;
+import org.jgroups.util.SizeStreamable;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -372,6 +379,51 @@ public class CounterTest {
         assertTrue("Counter exists in " + raftMemberWithCounter, counterRemoved);
     }
 
+    public void testIncrementUsingFunction() {
+        // copied from JGroups testsuite
+        List<RaftSyncCounter> counters = createCounters("increment-function");
+        assertEquals(1, counters.get(0).incrementAndGet());
+        assertEquals(1, counters.get(1).update(new GetAndAddFunction(1)).getAsLong());
+        assertEquals(2, counters.get(1).update(new GetAndAddFunction(5)).getAsLong());
+        assertValues(counters, 7);
+    }
+
+    public void testComplexFunction() {
+        List<RaftSyncCounter> counters = createCounters("complex-function");
+        assertEquals(0, counters.get(0).get());
+        AddWithLimitResult res = counters.get(1).update(new AddWithLimitFunction(2, 10));
+        assertEquals(2, res.result);
+        assertFalse(res.limitReached);
+        assertValues(counters, 2);
+
+        res = counters.get(2).update(new AddWithLimitFunction(8, 10));
+        assertEquals(10, res.result);
+        assertFalse(res.limitReached);
+        assertValues(counters, 10);
+
+        res = counters.get(2).update(new AddWithLimitFunction(1, 10));
+        assertEquals(10, res.result);
+        assertTrue(res.limitReached);
+        assertValues(counters, 10);
+
+        counters.get(2).set(0);
+        assertValues(counters, 0);
+
+        res = counters.get(1).update(new AddWithLimitFunction(20, 10));
+        assertEquals(10, res.result);
+        assertTrue(res.limitReached);
+        assertValues(counters, 10);
+    }
+
+    public void testFunctionWithoutReturnValue() {
+        List<RaftSyncCounter> counters = createCounters("function-without-retval");
+        AddWithLimitResult res = counters.get(1)
+                .withOptions(Options.create(true))
+                .update(new AddWithLimitFunction(2, 10));
+        assertNull(res);
+        assertValues(counters, 2);
+    }
+
     private static CompletionStage<Long> compareAndSwap(AsyncCounter counter, long expected, long update, long maxValue, AtomicInteger successes) {
         return counter.compareAndSwap(expected, update)
                 .thenCompose(value -> {
@@ -426,5 +478,115 @@ public class CounterTest {
         return new JChannel(Util.getTestStack(election, raft, new REDIRECT())).name(name);
     }
 
+    public static class GetAndAddFunction implements CounterFunction<LongSizeStreamable>, SizeStreamable {
 
+        long delta;
+
+        // for unmarshalling
+        @SuppressWarnings("unused")
+        public GetAndAddFunction() {}
+
+        public GetAndAddFunction(long delta) {
+            this.delta = delta;
+        }
+
+        @Override
+        public LongSizeStreamable apply(CounterView counterView) {
+            long ret = counterView.get();
+            counterView.set(ret + delta);
+            return new LongSizeStreamable(ret);
+        }
+
+        @Override
+        public void writeTo(DataOutput out) throws IOException {
+            out.writeLong(delta);
+        }
+
+        @Override
+        public void readFrom(DataInput in) throws IOException {
+            delta = in.readLong();
+        }
+
+        @Override
+        public int serializedSize() {
+            return Long.BYTES;
+        }
+    }
+
+    public static class AddWithLimitFunction implements CounterFunction<AddWithLimitResult>, SizeStreamable {
+
+        long delta;
+        long limit;
+
+        // for unmarshalling
+        @SuppressWarnings("unused")
+        public AddWithLimitFunction() {
+        }
+
+        public AddWithLimitFunction(long delta, long limit) {
+            this.delta = delta;
+            this.limit = limit;
+        }
+
+        @Override
+        public AddWithLimitResult apply(CounterView counterView) {
+            long newValue = counterView.get() + delta;
+            if (newValue > limit) {
+                counterView.set(limit);
+                return new AddWithLimitResult(limit, true);
+            } else {
+                counterView.set(newValue);
+                return new AddWithLimitResult(newValue, false);
+            }
+        }
+
+        @Override
+        public int serializedSize() {
+            return Long.BYTES * 2;
+        }
+
+        @Override
+        public void writeTo(DataOutput out) throws IOException {
+            out.writeLong(delta);
+            out.writeLong(limit);
+        }
+
+        @Override
+        public void readFrom(DataInput in) throws IOException {
+            delta = in.readLong();
+            limit = in.readLong();
+        }
+    }
+
+    public static class AddWithLimitResult implements SizeStreamable {
+
+        long result;
+        boolean limitReached;
+
+        // for unmarshalling
+        @SuppressWarnings("unused")
+        public AddWithLimitResult() {}
+
+        public AddWithLimitResult(long result, boolean limitReached) {
+            this.result = result;
+            this.limitReached = limitReached;
+        }
+
+        @Override
+        public int serializedSize() {
+            return Long.BYTES + 1;
+        }
+
+        @Override
+        public void writeTo(DataOutput out) throws IOException {
+            out.writeLong(result);
+            out.writeBoolean(limitReached);
+        }
+
+        @Override
+        public void readFrom(DataInput in) throws IOException {
+            result = in.readLong();
+            limitReached = in.readBoolean();
+        }
+    }
 }
