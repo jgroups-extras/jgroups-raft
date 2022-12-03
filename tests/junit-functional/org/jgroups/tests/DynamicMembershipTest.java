@@ -4,11 +4,15 @@ import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
+import org.jgroups.protocols.raft.FileBasedLog;
+import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.raft.util.Utils;
+import org.jgroups.util.Bits;
 import org.jgroups.util.CompletableFutures;
 import org.jgroups.util.Util;
+
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
@@ -18,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -34,6 +39,7 @@ public class DynamicMembershipTest {
     protected Address              leader;
     protected List<String>         mbrs;
     protected static final String  CLUSTER=DynamicMembershipTest.class.getSimpleName();
+    private static final Class<?> DEFAULT_LOG=InMemoryLog.class;
 
     @AfterMethod protected void destroy() throws Exception {
         close(channels);
@@ -104,6 +110,66 @@ public class DynamicMembershipTest {
             expected_mbrs.remove(mbr);
             assertMembers(10000, 200, expected_mbrs, expected_mbrs.size()/2+1, channels);
         }
+    }
+
+    /**
+     * Tests that after adding a new member, this information persists through restarts. Since the cluster restarts,
+     * it uses a persistent log instead of an in-memory.
+     *
+     * The cluster starts with {A, B}, then X joins, and {A, B, X} restarts. Information about X is still in {A, B}.
+     */
+    public void testMembersRemainAfterRestart() throws Exception {
+        Class<?> log=FileBasedLog.class;
+        // In memory log will lose the snapshot on restart.
+        init(log, "A", "B");
+        leader=leader(10000, 500, channels);
+
+        System.out.println("leader = " + leader);
+        assert leader != null : "Leader still null";
+
+        waitUntilAllRaftsHaveLeader(channels);
+        assertSameLeader(leader, channels);
+        assertMembers(5000, 200, mbrs, 2, channels);
+        RAFT raft=raft(leader);
+
+        // Fill the log with some entries.
+        for (int i = 0; i < 3; i++) {
+            byte[] buf=new byte[Integer.BYTES];
+            Bits.writeInt(i, buf, 0);
+            CompletableFuture<byte[]> f=raft.setAsync(buf, 0, buf.length);
+            f.get(10, TimeUnit.SECONDS);
+        }
+
+        String new_mbr="X";
+        System.out.printf("Adding [%s]\n", new_mbr);
+
+        raft.addServer(new_mbr);
+        mbrs.add(new_mbr);
+        channels=Arrays.copyOf(channels, channels.length+1);
+        channels[channels.length-1]=create(new_mbr, log);
+        assertMembers(10000, 200, mbrs, 2, channels);
+
+        System.out.println("\nShutdown cluster");
+
+        for (JChannel channel : channels) {
+            RAFT r=raft(channel);
+            r.snapshot();
+            channel.close();
+        }
+
+        System.out.println("\nRestarting cluster");
+
+        // Nodes restart using the file configuration/previous configuration.
+        // Should restore member `X` from log.
+        init(log, "A", "B");
+        assert !mbrs.contains(new_mbr) : "New member should not be in initial configuration";
+
+        List<String> extended_mbrs=new ArrayList<>(mbrs);
+        extended_mbrs.add(new_mbr);
+        assertMembers(10000, 200, extended_mbrs, 2, channels);
+
+        JChannel extraneous=create(new_mbr, log);
+        close(extraneous);
     }
 
     /**
@@ -196,26 +262,34 @@ public class DynamicMembershipTest {
     }
 
     protected void init(String ... nodes) throws Exception {
+        init(DEFAULT_LOG, nodes);
+    }
+
+    protected void init(Class<?> log, String ... nodes) throws Exception {
         mbrs=new ArrayList<>(List.of(nodes));
         channels=new JChannel[nodes.length];
         rafts=new RAFT[nodes.length];
         for(int i=0; i < nodes.length; i++) {
-            channels[i]=create(nodes, i);
+            channels[i]=create(nodes, i, log);
             rafts[i]=raft(channels[i]);
         }
     }
 
     protected JChannel create(String name) throws Exception {
+        return create(name, DEFAULT_LOG);
+    }
+
+    protected JChannel create(String name, Class<?> log) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
+                .logClass(log.getCanonicalName()).logPrefix(name + "-" + CLUSTER);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
         ch.connect(CLUSTER);
         return ch;
     }
 
-    protected static JChannel create(String[] names, int index) throws Exception {
+    protected static JChannel create(String[] names, int index, Class<?> log) throws Exception {
         RAFT raft=new RAFT().members(Arrays.asList(names)).raftId(names[index]).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(names[index] + "-" + CLUSTER)
+          .logClass(log.getCanonicalName()).logPrefix(names[index] + "-" + CLUSTER)
           .resendInterval(500);
         JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(names[index]);
         ch.connect(CLUSTER);
