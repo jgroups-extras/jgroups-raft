@@ -238,6 +238,11 @@ public class FileBasedLog implements Log {
    @Override
    public void truncate(long index_exclusive) {
       assert index_exclusive >= firstAppended();
+
+      if (index_exclusive > commitIndex) {
+         index_exclusive=commitIndex;
+      }
+
       try {
          checkLogEntryStorageStarted().removeOld(index_exclusive);
       } catch (IOException e) {

@@ -281,6 +281,21 @@ public class LogTest {
         assertEquals(log.firstAppended(), 8);
     }
 
+    public void testTruncateOnlyCommitted(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        byte[] buf=new byte[10];
+        LogEntries le=new LogEntries();
+        for(int i=1; i <= 10; i++)
+            le.add(new LogEntry(5, buf));
+        log.append(1, le);
+
+        log.commitIndex(5);
+        log.truncate(10);
+        assertEquals(log.commitIndex(), 5);
+        assertEquals(log.firstAppended(), 5);
+    }
+
     public void testReinitializeTo(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
