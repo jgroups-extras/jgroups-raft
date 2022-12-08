@@ -33,7 +33,7 @@ public class Follower extends RaftImpl {
             raft.log().setSnapshot(sn);
 
             DataInput in=new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength());
-            raft._internal_state.readFrom(in);
+            raft.internal_state.readFrom(in);
             sm.readContentFrom(in);
 
             // insert a dummy entry at last_included_index and set first/last/commit to it
