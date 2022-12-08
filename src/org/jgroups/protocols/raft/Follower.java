@@ -7,6 +7,7 @@ import org.jgroups.raft.StateMachine;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.Util;
 
+import java.io.DataInput;
 import java.nio.ByteBuffer;
 
 /**
@@ -30,7 +31,10 @@ public class Follower extends RaftImpl {
             // Read into state machine
             ByteBuffer sn=ByteBuffer.wrap(msg.getArray(), msg.getOffset(), msg.getLength());
             raft.log().setSnapshot(sn);
-            sm.readContentFrom(new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength()));
+
+            DataInput in=new ByteArrayDataInputStream(msg.getArray(), msg.getOffset(), msg.getLength());
+            raft._internal_state.readFrom(in);
+            sm.readContentFrom(in);
 
             // insert a dummy entry at last_included_index and set first/last/commit to it
             Log log=raft.log();

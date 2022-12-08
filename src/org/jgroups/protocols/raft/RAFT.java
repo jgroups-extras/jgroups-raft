@@ -78,7 +78,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
               writable=false)
     protected String                    raft_id;
 
-    protected final List<String>        members=new ArrayList<>();
+    protected final PersistentState _internal_state=new PersistentState();
 
     @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)")
     protected int                       majority=-1;
@@ -315,14 +315,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     public RAFT members(Collection<String> list) {
-        this.members.clear();
-        this.members.addAll(new HashSet<>(list));
+        _internal_state.setMembers(list);
         computeMajority();
         return this;
     }
 
     @Property public List<String> members() {
-        return new ArrayList<>(members);
+        return _internal_state.getMembers();
     }
 
     /**
@@ -461,6 +460,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             throw new IllegalStateException("state machine is null");
 
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
+        _internal_state.writeTo(out);
         state_machine.writeContentTo(out);
         ByteBuffer buf=ByteBuffer.wrap(out.buffer(), 0, out.position());
         log_impl.setSnapshot(buf);
@@ -482,6 +482,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         ByteBuffer sn=log_impl.getSnapshot();
         if(sn != null) {
             ByteArrayDataInputStream in=new ByteArrayDataInputStream(sn);
+            _internal_state.readFrom(in);
             state_machine.readContentFrom(in);
             snapshot_offset=1;
             log.debug("%s: initialized state machine from snapshot (%d bytes)", local_addr, sn.position());
@@ -511,11 +512,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @Override public void init() throws Exception {
         super.init();
         // we can only add/remove 1 member at a time (section 4.1 of [1])
-        Set<String> tmp=new HashSet<>(members);
-        if(tmp.size() != members.size()) {
-            log.error("members (%s) contains duplicates; removing them and setting members to %s", members, tmp);
-            members.clear();
-            members.addAll(tmp);
+        Set<String> tmp=new HashSet<>(_internal_state.getMembers());
+        if(tmp.size() != _internal_state.getMembers().size()) {
+            log.error("members (%s) contains duplicates; removing them and setting members to %s", _internal_state.getMembers(), tmp);
+            _internal_state.setMembers(new ArrayList<>(tmp));
         }
         computeMajority();
         if(raft_id == null)
@@ -536,9 +536,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @Override public void start() throws Exception {
         super.start();
-
-        if(!members.contains(raft_id))
-            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, members));
 
         if(log_impl == null) {
             if(log_class == null)
@@ -565,7 +562,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         current_term=log_impl.currentTerm();
         voted_for=log_impl.votedFor();
         log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
+
         initStateMachineFromLog();
+        if(!_internal_state.getMembers().contains(raft_id))
+            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, _internal_state.getMembers()));
+
         curr_log_size=logSizeInBytes();
         log_impl.useFsync(_log_use_fsync);
 
@@ -875,16 +876,21 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected void _addServer(String name) {
         if(name == null) return;
-        if(!members.contains(name)) {
-            members.add(name);
+        List<String> current= _internal_state.getMembers();
+        if(!current.contains(name)) {
+            current.add(name);
+            _internal_state.setMembers(current);
             computeMajority();
         }
     }
 
     protected void _removeServer(String name) {
         if(name == null) return;
-        if(members.remove(name))
+        List<String> current= _internal_state.getMembers();
+        if(current.remove(name)) {
+            _internal_state.setMembers(current);
             computeMajority();
+        }
     }
 
     /**
@@ -996,6 +1002,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         snapshot();
         ByteBuffer data=log_impl.getSnapshot();
         log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.position()), dest);
+        System.out.printf("%s: sending snapshot (%s) to %s\n", local_addr, Util.printBytes(data.position()), dest);
         Message msg=new BytesMessage(dest, data)
           .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
         down_prot.down(msg);
@@ -1237,7 +1244,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected void computeMajority() {
-        majority=(members.size() / 2) + 1;
+        majority=(_internal_state.getMembers().size() / 2) + 1;
     }
 
 
