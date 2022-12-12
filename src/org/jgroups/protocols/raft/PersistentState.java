@@ -61,4 +61,9 @@ public class PersistentState implements SizeStreamable {
         }
         return size;
     }
+
+    @Override
+    public String toString() {
+        return String.format("members=%s", members);
+    }
 }
