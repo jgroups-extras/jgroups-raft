@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.Message;
 import org.jgroups.ObjectMessage;
+import org.jgroups.logging.Log;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.util.ExtendedUUID;
@@ -43,7 +44,10 @@ public class Leader extends RaftImpl {
             throw new IllegalStateException("request table cannot be null in leader");
         ExtendedUUID uuid=(ExtendedUUID)sender;
         String sender_raft_id=Util.bytesToString(uuid.get(RAFT.raft_id_key));
-        raft.getLog().trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
+        Log log = raft.getLog();
+        if (log.isTraceEnabled()) {
+            log.trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
+        }
         switch(result.result) {
             case OK:
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
