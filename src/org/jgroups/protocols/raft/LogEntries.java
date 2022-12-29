@@ -20,12 +20,14 @@ import java.util.Objects;
  * @since  1.0.8
  */
 public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
-    protected List<LogEntry> entries;
+    protected ArrayList<LogEntry> entries;
 
 
     public LogEntries add(LogEntry ... log_entries) {
         if(entries == null)
-            entries=new ArrayList<>();
+            entries=new ArrayList<>(log_entries.length);
+        else
+            entries.ensureCapacity(log_entries.length);
         for(LogEntry le: log_entries)
             entries.add(Objects.requireNonNull(le));
         return this;
@@ -63,7 +65,18 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
     }
 
     public long totalSize() {
-        return entries == null? 0 : entries.stream().filter(Objects::nonNull).map(e -> e.length).reduce(0, Integer::sum);
+        final ArrayList<LogEntry> entries = this.entries;
+        if (entries == null) {
+            return 0;
+        }
+        long length = 0;
+        for (int i = 0, size = entries.size(); i < size; i++) {
+            LogEntry entry = entries.get(i);
+            if (entry != null) {
+                length += entry.length;
+            }
+        }
+        return length;
     }
 
     public int serializedSize() {
