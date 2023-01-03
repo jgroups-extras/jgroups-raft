@@ -44,10 +44,9 @@ public class Leader extends RaftImpl {
             throw new IllegalStateException("request table cannot be null in leader");
         ExtendedUUID uuid=(ExtendedUUID)sender;
         String sender_raft_id=Util.bytesToString(uuid.get(RAFT.raft_id_key));
-        Log log = raft.getLog();
-        if (log.isTraceEnabled()) {
+        Log log=raft.getLog();
+        if(log.isTraceEnabled())
             log.trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
-        }
         switch(result.result) {
             case OK:
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);

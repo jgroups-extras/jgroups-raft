@@ -8,7 +8,6 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Objects;
 
 /**
@@ -65,16 +64,14 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
     }
 
     public long totalSize() {
-        final ArrayList<LogEntry> entries = this.entries;
-        if (entries == null) {
+        final ArrayList<LogEntry> tmp=this.entries;
+        if(tmp == null)
             return 0;
-        }
-        long length = 0;
-        for (int i = 0, size = entries.size(); i < size; i++) {
-            LogEntry entry = entries.get(i);
-            if (entry != null) {
-                length += entry.length;
-            }
+        long length=0;
+        for(int i=0, size=tmp.size(); i < size; i++) {
+            LogEntry entry=tmp.get(i);
+            if(entry != null)
+                length+=entry.length;
         }
         return length;
     }
