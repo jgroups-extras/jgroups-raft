@@ -60,6 +60,35 @@ public class RaftHandle implements Settable {
     public Log          log()                                        {return raft.log();}
     public long         logSize()                                    {return raft.logSize();}
 
+    /**
+     * Asynchronously adds a new server to the RAFT cluster.
+     *
+     * <p>Only a single membership change executes at any given time. Multiple concurrent changes are chained
+     * and executed serially. The membership change adds an entry to the log, meaning it tolerates crashes and
+     * restarts and only has an effect after a majority of members commit it.</p>
+     *
+     * @param server: The server RAFT ID to add.
+     * @return A {@link CompletableFuture} that completes once the command is committed.
+     * @throws Exception if dynamic view changes are not enabled.
+     * @throws IllegalStateException if the node is not the leader.
+     */
+    public CompletableFuture<byte[]> addServer(String server) throws Exception {
+        return raft.addServer(server);
+    }
+
+    /**
+     * Asynchronously removes a server from the RAFT cluster.
+     *
+     * @param server: The server RAFT ID to remove.
+     * @return A {@link CompletableFuture} that completes once the command is committed.
+     * @throws Exception if dynamic view changes are not enabled.
+     * @throws IllegalStateException if the node is not the leader.
+     * @see #addServer(String)
+     */
+    public CompletableFuture<byte[]> removeServer(String server) throws Exception {
+        return raft.removeServer(server);
+    }
+
     public void logEntries(ObjLongConsumer<LogEntry> func) {
         raft.logEntries(func);
     }
