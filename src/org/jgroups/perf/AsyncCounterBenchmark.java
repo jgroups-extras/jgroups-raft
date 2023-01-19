@@ -10,6 +10,7 @@ import org.jgroups.util.CompletableFutures;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -43,7 +44,7 @@ public class AsyncCounterBenchmark implements CounterBenchmark {
         stop.set(false);
         final long currentTime = System.nanoTime();
         for (int i = 0; i < concurrency; ++i) {
-            requests.add(updateCounter(counter, currentTime));
+            requests.add(updateCounter());
         }
     }
 
@@ -80,15 +81,28 @@ public class AsyncCounterBenchmark implements CounterBenchmark {
         histogram.recordValue(timeNanos);
     }
 
-    private CompletionStage<Void> updateCounter(AsyncCounter counter, long start) {
+    private CompletionStage<Long> updateCounter(CompletableFuture<Void> cf, CompletionStage<Long> prev, long start) {
+        if (stop.get()) {
+            cf.complete(null);
+            return prev;
+        }
+
+        return prev.whenComplete((ignoreV, ignoreT) -> {
+            final long currentTime = System.nanoTime();
+            updateTime(currentTime - start);
+            long delta = deltaSupplier.getAsLong();
+            updateCounter(cf, counter.addAndGet(delta), System.nanoTime());
+        });
+    }
+
+    private CompletionStage<Void> updateCounter() {
         if (stop.get()) {
             // we don't check the return value
             return CompletableFutures.completedNull();
         }
-        return counter.addAndGet(deltaSupplier.getAsLong()).thenCompose(__ -> {
-            final long currentTime = System.nanoTime();
-            updateTime(currentTime - start);
-            return updateCounter(counter, currentTime);
-        });
+
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        updateCounter(cf, counter.addAndGet(deltaSupplier.getAsLong()), System.nanoTime());
+        return cf;
     }
 }
