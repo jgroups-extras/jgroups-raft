@@ -20,24 +20,11 @@ public class Client {
             CLIENT.RequestType type=add_server != null? CLIENT.RequestType.add_server : CLIENT.RequestType.remove_server;
             byte[] buf=Util.stringToBytes(add_server != null? add_server : remove_server);
             CompletableFuture<byte[]> cf=stub.setAsync(type, buf, 0, buf.length);
-            cf.whenComplete((rsp, ex) -> {
-                if(ex != null)
-                    System.err.printf("-- exception: %s\n", ex);
-                else {
-                    try {
-                        Object response=Util.objectFromByteBuffer(rsp);
-                        if(response instanceof Throwable)
-                            throw (Throwable)response;
-                        System.out.printf("-- response: %s\n", response);
-                    }
-                    catch(Throwable t) {
-                        t.printStackTrace();
-                    }
-                }
-            });
-        }
-        catch(Exception ex) {
-            ex.printStackTrace();
+            byte[] rsp=cf.join();
+            Object response=Util.objectFromByteBuffer(rsp);
+            if(response instanceof Throwable)
+                throw (Throwable)response;
+            System.out.printf(String.valueOf(response));
         }
     }
 
@@ -74,7 +61,13 @@ public class Client {
             System.err.println("only one server can be added or removed at a time");
             return;
         }
-        Client.start(dest, port, add_server, remove_server);
+
+        try {
+            Client.start(dest, port, add_server, remove_server);
+        } catch (Throwable t) {
+            t.printStackTrace();
+            System.exit(1);
+        }
     }
 
     protected static void help() {
