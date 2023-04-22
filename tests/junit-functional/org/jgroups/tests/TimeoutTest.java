@@ -13,6 +13,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -62,6 +63,7 @@ public class TimeoutTest {
             }
         }
 
+        assert sm != null : "No leader found";
         for(int i=1; i <= NUM; i++) {
             try {
                 sm.put(i, i);
@@ -75,11 +77,19 @@ public class TimeoutTest {
         }
 
         long start=System.currentTimeMillis();
-        Util.waitUntil(10000, 50, () -> Stream.of(rsms)
-          .allMatch(r -> r.get(NUM) != null && r.get(NUM)  == NUM),
-                       () -> String.format("\n%s\n", Stream.of(rsms)
-                         .map(r -> String.format("%s: %s elements", r.channel().getAddress(), r.size()))
-                         .collect(Collectors.joining("\n"))));
+        assert sm.allowDirtyReads(false).get(NUM) == NUM;
+        Predicate<ReplicatedStateMachine<Integer, Integer>> converged=r -> {
+            try {
+                return r.get(NUM)  == NUM;
+            } catch (Throwable t) {
+                t.printStackTrace();
+                return false;
+            }
+        };
+        // After reading correctly from the leader with a quorum read, every node should have the same state.
+        for (ReplicatedStateMachine<Integer, Integer> rsm : rsms) {
+            assert converged.test(rsm.allowDirtyReads(true));
+        }
         long time=System.currentTimeMillis()-start;
         System.out.printf("-- it took %d member(s) %d ms to get consistent caches\n", rsms.length, time);
 
@@ -119,7 +129,7 @@ public class TimeoutTest {
         ReplicatedStateMachine<Integer,Integer>[] ret=new ReplicatedStateMachine[chs.length];
         for(int i=0; i < ret.length; i++) {
             ret[i]=new ReplicatedStateMachine<>(chs[i]);
-            ret[i].timeout(2000);
+            ret[i].timeout(2000).allowDirtyReads(true);
         }
         return ret;
     }

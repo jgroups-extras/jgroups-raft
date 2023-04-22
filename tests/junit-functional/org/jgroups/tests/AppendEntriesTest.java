@@ -701,7 +701,7 @@ public class AppendEntriesTest {
         assert raft.isLeader();
     }
 
-    protected void assertPresent(int key, int value, ReplicatedStateMachine<Integer,Integer> ... rsms) {
+    protected void assertPresent(int key, int value, ReplicatedStateMachine<Integer,Integer> ... rsms) throws Exception {
         if(rsms == null || rsms.length == 0)
             rsms=new ReplicatedStateMachine[]{as,bs,cs};
         for(int i=0; i < 10; i++) {

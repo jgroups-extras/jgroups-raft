@@ -27,6 +27,8 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     protected JChannel                 ch;
     protected RaftHandle               raft;
     protected long                     repl_timeout=20000; // timeout (ms) to wait for a majority to ack a write
+    // If true, reads are served locally without going through RAFT.
+    protected boolean                  allow_dirty_reads=false;
     protected final List<Notification<K,V>> listeners=new ArrayList<>();
 
     // Hashmap for the contents
@@ -34,6 +36,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
     protected static final byte        PUT    = 1;
     protected static final byte        REMOVE = 2;
+    protected static final byte        GET    = 3;
 
 
     public ReplicatedStateMachine(JChannel ch) {
@@ -42,6 +45,9 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     }
 
     public ReplicatedStateMachine<K,V> timeout(long timeout)       {this.repl_timeout=timeout; return this;}
+    public long timeout()                                          {return repl_timeout;}
+    public ReplicatedStateMachine<K,V> allowDirtyReads(boolean f)  {this.allow_dirty_reads=f; return this;}
+    public boolean allowDirtyReads()                               {return allow_dirty_reads;}
     public void addRoleChangeListener(RAFT.RoleChange listener)    {raft.addRoleListener(listener);}
     public void addNotificationListener(Notification<K,V> n)       {if(n != null) listeners.add(n);}
     public void removeNotificationListener(Notification<K,V> n)    {listeners.remove(n);}
@@ -88,8 +94,12 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
                         key=Util.objectFromStream(in);
                         sb.append("remove(").append(key).append(")");
                         break;
+                    case GET:
+                        key=Util.objectFromStream(in);
+                        sb.append("get(").append(key).append(")");
+                        break;
                     default:
-                        sb.append("type " + type + " is unknown");
+                        sb.append("type ").append(type).append(" is unknown");
                 }
             }
             catch(Throwable t) {
@@ -138,16 +148,22 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
     }
 
     /**
-     * Returns the value for a given key. Currently, the hashmap is accessed directly to return the value, possibly
-     * returning stale data. In the next version, we'll look into returning a value based on consensus, or returning
-     * the value from the leader (configurable).
+     * Returns the value for a given key.
+     * <p>
+     * When {@link #allow_dirty_reads} is set, the local value is returned, possibly stale and violating
+     * linearizability. Otherwise, the request is sent through RAFT and returns a consistent value.
+     *
      * @param key The key
-     * @return The value associated with key (might be stale)
+     * @return The value associated with key (staleness configurable via {@link #allow_dirty_reads})
      */
-    public V get(K key) {
-        synchronized(map) {
-            return map.get(key);
+    public V get(K key) throws Exception {
+        if (allow_dirty_reads) {
+            synchronized(map) {
+                return map.get(key);
+            }
         }
+
+        return invoke(GET, key, null, false);
     }
 
     /**
@@ -190,6 +206,13 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
                 }
                 notifyRemove(key, old_val);
                 return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
+            case GET:
+                key=Util.objectFromStream(in);
+                synchronized(map) {
+                    val=map.get(key);
+                }
+                notifyGet(key, val);
+                return val == null? null : serialize_response? Util.objectToByteBuffer(val) : null;
             default:
                 throw new IllegalArgumentException("command " + command + " is unknown");
         }
@@ -257,8 +280,15 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
         }
     }
 
+    protected void notifyGet(K key, V val) {
+        for (Notification<K, V> n : listeners) {
+            try {n.get(key, val);}catch(Throwable ignored) {}
+        }
+    }
+
     public interface Notification<K,V> {
         void put(K key, V val, V old_val);
         void remove(K key, V old_val);
+        void get(K key, V val);
     }
 }
