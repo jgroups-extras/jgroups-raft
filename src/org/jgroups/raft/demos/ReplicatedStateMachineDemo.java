@@ -52,6 +52,11 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
             @Override public void remove(String key, Object old_val) {
                 System.out.printf("-- remove(%s) -> %s\n", key, old_val);
             }
+
+            @Override
+            public void get(String key, Object val) {
+                System.out.printf("-- get(%s) -> %s\n", key, val);
+            }
         });
         if(listen)
             start(bind_addr, port);
@@ -196,9 +201,13 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     }
 
     protected Object get(String key) {
-        Object val=rsm.get(key);
-        System.out.printf("-- get(%s) -> %s\n", key, val);
-        return val;
+        try {
+            return rsm.get(key);
+        } catch (Throwable t) {
+            String ret=String.format("failed getting %s: %s", key, t);
+            System.err.println(ret);
+            return ret;
+        }
     }
 
     protected Object remove(String key) {

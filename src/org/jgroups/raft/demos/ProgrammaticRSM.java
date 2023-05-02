@@ -144,6 +144,11 @@ public class ProgrammaticRSM {
                 public void remove(String key, Object old_val) {
                     System.out.printf("-- remove(%s) -> %s\n", key, old_val);
                 }
+
+                @Override
+                public void get(String key, Object val) {
+                    System.out.printf("-- get(%s) -> %s\n", key, val);
+                }
             });
 
             rsm.addRoleChangeListener(role -> System.out.println("-- changed role to " + role));
@@ -271,8 +276,16 @@ public class ProgrammaticRSM {
     }
 
     protected static void get(String key) {
-        Object val=rsm.get(key);
-        System.out.printf("-- get(%s) -> %s\n", key, val);
+        if(key == null) {
+            System.err.printf("Key (%s) is null\n",key);
+            return;
+        }
+
+        try {
+            rsm.get(key);
+        } catch (Throwable t) {
+            System.err.println("failed getting " + key + ": " + t);
+        }
     }
 
     protected static void remove(String key) {
