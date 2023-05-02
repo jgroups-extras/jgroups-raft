@@ -12,6 +12,7 @@ import org.jgroups.util.Util;
 import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.io.EOFException;
 import java.net.InetAddress;
 import java.net.Socket;
 import java.util.Map;
@@ -47,7 +48,7 @@ public class ClientStub implements Settable, Closeable {
 
 
     public ClientStub start() throws Exception {
-        if(sock != null && sock.isConnected()) return this;
+        if(sock != null && sock.isConnected() && runner != null && runner.isRunning()) return this;
         if(host == null)
             host=InetAddress.getLocalHost();
         sock=new Socket(host, port);
@@ -110,11 +111,20 @@ public class ClientStub implements Settable, Closeable {
             in.readFully(buf);
             if(cf != null)
                 cf.complete(buf);
-        }
-        catch(Throwable t) {
+        } catch (EOFException e) {
+            log.warn("EOF reading socket, stopping reader");
+            if(cf != null)
+                cf.completeExceptionally(e);
+            close();
+        } catch(Throwable t) {
             log.error("failed reading response", t);
             if(cf != null)
                 cf.completeExceptionally(t);
+        }
+
+        if (sock.isClosed()) {
+            log.warn("Socket is closed, stopping reader");
+            close();
         }
     }
 
