@@ -1,13 +1,16 @@
-package org.jgroups.protocols.raft;
+package org.jgroups.protocols.raft.election;
 
 import org.jgroups.Address;
 import org.jgroups.Header;
+import org.jgroups.protocols.raft.RaftHeader;
 import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.util.function.Supplier;
+
+import static org.jgroups.protocols.raft.election.BaseElection.LEADER_ELECTED;
 
 /**
  * Sent by the freshly elected leader to all members (-self)
@@ -24,7 +27,7 @@ public class LeaderElected extends RaftHeader {
 
     public Address leader()   {return leader;}
     public short getMagicId() {
-        return ELECTION.LEADER_ELECTED;
+        return LEADER_ELECTED;
     }
 
     public Supplier<? extends Header> create() {

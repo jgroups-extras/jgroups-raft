@@ -1,8 +1,11 @@
-package org.jgroups.protocols.raft;
+package org.jgroups.protocols.raft.election;
 
 import org.jgroups.Header;
+import org.jgroups.protocols.raft.RaftHeader;
 
 import java.util.function.Supplier;
+
+import static org.jgroups.protocols.raft.election.BaseElection.VOTE_REQ;
 
 /**
  * @author Bela Ban
@@ -16,7 +19,7 @@ public class VoteRequest extends RaftHeader {
     }
 
     public short getMagicId() {
-        return ELECTION.VOTE_REQ;
+        return VOTE_REQ;
     }
 
     public Supplier<? extends Header> create() {

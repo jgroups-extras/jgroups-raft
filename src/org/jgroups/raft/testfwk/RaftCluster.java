@@ -16,11 +16,10 @@ import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
  * @author Bela Ban
  * @since  1.0.5
  */
-public class RaftCluster {
+public class RaftCluster extends MockRaftCluster {
     // used to 'send' requests between the various instances
     protected final Map<Address,RaftNode> nodes=new ConcurrentHashMap<>();
     protected final Map<Address,RaftNode> dropped_members=new ConcurrentHashMap<>();
-    protected final Executor              thread_pool=createThreadPool(1000);
     protected boolean                     async;
 
     public RaftCluster add(Address addr, RaftNode node) {
@@ -28,8 +27,6 @@ public class RaftCluster {
         return this;
     }
 
-    public boolean     async()                          {return async;}
-    public RaftCluster async(boolean b)                 {async=b; return this;}
     public RaftCluster remove(Address addr)             {nodes.remove(addr); return this;}
     public RaftCluster clear()                          {nodes.clear(); return this;}
     public boolean     dropTraffic()                    {return !dropped_members.isEmpty();}
@@ -37,12 +34,14 @@ public class RaftCluster {
     public RaftCluster clearDroppedTrafficTo(Address a) {move(a, dropped_members, nodes); return this;}
     public RaftCluster clearDroppedTraffic()            {moveAll(dropped_members, nodes); return this;}
 
+    @Override
     public void handleView(View view) {
         List<Address> members=view.getMembers();
         nodes.keySet().retainAll(Objects.requireNonNull(members));
         nodes.values().forEach(n -> n.handleView(view));
     }
 
+    @Override
     public void send(Message msg) {
         send(msg, false);
     }
@@ -70,10 +69,6 @@ public class RaftCluster {
         }
     }
 
-    protected void deliverAsync(RaftNode n, Message msg) {
-        thread_pool.execute(() -> n.up(msg));
-    }
-
     public String toString() {
         return String.format("%d nodes: %s%s", nodes.size(), nodes.keySet(),
                              dropTraffic()? String.format(" (dropping traffic to %s)", dropped_members.keySet()) : "");
@@ -89,11 +84,5 @@ public class RaftCluster {
         for(Map.Entry<Address,RaftNode> e: from.entrySet())
             to.putIfAbsent(e.getKey(), e.getValue());
         from.clear();
-    }
-
-    protected static Executor createThreadPool(long max_idle_ms) {
-        int max_cores=Runtime.getRuntime().availableProcessors();
-        return new ThreadPoolExecutor(0, max_cores, max_idle_ms, TimeUnit.MILLISECONDS,
-                                      new SynchronousQueue<>());
     }
 }

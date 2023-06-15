@@ -4,11 +4,13 @@ import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.CounterStateMachine;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
+import org.jgroups.tests.election.BaseElectionTest;
 import org.jgroups.util.Bits;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
@@ -22,8 +24,11 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
  * Tests replaying of requests after leader changes, to advance commit index<be/>
@@ -31,15 +36,15 @@ import java.util.stream.Stream;
  * @author Bela Ban
  * @since  1.0.7
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
-public class SyncLeaderCrashTest {
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
+public class SyncLeaderCrashTest extends BaseElectionTest {
     protected final Address         a, b, c;
     protected final Address[]       addrs={a=createAddress("A"), b=createAddress("B"),
                                            c=createAddress("C")};
     protected final List<String>    mbrs=List.of("A", "B", "C");
     protected final RaftCluster     cluster=new RaftCluster();
     protected RAFT[]                rafts=new RAFT[3];
-    protected ELECTION[]            elections=new ELECTION[3];
+    protected BaseElection[]        elections=new BaseElection[3];
     protected RaftNode[]            nodes=new RaftNode[3];
     protected CounterStateMachine[] sms;
     protected int                   view_id=1;
@@ -74,7 +79,7 @@ public class SyncLeaderCrashTest {
         cluster.clear();
     }
 
-    public void testsLeaderCrash() throws Exception {
+    public void testsLeaderCrash(Class<?> ignore) throws Exception {
         prepare();
 
         System.out.println("-- Adding requests 5, 6 and 7 to A, B and C (not yet committing them); then crashing A");
@@ -89,7 +94,7 @@ public class SyncLeaderCrashTest {
         kill(0);
         View v=View.create(b, view_id++, b,c);
         cluster.handleView(v);
-        waitUntilVotingThreadHasStopped();
+        waitUntilLeaderElected();
         System.out.printf("\n-- Terms after leader A left:\n\n%s\n-- Indices:\n%s\n\n", printTerms(), printIndices(null));
         assertIndices(7, 4);
 
@@ -135,7 +140,7 @@ public class SyncLeaderCrashTest {
         makeLeader(0); // A is leader
         View v=View.create(a, view_id++, a,b,c);
         cluster.handleView(v);
-        waitUntilVotingThreadHasStopped();
+        waitUntilLeaderElected();
 
         long[] terms={2,5,5,7};
 
@@ -266,7 +271,7 @@ public class SyncLeaderCrashTest {
           .resendInterval(600_000) // long to disable resending by default
           .stateMachine(sms[index])
           .synchronous(true).setAddress(addrs[index]);
-        elections[index]=new ELECTION().raft(rafts[index]).setAddress(addrs[index]);
+        elections[index]=instantiate().raft(rafts[index]).setAddress(addrs[index]);
         RaftNode node=nodes[index]=new RaftNode(cluster, new Protocol[]{elections[index], rafts[index]});
         node.init();
         cluster.add(addrs[index], node);
@@ -285,9 +290,12 @@ public class SyncLeaderCrashTest {
     }
 
 
-    protected void waitUntilVotingThreadHasStopped() throws TimeoutException {
-        Util.waitUntil(5000, 100, () -> Stream.of(elections)
-                         .allMatch(el -> el == null || !el.isVotingThreadRunning()));
+    protected void waitUntilLeaderElected() throws TimeoutException {
+        // ELECTION2 the voting thread has a delayed start, so we wait for a leader elected instead.
+        BooleanSupplier supplier = electionClass == ELECTION2.class
+                ? () -> Stream.of(elections).anyMatch(el -> el != null && el.raft().isLeader())
+                : () -> Stream.of(elections).allMatch(el -> el == null || !el.isVotingThreadRunning());
+        Util.waitUntil(5000, 100, supplier);
     }
 
 }

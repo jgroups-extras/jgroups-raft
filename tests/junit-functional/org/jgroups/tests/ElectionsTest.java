@@ -4,8 +4,10 @@
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.*;
- import org.jgroups.raft.util.Utils;
- import org.jgroups.util.Util;
+import org.jgroups.protocols.raft.election.BaseElection;
+import org.jgroups.raft.util.Utils;
+import org.jgroups.tests.election.BaseElectionTest;
+import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
@@ -15,13 +17,15 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 
+import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
  /**
   * Tests elections
   * @author Bela Ban
   * @since  0.2
   */
- @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
- public class ElectionsTest {
+ @Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider=ALL_ELECTION_CLASSES_PROVIDER)
+ public class ElectionsTest extends BaseElectionTest {
      protected JChannel            a,b,c;
      protected static final String CLUSTER="ElectionsTest";
      protected final List<String>  members=Arrays.asList("A", "B", "C");
@@ -40,19 +44,19 @@ import java.util.function.Supplier;
 
 
      /** All members have the same (initial) logs, so any member can be elected as leader */
-     public void testSimpleElection() throws Exception {
+     public void testSimpleElection(Class<?> ignore) throws Exception {
          assertLeader(20, 500, null, a,b,c);
      }
 
 
      /** B and C have longer logs than A: one of {B,C} must become coordinator, but *not* A */
-     public void testElectionWithLongLog() throws Exception {
+     public void testElectionWithLongLog(Class<?> ignore) throws Exception {
          setLog(b, 1,1,2);
          setLog(c, 1,1,2);
 
          JChannel coord=findCoord(a,b,c);
          System.out.printf("\n\n-- starting the voting process on %s:\n", coord.getAddress());
-         ELECTION el=coord.getProtocolStack().findProtocol(ELECTION.class);
+         BaseElection el=coord.getProtocolStack().findProtocol(electionClass);
          el.startVotingThread();
          Util.waitUntilTrue(5000, 500, () -> !el.isVotingThreadRunning());
 
@@ -62,7 +66,7 @@ import java.util.function.Supplier;
      }
 
      /** ELECTION should look for RAFT or its subclasses */
-     public void testRAFTSubclass() throws Exception {
+     public void testRAFTSubclass(Class<?> ignore) throws Exception {
          close(c);
          c=createWithRAFTSubclass("C");
          c.connect(CLUSTER);
@@ -85,7 +89,7 @@ import java.util.function.Supplier;
      }
 
      protected JChannel create(String name, Supplier<RAFT> raftSupplier) throws Exception {
-         ELECTION election=new ELECTION();
+         BaseElection election=instantiate();
          RAFT raft=raftSupplier.get().members(members).raftId(name)
            .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
          REDIRECT client=new REDIRECT();

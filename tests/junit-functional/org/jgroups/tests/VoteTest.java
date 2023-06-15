@@ -8,8 +8,10 @@ import org.jgroups.protocols.TP;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.ProtocolStack;
+import org.jgroups.tests.election.BaseElectionTest;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -20,13 +22,15 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
+import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 /**
  * Tests that a member cannot vote twice. Issue: https://github.com/belaban/jgroups-raft/issues/24
  * @author Bela Ban
  * @since  0.2
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
-public class VoteTest {
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
+public class VoteTest extends BaseElectionTest {
     protected JChannel[]                channels;
     protected RAFT[]                    rafts;
     protected static final String       CLUSTER=VoteTest.class.getSimpleName();
@@ -38,7 +42,7 @@ public class VoteTest {
 
 
     /** Start a member not in {A,B,C} -> expects an exception */
-    public void testStartOfNonMember() throws Exception {
+    public void testStartOfNonMember(Class<?> ignore) throws Exception {
         JChannel non_member=null;
         try {
             non_member=create("X", Arrays.asList("A", "B"));
@@ -60,7 +64,7 @@ public class VoteTest {
      * @deprecated Voting has changed in 1.0.6, so this test is moot (https://github.com/belaban/jgroups-raft/issues/20)
      */
     @Deprecated
-    public void testMemberVotesTwice() throws Exception {
+    public void testMemberVotesTwice(Class<?> ignore) throws Exception {
         init("A", "B", "C", "D");
         Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
 
@@ -132,7 +136,7 @@ public class VoteTest {
     }
 
     /** Membership=A, member=A: should become leader immediately */
-    public void testSingleMember() throws Exception {
+    public void testSingleMember(Class<?> ignore) throws Exception {
         channels=new JChannel[]{create("A", Collections.singletonList("A"))};
         rafts=new RAFT[]{raft(channels[0])};
         Address leader=leader(10000, 500, channels);
@@ -142,7 +146,7 @@ public class VoteTest {
     }
 
     /** {A,B,C} with leader A. Then B and C leave: A needs to become Follower */
-    public void testLeaderGoingBacktoFollower() throws Exception {
+    public void testLeaderGoingBacktoFollower(Class<?> ignore) throws Exception {
         init("A", "B", "C");
         Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
         JChannel leader_ch=getLeader(10000, 500, channels);
@@ -164,7 +168,7 @@ public class VoteTest {
 
     /** {A,B,C,D}: A is leader and A, B, C and D have leader=A. When C and D are closed, both A, B and C must
      * have leader set to null, as there is no majority (3) any longer */
-    public void testNullLeader() throws Exception {
+    public void testNullLeader(Class<?> ignore) throws Exception {
         init("A", "B", "C", "D");
         Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
 
@@ -206,10 +210,10 @@ public class VoteTest {
     }
 
 
-    protected static JChannel create(String name, List<String> mbrs) throws Exception {
+    protected JChannel create(String name, List<String> mbrs) throws Exception {
         RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
-        JChannel ch=new JChannel(Util.getTestStack(new ELECTION(), raft, new REDIRECT())).name(name);
+        JChannel ch=new JChannel(Util.getTestStack(instantiate(), raft, new REDIRECT())).name(name);
         ch.connect(CLUSTER);
         return ch;
     }

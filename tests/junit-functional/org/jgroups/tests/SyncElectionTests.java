@@ -2,10 +2,14 @@ package org.jgroups.tests;
 
 import org.jgroups.*;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.election.BaseElection;
+import org.jgroups.protocols.raft.election.VoteRequest;
+import org.jgroups.protocols.raft.election.VoteResponse;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
+import org.jgroups.tests.election.BaseElectionTest;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.ResponseCollector;
 import org.jgroups.util.Util;
@@ -21,19 +25,21 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 /**
  * Uses the synchronous test framework to test {@link org.jgroups.protocols.raft.ELECTION}
  * @author Bela Ban
  * @since  1.0.5
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
-public class SyncElectionTests {
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
+public class SyncElectionTests extends BaseElectionTest {
     protected final Address      a,b,c;
     protected final Address[]    addrs={a=createAddress("A"), b=createAddress("B"), c=createAddress("C")};
     protected final List<String> mbrs=List.of("A", "B", "C");
     protected final RaftCluster  cluster=new RaftCluster();
     protected RAFT[]             rafts=new RAFT[3];
-    protected ELECTION[]         elections=new ELECTION[3];
+    protected BaseElection[]     elections=new BaseElection[3];
     protected RaftNode[]         nodes=new RaftNode[3];
     protected int                view_id=1;
 
@@ -61,7 +67,7 @@ public class SyncElectionTests {
     }
 
     /** Not really an election, as we only have a single member */
-    public void testSingletonElection() throws Exception {
+    public void testSingletonElection(Class<?> ignore) throws Exception {
         createNode(0, "A");
         assert !rafts[0].isLeader();
         View view=createView();
@@ -73,7 +79,7 @@ public class SyncElectionTests {
         waitUntilVotingThreadHasStopped();
     }
 
-    public void testElectionWithTwoMembers() throws Exception {
+    public void testElectionWithTwoMembers(Class<?> ignore) throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         View view=createView();
@@ -85,7 +91,7 @@ public class SyncElectionTests {
     }
 
     /** Tests adding a third member. After {A,B} has formed, this should not change anything */
-    public void testThirdMember() throws Exception {
+    public void testThirdMember(Class<?> ignore) throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         View view=createView();
@@ -104,7 +110,7 @@ public class SyncElectionTests {
     }
 
     /** Tests A -> ABC */
-    public void testGoingFromOneToThree() throws Exception {
+    public void testGoingFromOneToThree(Class<?> ignore) throws Exception {
         createNode(0, "A");
         View view=createView();
         cluster.handleView(view);
@@ -123,7 +129,7 @@ public class SyncElectionTests {
     }
 
     /** {} -> {ABC} */
-    public void testGoingFromZeroToThree() throws Exception {
+    public void testGoingFromZeroToThree(Class<?> ignore) throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         createNode(2, "C");
@@ -138,8 +144,8 @@ public class SyncElectionTests {
     }
 
     /** Follower is leaving */
-    public void testGoingFromThreeToTwo() throws Exception {
-        testGoingFromZeroToThree();
+    public void testGoingFromThreeToTwo(Class<?> clazz) throws Exception {
+        testGoingFromZeroToThree(clazz);
         int follower=findFirst(false);
         kill(follower);
         View view=createView();
@@ -151,8 +157,8 @@ public class SyncElectionTests {
         assertSameTerm(this::print);
     }
 
-    public void testGoingFromThreeToOne() throws Exception {
-        testGoingFromZeroToThree();
+    public void testGoingFromThreeToOne(Class<?> clazz) throws Exception {
+        testGoingFromZeroToThree(clazz);
         int follower=findFirst(false);
         kill(follower);
         follower=findFirst(false);
@@ -167,8 +173,8 @@ public class SyncElectionTests {
     }
 
     /** ABC (A=leader) -> BC */
-    public void testLeaderLeaving() throws Exception {
-        testGoingFromZeroToThree();
+    public void testLeaderLeaving(Class<?> clazz) throws Exception {
+        testGoingFromZeroToThree(clazz);
         int leader=findFirst(true);
         kill(leader);
         View view=createView();
@@ -181,7 +187,7 @@ public class SyncElectionTests {
     }
 
     /** Tests a vote where a non-coord has a longer log */
-    public void testVotingFollowerHasLongerLog() throws Exception {
+    public void testVotingFollowerHasLongerLog(Class<?> ignore) throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         createNode(2, "C");
@@ -210,7 +216,7 @@ public class SyncElectionTests {
     }
 
     /** {A}, {B}, {C} -> {A,B,C} */
-    public void testMerge() throws Exception {
+    public void testMerge(Class<?> ignore) throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         createNode(2, "C");
@@ -233,7 +239,7 @@ public class SyncElectionTests {
      * Tests that a member cannot vote for more than 1 leader in the same term. A and B send a vote request to C;
      * only A or B can receive a vote response from C, but not both.
      */
-    public void testMultipleVotes() throws Exception {
+    public void testMultipleVotes(Class<?> ignore) throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         createNode(2, "C");
@@ -278,7 +284,7 @@ public class SyncElectionTests {
         assert total_rsps <= 1 : "B should have received a vote response from C";
     }
 
-    public void testIncreasingTermForgetOldLeader() throws Exception {
+    public void testIncreasingTermForgetOldLeader(Class<?> ignore) throws Exception {
         createNode(0, "A");
         createNode(1, "B");
         View view=createView();
@@ -331,9 +337,10 @@ public class SyncElectionTests {
     }
 
 
-    protected void kill(int index) {
+    protected void kill(int index) throws Exception {
         System.out.printf("-- killing node %d (%s)\n", index, elections[index].getAddress());
         cluster.remove(nodes[index].getAddress());
+        Utils.deleteLog(rafts[index]);
         nodes[index].stop();
         nodes[index].destroy();
         nodes[index]=null;
@@ -368,7 +375,7 @@ public class SyncElectionTests {
           .resendInterval(600_000) // long to disable resending by default
           .stateMachine(new DummyStateMachine())
           .synchronous(true).setAddress(addrs[index]);
-        elections[index]=new ELECTION().raft(rafts[index]).setAddress(addrs[index]);
+        elections[index]=instantiate().raft(rafts[index]).setAddress(addrs[index]);
         RaftNode node=nodes[index]=new RaftNode(cluster, new Protocol[]{elections[index], rafts[index]});
         node.init();
         cluster.add(addrs[index], node);

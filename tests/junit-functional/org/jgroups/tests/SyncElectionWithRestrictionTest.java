@@ -4,10 +4,12 @@ import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
+import org.jgroups.tests.election.BaseElectionTest;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
@@ -23,6 +25,8 @@ import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 /**
  * Uses the synchronous test framework to test {@link ELECTION}. Tests the election restrictions described in 5.4.1
  * (Fig. 8) in the Raft paper [1]<br/>
@@ -30,8 +34,8 @@ import java.util.stream.Stream;
  * @author Bela Ban
  * @since  1.0.7
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
-public class SyncElectionWithRestrictionTest {
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider=ALL_ELECTION_CLASSES_PROVIDER)
+public class SyncElectionWithRestrictionTest extends BaseElectionTest {
     protected final Address       s1,s2,s3,s4,s5;
     protected final Address[]     addrs={s1=createAddress("S1"), s2=createAddress("S2"),
                                          s3=createAddress("S3"), s4=createAddress("S4"),
@@ -39,7 +43,7 @@ public class SyncElectionWithRestrictionTest {
     protected final List<String>  mbrs=List.of("S1", "S2", "S3", "S4", "S5");
     protected final RaftCluster   cluster=new RaftCluster();
     protected RAFT[]              rafts=new RAFT[5];
-    protected ELECTION[]          elections=new ELECTION[5];
+    protected BaseElection[]      elections=new BaseElection[5];
     protected RaftNode[]          nodes=new RaftNode[5];
     protected int                 view_id=1;
     protected static final byte[] DATA={1,2,3,4,5};
@@ -81,7 +85,7 @@ public class SyncElectionWithRestrictionTest {
      *       (c)      (d)
      * </pre>
      */
-    public void testScenarioD() throws Exception {
+    public void testScenarioD(Class<?> ignore) throws Exception {
         createScenarioC();
         System.out.printf("-- Initial:\n%s\n", printTerms());
         kill(0);
@@ -111,7 +115,7 @@ public class SyncElectionWithRestrictionTest {
      *       (c)      (e)
      * </pre>
      */
-    public void testScenarioE() throws Exception {
+    public void testScenarioE(Class<?> ignore) throws Exception {
         createScenarioC();
         View v=createView();
         cluster.handleView(v);
@@ -129,7 +133,7 @@ public class SyncElectionWithRestrictionTest {
         assertTerms(null, new long[]{1,2,4}, new long[]{1,2,4}, new long[]{1}, new long[]{1,3});
 
         // start voting to find current leader:
-        ELECTION e2=elections[1];
+        BaseElection e2=elections[1];
         e2.startVotingThread();
         Util.waitUntilTrue(5000, 200, () -> Stream.of(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
         System.out.printf("-- After the voting phase (either S2 or S3 will be leader):\n%s\n", printTerms());
@@ -277,7 +281,7 @@ public class SyncElectionWithRestrictionTest {
           .resendInterval(600_000) // long to disable resending by default
           .stateMachine(new DummyStateMachine())
           .synchronous(true).setAddress(addrs[index]);
-        elections[index]=new ELECTION().raft(rafts[index]).setAddress(addrs[index]);
+        elections[index]=instantiate().raft(rafts[index]).setAddress(addrs[index]);
         RaftNode node=nodes[index]=new RaftNode(cluster, new Protocol[]{elections[index], rafts[index]});
         node.init();
         cluster.add(addrs[index], node);

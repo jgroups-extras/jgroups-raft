@@ -1,8 +1,14 @@
 package org.jgroups.raft.testfwk;
 
-import org.jgroups.*;
+import org.jgroups.Address;
+import org.jgroups.Event;
+import org.jgroups.Lifecycle;
+import org.jgroups.Message;
+import org.jgroups.View;
 import org.jgroups.protocols.raft.ELECTION;
+import org.jgroups.protocols.raft.ELECTION2;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
 import org.jgroups.stack.Protocol;
@@ -22,16 +28,18 @@ import java.util.stream.Stream;
 public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable {
     protected final Protocol[]  prots;    // the wrapped protocols, from low to high
     protected final RAFT        raft;
-    protected final ELECTION    election;
-    protected final RaftCluster cluster;
+    protected final BaseElection    election;
+    protected final MockRaftCluster cluster;
 
-    public RaftNode(RaftCluster cluster, Protocol[] protocols) {
+    public RaftNode(MockRaftCluster cluster, Protocol[] protocols) {
         this.cluster=cluster;
         this.prots=Objects.requireNonNull(protocols);
         if(protocols.length == 0)
             throw new IllegalArgumentException("empty protocol list");
         raft=find(RAFT.class);
-        election=find(ELECTION.class);
+        BaseElection e = find(ELECTION.class);
+        if (e == null) e = find(ELECTION2.class);
+        election=e;
         for(int i=prots.length-1; i >= 0; i--) {
             Protocol p=prots[i];
             Protocol below=i -1 >= 0? prots[i-1] : null;
@@ -138,5 +146,7 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
         return local_addr;
     }
 
+    public RAFT raft() {return raft;}
 
+    public BaseElection election() {return election;}
 }

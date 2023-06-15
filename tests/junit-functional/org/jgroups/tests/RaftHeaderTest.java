@@ -2,6 +2,8 @@ package org.jgroups.tests;
 
 import org.jgroups.Global;
 import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.election.VoteRequest;
+import org.jgroups.protocols.raft.election.VoteResponse;
 import org.jgroups.raft.Options;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;

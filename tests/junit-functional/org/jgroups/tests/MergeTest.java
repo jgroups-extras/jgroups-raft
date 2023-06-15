@@ -6,11 +6,12 @@ import org.jgroups.JChannel;
 import org.jgroups.View;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.pbcast.NAKACK2;
-import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.ProtocolStack;
+import org.jgroups.tests.election.BaseElectionTest;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -27,8 +28,8 @@ import java.util.stream.Stream;
  * @author Bela Ban
  * @since  1.0.10
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
-public class MergeTest {
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider = BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER)
+public class MergeTest extends BaseElectionTest {
     protected JChannel            a,b,c,d,e;
     protected static final String CLUSTER=MergeTest.class.getSimpleName();
     protected final List<String>  members=Arrays.asList("A", "B", "C", "D", "E");
@@ -63,7 +64,7 @@ public class MergeTest {
      * for A _or_ E, but not both, in a given term.
      */
     //@Test(invocationCount=10)
-    public void testMerge() throws TimeoutException {
+    public void testMerge(Class<?> ignore) throws TimeoutException {
         long id=a.getView().getViewId().getId() +1;
         View v1=createView(id, a, b), v2=createView(id, c, d), v3=createView(id, e);
 
@@ -90,7 +91,7 @@ public class MergeTest {
 
 
         Util.waitUntilTrue(3000, 200, () -> Stream.of(rafts).allMatch(r -> r.leader() != null));
-        Stream.of(a,e).forEach(ch -> ((ELECTION)ch.getProtocolStack().findProtocol(ELECTION.class)).stopVotingThread());
+        Stream.of(a,e).forEach(ch -> ((BaseElection)ch.getProtocolStack().findProtocol(electionClass)).stopVotingThread());
         assertNoMoreThanOneLeaderInSameTerm(a,b,c,d,e);
         System.out.printf("\n-- channels after:\n%s\n", print(a,b,c,d,e));
     }
@@ -137,7 +138,7 @@ public class MergeTest {
     }
 
     protected JChannel create(String name) throws Exception {
-        ELECTION election=new ELECTION();
+        BaseElection election=instantiate();
         RAFT raft=new RAFT().members(members).raftId(name)
           .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
         REDIRECT client=new REDIRECT();
