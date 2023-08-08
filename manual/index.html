@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <!--[if IE]><meta http-equiv="X-UA-Compatible" content="IE=edge"><![endif]-->
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="generator" content="Asciidoctor 1.5.4">
+<meta name="generator" content="Asciidoctor 2.0.20">
 <meta name="author" content="Bela Ban &lt;belaban@yahoo.com&gt;">
 <title>Distributed consensus with jgroups-raft</title>
 <style>
@@ -732,6 +732,7 @@ p { margin-bottom: 1.25rem; }
   .show-for-print { display: inherit !important; } }
 
 </style>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.18.3/styles/github.min.css">
 </head>
 <body class="article toc2 toc-left">
 <div id="header">
@@ -765,10 +766,17 @@ p { margin-bottom: 1.25rem; }
 </li>
 <li><a href="#BuildingBlocks">3. Building blocks</a>
 <ul class="sectlevel2">
-<li><a href="#ReplicatedStateMachine">3.1. ReplicatedStateMachine</a></li>
+<li><a href="#ReplicatedStateMachine">3.1. ReplicatedStateMachine</a>
+<ul class="sectlevel3">
+<li><a href="#_reads_and_consensus">3.1.1. Reads and consensus</a></li>
+</ul>
+</li>
 <li><a href="#CounterService">3.2. CounterService</a>
 <ul class="sectlevel3">
-<li><a href="#_reads_and_consensus">3.2.1. Reads and consensus</a></li>
+<li><a href="#_synchronous_counters">3.2.1. Synchronous counters</a></li>
+<li><a href="#_asynchronous_counters">3.2.2. Asynchronous counters</a></li>
+<li><a href="#_reads_and_consensus_2">3.2.3. Reads and consensus</a></li>
+<li><a href="#_ignoring_return_values">3.2.4. Ignoring return values</a></li>
 </ul>
 </li>
 <li><a href="#_cluster_singleton_service">3.3. Cluster singleton service</a></li>
@@ -790,7 +798,7 @@ p { margin-bottom: 1.25rem; }
 <div id="preamble">
 <div class="sectionbody">
 <div class="paragraph">
-<p>Copyright Red Hat 2014 - 2020</p>
+<p>Copyright Red Hat 2014 - 2023</p>
 </div>
 <div class="paragraph">
 <p>This document is licensed under the
@@ -837,7 +845,8 @@ machines receive the same ordered stream of updates and thus have the exact same
 <div class="paragraph">
 <p>Raft favors <em>consistency</em> over <em>availability</em>; in terms of the <a href="http://en.wikipedia.org/wiki/CAP_theorem">Cap theorem</a>,
 jgroups-raft is a CP system. This means jgroups-raft is highly consistent, and the data replicated to nodes will never
-diverge, even in the face of network partitions (split brains).</p>
+diverge, even in the face of network partitions (split brains). or restarts. Or, on an extended version, jgroups-raft
+provides the means to build PC/EC systems concerning the <a href="https://en.wikipedia.org/wiki/PACELC_theorem">PACELC theorem</a>.</p>
 </div>
 <div class="paragraph">
 <p>In case of a network partition, in a cluster of <code>N</code> nodes, at least <code>N/2+1</code> nodes have to be running for the
@@ -969,6 +978,22 @@ need to have different raft_ids (more on this later).</p>
 <div class="sect1">
 <h2 id="_using_jgroups_raft">2. Using jgroups-raft</h2>
 <div class="sectionbody">
+<div class="paragraph">
+<p>Since jgroups-raft build on JGroups, we follow similar <a href="http://www.jgroups.org/manual5/index.html#Requirements">requirements</a>.
+Currently, jgroups-raft requires JDK 11. jgroups-raft can be included in the POM:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependency&gt;
+  &lt;groupId&gt;org.jgroups&lt;/groupId&gt;
+  &lt;artifactId&gt;jgroups-raft&lt;/artifactId&gt;
+  &lt;version&gt;X.Y.Z.Final&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Where <code>X</code>=major, <code>Y</code>=minor, and <code>Z</code>=patch. The tags are available on <a href="https://github.com/belaban/jgroups-raft/tags">GitHub releases</a>.</p>
+</div>
 <div class="sect2">
 <h3 id="_cluster_members_and_identity">2.1. Cluster members and identity</h3>
 <div class="paragraph">
@@ -982,7 +1007,7 @@ members allowed into the cluster is defined in <code>RAFT.members</code>, e.g.</
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-xml" data-lang="xml">&lt;raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}"/&gt;</code></pre>
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}"/&gt;</code></pre>
 </div>
 </div>
 <div class="paragraph">
@@ -1034,7 +1059,7 @@ all state machines have exactly the same state.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">JChannel ch=new JChannel("/home/bela/raft.xml"); <img src="./images/icons/callouts/1.png" alt="1">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">JChannel ch=new JChannel("/home/bela/raft.xml"); <img src="./images/icons/callouts/1.png" alt="1">
 RaftHandle handle=new RaftHandle(ch, this);      <img src="./images/icons/callouts/2.png" alt="2">
 ch.connect("raft-cluster");                      <img src="./images/icons/callouts/3.png" alt="3"></code></pre>
 </div>
@@ -1064,7 +1089,7 @@ of <code>StateMachine</code>. If null, no changes will be applied. The state mac
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">byte[] set(byte[] buf, int offset, int length) throws Exception; <img src="./images/icons/callouts/1.png" alt="1">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">byte[] set(byte[] buf, int offset, int length) throws Exception; <img src="./images/icons/callouts/1.png" alt="1">
 byte[] set(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception; <img src="./images/icons/callouts/2.png" alt="2">
 CompletableFuture&lt;byte[]&gt; setAsync(byte[] buf, int offset, int length); <img src="./images/icons/callouts/3.png" alt="3"></code></pre>
 </div>
@@ -1110,7 +1135,7 @@ associated with <code>key</code>, then it will be serialized into a buffer and r
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">public interface StateMachine {
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public interface StateMachine {
     byte[] apply(byte[] data, int offset, int length) throws Exception;  <img src="./images/icons/callouts/1.png" alt="1">
     void   readContentFrom(DataInput in) throws Exception;               <img src="./images/icons/callouts/2.png" alt="2">
     void   writeContentTo(DataOutput out) throws Exception;              <img src="./images/icons/callouts/3.png" alt="3">
@@ -1164,6 +1189,16 @@ grow to until a snapshot is taken.</p>
 </div>
 <div class="dlist">
 <dl>
+<dt class="hdlist1">addServer(String server)</dt>
+<dd>
+<p>Asynchronously adds a new member to the cluster with id <code>server</code> and returns a
+<code>CompletableFuture&lt;byte[]&gt;</code>. See more about membership change in <a href="#DynamicMembership">Adding and removing members dynamically</a>.</p>
+</dd>
+<dt class="hdlist1">removeServer(String server)</dt>
+<dd>
+<p>Asynchronously removes a member from the cluster with id <code>server</code> and returns a
+<code>CompletableFuture&lt;byte[]&gt;</code>. See more about membership change in <a href="#DynamicMembership">Adding and removing members dynamically</a>.</p>
+</dd>
 <dt class="hdlist1">leader()</dt>
 <dd>
 <p>Returns the address of the current Raft leader, or null if there is no leader (e.g. in case there was no
@@ -1204,7 +1239,7 @@ access <code>RAFT</code> directly.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">protected void start(String raft_id) throws Exception {
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">protected void start(String raft_id) throws Exception {
     JChannel ch=new JChannel("raft.xml").name(raft_id);   <img src="./images/icons/callouts/2.png" alt="2">
     RaftHandle handle=new RaftHandle(ch, this).raftId(raft_id); <img src="./images/icons/callouts/3.png" alt="3">
     ch.connect("raft-cluster");  <img src="./images/icons/callouts/4.png" alt="4">
@@ -1244,7 +1279,7 @@ JGroups documentation for details.</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-xml" data-lang="xml">&lt;config xmlns="urn:org:jgroups"
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;config xmlns="urn:org:jgroups"
         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:schemaLocation="urn:org:jgroups http://www.jgroups.org/schema/jgroups.xsd"&gt;
     &lt;UDP
@@ -1347,6 +1382,10 @@ running at <code>localhost:1965</code> (can be changed). The request is then for
 </li>
 </ul>
 </div>
+<div class="paragraph">
+<p>Notice that membership changes survive through restarts. If a node must be removed or added, an operation must be
+submitted, only restarting does not affect membership.</p>
+</div>
 </div>
 </div>
 </div>
@@ -1383,7 +1422,7 @@ The code below shows how to create an instance of <code>ReplicatedStateMachine</
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">protected void start(String raft_id) throws Exception {
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">protected void start(String raft_id) throws Exception {
     JChannel ch=new JChannel("raft.xml").name(raft_id);
     ReplicatedStateMachine&lt;String,String&gt; rsm=new ReplicatedStateMachine&lt;&gt;(ch)
         .raftId(raft_id);
@@ -1395,31 +1434,189 @@ The code below shows how to create an instance of <code>ReplicatedStateMachine</
 <div class="paragraph">
 <p>There&#8217;s a demo <code>ReplicatedStateMachineDemo</code> which can be used to interactively use <code>ReplicatedStateMachine</code>.</p>
 </div>
+<div class="sect3">
+<h4 id="_reads_and_consensus">3.1.1. Reads and consensus</h4>
+<div class="paragraph">
+<p><code>ReplicatedStateMachine</code> has a configurable behavior for reads, using quorum reads by default. This means that all read
+requests are sent through <code>RAFT</code> and require a majority to complete. This provides a linearizable read, but, on the other
+hand, it takes longer to complete.</p>
+</div>
+<div class="paragraph">
+<p>If an application does not require linearizable reads, it can change the behavior and only read the value locally,
+possibly stale, but having a faster response since the request does not go through <code>RAFT</code>.</p>
+</div>
+<div class="paragraph">
+<p>The behavior is changed by calling <code>ReplicatedStateMachine.allowDirtyReads(boolean)</code>.</p>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<img src="./images/icons/note.png" alt="Note">
+</td>
+<td class="content">
+A quorum read creates an entry in the persistent log. See
+<a href="https://github.com/belaban/jgroups-raft/issues/18">Issue 18</a> for details.
+</td>
+</tr>
+</table>
+</div>
+</div>
 </div>
 <div class="sect2">
 <h3 id="CounterService">3.2. CounterService</h3>
 <div class="paragraph">
-<p><code>CounterService</code> provides a replicated counter which can get be set, get and compare-and-set, implementing JGroups'
-<code>Counter</code> interface:</p>
+<p><code>CounterService</code> provides a replicated counter which can be used in a synchronous (<code>SyncCounter</code>) and asynchronous
+(<code>AsyncCounter</code>) mode. The base interface is <code>Counter</code>:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">public interface Counter {
-    public long    get();
-    public void    set(long new_value);
-    public boolean compareAndSet(long expect, long update);
-    public long    incrementAndGet();
-    public long    decrementAndGet();
-    public long    addAndGet(long delta);
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public interface Counter {
+    String                getName();
+    SyncCounter           sync();
+    AsyncCounter          async();
+    &lt;T extends Counter&gt; T withOptions(Options opts);
 }</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>A <code>Counter</code> implementation is created via the <code>CounterService</code> building block (edited):</p>
+<p>The <code>sync()</code> and <code>async()</code> methods can be used to switch between the modes. The <code>withOptions()</code> method can be used to
+make a counter ignore return values (see below).</p>
+</div>
+<div class="sect3">
+<h4 id="_synchronous_counters">3.2.1. Synchronous counters</h4>
+<div class="paragraph">
+<p>Synchronous counters block until an operation has completed, and return a value. The interface <code>SyncCounter</code> is:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">public class CounterService implements StateMachine {
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public interface SyncCounter extends Counter {
+    long            get();
+    long            getLocal();
+    void            set(long new_value);
+    default boolean compareAndSet(long exp, long upd) {return compareAndSwap(exp, upd) == exp;}
+    long            compareAndSwap(long expect, long update);
+    default long    incrementAndGet() {return addAndGet(1L);}
+    default long    decrementAndGet() {return addAndGet(-1L);}
+    long            addAndGet(long delta);
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The methods are:</p>
+</div>
+<table class="tableblock frame-all grid-all fit-content">
+<colgroup>
+<col>
+<col>
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Name</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>get</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Returns the value of the counter. If the CounterService allows for dirty reads (see below), <code>getLocal()</code> is
+          called. Otherwise, a remote get request is sent to the leader.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>getLocal</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Returns the value of the counter. This call is purely local and may return a stale value.</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>set</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Sets the value of the counter</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>compareAndSet</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Atomically updates the counter using a CAS operation</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>compareAndSwap</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Atomically updates the counter using a compare-and-swap operation</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>incrementAndGet</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Atomically increments the counter and returns the new value</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>decrementAndGet</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Atomically decrements the counter and returns the new value</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock"><code>addAndGet</code></p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Atomically adds the given value to the current value</p></td>
+</tr>
+</tbody>
+</table>
+<div class="paragraph">
+<p>The synchronous methods block until consensus has been reached. This means that a method (e.g. <code>addAndGet()</code>) may block
+indefinitely, e.g. when less than a majority of members have ack&#8217;ed the change.</p>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_asynchronous_counters">3.2.2. Asynchronous counters</h4>
+<div class="paragraph">
+<p>Asynchronous counters are defined in <code>AsyncCounter</code>:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public interface AsyncCounter extends Counter {
+    default CompletionStage&lt;Long&gt;    get() {return addAndGet(0);}
+    CompletionStage&lt;Long&gt;            getLocal();
+    CompletionStage&lt;Void&gt;            set(long new_value);
+
+    default CompletionStage&lt;Boolean&gt; compareAndSet(long expect, long update) {
+        return compareAndSwap(expect, update).thenApply(value -&gt; value == expect);
+    }
+    CompletionStage&lt;Long&gt;            compareAndSwap(long expect, long update);
+    default CompletionStage&lt;Long&gt; incrementAndGet() {
+        return addAndGet(1);
+    }
+    default CompletionStage&lt;Long&gt;    decrementAndGet() {
+        return addAndGet(-1);
+    }
+    CompletionStage&lt;Long&gt;            addAndGet(long delta);
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The semantics of the methods correspond to their synchronous counterparts, but they return a <code>CompletionStage</code> instead
+of the value. An example is shown below:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public void testCompareAndSwapChained() {
+    AsyncCounter counter=counter_service.getOrCreateCounte("ctr", 0).async();
+    final long initialValue = 100;
+    final long finalValue = 10;
+
+    counter.set(initialValue).toCompletableFuture().join();
+
+    AtomicLong rv = new AtomicLong();
+    boolean result = counter.compareAndSwap(1, finalValue)
+            .thenCompose(rValue -&gt; {
+                rv.set(rValue);
+                return counters.get(0).compareAndSwap(rValue, finalValue);
+            })
+            .thenApply(value -&gt; value == initialValue)
+            .toCompletableFuture()
+            .join();
+
+    assert result;
+    assert initialValue == rv.longValue();
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>A <code>Counter</code> implementation is created via the <code>CounterService</code> building block:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public class CounterService implements StateMachine {
     public CounterService(Channel ch);
     public long           replTimeout();
     public CounterService replTimeout(long timeout);
@@ -1455,14 +1652,14 @@ shows how to use this:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">protected void start(String raft_id) throws Exception {
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">protected void start(String raft_id) throws Exception {
     JChannel ch=new JChannel("raft.xml").name(raft_id);
-    CounterService cs=new CounterService(ch);               <img src="./images/icons/callouts/1.png" alt="1">
+    CounterService cs=new CounterService(ch);                   <img src="./images/icons/callouts/1.png" alt="1">
     ch.connect("counter-cluster");
-    Counter counter=cs.getOrCreateCounter("mycounter", 1);  <img src="./images/icons/callouts/2.png" alt="2">
-    counter.incrementAndGet();                              <img src="./images/icons/callouts/3.png" alt="3">
-    counter.compareAndSet(2, 5);                            <img src="./images/icons/callouts/4.png" alt="4">
-    long current_value=counter.get();                       <img src="./images/icons/callouts/5.png" alt="5">
+    SyncCounter counter=cs.getOrCreateCounter("mycounter", 1);  <img src="./images/icons/callouts/2.png" alt="2">
+    counter.incrementAndGet();                                  <img src="./images/icons/callouts/3.png" alt="3">
+    counter.compareAndSet(2, 5);                                <img src="./images/icons/callouts/4.png" alt="4">
+    long current_value=counter.get();                           <img src="./images/icons/callouts/5.png" alt="5">
 }</code></pre>
 </div>
 </div>
@@ -1502,8 +1699,9 @@ scenario, and have to be reconciled by the application after the split brain is 
 <div class="paragraph">
 <p>There&#8217;s a demo <code>CounterServiceDemo</code> which can be used to interactively manipulate replicated counters.</p>
 </div>
+</div>
 <div class="sect3">
-<h4 id="_reads_and_consensus">3.2.1. Reads and consensus</h4>
+<h4 id="_reads_and_consensus_2">3.2.3. Reads and consensus</h4>
 <div class="paragraph">
 <p>Currently (as of jgroups-raft version 0.4), reading a counter is by default <em>dirty</em>, meaning that a read may return a
 stale value.</p>
@@ -1520,17 +1718,43 @@ is ordered correctly wrt writes in the log, it will always return correct values
 release of jgroups-raft, the mechanism for client reads as suggested in the Raft paper will be implemented. See
 <a href="https://github.com/belaban/jgroups-raft/issues/18">Issue 18</a> for details.</p>
 </div>
-<div class="admonitionblock note">
-<table>
-<tr>
-<td class="icon">
-<img src="./images/icons/note.png" alt="Note">
-</td>
-<td class="content">
-Non-dirty reads has not yet been implemented in <code>ReplicatedStateMachine</code>.
-</td>
-</tr>
-</table>
+</div>
+<div class="sect3">
+<h4 id="_ignoring_return_values">3.2.4. Ignoring return values</h4>
+<div class="paragraph">
+<p>Sometimes, a caller is not interested in the result of an operation. E.g. a stress test may want to update a counter
+many times, e.g. with many different threads, and only then fetch the final counter value. When this is the case,
+an <em>option</em> can be used with a counter:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public void testIgnoreReturnValue() {
+    SyncCounter counter=counter_service.getOrCreateCounter("ctr", 0);
+    long ret=counter.incrementAndGet(); <img src="./images/icons/callouts/1.png" alt="1">
+
+    counter=counter.withOptions(Options.create(true)); <img src="./images/icons/callouts/2.png" alt="2">
+    ret=counter.incrementAndGet(); <img src="./images/icons/callouts/3.png" alt="3">
+    assert ret == 0;
+    ret=counter.getLocal(); <img src="./images/icons/callouts/4.png" alt="4">
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>In (1), a counter is incremented and the new value returned. This returns <code>1</code></p>
+</div>
+<div class="paragraph">
+<p>In (2) , a counter is created with an <code>Option</code>, which declares that return values are to be ignored. Consequently,
+when we increment the counter in (3), the return value is <code>0</code>, although the counter was indeed incremented, as
+shown when fetching the value in (4).</p>
+</div>
+<div class="paragraph">
+<p>Returning <code>0</code> may not be the most clever use of options, but is the result of autoboxing a <code>null</code> <code>Long</code> value into
+a <code>long</code>. The idea is that the result of an operation that has this option set, should not be assigned to a variable.</p>
+</div>
+<div class="paragraph">
+<p>When the ignore-return-value option is set, <code>REDIRECT</code> doesn&#8217;t need to serialize and send the result from the leader
+to the follower, and <code>RAFT</code> does not need to serialize the result into a <code>byte[]</code> array, either. The cost reduction
+here may not be insignificant, depending on the (serialized) size of the result values and the frequency of operations.</p>
 </div>
 </div>
 </div>
@@ -1561,7 +1785,7 @@ how to do this:</p>
 </div>
 <div class="listingblock">
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-java" data-lang="java">JChannel ch=null;
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">JChannel ch=null;
 RaftHandle handle=new RaftHandle(ch, this); <img src="./images/icons/callouts/1.png" alt="1">
 handle.addRoleListener(role -&gt; {            <img src="./images/icons/callouts/2.png" alt="2">
     if(role == Role.Leader)                 <img src="./images/icons/callouts/3.png" alt="3">
@@ -1595,10 +1819,9 @@ directly on an instance of <code>RAFT</code> retrieved from the protocol stack a
 <h2 id="protlist">4. List of protocols</h2>
 <div class="sectionbody">
 <div class="paragraph">
-<p>This chapter describes the most frequently used protocols, and their configuration.</p>
-</div>
-<div class="paragraph">
-<p>Meanwhile, we recommend that users should copy one of the predefined configurations (shipped with jgroups-raft), e.g.
+<p>This chapter describes the most frequently used protocols, and their configuration.
+    
+Meanwhile, we recommend that users should copy one of the predefined configurations (shipped with jgroups-raft), e.g.
 <code>raft.xml</code>, and make only minimal changes to it.</p>
 </div>
 <div class="sect2">
@@ -1673,16 +1896,8 @@ Its attributes define the election timeout and the heartbeat interval (see Raft 
 </thead>
 <tbody>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">election_max_interval</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Max election interval (ms). The actual election interval is computed as a random value in range [election_min_interval..election_max_interval]</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">election_min_interval</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Min election interval (ms)</p></td>
-</tr>
-<tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">heartbeat_interval</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Interval (in ms) at which a leader sends out heartbeats</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">vote_timeout</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Max time (ms) to wait for vote responses</p></td>
 </tr>
 </tbody>
 </table>
@@ -1707,6 +1922,10 @@ syncing of new members and so on.</p>
 </thead>
 <tbody>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">dynamic_view_changes</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">If true, we can change <em>members</em> at runtime</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">log_args</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()</p></td>
 </tr>
@@ -1715,8 +1934,20 @@ syncing of new members and so on.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The fully qualified name of the class implementing Log</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">log_name</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The name of the log. The logical name of the channel (if defined) is used by default. Note that logs for different processes on the same host need to be different</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">log_dir</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The directory in which the log and snapshots are stored. Defaults to the temp dir</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">log_prefix</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">The prefix of the log and snapshot. If null, the logical name of the channel is used as prefix</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">log_use_fsync</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">If true, a change is guaranteed to be written to disk when the call returns</p></td>
+</tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">max_log_cache_size</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Max size of the log cache (0 disables the log cache)</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">max_log_size</p></td>
@@ -1727,16 +1958,20 @@ syncing of new members and so on.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">List of members (logical names); majority is computed from it</p></td>
 </tr>
 <tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">processing_queue_max_size</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Max size in items the processing queue can have</p></td>
+</tr>
+<tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">raft_id</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">The identifier of this node. Needs to be unique and an element of members. Must not be null</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">resend_interval</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">Interval (ms) at which AppendEntries messages are resent to members which haven&#8217;t received them yet</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Interval (ms) at which AppendEntries messages are resent to members with missing log entries</p></td>
 </tr>
 <tr>
-<td class="tableblock halign-left valign-top"><p class="tableblock">snapshot_name</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">The name of the snapshot. By default, &lt;log_name&gt;.snapshot will be used</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">send_commits_immediately</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Send commit message to followers immediately after leader commits (majority has consensus). Caution : it may generate more traffic than expected</p></td>
 </tr>
 </tbody>
 </table>
@@ -1788,6 +2023,10 @@ be thrown.</p>
 <td class="tableblock halign-left valign-top"><p class="tableblock">port</p></td>
 <td class="tableblock halign-left valign-top"><p class="tableblock">Port to listen for client requests</p></td>
 </tr>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">recv_buf_size</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Number of bytes of the server socket&#8217;s receive buffer</p></td>
+</tr>
 </tbody>
 </table>
 </div>
@@ -1796,11 +2035,15 @@ be thrown.</p>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2017-08-04 11:50:43 CEST
+Last updated 2023-08-07 20:26:33 -0300
 </div>
 </div>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.9.1/styles/github.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.9.1/highlight.min.js"></script>
-<script>hljs.initHighlighting()</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.18.3/highlight.min.js"></script>
+<script>
+if (!hljs.initHighlighting.called) {
+  hljs.initHighlighting.called = true
+  ;[].slice.call(document.querySelectorAll('pre.highlight > code[data-lang]')).forEach(function (el) { hljs.highlightBlock(el) })
+}
+</script>
 </body>
 </html>
