@@ -31,7 +31,7 @@ import java.util.stream.Stream;
  * @since  1.0.7
  */
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
-public class SyncElectionTestsWithRestriction {
+public class SyncElectionWithRestrictionTest {
     protected final Address       s1,s2,s3,s4,s5;
     protected final Address[]     addrs={s1=createAddress("S1"), s2=createAddress("S2"),
                                          s3=createAddress("S3"), s4=createAddress("S4"),
@@ -91,6 +91,7 @@ public class SyncElectionTestsWithRestriction {
         System.out.printf("-- After killing S1 and making S5 leader:\n%s\n", printTerms());
         assertTerms(null, new long[]{1,2}, new long[]{1,2}, new long[]{1}, new long[]{1,3});
         RAFT r5=rafts[4];
+        assert Util.waitUntilTrue(2_000, 250, r5::isLeader) : "S5 was not leader";
         r5.flushCommitTable();
         System.out.printf("-- After S1 resending messages:\n%s\n\n", printTerms());
         long[] expected={1,3};
@@ -116,6 +117,7 @@ public class SyncElectionTestsWithRestriction {
         cluster.handleView(v);
         // append term 4 on S2 and S3:
         RAFT r1=rafts[0];
+        assert Util.waitUntilTrue(2_000, 250, r1::isLeader) : "S1 was never leader!";
         r1.flushCommitTable(s2);
         r1.flushCommitTable(s3);
 
@@ -213,10 +215,11 @@ public class SyncElectionTestsWithRestriction {
     /** Make the node at index leader, and everyone else follower (ignores election) */
     protected void makeLeader(int index) {
         Address leader=rafts[index].getAddress();
+        long term = rafts[index].currentTerm();
         for(int i=0; i < rafts.length; i++) {
             if(rafts[i] == null)
                 continue;
-            rafts[i].setLeaderAndTerm(leader);
+            rafts[i].setLeaderAndTerm(leader, term + 1);
         }
     }
 

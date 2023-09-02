@@ -7,6 +7,7 @@ import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.protocols.raft.state.RaftState;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.StateMachine;
@@ -79,6 +80,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected String                    raft_id;
 
     protected final PersistentState     internal_state=new PersistentState();
+    protected final RaftState           raft_state = new RaftState(this, this::leaderUpdated);
 
     @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)")
     protected int                       majority=-1;
@@ -152,15 +154,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /** The current role (follower, candidate or leader). Every node starts out as a follower */
     protected volatile RaftImpl         impl=new Follower(this);
     protected volatile View             view;
-
-    @ManagedAttribute(description="The current leader (can be null if there is currently no leader) ")
-    protected volatile Address          leader;
-
-    @ManagedAttribute(description="The current term. Incremented on leader change, or when a higher term is seen")
-    protected long                      current_term;
-
-    @ManagedAttribute(description="The member this member voted for in the current term")
-    protected Address                   voted_for;
 
     @ManagedAttribute(description="Index of the highest log entry appended to the log",type=AttributeType.SCALAR)
     protected long                      last_appended;
@@ -239,14 +232,20 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Number of pending requests")
     public int          requestTableSize()            {return request_table != null? request_table.size() : 0;}
     public int          numSnapshots()                {return num_snapshots;}
-    public Address      leader()                      {return leader;}
-    public RAFT         leader(Address new_leader)    {this.leader=new_leader; return this;}
-    public boolean      isLeader()                    {return Objects.equals(leader, local_addr);}
+
+    @ManagedAttribute(description="The current leader (can be null if there is currently no leader) ")
+    public Address      leader()                      {return raft_state.leader();}
+    public RAFT         leader(Address new_leader)    {this.raft_state.setLeader(new_leader); return this;}
+    public boolean      isLeader()                    {return Objects.equals(leader(), local_addr);}
     public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
     public StateMachine stateMachine()                {return state_machine;}
     public CommitTable  commitTable()                 {return commit_table;}
-    public long         currentTerm()                 {return current_term;}
-    public Address      votedFor()                    {return voted_for;}
+
+    @ManagedAttribute(description="The current term. Incremented on leader change, or when a higher term is seen")
+    public long         currentTerm()                 {return raft_state.currentTerm();}
+
+    @ManagedAttribute(description="The member this member voted for in the current term")
+    public Address      votedFor()                    {return raft_state.votedFor();}
     public long         lastAppended()                {return last_appended;}
     public long         commitIndex()                 {return commit_index;}
     public Log          log()                         {return log_impl;}
@@ -329,25 +328,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * @param new_term The new term
      * @return -1 if new_term is smaller, 0 if equal and 1 if new_term is bigger
      */
-    public synchronized int currentTerm(final long new_term)  {
-        if(new_term < current_term)
-            return -1;
-        if(new_term > current_term) {
-            log.trace("%s: changed term from %d -> %d", local_addr, current_term, new_term);
-            current_term=new_term;
-            if(log_impl != null)
-                log_impl.currentTerm(new_term);
-            return 1;
-        }
-        return 0;
+    public int currentTerm(final long new_term)  {
+        return raft_state.tryAdvanceTerm(new_term);
     }
 
-    public synchronized RAFT votedFor(Address mbr) {
-        if(Objects.equals(voted_for, mbr))
-            return this;
-        voted_for=mbr;
-        if(log_impl != null)
-            log_impl.votedFor(mbr);
+    public RAFT votedFor(Address mbr) {
+        raft_state.setVotedFor(mbr);
         return this;
     }
 
@@ -429,8 +415,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         log_impl.forEach(func);
     }
 
-    public synchronized long createNewTerm() {
-        return ++current_term;
+    public long createNewTerm() {
+        return raft_state.advanceTermForElection();
     }
 
     public static <T> T findProtocol(Class<T> clazz, final Protocol start, boolean down) {
@@ -559,9 +545,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
-        current_term=log_impl.currentTerm();
-        voted_for=log_impl.votedFor();
-        log.trace("set last_appended=%d, commit_index=%d, current_term=%d", last_appended, commit_index, current_term);
+        raft_state.reload();
+        log.trace("set last_appended=%d, commit_index=%d, current_state=%s", last_appended, commit_index, raft_state);
 
         initStateMachineFromLog();
         if(!internal_state.getMembers().contains(raft_id))
@@ -655,6 +640,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, boolean internal, Options options) {
+        Address leader = leader();
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
         if(buf == null)
@@ -673,8 +659,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     public String toString() {
-        return String.format("%s %s: commit=%d last-appended=%d curr-term=%d",
-                             RAFT.class.getSimpleName(), local_addr, commit_index, last_appended, current_term);
+        return String.format("%s %s: commit=%d last-appended=%d curr-state=%s",
+                             RAFT.class.getSimpleName(), local_addr, commit_index, last_appended, raft_state);
     }
 
     protected void add(Request r) {
@@ -689,6 +675,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /** This method is always called by a single thread only, and does therefore not need to be reentrant */
     protected void handleDownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length,
                                      boolean internal, Options opts) {
+        Address leader = leader();
         if(leader == null || !Objects.equals(leader,local_addr))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
 
@@ -697,6 +684,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         // 1. Append to the log
         long prev_index=last_appended;
         long curr_index=++last_appended;
+        long current_term=currentTerm();
         LogEntry entry=log_impl.get(prev_index);
         long prev_term=entry != null? entry.term : 0;
         LogEntries entries=new LogEntries().add(new LogEntry(current_term, buf, offset, length, internal));
@@ -737,6 +725,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return;
 
         if(hdr instanceof AppendEntriesRequest) {
+            long current_term = currentTerm();
             AppendEntriesRequest r=(AppendEntriesRequest)hdr;
             ObjectMessage om=(ObjectMessage)msg;
             AppendResult res=ri.handleAppendEntriesRequest(om.getObject(), msg.src(),
@@ -804,6 +793,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         LogEntries           entries=new LogEntries();
         long                 index=last_appended+1;
         int                  length=0;
+        long                 current_term = currentTerm();
+        Address              leader = leader();
 
         for(Request r: q) {
             try {
@@ -931,6 +922,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return;
         }
         if(this.commit_index > e.commitIndex()) { // send an empty AppendEntries message as commit message
+            long current_term = currentTerm();
             Message msg=new ObjectMessage(member, null)
               .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, 0, 0,
                                                       current_term, this.commit_index));
@@ -944,6 +936,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected CompletableFuture<byte[]> changeMembers(String name, InternalCommand.Type type) throws Exception {
         if(!dynamic_view_changes)
             throw new Exception("dynamic view changes are not allowed; set dynamic_view_changes to true to enable it");
+
+        Address leader = leader();
         if(leader == null || !Objects.equals(leader, local_addr))
             throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
 
@@ -965,7 +959,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         long prev_term=prev != null? prev.term : 0;
         LogEntries entries=new LogEntries().add(entry);
         Message msg=new ObjectMessage(target, entries)
-          .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, index - 1, prev_term,
+          .putHeader(id, new AppendEntriesRequest(this.local_addr, currentTerm(), index - 1, prev_term,
                                                   entry.term, commit_index));
         down_prot.down(msg);
         num_resends++;
@@ -989,7 +983,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         LogEntry prev=log_impl.get(from-1);
         long prev_term=prev != null? prev.term : 0;
         Message msg=new ObjectMessage(target, entries)
-          .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, from - 1, prev_term,
+          .putHeader(id, new AppendEntriesRequest(this.local_addr, currentTerm(), from - 1, prev_term,
                                                   entry_term, commit_index));
         down_prot.down(msg);
         num_resends++;
@@ -1129,6 +1123,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     /** Sets the new leader and term */
     public RAFT setLeaderAndTerm(Address new_leader, long new_term) {
+        raft_state.tryAdvanceTermAndLeader(new_term, new_leader);
+        return this;
+    }
+
+    private void leaderUpdated(Address new_leader) {
         if(Objects.equals(local_addr, new_leader)) {
             if(!isLeader())
                 log.debug("%s: becoming Leader", local_addr);
@@ -1136,9 +1135,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         else
             changeRole(Role.Follower); // no-op if already a follower
-        if(new_term > 0)
-            currentTerm(new_term);
-        return leader(new_leader);
     }
 
     protected static <T> void notify(RequestTable.Entry<T> e, byte[] rsp) {
