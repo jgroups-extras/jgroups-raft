@@ -141,12 +141,13 @@ public class SyncLeaderCrashTest {
 
         RAFT r=rafts[0];
         assert r.isLeader();
-        r.currentTerm(2);
+        Address leader = r.leader();
+        r.setLeaderAndTerm(leader, 2);
         r.set(DATA, 0, DATA.length, 5, TimeUnit.SECONDS);
-        r.currentTerm(5);
+        r.setLeaderAndTerm(leader, 5);
         r.set(DATA, 0, DATA.length, 5, TimeUnit.SECONDS);
         r.set(DATA, 0, DATA.length, 5, TimeUnit.SECONDS);
-        r.currentTerm(7);
+        r.setLeaderAndTerm(leader, 7);
         r.set(DATA, 0, DATA.length, 5, TimeUnit.SECONDS);
 
         System.out.printf("terms:\n%s\n", printTerms());

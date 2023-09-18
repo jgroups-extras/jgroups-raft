@@ -278,6 +278,26 @@ public class SyncElectionTests {
         assert total_rsps <= 1 : "B should have received a vote response from C";
     }
 
+    public void testIncreasingTermForgetOldLeader() throws Exception {
+        createNode(0, "A");
+        createNode(1, "B");
+        View view=createView();
+        cluster.handleView(view);
+        assert Util.waitUntilTrue(5000, 100, () -> Arrays.stream(rafts).filter(Objects::nonNull).anyMatch(RAFT::isLeader));
+        assertOneLeader();
+        System.out.printf("%s\n", print());
+        waitUntilVotingThreadHasStopped();
+
+        int idx = findFirst(true);
+        assert rafts[idx].isLeader();
+        assert rafts[idx].role().equals("Leader");
+        long term = rafts[idx].currentTerm();
+        assert rafts[idx].currentTerm(term + 1) == 1;
+        assert rafts[idx].currentTerm() == term + 1;
+        assert !rafts[idx].isLeader();
+        assert rafts[idx].role().equals("Follower");
+    }
+
 
     protected void waitUntilVotingThreadHasStopped() throws TimeoutException {
         Util.waitUntil(5000, 100, () -> Stream.of(elections)

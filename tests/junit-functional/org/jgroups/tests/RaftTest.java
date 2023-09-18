@@ -110,7 +110,7 @@ public class RaftTest {
         assertCommitTableIndeces(b.getAddress(), raft_a, 1003, 1004, 1005);
 
         long current_term=raft_a.currentTerm(), expected_term;
-        raft_a.currentTerm(expected_term=current_term + 10);
+        raft_a.setLeaderAndTerm(a.getAddress(), expected_term=current_term + 10);
 
         for(int i=1; i <= 7; i++)
             add(rha, 1);
@@ -125,7 +125,7 @@ public class RaftTest {
 
 
     public void testAppendSameElementTwice() throws Exception {
-        raft_a.currentTerm(20);
+        raft_a.setLeaderAndTerm(a.getAddress(), 20);
         for(int i=1; i <= 5; i++)
             add(rha, 1);
         assertIndices(5, 5, 20, raft_a);
@@ -146,7 +146,7 @@ public class RaftTest {
     }
 
     public void testAppendBeyondLast() throws Exception {
-        raft_a.currentTerm(22);
+        raft_a.setLeaderAndTerm(a.getAddress(), 22);
         for(int i=1; i <= 5; i++)
             add(rha, 1);
         assert sma.counter() == 5;
@@ -164,10 +164,10 @@ public class RaftTest {
 
     /** Tests appding with correct prev_index, but incorrect term */
     public void testAppendWrongTerm() throws Exception {
-        raft_a.currentTerm(22);
+        raft_a.setLeaderAndTerm(a.getAddress(), 22);
         for(int i=1; i <= 15; i++) {
             if(i % 5 == 0)
-                raft_a.currentTerm(raft_a.currentTerm()+1);
+                raft_a.setLeaderAndTerm(a.getAddress(), raft_a.currentTerm()+1);
             add(rha, 1);
         }
         expect(15, sma.counter());
@@ -191,12 +191,12 @@ public class RaftTest {
         long incorrect_prev_term=24;
         long commit_index=raft_a.commitIndex(), prev_index=18;
 
+        raft_a.setLeaderAndTerm(a.getAddress(), 30);
         sendAppendEntriesRequest(raft_a, prev_index, incorrect_prev_term, 30, commit_index);
         Util.sleep(1000); // nothing changed
         assertCommitTableIndeces(b.getAddress(), raft_a, 14, 14, 15);
 
         // now apply the updates on the leader
-        raft_a.currentTerm(30);
         raft_a.resendInterval(1000);
         for(int i=16; i <= 18; i++)
             add(rha, 1);
@@ -232,7 +232,7 @@ public class RaftTest {
         assertIndices(1, 0, 0, raft_b);
         assertCommitTableIndeces(b.getAddress(), raft_a, 0, 1, 2);
 
-        raft_a.currentTerm(2);
+        raft_a.setLeaderAndTerm(a.getAddress(), 2);
         prev_value=add(rha, 1);
         assert prev_value == 1;
         prev_value=add(rha, 1);
@@ -241,7 +241,7 @@ public class RaftTest {
         assert smb.counter() == 2; // previous value; B is always lagging one commit behind
         assertCommitTableIndeces(b.getAddress(), raft_a, 2, 3, 4);
 
-        raft_a.currentTerm(4);
+        raft_a.setLeaderAndTerm(a.getAddress(), 4);
         for(int i=1; i <= 3; i++)
             add(rha, 1);
 
@@ -265,7 +265,7 @@ public class RaftTest {
         assert result.success();
         assertIndices(8, 5, 5, raft_b);
 
-        raft_a.currentTerm(7);
+        raft_a.setLeaderAndTerm(a.getAddress(), 7);
         for(int i=1; i <= 2; i++)
             add(rha, -1);
 
@@ -283,7 +283,7 @@ public class RaftTest {
 
         raft_a.resendInterval(1000);
 
-        raft_a.currentTerm(22);
+        raft_a.setLeaderAndTerm(a.getAddress(), 22);
         for(int i=1; i <= 5; i++)
             add(rha, 1);
         expect(5, sma.counter());
