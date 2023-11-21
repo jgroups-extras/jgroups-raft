@@ -5,7 +5,7 @@
     <packaging>jar</packaging>
     <name>jgroups-raft</name>
     <version>1.0.12.Final-SNAPSHOT</version>
-    <url>https://github.com/belaban/jgroups-raft</url>
+    <url>https://github.com/jgroups-extras/jgroups-raft</url>
     <description>JGroups RAFT implementation</description>
 
     <properties>
@@ -93,15 +93,15 @@
     </licenses>
 
     <scm>
-        <connection>scm:git:git://github.com/belaban/jgroups-raft.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/belaban/jgroups-raft.git</developerConnection>
-        <url>https://github.com/belaban/jgroups-raft</url>
+        <connection>scm:git:git://github.com/jgroups-extras/jgroups-raft.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/jgroups-extras/jgroups-raft.git</developerConnection>
+        <url>https://github.com/jgroups-extras/jgroups-raft</url>
         <tag>HEAD</tag>
     </scm>
 
     <issueManagement>
         <system>GitHub</system>
-        <url>https://github.com/belaban/jgroups-raft/issues</url>
+        <url>https://github.com/jgroups-extras/jgroups-raft/issues</url>
     </issueManagement>
 
     <distributionManagement>
