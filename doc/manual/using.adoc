@@ -1,6 +1,20 @@
 
 == Using jgroups-raft
 
+Since jgroups-raft build on JGroups, we follow similar http://www.jgroups.org/manual5/index.html#Requirements[requirements].
+Currently, jgroups-raft requires JDK 11. jgroups-raft can be included in the POM:
+
+[source,xml]
+----
+<dependency>
+    <groupId>org.jgroups</groupId>
+    <artifactId>jgroups-raft</artifactId>
+    <version>X.Y.Z.Final</version>
+</dependency>
+----
+
+Where `X`=major, `Y`=minor, and `Z`=patch.
+The tags are available on https://github.com/belaban/jgroups-raft/tags[GitHub releases].
 
 === Cluster members and identity
 
@@ -133,6 +147,12 @@ grow to until a snapshot is taken.
 
 Other methods in `RaftHandle` include:
 
+addServer(String server):: Asynchronously adds a new member to the cluster with id `server` and returns a
+`CompletableFuture<byte[]>`. See more about membership change in <<DynamicMembership>>.
+
+removeServer(String server):: Asynchronously removes a member from the cluster with id `server` and returns a
+`CompletableFuture<byte[]>`. See more about membership change in <<DynamicMembership>>.
+
 leader():: Returns the address of the current Raft leader, or null if there is no leader (e.g. in case there was no
            majority to elect a leader)
 isLeader():: Whether or not the current member is the leader
@@ -237,7 +257,8 @@ The steps to add a member are as follows (say we have `RAFT.members="A,B,C"` and
 * If not, members will read the correct membership when getting initialized by their logs
 * A new member `D` can now be started (its XML config needs to have the correct `members` attribute !)
 
-
+Notice that membership changes survive through restarts. If a node must be removed or added, an operation must be
+submitted, only restarting does not affect membership.
 
 
 

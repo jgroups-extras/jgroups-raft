@@ -9,7 +9,7 @@ Distributed consensus with jgroups-raft
 :source-highlighter: pygments
 :iconsdir: ./images/icons
 
-Copyright Red Hat 2014 - 2020
+Copyright Red Hat 2014 - 2023
 
 This document is licensed under the
 http://creativecommons.org/licenses/by-sa/3.0/us/legalcode["Creative Commons Attribution-ShareAlike (CC-BY-SA) 3.0"]

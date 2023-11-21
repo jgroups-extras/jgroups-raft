@@ -69,6 +69,21 @@ Its attributes define the election timeout and the heartbeat interval (see Raft 
 ${ELECTION}
 
 
+[[ELECTION2]]
+=== ELECTION2
+
+`ELECTION2` is an alternative election algorithm.
+It builds on top of <<ELECTION>> to include a pre-vote mechanism.
+The pre-vote runs before delegating to the algorithm of <<ELECTION>>.
+
+By design, <<ELECTION>> uses view changes to start election rounds and should be stable without interruptions.
+`ELECTION2` is an alternative in networks with recurrent partitions that could lead to more disruptions with unnecessary election rounds.
+More information about how it works is available in the design documents.
+
+
+${ELECTION2}
+
+
 [[RAFT]]
 === RAFT
 

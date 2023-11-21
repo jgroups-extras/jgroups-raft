@@ -13,7 +13,8 @@ machines receive the same ordered stream of updates and thus have the exact same
 
 Raft favors _consistency_ over _availability_; in terms of the http://en.wikipedia.org/wiki/CAP_theorem[Cap theorem],
 jgroups-raft is a CP system. This means jgroups-raft is highly consistent, and the data replicated to nodes will never
-diverge, even in the face of network partitions (split brains).
+diverge, even in the face of network partitions (split brains), or restarts. Or, on an extended version, jgroups-raft
+provides the means to build PC/EC systems concerning the https://en.wikipedia.org/wiki/PACELC_theorem[PACELC theorem].
 
 In case of a network partition, in a cluster of `N` nodes, at least `N/2+1` nodes have to be running for the
 system to be available.

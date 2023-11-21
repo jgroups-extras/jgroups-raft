@@ -1,0 +1,128 @@
+= ELECTION2 Design
+José Bolina <jbolina@redhat.com>
+:description: The design of the ELECTION2 algorithm for leader election.
+:homepage: http://belaban.github.io/jgroups-raft
+
+`ELECTION2` is an alternative election algorithm.
+It builds on the base `ELECTION` algorithm to include a pre-voting mechanism that verifies the need to start an election round.
+The `ELECTION2` creates an enhanced verification with the view changes approach of the base algorithm, resulting in a more robust and stable leadership decision.
+
+This document is a follow-up to the implementation.
+More details are available on the GitHub issue https://github.com/jgroups-extras/jgroups-raft/issues/211[#211].
+
+== Context
+
+First, to give some context to the problem and the proposed solution.
+In the following section, we delve into implementation details.
+
+
+=== The reason for another election algorithm
+
+The base leader election algorithm uses the view changes from JGroups to implement a more stable leader election.
+Without relying solely on heartbeats, the cluster has fewer disruptions with unnecessary election rounds.
+However, there are corner cases in which the cluster does not recover after a partition, leading to a liveness issue.
+
+On a more concrete example, playing with partially connected servers triggers the original issue with `ELECTION`.
+Initially, a fully connected cluster with the following settings:
+
+[ditaa]
+----
+                                  [A](5)[A,B,C,D,E]
+
+ +----------------------------------------------+
+ |                                              |
+ | +---------------------------------+          |
+ | |                                 |          |
+ | | +--------------------+          |          |
+ | | |                    |          |          |
+ v v v                    v          v          v
++-----+     +-----+    +-----+    +-----+    +-----+
+|L    |     |     |    |     |    |     |    |     |
+|  A  |<--->|  B  |<-->|  C  |<-->|  D  |<-->|  E  |
+|     |     |     |    |     |    |     |    |     |
++-----+     +-----+    +-----+    +-----+    +-----+
+             ^   ^        ^          ^         ^  ^
+             |   |        |          |         |  |
+             |   |        +----------+---------+  |
+             |   |                   |            |
+             |   +-------------------+            |
+             |                                    |
+             +------------------------------------+
+----
+
+The current leader is node A, and the whole cluster has the same view __V~1~__=`[A](5)[A,B,C,D,E]`.
+After a network partition, we have a partially connected cluster with the following format:
+
+[ditaa]
+----
+   +----------------------+
+   |                      |
+   v                      v
++-----+     +-----+    +-----+    +-----+    +-----+
+|     |     |     |    |     |    |     |    |     |
+|  A  |     |  B  |<-->|  C  |<-->|  D  |    |  E  |
+|     |     |     |    |     |    |     |    |     |
++-----+     +-----+    +-----+    +-----+    +-----+
+                          ^                     ^
+                          |                     |
+                          +---------------------+
+----
+
+In the worst case, some nodes can receive a view that is not including itself.
+For the sake of the example, let's assume this happens with node E.
+Node E receives a view update __V~2~__=`[A](2)[A,C]` from C and continues with __V~1~__ instead of updating.
+Therefore, it would still see node A as the leader.
+After the network recovers, if node E is the coordinator, it won't identify any change, leading to the election never starting.
+For example:
+
+----
+[DEBUG] ELECTION: E: existing view: [A|4] (5) [A, B, C, D, E], new view: MergeView::[E|10] (5) [E, B, D, C, A], 3 subgroups: [A|8] (3) [A, C, B], [A|9] (2) [A, C], [A|4] (5) [A, B, C, D, E], result: no_change
+----
+
+The partial connectivity could also disrupt the cluster, where nodes could trigger the ELECTION algorithm, rapidly incrementing the term even though it can't acquire the necessary votes.
+The partial connectivity is an actual production problem <<cloudflare-outage>>.
+The liveness problem is a problem specific to our implementation.
+
+=== The proposal
+
+Implementing the Raft election by the book <<ongaro-dissertation>> involves timeouts as a simplified failure-detector.
+It is easy to see how partial connectivity could lead to nodes repeatedly disrupting the cluster with election rounds.
+To solve our liveness issue, we need to relax the restriction to start an election round without creating something unbounded and too disruptive.
+
+Ongaro's dissertation <<ongaro-dissertation>> contains the pre-voting mechanism to strengthen the election and reduce disruptions.
+The pre-voting is an initial verification a node executes before starting an election.
+The node sends a message to verify if the other members would vote for it in case an election happens.
+We adopt the pre-voting mechanism to solve the liveness issue.
+
+== Implementation
+
+The pre-vote is implemented in the `ELECTION2` class, leaving the `ELECTION` unchanged.
+This separation should not be a problem, as `ELECTION2` only covers corner cases from the `ELECTION`, which users should not find easily.
+As a rule of thumb, stick with `ELECTION`, but if deploying in an environment facing many prolonged network partitions, consider `ELECTION2`.
+
+In our implementation, only the view coordinator executes the pre-voting.
+Only a single pre-voting phase is necessary to run as many election rounds as needed.
+After the pre-voting, everything follows the base ELECTION algorithm.
+
+The coordinator running the pre-vote sends a _PreVoteRequest_ to all members of the current view.
+After receiving a _PreVoteResponse(Leader)_ from all the nodes, the coordinator executes the verification to start the ELECTION algorithm.
+Each node replies with its current leader, and the coordinator parses the response and runs the ELECTION algorithm when:
+
+* The majority does not have a leader. Or;
+* The majority has the same suspected leader as the coordinator.
+
+In case there is a majority of nodes is seeing a leader __L__:
+
+* __L__ is not in the coordinator's view;
+* __L__ is in the view but replied it does not see itself as the leader.
+
+Oversimplifying, the majority has a suspected leader or sees a leader that stepped down.
+Meeting any of these requirements, the coordinator proceeds and starts the ELECTION algorithm.
+
+The pre-voting phase of `ELECTION2` adds a delay before starting the leader election algorithm, which is the downside of `ELECTION2`.
+In addition to the algorithm based on view changes, `ELECTION2` should provide a robust and stable leader election algorithm, covering the issue of `ELECTION`.
+
+== References
+
+* [[[cloudflare-outage,1]]] Lianza, T., &amp; Snook, C. (2020, November 27). A Byzantine failure in the real world. The Cloudflare Blog. https://blog.cloudflare.com/a-byzantine-failure-in-the-real-world/
+* [[[ongaro-dissertation,2]]] Ongaro, D. (2014). Consensus: Bridging theory and practice. Stanford University.

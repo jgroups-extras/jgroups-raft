@@ -319,7 +319,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return this;
     }
 
-    @Property public List<String> members() {
+    @ManagedAttribute(description = "The current list of members")
+    public List<String> members() {
         return internal_state.getMembers();
     }
 

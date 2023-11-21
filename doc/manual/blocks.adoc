@@ -40,8 +40,19 @@ protected void start(String raft_id) throws Exception {
 
 There's a demo `ReplicatedStateMachineDemo` which can be used to interactively use `ReplicatedStateMachine`.
 
+==== Reads and consensus
 
+`ReplicatedStateMachine` has a configurable behavior for reads, using quorum reads by default. This means that all read
+requests are sent through `RAFT` and require a majority to complete. This provides a linearizable read, but, on the other
+hand, it takes longer to complete.
 
+If an application does not require linearizable reads, it can change the behavior and only read the value locally,
+possibly stale, but having a faster response since the request does not go through `RAFT`.
+
+The behavior is changed by calling `ReplicatedStateMachine.allowDirtyReads(boolean)`.
+
+NOTE: A quorum read creates an entry in the persistent log. See
+https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
 
 [[CounterService]]
 === CounterService
