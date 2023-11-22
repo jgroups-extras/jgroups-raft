@@ -4,3 +4,5 @@ classes/
 doc/
 ivy.properties
 lib/
+target/
+*.iml

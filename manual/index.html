@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<!--[if IE]><meta http-equiv="X-UA-Compatible" content="IE=edge"><![endif]-->
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="generator" content="Asciidoctor 2.0.20">
 <meta name="author" content="Bela Ban &lt;belaban@yahoo.com&gt;">
@@ -786,9 +786,10 @@ p { margin-bottom: 1.25rem; }
 <ul class="sectlevel2">
 <li><a href="#NO_DUPES">4.1. NO_DUPES</a></li>
 <li><a href="#ELECTION">4.2. ELECTION</a></li>
-<li><a href="#RAFT">4.3. RAFT</a></li>
-<li><a href="#REDIRECT">4.4. REDIRECT</a></li>
-<li><a href="#CLIENT">4.5. CLIENT</a></li>
+<li><a href="#ELECTION2">4.3. ELECTION2</a></li>
+<li><a href="#RAFT">4.4. RAFT</a></li>
+<li><a href="#REDIRECT">4.5. REDIRECT</a></li>
+<li><a href="#CLIENT">4.6. CLIENT</a></li>
 </ul>
 </li>
 </ul>
@@ -845,7 +846,7 @@ machines receive the same ordered stream of updates and thus have the exact same
 <div class="paragraph">
 <p>Raft favors <em>consistency</em> over <em>availability</em>; in terms of the <a href="http://en.wikipedia.org/wiki/CAP_theorem">Cap theorem</a>,
 jgroups-raft is a CP system. This means jgroups-raft is highly consistent, and the data replicated to nodes will never
-diverge, even in the face of network partitions (split brains). or restarts. Or, on an extended version, jgroups-raft
+diverge, even in the face of network partitions (split brains), or restarts. Or, on an extended version, jgroups-raft
 provides the means to build PC/EC systems concerning the <a href="https://en.wikipedia.org/wiki/PACELC_theorem">PACELC theorem</a>.</p>
 </div>
 <div class="paragraph">
@@ -985,14 +986,15 @@ Currently, jgroups-raft requires JDK 11. jgroups-raft can be included in the POM
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependency&gt;
-  &lt;groupId&gt;org.jgroups&lt;/groupId&gt;
-  &lt;artifactId&gt;jgroups-raft&lt;/artifactId&gt;
-  &lt;version&gt;X.Y.Z.Final&lt;/version&gt;
+    &lt;groupId&gt;org.jgroups&lt;/groupId&gt;
+    &lt;artifactId&gt;jgroups-raft&lt;/artifactId&gt;
+    &lt;version&gt;X.Y.Z.Final&lt;/version&gt;
 &lt;/dependency&gt;</code></pre>
 </div>
 </div>
 <div class="paragraph">
-<p>Where <code>X</code>=major, <code>Y</code>=minor, and <code>Z</code>=patch. The tags are available on <a href="https://github.com/belaban/jgroups-raft/tags">GitHub releases</a>.</p>
+<p>Where <code>X</code>=major, <code>Y</code>=minor, and <code>Z</code>=patch.
+The tags are available on <a href="https://github.com/belaban/jgroups-raft/tags">GitHub releases</a>.</p>
 </div>
 <div class="sect2">
 <h3 id="_cluster_members_and_identity">2.1. Cluster members and identity</h3>
@@ -1903,13 +1905,45 @@ Its attributes define the election timeout and the heartbeat interval (see Raft 
 </table>
 </div>
 <div class="sect2">
-<h3 id="RAFT">4.3. RAFT</h3>
+<h3 id="ELECTION2">4.3. ELECTION2</h3>
+<div class="paragraph">
+<p><code>ELECTION2</code> is an alternative election algorithm.
+It builds on top of <a href="#ELECTION">ELECTION</a> to include a pre-vote mechanism.
+The pre-vote runs before delegating to the algorithm of <a href="#ELECTION">ELECTION</a>.</p>
+</div>
+<div class="paragraph">
+<p>By design, <a href="#ELECTION">ELECTION</a> uses view changes to start election rounds and should be stable without interruptions.
+<code>ELECTION2</code> is an alternative in networks with recurrent partitions that could lead to more disruptions with unnecessary election rounds.
+More information about how it works is available in the design documents.</p>
+</div>
+<table class="tableblock frame-all grid-all" style="width: 90%;">
+<caption class="title">Table 2. ELECTION2</caption>
+<colgroup>
+<col style="width: 16.6666%;">
+<col style="width: 83.3334%;">
+</colgroup>
+<thead>
+<tr>
+<th class="tableblock halign-left valign-top">Name</th>
+<th class="tableblock halign-left valign-top">Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="tableblock halign-left valign-top"><p class="tableblock">vote_timeout</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">Max time (ms) to wait for vote responses</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="sect2">
+<h3 id="RAFT">4.4. RAFT</h3>
 <div class="paragraph">
 <p><code>RAFT</code> is the main protocol in jgroups-raft; it implements log appending and committing, snapshotting and log compaction,
 syncing of new members and so on.</p>
 </div>
 <table class="tableblock frame-all grid-all" style="width: 90%;">
-<caption class="title">Table 2. RAFT</caption>
+<caption class="title">Table 3. RAFT</caption>
 <colgroup>
 <col style="width: 16.6666%;">
 <col style="width: 83.3334%;">
@@ -1943,7 +1977,7 @@ syncing of new members and so on.</p>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">log_use_fsync</p></td>
-<td class="tableblock halign-left valign-top"><p class="tableblock">If true, a change is guaranteed to be written to disk when the call returns</p></td>
+<td class="tableblock halign-left valign-top"><p class="tableblock">n/a</p></td>
 </tr>
 <tr>
 <td class="tableblock halign-left valign-top"><p class="tableblock">max_log_cache_size</p></td>
@@ -1977,7 +2011,7 @@ syncing of new members and so on.</p>
 </table>
 </div>
 <div class="sect2">
-<h3 id="REDIRECT">4.4. REDIRECT</h3>
+<h3 id="REDIRECT">4.5. REDIRECT</h3>
 <div class="paragraph">
 <p>The <code>REDIRECT</code> protocol needs to be somewhere above <code>RAFT</code>. It keeps track of the current Raft leader and redirects
 requests to the right leader. If there is no leader, e.g. because there&#8217;s no majority to elect one, an exception will
@@ -1985,13 +2019,13 @@ be thrown.</p>
 </div>
 </div>
 <div class="sect2">
-<h3 id="CLIENT">4.5. CLIENT</h3>
+<h3 id="CLIENT">4.6. CLIENT</h3>
 <div class="paragraph">
 <p><code>CLIENT</code> listens on a socket for client requests. When a request is received, it is sent down where it will be forwarded
 (by <code>REDIRECT</code>) to the current leader which executes the request. The responses is then sent back to the client.</p>
 </div>
 <table class="tableblock frame-all grid-all" style="width: 90%;">
-<caption class="title">Table 3. CLIENT</caption>
+<caption class="title">Table 4. CLIENT</caption>
 <colgroup>
 <col style="width: 16.6666%;">
 <col style="width: 83.3334%;">
@@ -2035,7 +2069,7 @@ be thrown.</p>
 </div>
 <div id="footer">
 <div id="footer-text">
-Last updated 2023-08-07 20:26:33 -0300
+Last updated 2023-11-21 22:26:26 -0300
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.18.3/highlight.min.js"></script>
