@@ -1,15 +1,22 @@
- package org.jgroups.tests;
+package org.jgroups.tests;
 
- import org.jgroups.Address;
+import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.DISCARD;
 import org.jgroups.protocols.TP;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.AppendResult;
+import org.jgroups.protocols.raft.ELECTION;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntries;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.REDIRECT;
+import org.jgroups.protocols.raft.RaftImpl;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
- import org.jgroups.raft.util.Utils;
- import org.jgroups.stack.ProtocolStack;
+import org.jgroups.raft.util.Utils;
+import org.jgroups.stack.ProtocolStack;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -20,11 +27,14 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
- import java.util.stream.Collectors;
- import java.util.stream.Stream;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertFalse;
+import static org.testng.Assert.assertTrue;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc
@@ -622,12 +632,12 @@ public class AppendEntriesTest {
         for(JChannel ch: channels) {
             if(ch == null)
                 continue;
+            Util.close(ch);
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
             try {
                 Utils.deleteLog(raft);
             }
             catch(Exception ignored) {}
-            Util.close(ch);
         }
     }
 
@@ -733,13 +743,41 @@ public class AppendEntriesTest {
 
     @SafeVarargs
     protected final void assertSame(long timeout, long interval, ReplicatedStateMachine<Integer,Integer>... rsms) {
-        Util.waitUntilTrue(timeout, interval, () -> Stream.of(rsms).allMatch(r -> r.equals(rsms[0])));
-        for(ReplicatedStateMachine<Integer,Integer> rsm: rsms)
-            System.out.println(rsm.channel().getName() + ": " + rsm);
-        for(int i=1; i < rsms.length; i++) {
-            assert rsms[i].equals(rsms[0])
-              : String.format("commit-table of A: %s", ((RAFT)a.getProtocolStack().findProtocol(RAFT.class)).dumpCommitTable());
+        // Wait until the leader receives the responses and all have matching commit indexes.
+        List<JChannel> channels = Stream.of(rsms).map(ReplicatedStateMachine::channel).collect(Collectors.toList());
+        BooleanSupplier bs = () -> channels.stream()
+                .map(AppendEntriesTest::raft)
+                .map(RAFT::commitIndex)
+                .distinct()
+                .count() == 1;
+        assert Util.waitUntilTrue(timeout, interval, bs) : generateErrorMessage(rsms);
+
+        System.out.println(dumpStateMachines(rsms));
+
+        // Wait until all state machines are equal. Meaning they all applied the same commands.
+        // In this point, the commit indexes are equals, meaning up to a point everything was applied.
+        assert Util.waitUntilTrue(timeout, interval, () -> Stream.of(rsms).distinct().count() == 1)
+                : generateErrorMessage(rsms) + " where " + dumpStateMachines(rsms);
+    }
+
+    private static String dumpStateMachines(ReplicatedStateMachine<?,?>... rsms) {
+        StringBuilder sb = new StringBuilder();
+        for (ReplicatedStateMachine<?, ?> rsm : rsms) {
+            sb.append(rsm.raftId())
+                    .append(" -> ")
+                    .append(rsm)
+                    .append("\n");
         }
+        return sb.toString();
+    }
+
+    private static String generateErrorMessage(ReplicatedStateMachine<?,?>... rsms) {
+        StringBuilder sb = new StringBuilder();
+        RAFT leader = raft(rsms[0].channel());
+        sb.append(leader.raftId())
+                .append(": commit-index=").append(leader.commitIndex())
+                .append(leader.dumpCommitTable());
+        return sb.toString();
     }
 
     protected static void assertLogIndices(Log log, int last_appended, int commit_index, int term) {

@@ -3,7 +3,12 @@ package org.jgroups.tests;
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.ELECTION;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntries;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.RaftImpl;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
@@ -59,13 +64,13 @@ public class SyncElectionWithRestrictionTest extends BaseElectionTest {
                 nodes[i].destroy();
                 nodes[i]=null;
             }
-            if(rafts[i] != null) {
-                Utils.deleteLog(rafts[i]);
-                rafts[i]=null;
-            }
             if(elections[i] != null) {
                 elections[i].stopVotingThread();
                 elections[i]=null;
+            }
+            if(rafts[i] != null) {
+                Utils.deleteLog(rafts[i]);
+                rafts[i]=null;
             }
         }
         cluster.clear();
@@ -102,7 +107,7 @@ public class SyncElectionWithRestrictionTest extends BaseElectionTest {
         assertTerms(null, expected, expected, expected, expected);
     }
 
-    /** Tests scenario E in fig.8 5.4.1 [1]: S1 replicates term=4 to S2 and S2, then crashes: either S2 or S3 will be
+    /** Tests scenario E in fig.8 5.4.1 [1]: S1 replicates term=4 to S2 and S3, then crashes: either S2 or S3 will be
      * the new leader because they have the highest term (4):
      * <pre>
      *       1 2 3    1 2 3        1 2 3
@@ -140,7 +145,7 @@ public class SyncElectionWithRestrictionTest extends BaseElectionTest {
 
         List<Address> leaders=Stream.of(rafts).filter(Objects::nonNull)
           .filter(RAFT::isLeader).map(Protocol::getAddress).collect(Collectors.toList());
-        assert leaders.size() == 1;
+        assert leaders.size() == 1 : "Should have a single leader: " + leaders;
         assert leaders.contains(s2) || leaders.contains(s3);
         RAFT leader_raft=rafts[1].isLeader()? rafts[1] : rafts[2];
 
@@ -195,10 +200,23 @@ public class SyncElectionWithRestrictionTest extends BaseElectionTest {
     }
 
     protected void waitUntilTerms(long timeout, long interval, long[] expexted_terms, Runnable action) {
-        waitUntilTrue(timeout, interval,
+        assert waitUntilTrue(timeout, interval,
                       () -> Stream.of(rafts).filter(Objects::nonNull)
                         .allMatch(r -> Arrays.equals(terms(r),expexted_terms)),
-                      action);
+                      action) : generateErrorMessage();
+    }
+
+    private String generateErrorMessage() {
+        StringBuilder sb = new StringBuilder("\n");
+        for (RAFT raft : rafts) {
+            if (raft == null) continue;
+
+            sb.append(raft.raftId())
+                    .append(" -> ")
+                    .append(Arrays.toString(terms(raft)))
+                    .append("\n");
+        }
+        return sb.toString();
     }
 
     public static boolean waitUntilTrue(long timeout, long interval, BooleanSupplier condition,
@@ -281,7 +299,7 @@ public class SyncElectionWithRestrictionTest extends BaseElectionTest {
           .resendInterval(600_000) // long to disable resending by default
           .stateMachine(new DummyStateMachine())
           .synchronous(true).setAddress(addrs[index]);
-        elections[index]=instantiate().raft(rafts[index]).setAddress(addrs[index]);
+        elections[index]=instantiate().raft(rafts[index]).voteTimeout(1_000).setAddress(addrs[index]);
         RaftNode node=nodes[index]=new RaftNode(cluster, new Protocol[]{elections[index], rafts[index]});
         node.init();
         cluster.add(addrs[index], node);

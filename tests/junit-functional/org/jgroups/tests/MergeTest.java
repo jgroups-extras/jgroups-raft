@@ -17,7 +17,13 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -102,6 +108,10 @@ public class MergeTest extends BaseElectionTest {
             RAFT r=ch.getProtocolStack().findProtocol(RAFT.class);
             long current_term=r.currentTerm();
             Address leader=r.leader();
+
+            // A node can still have a null leader. Meaning it didn't identify the new leader for a term.
+            if (leader == null) continue;
+
             m.compute(current_term, (k,v) -> {
                 Set<Address> set=v == null? new HashSet<>() : v;
                 set.add(leader);

@@ -3,7 +3,12 @@ package org.jgroups.tests;
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.AppendResult;
+import org.jgroups.protocols.raft.ELECTION2;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntries;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
@@ -67,13 +72,13 @@ public class SyncLeaderCrashTest extends BaseElectionTest {
                 nodes[i].destroy();
                 nodes[i]=null;
             }
-            if(rafts[i] != null) {
-                Utils.deleteLog(rafts[i]);
-                rafts[i]=null;
-            }
             if(elections[i] != null) {
                 elections[i].stopVotingThread();
                 elections[i]=null;
+            }
+            if(rafts[i] != null) {
+                Utils.deleteLog(rafts[i]);
+                rafts[i]=null;
             }
         }
         cluster.clear();
@@ -88,7 +93,8 @@ public class SyncLeaderCrashTest extends BaseElectionTest {
                 Log l=r.log();
                 long prev_term=l.get(i-1).term();
                 LogEntries entries=new LogEntries().add(new LogEntry(9, DATA));
-                r.impl().handleAppendEntriesRequest(entries, a,i-1, prev_term, 9, 4);
+                AppendResult ar = r.impl().handleAppendEntriesRequest(entries, a,i-1, prev_term, 9, 4);
+                assert ar != null && ar.success() : String.format("%s failed on %d with %s", r.raftId(), i, ar);
             }
         }
         kill(0);

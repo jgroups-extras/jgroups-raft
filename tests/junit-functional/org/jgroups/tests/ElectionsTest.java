@@ -1,9 +1,13 @@
- package org.jgroups.tests;
+package org.jgroups.tests;
 
- import org.jgroups.Address;
+import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntries;
+import org.jgroups.protocols.raft.LogEntry;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.tests.election.BaseElectionTest;
@@ -57,11 +61,17 @@ import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_P
          JChannel coord=findCoord(a,b,c);
          System.out.printf("\n\n-- starting the voting process on %s:\n", coord.getAddress());
          BaseElection el=coord.getProtocolStack().findProtocol(electionClass);
+
+         // Assert that B and C have a longer log.
+         long aSize = logSize(a);
+         assert aSize < logSize(b) : "A log longer than B";
+         assert aSize < logSize(c) : "A log longer than C";
+
          el.startVotingThread();
          Util.waitUntilTrue(5000, 500, () -> !el.isVotingThreadRunning());
 
          Address leader=assertLeader(20, 500, null, a, b, c);
-         assert leader.equals(b.getAddress()) || leader.equals(c.getAddress());
+         assert leader.equals(b.getAddress()) || leader.equals(c.getAddress()) : "Leader was " + leader;
          assert !leader.equals(a.getAddress());
      }
 
@@ -124,6 +134,12 @@ import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_P
          for(int term: terms)
              le.add(new LogEntry(term, BUF));
          log.append(index+1, le);
+     }
+
+     private static long logSize(JChannel ch) {
+         RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
+         Log log=raft.log();
+         return log.size();
      }
 
 

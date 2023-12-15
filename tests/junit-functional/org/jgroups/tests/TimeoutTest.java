@@ -12,6 +12,7 @@ import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -26,11 +27,11 @@ public class TimeoutTest {
 
 
     @AfterMethod protected void destroy() throws Exception {
+        Util.close(channels);
         for(JChannel ch: channels) {
             RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
             Utils.deleteLog(raft);
         }
-        Util.close(channels);
     }
 
     public void testAppendWithSingleNode() throws Exception {
@@ -67,29 +68,25 @@ public class TimeoutTest {
         for(int i=1; i <= NUM; i++) {
             try {
                 sm.put(i, i);
-                System.out.println(i);
-                Thread.sleep(10);
-            }
-            catch(Exception ex) {
+            } catch(Exception ex) {
                 System.err.printf("put(%d): last-applied=%d, commit-index=%d\n", i, sm.lastApplied(), sm.commitIndex());
                 throw ex;
             }
         }
 
         long start=System.currentTimeMillis();
-        assert sm.allowDirtyReads(false).get(NUM) == NUM;
-        Predicate<ReplicatedStateMachine<Integer, Integer>> converged=r -> {
+        sm.allowDirtyReads(false);
+        assert sm.get(NUM) == NUM;
+        Predicate<ReplicatedStateMachine<Integer, Integer>> converged= r -> {
             try {
-                return r.get(NUM)  == NUM;
+                Integer o = r.get(NUM);
+                return o != null && o == NUM;
             } catch (Throwable t) {
-                t.printStackTrace();
-                return false;
+                throw new AssertionError("Failed with: " + r.raftId(), t);
             }
         };
         // After reading correctly from the leader with a quorum read, every node should have the same state.
-        for (ReplicatedStateMachine<Integer, Integer> rsm : rsms) {
-            assert converged.test(rsm.allowDirtyReads(true));
-        }
+        Util.waitUntil(5_000, 250, () -> Arrays.stream(rsms).allMatch(converged));
         long time=System.currentTimeMillis()-start;
         System.out.printf("-- it took %d member(s) %d ms to get consistent caches\n", rsms.length, time);
 

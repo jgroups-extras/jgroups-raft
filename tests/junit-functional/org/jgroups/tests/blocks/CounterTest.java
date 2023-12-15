@@ -1,5 +1,25 @@
 package org.jgroups.tests.blocks;
 
+import static org.testng.AssertJUnit.assertEquals;
+import static org.testng.AssertJUnit.assertFalse;
+import static org.testng.AssertJUnit.assertNull;
+import static org.testng.AssertJUnit.assertTrue;
+
+import java.io.DataInput;
+import java.io.DataOutput;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Function;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.blocks.atomic.AsyncCounter;
@@ -23,22 +43,6 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.Function;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
-
-import static org.testng.AssertJUnit.*;
-
 /**
  * {@link  AsyncCounter} and {@link  SyncCounter} test.
  */
@@ -53,12 +57,12 @@ public class CounterTest {
     @AfterClass(alwaysRun = true)
     public void afterMethod() {
         for (JChannel ch : Arrays.asList(c, b, a)) {
+            Util.close(ch);
             RAFT raft = ch.getProtocolStack().findProtocol(RAFT.class);
             try {
                 Utils.deleteLog(raft);
             } catch (Exception ignored) {
             }
-            Util.close(ch);
         }
     }
 
@@ -75,6 +79,9 @@ public class CounterTest {
         service_a = new CounterService(a).allowDirtyReads(false);
         service_b = new CounterService(b).allowDirtyReads(false);
         service_c = new CounterService(c).allowDirtyReads(false);
+
+        Util.waitUntilTrue(10_000, 500, () -> Stream.of(a, b, c)
+                .map(CounterTest::getRaft).allMatch(r -> r.leader() != null));
     }
 
     public void testIncrement() {
@@ -142,7 +149,7 @@ public class CounterTest {
         assertValues(counters, -2);
     }
 
-    public void testIgnoreReturnValue() {
+    public void testIgnoreReturnValue() throws Exception {
         List<RaftSyncCounter> counters=createCounters("ignore");
         RaftSyncCounter counter=counters.get(1);
         long ret=counter.incrementAndGet();
@@ -157,6 +164,8 @@ public class CounterTest {
         ret=counter.get();
         assert ret == 12;
 
+        final RaftSyncCounter rfc = counter;
+        Util.waitUntil(5_000, 250, () -> rfc.getLocal() == 12);
         ret=counter.getLocal();
         assert ret == 12;
 
@@ -177,6 +186,7 @@ public class CounterTest {
         f=ctr.get();
         ret=CompletableFutures.join(f);
         assert ret == 25;
+        Util.waitUntil(5_000, 250, () -> rfc.getLocal() == 25);
         ret=ctr.getLocal();
         assert ret == 25;
         f=ctr.incrementAndGet();
@@ -349,11 +359,15 @@ public class CounterTest {
     public void testDelete() throws Exception {
         List<AsyncCounter> counters = createAsyncCounters("to-delete");
         for (AsyncCounter counter : counters) {
+            System.out.println("-- name: " + counter.getName());
             assertEquals(0, counter.sync().get());
         }
 
+        assert counters.size() == 3 && counters.stream().allMatch(Objects::nonNull);
+
         for (CounterService service : Arrays.asList(service_a, service_b, service_c)) {
-            assertTrue(service.printCounters().contains("to-delete"));
+            String info = service.printCounters();
+            assert info.contains("to-delete") : String.format("%s failed\n%s", service.raftId(), info);
         }
 
         // blocks until majority
@@ -476,6 +490,10 @@ public class CounterTest {
         RAFT raft = new RAFT().members(members).raftId(members.get(id)).logClass(FileBasedLog.class.getCanonicalName()).logPrefix(name + "-" + CLUSTER);
         //noinspection resource
         return new JChannel(Util.getTestStack(election, raft, new REDIRECT())).name(name);
+    }
+
+    private static RAFT getRaft(JChannel ch) {
+        return ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
     public static class GetAndAddFunction implements CounterFunction<LongSizeStreamable>, SizeStreamable {

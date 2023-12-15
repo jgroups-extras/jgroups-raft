@@ -229,11 +229,11 @@ public class DynamicMembershipTest {
 
         RAFT raft=raft(leader);
         try { // this will fail as leader A stepped down when it found that the view's size dropped below the majority
-            raft.addServer("C");
+            raft.addServer("C").get(10, TimeUnit.SECONDS);
             assert false : "Adding server C should fail as the leader stepped down";
-        }
-        catch(Exception ex) {
+        } catch(Exception ex) {
             System.out.println("Caught exception (as expected) trying to add C: " + ex);
+            assert !raft.isLeader() : "Still seen as leader!";
         }
 
         // Now start B again, so that addServer("C") can succeed

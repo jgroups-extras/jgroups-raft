@@ -5,10 +5,8 @@ import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.DISCARD;
 import org.jgroups.protocols.TP;
-import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
-import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.ProtocolStack;
 import org.jgroups.tests.election.BaseElectionTest;
@@ -178,6 +176,7 @@ public class VoteTest extends BaseElectionTest {
                          .map(c -> (RAFT)c.getProtocolStack().findProtocol(RAFT.class))
                          .allMatch((RAFT r) -> r.leader() != null));
         Util.close(channels[2], channels[3]); // close C and D, now everybody should have a null leader
+        Util.waitUntilAllChannelsHaveSameView(10_000, 500, channels[0], channels[1]);
         Util.waitUntil(10000, 500,
                        () -> Stream.of(channels).filter(JChannel::isConnected)
                          .map(VoteTest::raft)

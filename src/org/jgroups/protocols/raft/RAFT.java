@@ -618,7 +618,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             commit_table.forEach(this::sendAppendEntriesMessage);
     }
 
+    /**
+     * Triggers a flush of the entries to the given member.
+     *
+     * @param member: The not-null member address to send the entries.
+     * @throws IllegalStateException: Thrown in case the current node is <b>not</b> the leader.
+     * @throws NullPointerException: Thrown in case the {@param member} is null.
+     */
     public void flushCommitTable(Address member) {
+        if (!isLeader()) throw new IllegalStateException("Currently not the leader, should be " + leader());
         CommitTable.Entry e=commit_table.get(Objects.requireNonNull(member));
         if(e != null)
             sendAppendEntriesMessage(member, e);

@@ -58,6 +58,21 @@ public abstract class BaseElection extends Protocol {
     protected volatile View view;
 
     public long                            voteTimeout() {return vote_timeout;}
+
+    /**
+     * Defines the default timeout in milliseconds to utilize during any election operation.
+     *
+     * @param timeoutMs: Timeout value in milliseconds.
+     * @return This election instance.
+     * @throws IllegalArgumentException: In case timeout is less than or equal to 0.
+     */
+    public BaseElection voteTimeout(long timeoutMs) {
+        if (timeoutMs <= 0) throw new IllegalArgumentException("Timeout should be greater than 0.");
+
+        this.vote_timeout = timeoutMs;
+        return this;
+    }
+
     public RAFT                            raft()        {return raft;}
     public BaseElection                    raft(RAFT r)  {raft=r; return this;}
     public ResponseCollector<VoteResponse> getVotes()    {return votes;} // use for testing only!
