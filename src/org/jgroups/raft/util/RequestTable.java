@@ -22,6 +22,10 @@ public class RequestTable<T> {
     // maps an index to a set of (response) senders
     protected ArrayRingBuffer<Entry<T>> requests;
 
+    // Identify the request table was destroyed.
+    // All subsequent requests should complete exceptionally immediately.
+    private Throwable destroyed;
+
 
     public void create(long index, T vote, CompletableFuture<byte[]> future, Supplier<Integer> majority) {
         create(index, vote, future, majority, null);
@@ -34,6 +38,32 @@ public class RequestTable<T> {
         }
         requests.set(index, entry);
         entry.add(vote, majority);
+        // In case the leader steps down while still adding elements.
+        if (destroyed != null) entry.notify(destroyed);
+    }
+
+    /**
+     * Completes all uncommitted requests with the provided exception.
+     *
+     * <p>
+     * This method should be invoked before setting the instance to <code>null</code> when the leader steps down.
+     * This provides a more responsive completion of requests to the users, instead of having requests time out.
+     * Internal operations, such as membership changes, do not have a timeout associated, which would hang and any
+     * subsequent changes would not complete.
+     * </p>
+     *
+     * @param t: Throwable to complete the requests exceptionally.
+     */
+    public void destroy(Throwable t) {
+        // Keep throwable so any entries created *after* destroying also complete exceptionally.
+        destroyed = t;
+        if (requests != null) {
+            requests.forEach((e, ignore) -> {
+                if (!e.committed) {
+                    e.notify(t);
+                }
+            });
+        }
     }
 
     /**

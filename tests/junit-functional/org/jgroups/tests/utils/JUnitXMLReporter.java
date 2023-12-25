@@ -1,15 +1,35 @@
 package org.jgroups.tests.utils;
 
-import org.jgroups.util.*;
-import org.testng.IConfigurationListener2;
-import org.testng.ITestContext;
-import org.testng.ITestListener;
-import org.testng.ITestResult;
+import org.jgroups.util.Bits;
+import org.jgroups.util.Streamable;
+import org.jgroups.util.Util;
 
-import java.io.*;
-import java.util.*;
+import java.io.DataInput;
+import java.io.DataInputStream;
+import java.io.DataOutput;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.io.Reader;
+import java.io.Writer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+
+import org.testng.ITestContext;
+import org.testng.ITestNGMethod;
+import org.testng.ITestResult;
+import org.testng.internal.IResultListener;
 
 /**
  * Listener generating XML output suitable to be processed by JUnitReport.
@@ -17,7 +37,7 @@ import java.util.concurrent.ConcurrentMap;
  * 
  * @author Bela Ban
  */
-public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 {
+public class JUnitXMLReporter implements IResultListener {
     protected String output_dir=null;
 
     protected static final String XML_DEF="<?xml version=\"1.0\" encoding=\"UTF-8\" ?>";
@@ -82,6 +102,8 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
 
     /** Invoked each time a test method succeeds */
     public void onTestSuccess(ITestResult tr) {
+        if (stdout.get() != null)
+            stdout.get().println("\n\n------------- SUCCESS: " + getMethodName(tr) + " -----------");
         onTestCompleted(tr, "OK:   ", old_stdout);
     }
 
@@ -92,6 +114,8 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
 
     /** Invoked each time a test method fails */
     public void onTestFailure(ITestResult tr) {
+        if (stdout.get() != null)
+            stdout.get().println("\n\n------------- FAILURE: " + getMethodName(tr) + " -----------");
         onTestCompleted(tr, "FAIL: ",old_stderr);
     }
 
@@ -102,9 +126,16 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
 
     public void beforeConfiguration(ITestResult tr) {
         setupStreams(tr, false);
+        if (stdout.get() != null)
+            stdout.get().printf("------ %s invoking: %s%n", getConfigurationMethodType(tr.getMethod()), tr.getMethod().getQualifiedName());
     }
 
     public void onConfigurationSuccess(ITestResult tr) {
+        if (stdout.get() != null) {
+            stdout.get().printf("------ %s done: %s%n", getConfigurationMethodType(tr.getMethod()), tr.getMethod().getQualifiedName());
+            if (tr.getMethod().isAfterClassConfiguration() || tr.getMethod().isAfterMethodConfiguration())
+                stdout.get().println("\n=======================\n");
+        }
         closeStreams();
     }
 
@@ -147,7 +178,7 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
             if(stderr.get() == null)
                 stderr.set(new PrintStream(new FileOutputStream(_stderr, true)));
             if(printMethodName)
-                stdout.get().println("\n\n------------- " + getMethodName(result) + " -----------");
+                stdout.get().println("\n\n------------- STARTING: " + getMethodName(result) + " -----------");
         }
         catch(IOException e) {
             error(e.toString());
@@ -215,6 +246,16 @@ public class JUnitXMLReporter implements ITestListener, IConfigurationListener2 
                 method_name=method_name + "-" + tmp;
         }
         return method_name;
+    }
+
+    private String getConfigurationMethodType(ITestNGMethod method) {
+        if (method.isBeforeClassConfiguration()) return "Before class";
+        if (method.isAfterClassConfiguration()) return "After class";
+
+        if (method.isBeforeMethodConfiguration()) return "Before method";
+        if (method.isAfterMethodConfiguration()) return "After method";
+
+        return "";
     }
 
 

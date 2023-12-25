@@ -3,24 +3,24 @@ package org.jgroups.tests;
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
-import org.jgroups.protocols.DISCARD;
-import org.jgroups.protocols.TP;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.REDIRECT;
-import org.jgroups.raft.util.Utils;
-import org.jgroups.stack.ProtocolStack;
-import org.jgroups.tests.election.BaseElectionTest;
+import org.jgroups.tests.harness.BaseRaftElectionTest;
+import org.jgroups.tests.harness.RaftAssertion;
 import org.jgroups.util.Util;
+
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+import org.assertj.core.api.Assertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-import java.util.concurrent.TimeUnit;
-import java.util.stream.Stream;
-
-import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
  * Tests that a member cannot vote twice. Issue: https://github.com/belaban/jgroups-raft/issues/24
@@ -28,30 +28,26 @@ import static org.jgroups.tests.election.BaseElectionTest.ALL_ELECTION_CLASSES_P
  * @since  0.2
  */
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
-public class VoteTest extends BaseElectionTest {
-    protected JChannel[]                channels;
-    protected RAFT[]                    rafts;
-    protected static final String       CLUSTER=VoteTest.class.getSimpleName();
+public class VoteTest extends BaseRaftElectionTest.ChannelBased {
 
-    @AfterMethod protected void destroy() {
-        if(channels != null)
-            close(channels);
+    {
+        createManually = true;
+    }
+
+    @AfterMethod
+    protected void destroy() throws Exception {
+        destroyCluster();
     }
 
 
     /** Start a member not in {A,B,C} -> expects an exception */
     public void testStartOfNonMember(Class<?> ignore) throws Exception {
-        JChannel non_member=null;
-        try {
-            non_member=create("X", Arrays.asList("A", "B"));
-            assert false : "Starting a non-member should throw an exception";
-        }
-        catch(Exception e) {
-            System.out.println("received exception as expected: " + e);
-        }
-        finally {
-            close(non_member);
-        }
+        withClusterSize(2);
+        JChannel non_member=createDisconnectedChannel("X");
+        Assertions.assertThatThrownBy(() -> non_member.connect(clusterName()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageStartingWith("raft-id X is not listed in members");
+        close(non_member);
     }
 
 
@@ -63,255 +59,126 @@ public class VoteTest extends BaseElectionTest {
      */
     @Deprecated
     public void testMemberVotesTwice(Class<?> ignore) throws Exception {
-        init("A", "B", "C", "D");
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
+        withClusterSize(4);
+        createCluster();
 
-        Util.close(channels[2], channels[3]); // close C and D
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels[0], channels[1]); // A and B: {A,B}
+        // close C and D
+        close(2);
+        close(3);
 
-        RAFT raft=channels[0].getProtocolStack().findProtocol(RAFT.class);
-
-        try {
-            raft.set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
-            assert false : "the change should have failed as we don't have a majority of 3 to commit it";
-        }
-        catch(IllegalStateException ex) {
-            System.out.println("Caught an exception as expected, trying to commit a change: " + ex);
-        }
+        // A and B: {A,B}
+        Util.waitUntilAllChannelsHaveSameView(10000, 500, channel(0), channel(1));
+        RaftAssertion.assertLeaderlessOperationThrows(() -> raft(0).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS));
 
         // close B and create a new B'
-        System.out.printf("restarting %s\n", channels[1].name());
-        Util.close(channels[1]);
-
-        channels[1]=create("B", Arrays.asList("A", "B", "C", "D"));
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels[0], channels[1]);
+        System.out.printf("restarting %s\n", channel(1).name());
+        close(1);
+        createCluster(1);
 
         // Try the change again: we have votes from A and B from before the non-leader was restarted. Now B was
         // restarted, but it cannot vote again in the same term, so we still only have 2 votes!
-        try {
-            raft.set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
-            assert false : "the change should have failed as we don't have a majority of 3 to commit it";
-        }
-        catch(IllegalStateException ex) {
-            System.out.println("Caught an exception as expected, trying to commit a change: " + ex);
-        }
+        RaftAssertion.assertLeaderlessOperationThrows(() -> raft(0).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS));
 
         // now start C. as we have a majority now (A,B,C), the change should succeed
         System.out.println("starting C");
-        channels[2]=create("C", Arrays.asList("A", "B", "C", "D"));
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels[0], channels[1], channels[2]);
+        createCluster(1);
 
         // wait until we have a leader (this may take a few ms)
-        Util.waitUntil(10000, 500,
-                       () -> Stream.of(channels).filter(JChannel::isConnected)
-                         .anyMatch(c -> ((RAFT)c.getProtocolStack().findProtocol(RAFT.class)).isLeader()));
+        waitUntilLeaderElected(10_000, 0, 1, 2);
 
         // need to set this again, as the leader might have changed
-        raft=null;
-        for(JChannel c: channels) {
-            if(!c.isConnected())
-                continue;
-            RAFT r=c.getProtocolStack().findProtocol(RAFT.class);
-            if(r.isLeader()) {
-                raft=r;
-                break;
-            }
-        }
-        assert raft != null;
+        RAFT raft=leader();
+        assertThat(raft).isNotNull();
 
         // This time, we should succeed
         raft.set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
 
-        Util.waitUntil(10000, 500, () -> Stream.of(channels).filter(JChannel::isConnected)
-          .map(c -> (RAFT)c.getProtocolStack().findProtocol(RAFT.class))
-          .allMatch(r -> r.commitIndex() == 1 && r.lastAppended() == 1));
-        for(JChannel ch: channels) {
-            if(!ch.isConnected())
-                continue;
-            RAFT r=ch.getProtocolStack().findProtocol(RAFT.class);
-            System.out.printf("%s: append-index=%d, commit-index=%d\n", ch.getAddress(), r.lastAppended(), r.commitIndex());
-        }
+        BooleanSupplier bs = () -> Stream.of(actualChannels())
+                .filter(JChannel::isConnected)
+                .map(this::raft)
+                .allMatch(r -> r.commitIndex() == 1 && r.lastAppended() == 1);
+        Supplier<String> message = () -> Stream.of(actualChannels())
+                .map(this::raft)
+                .map(r -> String.format("%s: append-index=%d, commit-index=%d\n", r.getAddress(), r.lastAppended(), r.commitIndex()))
+                .collect(Collectors.joining(System.lineSeparator()));
+
+        assertThat(eventually(bs, 10, TimeUnit.SECONDS)).as(message).isTrue();
     }
 
     /** Membership=A, member=A: should become leader immediately */
     public void testSingleMember(Class<?> ignore) throws Exception {
-        channels=new JChannel[]{create("A", Collections.singletonList("A"))};
-        rafts=new RAFT[]{raft(channels[0])};
-        Address leader=leader(10000, 500, channels);
+        withClusterSize(1);
+        createCluster();
+
+        waitUntilLeaderElected(10_000, 0);
+        Address leader=leaderAddress();
         System.out.println("leader = " + leader);
-        assert leader != null;
-        assert leader.equals(channels[0].getAddress());
+        assertThat(leader).isNotNull();
+        assertThat(leader).isEqualTo(channel(0).getAddress());
     }
 
     /** {A,B,C} with leader A. Then B and C leave: A needs to become Follower */
-    public void testLeaderGoingBacktoFollower(Class<?> ignore) throws Exception {
-        init("A", "B", "C");
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
-        JChannel leader_ch=getLeader(10000, 500, channels);
-        RAFT raft=raft(leader_ch);
-        System.out.printf("leader is %s\n", leader_ch);
-        System.out.println("closing non-leaders:");
-        // Stream.of(channels).filter(c -> !c.getAddress().equals(leader_ch.getAddress())).forEach(JChannel::close);
+    public void testLeaderGoingBackToFollower(Class<?> ignore) throws Exception {
+        withClusterSize(3);
+        createCluster();
 
-        for(JChannel ch: channels) {
-            if(ch.getAddress().equals(leader_ch.getAddress()))
+        waitUntilLeaderElected(5_000, 0, 1, 2);
+        RAFT raft=leader();
+        assertThat(raft).isNotNull();
+
+        System.out.printf("leader is %s\n", raft.raftId());
+        System.out.println("closing non-leaders:");
+
+        JChannel[] channels = channels();
+        for (int i = 0; i < channels.length; i++) {
+            JChannel ch = channels[i];
+            if(ch.getAddress().equals(raft.getAddress()))
                 continue;
-            Util.close(ch);
+            close(i);
         }
 
         Util.waitUntil(5000, 500, () -> !raft.isLeader());
-        assert raft.leader() == null;
+        assertThat(raft.leader()).isNull();
     }
 
 
     /** {A,B,C,D}: A is leader and A, B, C and D have leader=A. When C and D are closed, both A, B and C must
      * have leader set to null, as there is no majority (3) any longer */
     public void testNullLeader(Class<?> ignore) throws Exception {
-        init("A", "B", "C", "D");
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
+        withClusterSize(4);
+        createCluster();
 
         // assert we have a leader
-        Util.waitUntil(10000, 500,
-                       () -> Stream.of(channels)
-                         .map(c -> (RAFT)c.getProtocolStack().findProtocol(RAFT.class))
-                         .allMatch((RAFT r) -> r.leader() != null));
-        Util.close(channels[2], channels[3]); // close C and D, now everybody should have a null leader
-        Util.waitUntilAllChannelsHaveSameView(10_000, 500, channels[0], channels[1]);
-        Util.waitUntil(10000, 500,
-                       () -> Stream.of(channels).filter(JChannel::isConnected)
-                         .map(VoteTest::raft)
-                         .allMatch((RAFT r) -> r.leader() == null),
-                       this::printLeaders);
+        waitUntilLeaderElected(10_000, 0, 1, 2, 3);
+
+        // close C and D, now everybody should have a null leader
+        close(3);
+        close(2);
+
+        Util.waitUntilAllChannelsHaveSameView(10_000, 250, channel(0), channel(1));
+        BooleanSupplier bs = () -> Stream.of(actualChannels())
+                .filter(JChannel::isConnected)
+                .map(this::raft)
+                .allMatch((RAFT r) -> r.leader() == null);
+        assertThat(eventually(bs, 10, TimeUnit.SECONDS)).as(this::printLeaders).isTrue();
         System.out.printf("channels:\n%s", printLeaders());
-    }
-
-
-    protected void init(String ... nodes) throws Exception {
-        channels=new JChannel[nodes.length];
-        rafts=new RAFT[nodes.length];
-        for(int i=0; i < nodes.length; i++) {
-            channels[i]=create(nodes[i], Arrays.asList(nodes));
-            rafts[i]=raft(channels[i]);
-        }
     }
 
     protected String printLeaders() {
         StringBuilder sb=new StringBuilder("\n");
-        for(JChannel ch: channels) {
+        for(JChannel ch: actualChannels()) {
             if(!ch.isConnected())
                 sb.append(String.format("%s: not connected\n", ch.getName()));
             else {
-                RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
+                RAFT raft=raft(ch);
                 sb.append(String.format("%s: leader=%s\n", ch.getName(), raft.leader()));
             }
         }
         return sb.toString();
     }
 
-
-    protected JChannel create(String name, List<String> mbrs) throws Exception {
-        RAFT raft=new RAFT().members(mbrs).raftId(name).stateMachine(new DummyStateMachine())
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
-        JChannel ch=new JChannel(Util.getTestStack(instantiate(), raft, new REDIRECT())).name(name);
-        ch.connect(CLUSTER);
-        return ch;
-    }
-
-
-    protected static Address leader(long timeout, long interval, JChannel ... channels) {
-        long target_time=System.currentTimeMillis() + timeout;
-        while(System.currentTimeMillis() <= target_time) {
-            for(JChannel ch : channels) {
-                if(ch.isConnected() && raft(ch).isLeader())
-                    return raft(ch).leader();
-            }
-            Util.sleep(interval);
-        }
-        return null;
-    }
-
-    protected static JChannel getLeader(long timeout, long interval, JChannel ... channels) {
-        long target_time=System.currentTimeMillis() + timeout;
-        while(System.currentTimeMillis() <= target_time) {
-            for(JChannel ch : channels) {
-                if(ch.isConnected() && raft(ch).isLeader())
-                    return ch;
-            }
-            Util.sleep(interval);
-        }
-        return null;
-    }
-
-
-    protected static JChannel nonLeader(JChannel ... channels) {
-        return Stream.of(channels).filter(c -> c.isConnected() && !raft(c).leader().equals(c.getAddress()))
-          .filter(c -> c.getProtocolStack().findProtocol(DISCARD.class) == null)
-          .findFirst().orElse(null);
-    }
-
-    protected static void discardAll(JChannel ... channels) throws Exception {
-        for(JChannel ch: channels)
-            ch.getProtocolStack().insertProtocol(new DISCARD().discardAll(true), ProtocolStack.Position.ABOVE, TP.class);
-    }
-
-    protected static void assertSameLeader(Address leader, JChannel... channels) {
-        for(JChannel ch: channels)
-            assert leader.equals(raft(ch).leader());
-    }
-
-
-
-    protected static void assertCommitIndex(long timeout, long interval, int expected_commit, JChannel... channels) {
-        long target_time=System.currentTimeMillis() + timeout;
-        while(System.currentTimeMillis() <= target_time) {
-            boolean all_ok=true;
-            for(JChannel ch: channels) {
-                RAFT raft=raft(ch);
-                if(expected_commit != raft.commitIndex())
-                    all_ok=false;
-            }
-            if(all_ok)
-                break;
-            Util.sleep(interval);
-        }
-        for(JChannel ch: channels) {
-            RAFT raft=raft(ch);
-            System.out.printf("%s: members=%s, last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.members(),
-                              raft.lastAppended(), raft.commitIndex());
-            assert raft.commitIndex() == expected_commit : String.format("%s: last-applied=%d, commit-index=%d",
-                                                                         ch.getAddress(), raft.lastAppended(), raft.commitIndex());
-        }
-    }
-
     protected RAFT raft(Address addr) {
         return raft(channel(addr));
-    }
-
-    protected JChannel channel(Address addr) {
-        for(JChannel ch: channels) {
-            if(ch.getAddress() != null && ch.getAddress().equals(addr))
-                return ch;
-        }
-        return null;
-    }
-
-    protected static RAFT raft(JChannel ch) {
-        return ch.getProtocolStack().findProtocol(RAFT.class);
-    }
-
-    protected static void close(JChannel... channels) {
-        for(JChannel ch: channels) {
-            if(ch == null)
-                continue;
-            ProtocolStack stack=ch.getProtocolStack();
-            stack.removeProtocol(DISCARD.class);
-            RAFT raft=stack.findProtocol(RAFT.class);
-            try {
-                Utils.deleteLog(raft);
-            }
-            catch(Exception ignored) {}
-            Util.close(ch);
-        }
     }
 
 }

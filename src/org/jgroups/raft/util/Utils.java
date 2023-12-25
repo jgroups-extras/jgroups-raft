@@ -2,8 +2,8 @@ package org.jgroups.raft.util;
 
 import org.jgroups.Address;
 import org.jgroups.View;
-import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.testfwk.RaftTestUtils;
 
 /**
  * @author Bela Ban
@@ -32,12 +32,19 @@ public class Utils {
         return Majority.no_change;
     }
 
+    /**
+     * Deletes the log data for the given {@link RAFT} instance.
+     * <p>
+     *     <b>Warning:</b> This should be used in tests only.
+     * </p>
+     *
+     * @param r: RAFT instance to delete the log contents.
+     * @throws Exception: If an exception happens while deleting the log.
+     * @deprecated Use {@link RaftTestUtils#deleteRaftLog(RAFT)} instead.
+     */
+    @Deprecated(since = "1.0.13", forRemoval = true)
     public static void deleteLog(RAFT r) throws Exception {
-        Log log=r != null? r.log() : null;
-        if(log != null) {
-            log.delete();
-            r.log(null);
-        }
+        RaftTestUtils.deleteRaftLog(r);
     }
 
 }

@@ -148,7 +148,10 @@ public class RaftState {
         this.leader = newLeader;
 
         // We only should invoke the listener when a new leader is set/step down.
-        if (updated) onLeaderUpdate.accept(this.leader);
+        if (updated) {
+            raft.getLog().trace("%s: change leader from %s -> %s", raft.addr(), leader, newLeader);
+            onLeaderUpdate.accept(this.leader);
+        }
     }
 
     /**

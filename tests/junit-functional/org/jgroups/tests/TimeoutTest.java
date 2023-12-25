@@ -2,36 +2,33 @@ package org.jgroups.tests;
 
 import org.jgroups.Global;
 import org.jgroups.JChannel;
-import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
-import org.jgroups.raft.util.Utils;
-import org.jgroups.stack.Protocol;
-import org.jgroups.util.Util;
+import org.jgroups.tests.harness.BaseStateMachineTest;
+
+import java.util.Arrays;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
+import java.util.stream.IntStream;
+
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
-public class TimeoutTest {
+public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Integer, Integer>> {
     protected static final int                          NUM=200;
-    protected JChannel[]                                channels;
-    protected ReplicatedStateMachine<Integer,Integer>[] rsms;
 
+    {
+        createManually = true;
+        recreatePerMethod = true;
+    }
 
-    @AfterMethod protected void destroy() throws Exception {
-        Util.close(channels);
-        for(JChannel ch: channels) {
-            RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            Utils.deleteLog(raft);
-        }
+    @AfterMethod(alwaysRun = true)
+    protected void destroy() throws Exception {
+        destroyCluster();
     }
 
     public void testAppendWithSingleNode() throws Exception {
@@ -43,22 +40,23 @@ public class TimeoutTest {
     }
 
     protected void _test(int num) throws Exception {
-        channels=createChannels(num);
-        rsms=createReplicatedStateMachines(channels);
-        for(JChannel ch: channels)
-            ch.connect("rsm-cluster");
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, channels);
+        withClusterSize(num);
+        createCluster();
 
-        Util.waitUntil(10000, 500,
-                       () -> Stream.of(channels)
-                         .map(ch -> ch.getProtocolStack().findProtocol(RAFT.class))
-                         .anyMatch(r -> ((RAFT)r).isLeader()));
+        BooleanSupplier bs = () -> Arrays.stream(channels())
+                .map(this::raft)
+                .anyMatch(RAFT::isLeader);
+        assertThat(eventually(bs, 10, TimeUnit.SECONDS))
+                .as("Leader election")
+                .isTrue();
+
         ReplicatedStateMachine<Integer,Integer> sm=null;
         System.out.println("-- waiting for leader");
-        for(int i=0; i < channels.length; i++) {
-            RAFT raft=channels[i].getProtocolStack().findProtocol(RAFT.class);
+        for(int i=0; i < channels().length; i++) {
+            RAFT raft=raft(i);
+            assertThat(raft).isNotNull();
             if(raft.isLeader()) {
-                sm=rsms[i];
+                sm=stateMachine(i);
                 System.out.printf("-- found leader: %s\n", raft.leader());
                 break;
             }
@@ -77,57 +75,32 @@ public class TimeoutTest {
         long start=System.currentTimeMillis();
         sm.allowDirtyReads(false);
         assert sm.get(NUM) == NUM;
-        Predicate<ReplicatedStateMachine<Integer, Integer>> converged= r -> {
-            try {
-                Integer o = r.get(NUM);
-                return o != null && o == NUM;
-            } catch (Throwable t) {
-                throw new AssertionError("Failed with: " + r.raftId(), t);
-            }
-        };
-        // After reading correctly from the leader with a quorum read, every node should have the same state.
-        Util.waitUntil(5_000, 250, () -> Arrays.stream(rsms).allMatch(converged));
-        long time=System.currentTimeMillis()-start;
-        System.out.printf("-- it took %d member(s) %d ms to get consistent caches\n", rsms.length, time);
 
-        System.out.printf("-- contents:\n%s\n\n",
-                          Stream.of(rsms).map(r -> String.format("%s: %s", r.channel().getName(), r))
-                            .collect(Collectors.joining("\n")));
+        // After reading correctly from the leader with a quorum read, every node should have the same state.
+        // We still have to use eventually so the message propagate to ALL nodes, not only majority.
+        assertStateMachineEventuallyMatch(IntStream.range(0, num).toArray());
+        long time=System.currentTimeMillis()-start;
+        System.out.printf("-- it took %d member(s) %d ms to get consistent caches\n", clusterSize, time);
 
         System.out.print("-- verifying contents of state machines:\n");
-        for(ReplicatedStateMachine<Integer,Integer> rsm: rsms) {
+        for (int i = 0; i < clusterSize; i++) {
+            ReplicatedStateMachine<Integer, Integer> rsm = stateMachine(i);
             System.out.printf("%s: ", rsm.channel().getName());
-            for(int i=1; i <= NUM; i++)
-                assert rsm.get(i) == i;
+            for(int j=1; j <= NUM; j++)
+                assert rsm.get(j) == j;
             System.out.println("OK");
         }
     }
 
-    protected static JChannel createRaftChannel(List<String> members, String name) throws Exception {
-        Protocol[] protocols=Util.getTestStack(
-          new ELECTION(),
-          new RAFT().members(members).raftId(name).resendInterval(1000).logClass("org.jgroups.protocols.raft.InMemoryLog"),
-          new REDIRECT());
-        return new JChannel(protocols).name(name);
+    @Override
+    protected void amendRAFTConfiguration(RAFT raft) {
+        raft.resendInterval(1_000);
     }
 
-    protected static JChannel[] createChannels(int num) throws Exception {
-        List<String> members=IntStream.range(0, num)
-          .mapToObj(n -> String.valueOf((char)('A' + n))).collect(Collectors.toList());
-
-        JChannel[] ret=new JChannel[num];
-        for(int i=0; i < num; i++) {
-            ret[i]=createRaftChannel(members, String.valueOf((char)('A' + i)));
-        }
-        return ret;
-    }
-
-    protected static ReplicatedStateMachine<Integer,Integer>[] createReplicatedStateMachines(JChannel[] chs) {
-        ReplicatedStateMachine<Integer,Integer>[] ret=new ReplicatedStateMachine[chs.length];
-        for(int i=0; i < ret.length; i++) {
-            ret[i]=new ReplicatedStateMachine<>(chs[i]);
-            ret[i].timeout(2000).allowDirtyReads(true);
-        }
-        return ret;
+    @Override
+    protected ReplicatedStateMachine<Integer, Integer> createStateMachine(JChannel ch) {
+        ReplicatedStateMachine<Integer, Integer> rsm = new ReplicatedStateMachine<>(ch);
+        rsm.timeout(2_000).allowDirtyReads(true);
+        return rsm;
     }
 }

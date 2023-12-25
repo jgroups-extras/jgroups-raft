@@ -22,12 +22,16 @@ public class RaftCluster extends MockRaftCluster {
     protected final Map<Address,RaftNode> dropped_members=new ConcurrentHashMap<>();
     protected boolean                     async;
 
+    @Override
     public RaftCluster add(Address addr, RaftNode node) {
         nodes.put(addr, node);
         return this;
     }
 
+    @Override
     public RaftCluster remove(Address addr)             {nodes.remove(addr); return this;}
+
+    @Override
     public RaftCluster clear()                          {nodes.clear(); return this;}
     public boolean     dropTraffic()                    {return !dropped_members.isEmpty();}
     public RaftCluster dropTrafficTo(Address a)         {move(a, nodes, dropped_members); return this;}
@@ -44,6 +48,11 @@ public class RaftCluster extends MockRaftCluster {
     @Override
     public void send(Message msg) {
         send(msg, false);
+    }
+
+    @Override
+    public int size() {
+        return nodes.size();
     }
 
     public void send(Message msg, boolean async) {

@@ -1,9 +1,21 @@
 package org.jgroups.tests.blocks;
 
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertFalse;
-import static org.testng.AssertJUnit.assertNull;
-import static org.testng.AssertJUnit.assertTrue;
+import org.jgroups.Global;
+import org.jgroups.blocks.atomic.AsyncCounter;
+import org.jgroups.blocks.atomic.CounterFunction;
+import org.jgroups.blocks.atomic.CounterView;
+import org.jgroups.blocks.atomic.SyncCounter;
+import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.Options;
+import org.jgroups.raft.blocks.CounterService;
+import org.jgroups.raft.blocks.RaftAsyncCounter;
+import org.jgroups.raft.blocks.RaftSyncCounter;
+import org.jgroups.tests.harness.BaseRaftChannelTest;
+import org.jgroups.tests.harness.BaseRaftElectionTest;
+import org.jgroups.util.CompletableFutures;
+import org.jgroups.util.LongSizeStreamable;
+import org.jgroups.util.SizeStreamable;
+import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -14,74 +26,49 @@ import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.jgroups.Global;
-import org.jgroups.JChannel;
-import org.jgroups.blocks.atomic.AsyncCounter;
-import org.jgroups.blocks.atomic.CounterFunction;
-import org.jgroups.blocks.atomic.CounterView;
-import org.jgroups.blocks.atomic.SyncCounter;
-import org.jgroups.protocols.raft.ELECTION;
-import org.jgroups.protocols.raft.FileBasedLog;
-import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.REDIRECT;
-import org.jgroups.raft.Options;
-import org.jgroups.raft.blocks.CounterService;
-import org.jgroups.raft.blocks.RaftAsyncCounter;
-import org.jgroups.raft.blocks.RaftSyncCounter;
-import org.jgroups.raft.util.Utils;
-import org.jgroups.util.CompletableFutures;
-import org.jgroups.util.LongSizeStreamable;
-import org.jgroups.util.SizeStreamable;
-import org.jgroups.util.Util;
-import org.testng.annotations.AfterClass;
-import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+import static org.testng.AssertJUnit.assertEquals;
+import static org.testng.AssertJUnit.assertFalse;
+import static org.testng.AssertJUnit.assertNull;
+import static org.testng.AssertJUnit.assertTrue;
 
 /**
  * {@link  AsyncCounter} and {@link  SyncCounter} test.
  */
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
-public class CounterTest {
+public class CounterTest extends BaseRaftChannelTest {
 
-    private static final String CLUSTER = "_counter_test_";
-
-    protected JChannel a, b, c;
     protected CounterService service_a, service_b, service_c;
 
-    @AfterClass(alwaysRun = true)
-    public void afterMethod() {
-        for (JChannel ch : Arrays.asList(c, b, a)) {
-            Util.close(ch);
-            RAFT raft = ch.getProtocolStack().findProtocol(RAFT.class);
-            try {
-                Utils.deleteLog(raft);
-            } catch (Exception ignored) {
-            }
-        }
+    {
+        clusterSize = 3;
     }
 
-    @BeforeClass(alwaysRun = true)
-    public void init() throws Exception {
-        List<String> members = Arrays.asList("a", "b", "c");
+    @Override
+    protected void afterClusterCreation() {
+        service_a = new CounterService(channel(0)).allowDirtyReads(false);
+        service_b = new CounterService(channel(1)).allowDirtyReads(false);
+        service_c = new CounterService(channel(2)).allowDirtyReads(false);
 
-        a = createChannel(0, members).connect(CLUSTER);
-        b = createChannel(1, members).connect(CLUSTER);
-        c = createChannel(2, members).connect(CLUSTER);
+        RAFT[] rafts = Arrays.stream(channels())
+                .map(this::raft)
+                .toArray(RAFT[]::new);
 
-        Util.waitUntilAllChannelsHaveSameView(1000, 500, a, b, c);
-
-        service_a = new CounterService(a).allowDirtyReads(false);
-        service_b = new CounterService(b).allowDirtyReads(false);
-        service_c = new CounterService(c).allowDirtyReads(false);
-
-        Util.waitUntilTrue(10_000, 500, () -> Stream.of(a, b, c)
-                .map(CounterTest::getRaft).allMatch(r -> r.leader() != null));
+        // Need to wait until ALL nodes have the leader.
+        // Otherwise, REDIRECT might fail because of not knowing the leader.
+        BaseRaftElectionTest.waitUntilAllHaveLeaderElected(rafts, 15_000);
     }
 
     public void testIncrement() {
@@ -359,16 +346,22 @@ public class CounterTest {
     public void testDelete() throws Exception {
         List<AsyncCounter> counters = createAsyncCounters("to-delete");
         for (AsyncCounter counter : counters) {
-            System.out.println("-- name: " + counter.getName());
             assertEquals(0, counter.sync().get());
         }
 
         assert counters.size() == 3 && counters.stream().allMatch(Objects::nonNull);
 
-        for (CounterService service : Arrays.asList(service_a, service_b, service_c)) {
-            String info = service.printCounters();
-            assert info.contains("to-delete") : String.format("%s failed\n%s", service.raftId(), info);
-        }
+        // We create the counter from each server, but the request is redirected to the leader.
+        // In some occasions, with 3 nodes, we can end up committing only on the same 2 of the three in all requests.
+        // When this happens, we retrieve the printCounters locally, without a consensus read, so the counter is not locally created yet.
+        BooleanSupplier bs = () -> Stream.of(service_a, service_b, service_c)
+                .allMatch(service -> service.printCounters().contains("to-delete"));
+        Supplier<String> message = () -> Stream.of(service_a, service_b, service_c)
+                .map(service -> String.format("%s: %s", service.raftId(), service.printCounters()))
+                .collect(Collectors.joining(System.lineSeparator()));
+        assertThat(eventually(bs, 10, TimeUnit.SECONDS))
+                .as(message)
+                .isTrue();
 
         // blocks until majority
         service_a.deleteCounter("to-delete");
@@ -482,18 +475,6 @@ public class CounterTest {
 
     private static RaftAsyncCounter createCounter(String name, CounterService counterService) {
         return CompletableFutures.join(counterService.getOrCreateAsyncCounter(name, 0));
-    }
-
-    private static JChannel createChannel(int id, final List<String> members) throws Exception {
-        String name = members.get(id);
-        ELECTION election = new ELECTION();
-        RAFT raft = new RAFT().members(members).raftId(members.get(id)).logClass(FileBasedLog.class.getCanonicalName()).logPrefix(name + "-" + CLUSTER);
-        //noinspection resource
-        return new JChannel(Util.getTestStack(election, raft, new REDIRECT())).name(name);
-    }
-
-    private static RAFT getRaft(JChannel ch) {
-        return ch.getProtocolStack().findProtocol(RAFT.class);
     }
 
     public static class GetAndAddFunction implements CounterFunction<LongSizeStreamable>, SizeStreamable {

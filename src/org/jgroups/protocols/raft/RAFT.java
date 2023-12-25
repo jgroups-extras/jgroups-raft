@@ -651,7 +651,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, boolean internal, Options options) {
         Address leader = leader();
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
-            throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+            throw notCurrentLeader();
         if(buf == null)
             throw new IllegalArgumentException("buffer must not be null");
         CompletableFuture<byte[]> retval=new CompletableFuture<>();
@@ -686,7 +686,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                                      boolean internal, Options opts) {
         Address leader = leader();
         if(leader == null || !Objects.equals(leader,local_addr))
-            throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+            throw notCurrentLeader();
 
         RequestTable<String> reqtab=request_table;
 
@@ -797,7 +797,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
-    protected void process (List<Request> q) {
+    protected void process(List<Request> q) {
         RequestTable<String> reqtab=request_table;
         LogEntries           entries=new LogEntries();
         long                 index=last_appended+1;
@@ -813,6 +813,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 }
                 else if(r instanceof DownRequest) {
                     DownRequest dr=(DownRequest)r;
+                    // Complete the request exceptionally.
+                    // The request could either be lost in the reqtab reference or fail with an NPE below.
+                    // It would only complete in case a timeout is associated.
+                    if (!isLeader()) {
+                        dr.f.completeExceptionally(notCurrentLeader());
+                        continue;
+                    }
+
                     entries.add(new LogEntry(current_term, dr.buf, dr.offset, dr.length, dr.internal));
 
                     // Add the request to the client table, so we can return results to clients when done
@@ -830,7 +838,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         // handle down requests
         if(leader == null || !Objects.equals(leader,local_addr))
-            throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+            throw notCurrentLeader();
 
         // Append to the log
         long prev_index=last_appended;
@@ -858,6 +866,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(highest_committed > prev_index+1)
             commitLogTo(highest_committed, true);
         snapshotIfNeeded(length);
+    }
+
+    IllegalStateException notCurrentLeader() {
+        return new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader() + ")");
     }
 
     /** Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31) */
@@ -948,14 +960,17 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         Address leader = leader();
         if(leader == null || !Objects.equals(leader, local_addr))
-            throw new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader + ")");
+            throw notCurrentLeader();
 
         InternalCommand cmd=new InternalCommand(type, name);
         byte[] buf=Util.streamableToByteBuffer(cmd);
 
         // only add/remove one server at a time (https://github.com/belaban/jgroups-raft/issues/175)
         return add_server_future=add_server_future
-          .thenCompose(s -> setAsync(buf, 0, buf.length, true, null));
+                // Use handle, so we can execute even if the previous execution failed.
+                .handle((ignore, t) -> setAsync(buf, 0, buf.length, true, null))
+                // Chain the new setAsync invocation.
+                .thenCompose(Function.identity());
     }
 
     protected void resend(Address target, long index) {

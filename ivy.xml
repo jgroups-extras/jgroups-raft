@@ -3,7 +3,7 @@
             xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
             xmlns:e="http://ant.apache.org/ivy/extra">
 
-    <info organisation="org.jgroups" module="jgroups-raft" revision="1.0.11.Final-SNAPSHOT"/>
+    <info organisation="org.jgroups" module="jgroups-raft" revision="1.0.13.Final-SNAPSHOT"/>
 
     <publications>
         <artifact name="jgroups-raft" type="pom" />
@@ -13,11 +13,12 @@
 
 
     <dependencies>
-        <dependency org="org.jgroups"               name="jgroups"        rev="5.2.10.Final"/>
+        <dependency org="org.jgroups"               name="jgroups"        rev="5.3.0.Final"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-api"      rev="2.17.1"/>
         <dependency org="org.apache.logging.log4j"  name="log4j-core"     rev="2.17.1"/>
         <dependency org="org.fusesource.leveldbjni" name="leveldbjni-all" rev="1.8"/>
         <dependency org="org.testng"                name="testng"         rev="6.14.+"/>
+        <dependency org="org.assertj"               name="assertj-core"   rev="3.24.2" />
         <dependency org="com.beust"                 name="jcommander"     rev="1.+"/>
         <dependency org="net.jcip"                  name="jcip-annotations" rev="1.0"/>
         <dependency org="org.openjdk.jmh"           name="jmh-core"                 rev="1.34"/>

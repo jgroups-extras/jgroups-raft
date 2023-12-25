@@ -51,6 +51,7 @@ public class ELECTION extends BaseElection {
     protected void handleView(View v) {
         Majority result=Utils.computeMajority(view, v, raft().majority(), raft.leader());
         log.debug("%s: existing view: %s, new view: %s, result: %s", local_addr, this.view, v, result);
+        System.out.printf("%s: existing view: %s, new view: %s, result: %s%n", local_addr, this.view, v, result);
         List<Address> joiners=View.newMembers(this.view, v);
         boolean has_new_members=joiners != null && !joiners.isEmpty();
         this.view=v;

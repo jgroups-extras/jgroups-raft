@@ -7,26 +7,24 @@ import org.jgroups.View;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.pbcast.NAKACK2;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.REDIRECT;
-import org.jgroups.protocols.raft.election.BaseElection;
-import org.jgroups.raft.util.Utils;
+import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.stack.ProtocolStack;
-import org.jgroups.tests.election.BaseElectionTest;
-import org.jgroups.util.Util;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.BeforeMethod;
-import org.testng.annotations.Test;
+import org.jgroups.tests.harness.BaseRaftElectionTest;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.testng.annotations.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests leader election on a merge (https://github.com/belaban/jgroups-raft/issues/125). Verifies that there can be
@@ -34,32 +32,23 @@ import java.util.stream.Stream;
  * @author Bela Ban
  * @since  1.0.10
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider = BaseElectionTest.ALL_ELECTION_CLASSES_PROVIDER)
-public class MergeTest extends BaseElectionTest {
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true, dataProvider = BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER)
+public class MergeTest extends BaseRaftElectionTest.ChannelBased {
     protected JChannel            a,b,c,d,e;
-    protected static final String CLUSTER=MergeTest.class.getSimpleName();
-    protected final List<String>  members=Arrays.asList("A", "B", "C", "D", "E");
-    protected RAFT[]              rafts;
 
-    @BeforeMethod
-    protected void init() throws Exception {
-        a=create("A"); a.connect(CLUSTER);
-        b=create("B"); b.connect(CLUSTER);
-        c=create("C"); c.connect(CLUSTER);
-        d=create("D"); d.connect(CLUSTER);
-        e=create("E"); e.connect(CLUSTER);
-        Util.waitUntilAllChannelsHaveSameView(10000, 500, a,b,c,d,e);
-        rafts=new RAFT[members.size()];
-        int index=0;
-        for(JChannel ch: Arrays.asList(a,b,c,d,e)) {
-            RAFT r=ch.getProtocolStack().findProtocol(RAFT.class);
-            rafts[index++]=r;
-        }
+    {
+        // We create nodes `A` to `E`, strip down and setup per method.
+        clusterSize = 5;
+        recreatePerMethod = true;
     }
 
-    @AfterMethod
-    protected void destroy() {
-        close(e, d, c, b, a);
+    @Override
+    protected void afterClusterCreation() {
+        a = channel(0);
+        b = channel(1);
+        c = channel(2);
+        d = channel(3);
+        e = channel(4);
     }
 
     /**
@@ -70,7 +59,7 @@ public class MergeTest extends BaseElectionTest {
      * for A _or_ E, but not both, in a given term.
      */
     //@Test(invocationCount=10)
-    public void testMerge(Class<?> ignore) throws TimeoutException {
+    public void testMerge(Class<?> ignore) {
         long id=a.getView().getViewId().getId() +1;
         View v1=createView(id, a, b), v2=createView(id, c, d), v3=createView(id, e);
 
@@ -82,8 +71,8 @@ public class MergeTest extends BaseElectionTest {
         assertView(v2, c, d);
         assertView(v3, e);
 
-        List<Address> leaders=leaders(a, b, c, d, e);
-        assert leaders.isEmpty();
+        List<Address> leaders=leaders().stream().map(RAFT::getAddress).collect(Collectors.toList());
+        assert leaders.isEmpty() : dumpLeaderAndTerms();
 
         System.out.printf("-- channels before:\n%s\n", print(a,b,c,d,e));
 
@@ -95,17 +84,24 @@ public class MergeTest extends BaseElectionTest {
         new Thread(injecter1).start();
         new Thread(injecter2).start();
 
-
-        Util.waitUntilTrue(3000, 200, () -> Stream.of(rafts).allMatch(r -> r.leader() != null));
-        Stream.of(a,e).forEach(ch -> ((BaseElection)ch.getProtocolStack().findProtocol(electionClass)).stopVotingThread());
+        System.out.println("-- waiting election after merge");
+        // After the merge, either 'A' or 'E' will never have a leader.
+        // We stop waiting after one node sees itself as leader.
+        BooleanSupplier bs = () -> Arrays.stream(channels())
+                .map(this::raft)
+                .anyMatch(RAFT::isLeader);
+        assertThat(RaftTestUtils.eventually(bs, 5_000, TimeUnit.MILLISECONDS))
+                .as("Waiting leader after merge")
+                .isTrue();
+        stopVotingThread();
         assertNoMoreThanOneLeaderInSameTerm(a,b,c,d,e);
         System.out.printf("\n-- channels after:\n%s\n", print(a,b,c,d,e));
     }
 
-    protected static void assertNoMoreThanOneLeaderInSameTerm(JChannel... channels) {
+    protected void assertNoMoreThanOneLeaderInSameTerm(JChannel... channels) {
         Map<Long,Set<Address>> m=new HashMap<>();
         for(JChannel ch :channels) {
-            RAFT r=ch.getProtocolStack().findProtocol(RAFT.class);
+            RAFT r=raft(ch);
             long current_term=r.currentTerm();
             Address leader=r.leader();
 
@@ -120,7 +116,7 @@ public class MergeTest extends BaseElectionTest {
         }
         for(Map.Entry<Long,Set<Address>> e: m.entrySet()) {
             Set<Address> v=e.getValue();
-            assert v.size() <= 1 : String.format("term %d had more than 1 leader: %s", e.getKey(), v);
+            assert v.size() == 1 : String.format("term %d had more than 1 leader: %s", e.getKey(), v);
         }
     }
 
@@ -132,13 +128,6 @@ public class MergeTest extends BaseElectionTest {
         }
     }
 
-    protected static JChannel findCoord(JChannel... channels) {
-        for(JChannel ch: channels)
-            if(ch.getView().getCoord().equals(ch.getAddress()))
-                return ch;
-        return null;
-    }
-
     protected static String print(JChannel... channels) {
         return Stream.of(channels).map(ch -> {
             ProtocolStack stack=ch.getProtocolStack();
@@ -147,19 +136,13 @@ public class MergeTest extends BaseElectionTest {
         }).collect(Collectors.joining("\n"));
     }
 
-    protected JChannel create(String name) throws Exception {
-        BaseElection election=instantiate();
-        RAFT raft=new RAFT().members(members).raftId(name)
-          .logClass("org.jgroups.protocols.raft.InMemoryLog").logPrefix(name + "-" + CLUSTER);
-        REDIRECT client=new REDIRECT();
-        //noinspection resource
-        JChannel ch=new JChannel(Util.getTestStack(election,raft,client)).name(name);
+    @Override
+    protected void beforeChannelConnection(JChannel ch) throws Exception {
         NAKACK2 nak=ch.getProtocolStack().findProtocol(NAKACK2.class);
         if(nak != null)
             nak.logDiscardMessages(false);
         GMS gms=ch.getProtocolStack().findProtocol(GMS.class);
         gms.printLocalAddress(false).logViewWarnings(false);
-        return ch;
     }
 
     protected static void injectView(View v, JChannel... channels) {
@@ -169,72 +152,10 @@ public class MergeTest extends BaseElectionTest {
         }
     }
 
-    protected static void close(JChannel... channels) {
-        for(JChannel ch: channels) {
-            if(ch == null)
-                continue;
-            close(ch);
-        }
-    }
-
-    protected static void close(JChannel ch) {
-        if(ch == null)
-            return;
-        RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-        try {
-            Utils.deleteLog(raft);
-        }
-        catch(Exception ignored) {}
-        Util.close(ch);
-    }
-
     protected static View createView(long id, JChannel... mbrs) {
         List<Address> addrs=Stream.of(mbrs).map(JChannel::getAddress).collect(Collectors.toList());
         return View.create(mbrs[0].getAddress(), id, addrs);
     }
-
-    protected static boolean isLeader(JChannel ch) {
-        RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-        return ch.getAddress().equals(raft.leader());
-    }
-
-    protected static boolean hasLeader(JChannel ch) {
-        RAFT raft=ch.getProtocolStack().findProtocol(RAFT.class);
-        return raft.leader() != null;
-    }
-
-    protected static List<Address> leaders(JChannel... channels) {
-        List<Address> leaders=new ArrayList<>(channels.length);
-        for(JChannel ch: channels) {
-            if(isLeader(ch))
-                leaders.add(ch.getAddress());
-        }
-        return leaders;
-    }
-
-    /** If expected is null, then any member can be a leader */
-    protected static Address assertLeader(int times, long sleep, Address expected, JChannel... channels) {
-        // wait until there is 1 leader
-        for(int i=0; i < times; i++) {
-            List<Address> leaders=leaders(channels);
-            if(!leaders.isEmpty()) {
-                int size=leaders.size();
-                assert size <= 1;
-                Address leader=leaders.get(0);
-                System.out.println("leader: " + leader);
-                assert expected == null || expected.equals(leader);
-                break;
-            }
-
-            Util.sleep(sleep);
-        }
-        List<Address> leaders=leaders(channels);
-        assert leaders.size() == 1 : "leaders=" + leaders;
-        Address leader=leaders.get(0);
-        System.out.println("leader = " + leader);
-        return leader;
-    }
-
 
     protected static class ViewInjecter implements Runnable {
         protected final View           v;

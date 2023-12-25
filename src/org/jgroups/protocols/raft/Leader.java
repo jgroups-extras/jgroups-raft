@@ -32,8 +32,11 @@ public class Leader extends RaftImpl {
 
     public void destroy() {
         super.destroy();
+        RequestTable<String> reqTable = raft.request_table;
         raft.request_table=null;
         raft.commit_table=null;
+
+        if (reqTable != null) reqTable.destroy(raft.notCurrentLeader());
     }
 
 
@@ -50,9 +53,17 @@ public class Leader extends RaftImpl {
         switch(result.result) {
             case OK:
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
-                if(reqtab.add(result.index, sender_raft_id, this.majority)) {
+                boolean done = reqtab.add(result.index, sender_raft_id, this.majority);
+                if(done) {
                     raft.commitLogTo(result.index, true);
-                    if(raft.send_commits_immediately)
+                }
+                // Send commits immediately.
+                // Note that, an entry is committed by a MAJORITY, this means that some of the nodes doesn't know the entry exist yet.
+                // This way, send the commit messages any time we handle an append response.
+                if(raft.send_commits_immediately) {
+                    // Done is only true when reaching a majority threshold, we also need to check is committed to resend
+                    // to slower nodes.
+                    if (done || reqtab.isCommitted(result.index))
                         sendCommitMessageToFollowers();
                 }
                 break;

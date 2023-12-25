@@ -20,8 +20,13 @@ public class PartitionedRaftCluster extends MockRaftCluster {
     protected final Map<Address, List<Address>> partitions = new ConcurrentHashMap<>();
     protected final Map<Address, RaftNode> nodes = new ConcurrentHashMap<>();
 
-    public PartitionedRaftCluster clear() {nodes.clear(); return this;}
+    @Override
+    public PartitionedRaftCluster clear() {
+        nodes.clear();
+        return self();
+    }
 
+    @Override
     public PartitionedRaftCluster add(Address addr, RaftNode node) {
         nodes.put(addr, node);
         return this;
@@ -60,6 +65,17 @@ public class PartitionedRaftCluster extends MockRaftCluster {
                 send(node, msg);
             }
         }
+    }
+
+    @Override
+    public int size() {
+        return nodes.size();
+    }
+
+    @Override
+    public PartitionedRaftCluster remove(Address addr) {
+        nodes.remove(addr);
+        return self();
     }
 
     private void send(RaftNode node, Message msg) {
