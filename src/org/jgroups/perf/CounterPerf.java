@@ -108,8 +108,8 @@ public class CounterPerf implements Receiver {
             System.out.println("Histogram enabled! Will be stored into " + histogramPath);
         }
         thread_factory=new DefaultThreadFactory("updater", false, true)
-          .useFibers(use_fibers);
-        if(use_fibers && Util.fibersAvailable())
+          .useVirtualThreads(use_fibers);
+        if(use_fibers && Util.virtualThreadsAvailable())
             System.out.println("-- using fibers instead of threads");
 
         channel=new JChannel(props).setName(name);

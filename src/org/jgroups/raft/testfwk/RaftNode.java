@@ -129,6 +129,7 @@ public class RaftNode extends Protocol implements Lifecycle, Settable, Closeable
 
     }
 
+    @SuppressWarnings("unchecked")
     protected <T extends Protocol> T find(Class<T> cl) {
         for(Protocol p: prots) {
             if(p.getClass().isAssignableFrom(cl))

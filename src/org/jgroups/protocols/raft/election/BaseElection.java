@@ -104,7 +104,7 @@ public abstract class BaseElection extends Protocol {
 
     public void init() throws Exception {
         super.init();
-        raft=findProtocol(RAFT.class);
+        raft=RAFT.findProtocol(RAFT.class, this, false);
     }
 
     public void stop() {
@@ -325,13 +325,5 @@ public abstract class BaseElection extends Protocol {
             votes.reset();
         }
         return this;
-    }
-
-    protected <T extends Protocol> T findProtocol(Class<T> clazz) {
-        for(Protocol p=up_prot; p != null; p=p.getUpProtocol()) {
-            if(clazz.isAssignableFrom(p.getClass()))
-                return (T)p;
-        }
-        throw new IllegalStateException(clazz.getSimpleName() + " not found above " + this.getClass().getSimpleName());
     }
 }

@@ -9,8 +9,10 @@
     <description>JGroups RAFT implementation</description>
 
     <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
+        <maven.compiler.release>11</maven.compiler.release>
 
         <!-- nexus-staging-maven-plugin -->
         <autoReleaseAfterClose>true</autoReleaseAfterClose>
@@ -344,7 +346,7 @@
                             <goal>run</goal>
                         </goals>
                         <configuration>
-                            <tasks>
+                            <target>
                                 <property name="compile_classpath" refid="maven.compile.classpath" />
                                 <property name="plugin_classpath" refid="maven.plugin.classpath" />
                                 <delete dir="${project.build.directory}/schema" failonerror="false" />
@@ -356,7 +358,7 @@
                                     </classpath>
                                     <arg line="-o ${project.build.directory}/schema" />
                                 </java>
-                            </tasks>
+                            </target>
                         </configuration>
                     </execution>
                 </executions>
@@ -469,7 +471,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.0</version>
+                    <version>3.12.1</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

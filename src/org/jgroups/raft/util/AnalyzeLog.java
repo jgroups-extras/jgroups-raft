@@ -26,6 +26,7 @@ public class AnalyzeLog {
     protected Function<DataInput,String> snapshot_reader=CounterService::readAndDumpSnapshot;
     protected PersistentState persistent_state;
 
+    @SuppressWarnings("unchecked")
     public AnalyzeLog logClass(String cl) throws ClassNotFoundException {
         log_class=(Class<? extends Log>)Class.forName(cl);
         return this;

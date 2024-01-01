@@ -23,16 +23,23 @@ public class RaftCluster extends MockRaftCluster {
     protected boolean                     async;
 
     @Override
-    public RaftCluster add(Address addr, RaftNode node) {
+    public <T extends MockRaftCluster> T add(Address addr, RaftNode node) {
         nodes.put(addr, node);
-        return this;
+        return self();
     }
 
     @Override
-    public RaftCluster remove(Address addr)             {nodes.remove(addr); return this;}
+    public <T extends MockRaftCluster> T remove(Address addr) {
+        nodes.remove(addr);
+        return self();
+    }
 
     @Override
-    public RaftCluster clear()                          {nodes.clear(); return this;}
+    public <T extends MockRaftCluster> T clear() {
+        nodes.clear();
+        return self();
+    }
+
     public boolean     dropTraffic()                    {return !dropped_members.isEmpty();}
     public RaftCluster dropTrafficTo(Address a)         {move(a, nodes, dropped_members); return this;}
     public RaftCluster clearDroppedTrafficTo(Address a) {move(a, dropped_members, nodes); return this;}

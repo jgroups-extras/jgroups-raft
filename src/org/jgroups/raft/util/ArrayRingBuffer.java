@@ -27,7 +27,7 @@ public final class ArrayRingBuffer<T> {
    }
 
    public ArrayRingBuffer(final int initialSize, final long headSequence) {
-      this.elements = (T[]) (initialSize == 0 ? EMPTY : new Object[initialSize]);
+      this.elements = allocate(initialSize);
       this.headSequence = headSequence;
       this.tailSequence = headSequence;
       if (headSequence < 0) {
@@ -282,7 +282,7 @@ public final class ArrayRingBuffer<T> {
          // see ArrayList::newCapacity
          throw new OutOfMemoryError();
       }
-      final T[] newElements = (T[]) new Object[newCapacity];
+      final T[] newElements = allocate(newCapacity);
       final int size = size();
       final long headSequence = this.headSequence;
       long oldIndex = headSequence;
@@ -304,5 +304,10 @@ public final class ArrayRingBuffer<T> {
 
    private static int findNextPositivePowerOfTwo(final int value) {
       return 1 << (Integer.SIZE - Integer.numberOfLeadingZeros(value - 1));
+   }
+
+   @SuppressWarnings("unchecked")
+   private static <T> T[] allocate(int capacity) {
+      return (T[]) (capacity == 0 ? EMPTY : new Object[capacity]);
    }
 }

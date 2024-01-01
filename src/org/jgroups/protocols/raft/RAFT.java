@@ -420,6 +420,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return raft_state.advanceTermForElection();
     }
 
+    @SuppressWarnings("unchecked")
     public static <T> T findProtocol(Class<T> clazz, final Protocol start, boolean down) {
         Protocol prot=start;
         while(prot != null && clazz != null) {

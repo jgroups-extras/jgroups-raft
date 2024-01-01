@@ -55,6 +55,7 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     protected void passDataProviderParameters(Object[] args) {
         logClass = (Class<? extends Log>) args[0];
     }

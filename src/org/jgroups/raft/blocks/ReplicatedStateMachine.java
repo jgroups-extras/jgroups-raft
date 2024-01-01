@@ -275,7 +275,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
 
         byte[] buf=out.buffer();
         byte[] rsp=raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
-        return ignore_return_value || rsp == null ? null: (V)Util.objectFromByteBuffer(rsp, 0, rsp.length, class_loader);
+        return ignore_return_value || rsp == null ? null: Util.objectFromByteBuffer(rsp, 0, rsp.length, class_loader);
     }
 
     protected void notifyPut(K key, V val, V old_val) {

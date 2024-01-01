@@ -92,8 +92,8 @@ public class BaseStateMachineTest<T extends StateMachine> extends BaseRaftChanne
      * @param r: {@link RAFT} instance to retrieve the {@link StateMachine}.
      * @return The {@link StateMachine} cast to type T.
      */
+    @SuppressWarnings("unchecked")
     protected final T stateMachine(RAFT r) {
-        // noinspection unchecked
         return (T) r.stateMachine();
     }
 

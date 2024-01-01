@@ -289,6 +289,7 @@ public abstract class BaseRaftClusterTest<T extends MockRaftCluster> extends Abs
         return ExtendedUUID.randomUUID(name).put(RAFT.raft_id_key, Util.stringToBytes(name));
     }
 
+    @SuppressWarnings("unchecked")
     private <P extends Protocol> P findProtocol(Protocol[] stack, Class<P> clazz) {
         for (Protocol protocol : stack) {
             if (clazz.isAssignableFrom(protocol.getClass()))
