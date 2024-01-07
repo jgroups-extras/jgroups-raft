@@ -109,7 +109,8 @@ public abstract class BaseElection extends Protocol {
 
     public void stop() {
         stopVotingThread();
-        raft.setLeaderAndTerm(null);
+        if (raft != null)
+            raft.setLeaderAndTerm(null);
     }
 
     public Object down(Event evt) {
