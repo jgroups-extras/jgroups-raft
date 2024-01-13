@@ -32,4 +32,4 @@ include::./using.adoc[Using jgroups-raft]
 
 include::./blocks.adoc[Building blocks]
 
-include::./protocols.adoc.tmp[Protocol list]
+include::./protocols-generated.adoc[Protocol list]
