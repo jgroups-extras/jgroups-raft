@@ -21,6 +21,7 @@ doc/manual/target
 doc/manual/*.css
 doc/manual/build/*
 doc/manual/*.tmp
+doc/manual/*-generated.adoc
 doc/tutorial/target
 conf/MANIFEST.MF
 target/

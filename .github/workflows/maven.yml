@@ -27,4 +27,22 @@ jobs:
           distribution: temurin
           cache: maven
       - name: Build with Maven
+        id: test_runner
         run: mvn -B package --file pom.xml -Dgroups=functional
+        continue-on-error: true
+
+      - name: Generate test reports
+        # Only generate and upload reports if tests failed.
+        if: failure()
+        run: mvn -B surefire-report:report-only
+
+        # Only run upload if tests failed.
+      - name: Generate and upload test reports
+        if: steps.test_runner.outputs.status == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Test reports
+          # Once SUREFIRE-2219 is finished we can upload only the html report.
+          path: |
+            tmp/html/
+            tmp/test-results/xml/

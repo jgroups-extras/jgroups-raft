@@ -37,10 +37,10 @@ public class PropsToAsciidoc {
             return;
         }
         String prot_file = args[0];
-        String temp_file = prot_file + ".tmp";
+        String temp_file = prot_file.replace("template", "generated");
 
         try {
-            // first copy protocols.adoc file into protocols.adoc.xml
+            // first copy protocols-template.adoc file into protocols-template.adoc.xml
             File f = new File(temp_file);
             copy(new FileReader(prot_file), new FileWriter(f));
 
@@ -67,7 +67,7 @@ public class PropsToAsciidoc {
     }
 
     static void help() {
-        System.out.println("PropsToAsciidoc <path to protocols.adoc file>");
+        System.out.println("PropsToAsciidoc <path to protocols-template.adoc file>");
     }
 
 

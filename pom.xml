@@ -63,6 +63,12 @@
             -Xms400M
             -Xmx800M
         </jgroups.tests.jvmargs>
+
+        <!-- Plugin magic -->
+        <!-- Latest AntRun plugin uses an old version of Ant, which fails because of SecurityManager -->
+        <!-- Once they release with Ant >= 1.0.14 we can remove this. -->
+        <ant.securitymanager.usage.warn>true</ant.securitymanager.usage.warn>
+        <antrun.ant.version>1.10.14</antrun.ant.version>
     </properties>
 
     <organization>
@@ -71,6 +77,10 @@
     </organization>
 
     <developers>
+        <developer>
+            <name>José Bolina</name>
+            <email>jbolina@redhat.com</email>
+        </developer>
         <developer>
             <name>Bela Ban</name>
             <email>bban@redhat.com</email>
@@ -226,6 +236,7 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>${assertj.version}</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -260,6 +271,7 @@
                 </includes>
             </resource>
         </resources>
+
         <plugins>
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
@@ -273,6 +285,7 @@
                     <autoReleaseAfterClose>true</autoReleaseAfterClose>
                 </configuration>
             </plugin>
+
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
@@ -280,6 +293,7 @@
                     <target>11</target>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
@@ -304,24 +318,11 @@
                     </rules>
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
                 <artifactId>build-helper-maven-plugin</artifactId>
                 <executions>
-                    <execution>
-                        <id>add-source</id>
-                        <phase>validate</phase>
-                        <goals>
-                            <goal>add-source</goal>
-                        </goals>
-                        <configuration>
-                            <sources>
-                                <!-- These tests have to go in the main jar -->
-                                <source>tests/other</source>
-                                <source>tests/perf</source>
-                            </sources>
-                        </configuration>
-                    </execution>
                     <execution>
                         <id>add-test-source</id>
                         <phase>validate</phase>
@@ -336,6 +337,7 @@
                     </execution>
                 </executions>
             </plugin>
+
             <plugin>
                 <artifactId>maven-antrun-plugin</artifactId>
                 <executions>
@@ -363,6 +365,7 @@
                     </execution>
                 </executions>
             </plugin>
+
             <!-- Make sure we generate src jars too -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -378,20 +381,6 @@
                     </execution>
                 </executions>
             </plugin>
-            <!--<plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <addDefaultEntries>true</addDefaultEntries>
-                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
-                            <addBuildEnvironmentEntries>true</addBuildEnvironmentEntries>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>-->
-
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -400,9 +389,7 @@
                     <arguments>-DskipTests=true -Dmaven.test.skip=true -Dmaven.javadoc.skip=true</arguments>
                     <preparationGoals>clean</preparationGoals>
                 </configuration>
-
             </plugin>
-
 
             <!-- Disable default tests: they won't run since they are lacking configuration -->
             <plugin>
@@ -440,6 +427,16 @@
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-report-plugin</artifactId>
+                <configuration>
+                    <linkXRef>true</linkXRef>
+                    <outputDirectory>${tmp.dir}/html</outputDirectory>
+                    <reportsDirectories>${tmp.dir}/test-results/xml/functional</reportsDirectories>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
                 <executions>
                     <execution>
@@ -456,78 +453,94 @@
                 </executions>
             </plugin>
         </plugins>
+
         <pluginManagement>
             <plugins>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-antrun-plugin</artifactId>
                     <version>3.1.0</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>org.apache.ant</groupId>
+                            <artifactId>ant</artifactId>
+                            <version>${antrun.ant.version}</version>
+                        </dependency>
+                    </dependencies>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-clean-plugin</artifactId>
                     <version>3.3.2</version>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.12.1</version>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-deploy-plugin</artifactId>
                     <version>3.1.1</version>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-install-plugin</artifactId>
                     <version>3.1.1</version>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
                     <version>2.4</version>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-resources-plugin</artifactId>
                     <version>3.3.1</version>
                 </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-site-plugin</artifactId>
-                    <version>3.2</version>
-                </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
                     <version>3.3.0</version>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
                     <version>3.0.0-M6</version>
                 </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-report-plugin</artifactId>
+                    <version>3.2.5</version>
+                </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <version>3.2.5</version>
                 </plugin>
+
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-dependency-plugin</artifactId>
                     <version>3.6.1</version>
                 </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-help-plugin</artifactId>
-                    <version>2.2</version>
-                </plugin>
+
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>build-helper-maven-plugin</artifactId>
                     <version>3.5.0</version>
                 </plugin>
+
                 <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
                 <plugin>
                     <groupId>org.eclipse.m2e</groupId>
@@ -556,4 +569,74 @@
             </plugins>
         </pluginManagement>
     </build>
+
+    <profiles>
+        <profile>
+            <!-- Profile to generate the manual. -->
+            <id>manual</id>
+            <properties>
+                <skipTests>true</skipTests>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>manual</id>
+
+                                <!-- We use the PropsToAsciidoc to generate the adoc file. -->
+                                <!-- We need to have the compiled classes before generating the manual. -->
+                                <phase>compile</phase>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                                <configuration>
+                                    <target>
+                                        <property name="compile_classpath" refid="maven.compile.classpath" />
+                                        <property name="plugin_classpath" refid="maven.plugin.classpath" />
+                                        <property name="doc.dir" value="${basedir}/doc" />
+                                        <property name="manual.dir" value="${basedir}/doc/manual" />
+                                        <property name="protocols.adoc" value="${manual.dir}/protocols-template.adoc" />
+
+                                        <echo message="Building manual from asciidoc ..." />
+
+                                        <!-- Generate the properties tables for all protocols. -->
+                                        <echo message="Replacing variables in ${protocols.adoc}" />
+                                        <java classname="org.jgroups.raft.util.PropsToAsciidoc">
+                                            <classpath>
+                                                <pathelement path="${compile_classpath}" />
+                                                <pathelement path="${plugin_classpath}" />
+                                            </classpath>
+                                            <arg value="${protocols.adoc}" />
+                                        </java>
+
+                                        <!-- Use asciidoctor to generate the manual. -->
+                                        <!-- We utilize the asciidoctor-diagram extension to generate ditaa images. -->
+                                        <mkdir dir="${manual.dir}/build" />
+                                        <echo message="Generating index.html in ${manual.dir}/build" />
+                                        <exec executable="asciidoctor" dir="${manual.dir}">
+                                            <arg line="-r asciidoctor-diagram -n -a source-highlighter=highlightjs -a stylesheet=${doc.dir}/stylesheets/asciidoctor.css -a icons -o ${manual.dir}/build/index.html manual.adoc" />
+                                        </exec>
+
+                                        <!-- Copy assets to the build directory. -->
+                                        <copy todir="${manual.dir}/build/images">
+                                            <fileset dir="${manual.dir}/images">
+                                                <include name="**/*" />
+                                            </fileset>
+                                        </copy>
+                                        <copy todir="${manual.dir}/build">
+                                            <fileset dir="${doc.dir}/stylesheets">
+                                                <include name="*.css" />
+                                            </fileset>
+                                        </copy>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

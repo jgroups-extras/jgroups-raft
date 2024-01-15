@@ -1,7 +1,7 @@
 ## Builds an image containing jgroups-raft
 
 ## ***************************************************************
-## Make sure you have jgroups-raft compiled (ant) before doing so!
+## Make sure you have jgroups-raft compiled (mvn clean package) before doing so!
 ## ***************************************************************
 
 ## The first stage is used to prepare/update the OS.
@@ -29,8 +29,8 @@ WORKDIR /opt/jgroups
 COPY --from=build-stage /bin/ping /bin/netstat /bin/nc /bin/
 COPY --from=build-stage /sbin/ifconfig /sbin/
 COPY  README.md $JGROUPS_RAFT_HOME/
-COPY ./classes $JGROUPS_RAFT_HOME/classes
-COPY ./lib $JGROUPS_RAFT_HOME/lib
+COPY ./target/classes $JGROUPS_RAFT_HOME/classes
+COPY ./target/libs $JGROUPS_RAFT_HOME/lib
 COPY ./bin $JGROUPS_RAFT_HOME/bin
 COPY ./conf $JGROUPS_RAFT_HOME/conf
 
