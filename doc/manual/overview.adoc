@@ -53,8 +53,42 @@ The feature set of jgroups-raft includes
 The architecture of jgroups-raft is shown below.
 
 [[ArchitectureFig]]
-.The architecture of jgroups-raft
-image::images/Architecture.png["Architecture of jgroups-raft,align=left,valign=top,width="60%"]
+.The architecture of jgroups-raft.
+[ditaa, format="svg"]
+----
+     +----------------+
+     |                |
+   +-+  StateMachine  |<-+
+   | |                |  |
+   | +----------------+  |
+   |                     |
+set/get                apply
+   |                     |
+   |  +--------------+   |
+   +->|  RaftHandle  +---+
+      +--------------+
+
+       +------------+
+       |  Channel   |
+       +------------+
+
+       +------------+
+       |   CLIENT   |
+       +------------+
+       |  REDIRECT  |
+       +------------+        +-------+
+       |    RAFT    +--------+  Log  |
+       +------------+        +-------+
+       |  ELECTION  |
+       +------------+
+             .
+             .
+       +------------+
+       |  NO_DUPES  |
+       +------------+
+             .
+             .
+----
 
 The components that make up jgroups-raft are
 
@@ -62,7 +96,7 @@ The components that make up jgroups-raft are
 ** `NO_DUPES`: makes sure that a jgroups-raft node does not appear in a view more than once
 ** `ELECTION`: handles leader election
 ** `RAFT`: implements the Raft algorithm, ie. appending entries to the persistent log, committing them, syncing new members etc
-** `REDIRECT` (not shown): redirects requests to the leader
+** `REDIRECT`: redirects requests to the leader
 ** `CLIENT`: accepts client requests over a socket, executes them and sends the results back to the clients
 * `Channel`: this is a regular JGroups `JChannel` or `ForkChannel`
 * `RaftHandle`: the main class for users of jgroups-raft to interact with
