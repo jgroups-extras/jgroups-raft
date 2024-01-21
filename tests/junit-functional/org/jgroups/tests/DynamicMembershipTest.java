@@ -33,6 +33,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 /**
  * Tests the addServer() / removeServer) functionality
@@ -284,6 +285,178 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         assertCommitIndex(20000, raft(leader).lastAppended(), channels());
     }
 
+    @Test(enabled = false, description = "https://github.com/jgroups-extras/jgroups-raft/issues/245")
+    public void testMaintenanceFollower() throws Exception {
+        withClusterSize(3);
+        createCluster();
+
+        waitUntilAllRaftsHaveLeader(channels());
+
+        Address leader = getRaftAddress(true);
+        System.out.printf("-- leader: %s%n", leader);
+        assertThat(leader).isNotNull();
+
+        // Retrieve the leader to execute membership commands.
+        RAFT raft = raft(leader);
+
+        // Find any follower to remove.
+        Address follower = getRaftAddress(false);
+        RAFT followerRaft = raft(follower);
+
+        System.out.printf("-- removing member: %s%n", followerRaft.raftId());
+        // We execute the membership operation.
+        raft.removeServer(followerRaft.raftId()).get(10, TimeUnit.SECONDS);
+
+        List<String> allMembers = new ArrayList<>(getRaftMembers());
+        allMembers.remove(followerRaft.raftId());
+        assertMembers(10_000, allMembers, 2, actualChannels());
+
+        System.out.printf("-- shutdown follower node %s%n", followerRaft.raftId());
+        // After membership operation succeeds, we shutdown the follower.
+        shutdown(findChannelIndex(follower));
+        Util.waitUntilAllChannelsHaveSameView(10_000, 100, actualChannels());
+
+        System.out.println("-- restarting node");
+        // After channel is closed, we restart it.
+        createCluster();
+
+        System.out.printf("-- adding node %s again%n", followerRaft.raftId());
+        // And add again the member in the Raft cluster.
+        raft.addServer(followerRaft.raftId()).get(10, TimeUnit.SECONDS);
+        assertMembers(10_000, getRaftMembers(), 2, actualChannels());
+    }
+
+    public void testMaintenanceLeader() throws Exception {
+        withClusterSize(3);
+        createCluster();
+
+        waitUntilAllRaftsHaveLeader(channels());
+
+        Address leader = getRaftAddress(true);
+        System.out.printf("-- current leader: %s%n", leader);
+        RAFT leaderRaft = raft(leader);
+
+        assertMembers(5_000, getRaftMembers(), 2, actualChannels());
+
+        // Populate with some operations.
+        for (int i = 0; i < 10; i++) {
+            leaderRaft.set(new byte[] { (byte) i}, 0, 1, 5, TimeUnit.SECONDS);
+        }
+
+        System.out.printf("-- removing leader %s from members%n", leaderRaft.raftId());
+        leaderRaft.removeServer(leaderRaft.raftId()).get(10, TimeUnit.SECONDS);
+
+        // After the operation finishes, the leader has already stepped down.
+        assertThat(leaderRaft.isLeader()).isFalse();
+
+
+        // A majority eventually commits the operation, this guarantees the log-prefix.
+        long afterRemovalIndex = leaderRaft.commitIndex();
+        assertThat(Arrays.stream(channels())
+                .map(this::raft)
+                .filter(r -> r.lastAppended() == afterRemovalIndex)).hasSizeGreaterThanOrEqualTo(2);
+        BooleanSupplier bs = () -> Arrays.stream(channels())
+                .map(this::raft)
+                .filter(r -> r.commitIndex() == afterRemovalIndex).count() >= 2;
+        assertThat(eventually(bs, 10, TimeUnit.SECONDS))
+                .withFailMessage(() -> "The majority did not commit the leader removal: \n" + Arrays.stream(channels()).map(c -> raft(c).toString()).collect(Collectors.joining(System.lineSeparator())))
+                .isTrue();
+
+        List<String> allMembers = new ArrayList<>(getRaftMembers());
+        allMembers.remove(leaderRaft.raftId());
+
+        assertMembers(10_000, allMembers, 2, actualChannels());
+
+        System.out.printf("-- old leader %s does not apply operations%n", leaderRaft.raftId());
+        RaftAssertion.assertLeaderlessOperationThrows(() -> leaderRaft.set(new byte[1], 0, 1, 5, TimeUnit.SECONDS));
+
+        System.out.printf("-- waiting old leader %s to step down%n", leaderRaft.raftId());
+        RAFT[] rafts = Arrays.stream(channels())
+                .map(this::raft)
+                .filter(r -> !r.raftId().equals(leaderRaft.raftId()))
+                .toArray(RAFT[]::new);
+        BaseRaftElectionTest.waitUntilLeaderElected(rafts, 10_000);
+
+        System.out.println("-- shutdown old leader server");
+        shutdown(findChannelIndex(leader));
+        // FIXME: remove next line after https://github.com/jgroups-extras/jgroups-raft/issues/245
+        RaftTestUtils.deleteRaftLog(leaderRaft);
+        Util.waitUntilAllChannelsHaveSameView(10_000, 100, actualChannels());
+
+        String raftId = leaderRaft.raftId();
+        System.out.printf("-- recreating previous leader %s%n", raftId);
+        createCluster();
+
+        leader = getRaftAddress(true);
+        System.out.printf("-- new leader is %s%n", leader);
+        assertThat(leader).isNotNull();
+        RAFT newLeaderRaft = raft(leader);
+
+        newLeaderRaft.addServer(raftId).get(10, TimeUnit.SECONDS);
+        assertMembers(10_000, getRaftMembers(), 2, channels());
+    }
+
+    public void testLeaderLeavingChangesMajority() throws Exception {
+        withClusterSize(2);
+        createCluster();
+
+        waitUntilAllRaftsHaveLeader(channels());
+
+        Address leader = getRaftAddress(true);
+        System.out.printf("-- current leader: %s%n", leader);
+        RAFT leaderRaft = raft(leader);
+
+        int leaderIndex = findChannelIndex(leader);
+        int followerIndex = findChannelIndex(getRaftAddress(false));
+        System.out.printf("-- leader is %d and follower %d%n", leaderIndex, followerIndex);
+
+        assertMembers(5_000, getRaftMembers(), 2, actualChannels());
+
+        System.out.printf("-- removing leader %s from members%n", leaderRaft.raftId());
+        leaderRaft.removeServer(leaderRaft.raftId()).get(10, TimeUnit.SECONDS);
+
+        // A majority eventually commits the operation, this guarantees the log-prefix.
+        long afterRemovalIndex = leaderRaft.commitIndex();
+        BooleanSupplier bs = () -> Arrays.stream(channels())
+                .map(this::raft)
+                .filter(r -> r.commitIndex() == afterRemovalIndex).count() >= 2;
+        assertThat(eventually(bs, 10, TimeUnit.SECONDS))
+                .withFailMessage(() -> "The majority did not commit the leader removal: \n" + Arrays.stream(channels()).map(c -> raft(c).toString()).collect(Collectors.joining(System.lineSeparator())))
+                .isTrue();
+
+        List<String> allMembers = new ArrayList<>(getRaftMembers());
+        allMembers.remove(leaderRaft.raftId());
+
+        assertMembers(10_000, allMembers, 1, channels());
+
+        System.out.printf("-- old leader %s does not apply operations%n", leaderRaft.raftId());
+        RaftAssertion.assertLeaderlessOperationThrows(() -> leaderRaft.set(new byte[1], 0, 1, 5, TimeUnit.SECONDS));
+
+        System.out.printf("-- waiting old leader %s to step down%n", leaderRaft.raftId());
+        assertThat(eventually(() -> raft(followerIndex).isLeader(), 10, TimeUnit.SECONDS))
+                .withFailMessage(() -> "Leader was: " + raft(1).leader())
+                .isTrue();
+
+        System.out.println("-- shutdown old leader server");
+        close(leaderIndex);
+        Util.waitUntilAllChannelsHaveSameView(10_000, 100, actualChannels());
+
+        System.out.println("-- still leader after old leader leaves");
+        assertThat(raft(followerIndex).isLeader()).isTrue();
+        assertThat(raft(followerIndex).members())
+                .hasSize(1)
+                .containsOnly(raft(followerIndex).raftId());
+    }
+
+    private int findChannelIndex(Address address) {
+        for (int i = 0; i < actualChannels().length; i++) {
+            if (channel(i).getAddress().equals(address))
+                return i;
+        }
+
+        throw new IllegalStateException("Channel not found");
+    }
+
     protected void assertSameLeader(Address leader, JChannel... channels) {
         for(JChannel ch: channels) {
             final Address raftLeader = raft(ch).leader();
@@ -315,7 +488,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
                 })
                 .collect(Collectors.joining(System.lineSeparator())) + " while waiting for " + members;
 
-        assertThat(RaftTestUtils.eventually(bs, timeout, TimeUnit.MILLISECONDS))
+        assertThat(eventually(bs, timeout, TimeUnit.MILLISECONDS))
                 .as(message)
                 .isTrue();
 
@@ -336,6 +509,16 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         }
     }
 
+    private Address getRaftAddress(boolean leader) {
+        for (JChannel ch : actualChannels()) {
+            RAFT r = raft(ch);
+            if (leader == r.isLeader())
+                return r.getAddress();
+        }
+
+        throw new IllegalStateException("Did not found node with leader? " + leader);
+    }
+
     protected void assertCommitIndex(long timeout, long expected_commit, JChannel... channels) {
         BooleanSupplier bs = () -> {
             boolean all_ok=true;
@@ -347,7 +530,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
             return all_ok;
         };
 
-        assertThat(RaftTestUtils.eventually(bs, timeout, TimeUnit.MILLISECONDS))
+        assertThat(eventually(bs, timeout, TimeUnit.MILLISECONDS))
                 .as("Commit index never match between channels")
                 .isTrue();
 

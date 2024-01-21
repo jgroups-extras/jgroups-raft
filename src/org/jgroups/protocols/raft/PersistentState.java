@@ -28,6 +28,16 @@ public class PersistentState implements SizeStreamable {
         return new ArrayList<>(members);
     }
 
+    /**
+     * Verify if the given member is a member of the current members list.
+     *
+     * @param raftId: The Raft ID to verify.
+     * @return <code>true</code> if the Raft ID is a current member. <code>false</code>, otherwise.
+     */
+    public boolean containsMember(String raftId) {
+        return members.contains(raftId);
+    }
+
     public void setMembers(Collection<String> value) {
         members.clear();
         members.addAll(new HashSet<>(value));

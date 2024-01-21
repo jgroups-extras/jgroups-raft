@@ -14,14 +14,18 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.RaftHeader;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.ResponseCollector;
 import org.jgroups.util.Runner;
 
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import static org.jgroups.Message.Flag.OOB;
 import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
@@ -268,7 +272,7 @@ public abstract class BaseElection extends Protocol {
     protected void runVotingProcess() {
         long new_term=raft.createNewTerm();
         raft.votedFor(null);
-        votes.reset(view.getMembersRaw());
+        votes.reset(findRaftMembersInView(view));
         num_voting_rounds++;
         long start=System.currentTimeMillis();
         sendVoteRequest(new_term);
@@ -289,6 +293,32 @@ public abstract class BaseElection extends Protocol {
         else
             log.trace("%s: collected votes from %s in %d ms (majority=%d); starting another voting round",
                     local_addr, votes.getValidResults(), time, majority);
+    }
+
+    public void raftServerRemoved(String raftId) {
+        // I am the leader and I removed myself.
+        // I should step down and start the election thread without myself.
+        if (raftId.equals(raft.raftId()) && raft.isLeader()) {
+            log.debug("%s: removed myself as leader (%s), starting voting thread", local_addr, raftId);
+            raft.setLeaderAndTerm(null);
+            startVotingThread();
+        }
+    }
+
+    private Address[] findRaftMembersInView(View view) {
+        Set<Address> mbrs = new HashSet<>();
+        List<String> currentMembers = raft.members();
+        for(Address address : view) {
+            String raftId = Utils.extractRaftId(address);
+            if (raftId == null) {
+                log.warn("%s: raft-id not found for address %s (%s)", local_addr, address, address.getClass());
+                continue;
+            }
+
+            if (currentMembers.contains(raftId))
+                mbrs.add(address);
+        }
+        return mbrs.toArray(Address[]::new);
     }
 
     public synchronized BaseElection startVotingThread() {

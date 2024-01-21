@@ -14,6 +14,7 @@ import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RequestTable;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.*;
 
@@ -1070,6 +1071,18 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 log.error("%s: failed snapshotting log: %s", local_addr, ex);
             }
         }
+    }
+
+    /**
+     * Verify if the node identified by the given address is a Raft member.
+     *
+     * @param address: The node address to verify.
+     * @return <code>true</code> if the address is present in the current members. <code>false</code>, otherwise.
+     * @see Utils#extractRaftId(Address)
+     */
+    public boolean isRaftMember(Address address) {
+        String raftId = Utils.extractRaftId(address);
+        return raftId != null && internal_state.containsMember(raftId);
     }
 
     /**
