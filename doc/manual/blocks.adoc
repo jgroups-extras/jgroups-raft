@@ -246,8 +246,6 @@ The cost is that reads take up space in the persistent logs and that we need con
 release of jgroups-raft, the mechanism for client reads as suggested in the Raft paper will be implemented. See
 https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
 
-NOTE: Non-dirty reads has not yet been implemented in `ReplicatedStateMachine`.
-
 ==== Ignoring return values
 Sometimes, a caller is not interested in the result of an operation. E.g. a stress test may want to update a counter
 many times, e.g. with many different threads, and only then fetch the final counter value. When this is the case,
@@ -316,6 +314,21 @@ handle.addRoleListener(role -> {            // <2>
     directly on an instance of `RAFT` retrieved from the protocol stack associated with the given channel
 <3> When we become the Raft leader, the singleton services can be started, when not, they should be stopped (if running)
 
+In jgroups-raft, utilizing JGroups' views and an altered leader election algorithm strengthens the singleton more than
+the one described by Raft. In a usual Raft implementation, the members compete to become leaders based on time outs.
+This behavior causes disruptions in the cluster, and it allows for multiple leaders at the same time but on different terms.
+
+More details about the jgroups-raft custom election algorithm are available in the design documents. In a few words,
+our implementation is more robust and less prone to disruption of competing members. These design changes converge in
+a more stable singleton service.
+
+[CAUTION]
+.Singleton is **not** a distributed lock.
+====
+Utilizing the singleton service as a distributed lock to access critical sections or resources is dangerous during
+network partitions. The current leader may split in a minority partition, which means the majority elects another node.
+If this happens while a node is in a critical section, it could result in two nodes accessing the resource.
+====
 
 
 
