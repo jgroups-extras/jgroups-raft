@@ -23,7 +23,7 @@
 
         <!-- Dependencies versions -->
         <testng.version>7.9.0</testng.version>
-        <assertj.version>3.25.2</assertj.version>
+        <assertj.version>3.25.3</assertj.version>
         <jgroups.version>5.3.2.Final</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
         <log4j.version>2.22.1</log4j.version>
