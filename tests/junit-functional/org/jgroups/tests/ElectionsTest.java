@@ -14,6 +14,7 @@ import org.jgroups.tests.harness.BaseRaftElectionTest;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 
 import org.testng.annotations.Test;
 
@@ -54,18 +55,46 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
     /**
      * B and C have longer logs than A: one of {B,C} must become coordinator, but *not* A
      */
-    public void testElectionWithLongLog(Class<?> ignore) {
+    public void testElectionWithLongLogTie(Class<?> ignore) {
+        testLongestLog(Map.of(b, new int[]{1, 1, 2}, c, new int[]{1, 1, 2}), b.getAddress(), c.getAddress());
+    }
+
+    /**
+     * B has the longest term in the view {A, B, C}.
+     * Node B has to become the leader.
+     */
+    public void testElectionWithLongLogMiddle(Class<?> ignore) {
+        int[] termsB = new int[] { 1, 1, 2, 2 };
+        int[] termsC = new int[] { 1, 1, 2 };
+        testLongestLog(Map.of(b, termsB, c, termsC), b.getAddress());
+    }
+
+    /**
+     * C has the longest term in the view {A, B, C}.
+     * Node C has to become the leader.
+     */
+    public void testElectionWithLongLogLast(Class<?> ignore) {
+        int[] termsB = new int[] { 1, 1, 2 };
+        int[] termsC = new int[] { 1, 1, 2, 2 };
+        testLongestLog(Map.of(b, termsB, c, termsC), c.getAddress());
+    }
+
+    private void testLongestLog(Map<JChannel, int[]> logs, Address ... possibleElected) {
         // Let node A be elected the first leader.
         assertLeader(10_000, a.getAddress(), a, b, c);
 
-        // Add the entries, creating longer logs.
-        setLog(b, 1, 1, 2);
-        setLog(c, 1, 1, 2);
+        for (Map.Entry<JChannel, int[]> entry : logs.entrySet()) {
+            setLog(entry.getKey(), entry.getValue());
+        }
 
-        // Assert that B and C have a longer log.
+        // Assert nodes have longer logs than A.
         long aSize = logLastAppended(a);
-        assert aSize < logLastAppended(b) : "A log longer than B";
-        assert aSize < logLastAppended(c) : "A log longer than C";
+
+        for (JChannel ch : logs.keySet()) {
+            assertThat(aSize)
+                    .withFailMessage(() -> String.format("Node A has a log longer than %s", ch.getAddress()))
+                    .isLessThan(logLastAppended(ch));
+        }
 
         JChannel coord = findCoord(a, b, c);
         assertThat(coord).isNotNull();
@@ -82,9 +111,10 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         el.startVotingThread();
         waitUntilVotingThreadStops(5_000, 0, 1, 2);
 
+        System.out.printf("-- waiting for leader in %s", Arrays.toString(possibleElected));
         Address leader = assertLeader(10_000, null, b, c);
-        assert leader.equals(b.getAddress()) || leader.equals(c.getAddress()) : dumpLeaderAndTerms();
-        assert !leader.equals(a.getAddress());
+        assertThat(possibleElected).contains(leader);
+        assertThat(leader).isNotEqualTo(a.getAddress());
     }
 
     protected static JChannel findCoord(JChannel... channels) {

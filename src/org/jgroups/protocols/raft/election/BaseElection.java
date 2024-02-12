@@ -229,32 +229,49 @@ public abstract class BaseElection extends Protocol {
 
     protected Address determineLeader() {
         Address leader=null;
+        VoteResponse higher = null;
         Map<Address,VoteResponse> results=votes.getResults();
         for(Address mbr: view.getMembersRaw()) {
             VoteResponse rsp=results.get(mbr);
             if(rsp == null)
                 continue;
-            if(leader == null)
-                leader=mbr;
-            if(isHigher(rsp.last_log_term, rsp.last_log_index))
-                leader=mbr;
+            if (isHigher(higher, rsp)) {
+                leader = mbr;
+                higher = rsp;
+            }
         }
         return leader;
     }
 
     /**
-     * Returns true if last_term greater than my own term, false if smaller. If they're equal, returns true if
-     * last_index is > my own last index, false otherwise
+     * Compares the {@link VoteResponse}s in search of the highest one.
+     * <p>
+     * The verification follows the precedence:
+     * <ol>
+     *     <li>Compare Raft terms;</li>
+     *     <li>Compare the log last appended.</li>
+     * </ol>
+     * This verification ensures the decided leader has the longest log.
+     * </p>
+     *
+     * @param one: The base to check against.
+     * @param other: The candidate response to check.
+     * @return <code>true</code> if {@param other} is higher than {@param one}. <code>false</code>, otherwise.
      */
-    protected boolean isHigher(long last_term, long last_index) {
-        long my_last_index=raft.log().lastAppended();
-        LogEntry entry=raft.log().get(my_last_index);
-        long my_last_term=entry != null? entry.term() : 0;
-        if(last_term > my_last_term)
+    private boolean isHigher(VoteResponse one, VoteResponse other) {
+        if (one == null) return true;
+
+        // The candidate response has a higher Raft term.
+        if (one.last_log_term < other.last_log_term)
             return true;
-        if(last_term < my_last_term)
+
+        // The candidate response has an outdated Raft term.
+        if (one.last_log_term > other.last_log_term)
             return false;
-        return last_index > my_last_index;
+
+        // Both responses have the same term.
+        // Break ties utilizing the index of the last appended entry.
+        return one.last_log_index < other.last_log_index;
     }
 
     /**
