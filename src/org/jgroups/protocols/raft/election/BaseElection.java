@@ -309,8 +309,11 @@ public abstract class BaseElection extends Protocol {
             Address leader=determineLeader();
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
                     local_addr, votes.getValidResults(), time, majority, leader, new_term);
-            sendLeaderElectedMessage(leader, new_term); // send to all - self
+
+            // Set as leader locally before sending the message.
+            // This should avoid any concurrent joiners. See: https://github.com/jgroups-extras/jgroups-raft/issues/253
             raft.setLeaderAndTerm(leader, new_term);
+            sendLeaderElectedMessage(leader, new_term); // send to all - self
             stopVotingThread();
         }
         else
