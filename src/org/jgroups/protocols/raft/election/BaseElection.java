@@ -52,8 +52,8 @@ public abstract class BaseElection extends Protocol {
 
     protected RAFT raft;
 
-    protected final Runner voting_thread=new Runner("voting-thread", this::runVotingProcess, null);
-    protected final ResponseCollector<VoteResponse> votes=new ResponseCollector<>();
+    private final Runner voting_thread=new Runner("voting-thread", this::runVotingProcess, null);
+    private final ResponseCollector<VoteResponse> votes=new ResponseCollector<>();
 
     protected volatile View view;
 
@@ -84,7 +84,7 @@ public abstract class BaseElection extends Protocol {
     protected int                num_voting_rounds;
 
     @ManagedAttribute(description="Is the voting thread (only on the coordinator) running?")
-    public boolean isVotingThreadRunning() {return voting_thread.isRunning();}
+    public synchronized boolean isVotingThreadRunning() {return voting_thread.isRunning();}
 
     @ManagedOperation(description="Trigger the voting process (only on the coordinator)")
     public boolean runVotingThread() {
@@ -280,9 +280,19 @@ public abstract class BaseElection extends Protocol {
      * Increases its term and queries all participants about their term and log index information. The thread blocks
      * (with a timeout) wait for responses. If the majority replies, the process with the highest term and index is elected.
      * <p>
-     * The process keeps running until a leader is elected.
+     * The process keeps running until a leader is elected or the majority is lost.
      */
     protected void runVotingProcess() {
+        // Before each run, verifies if the majority still in place.
+        // The view handling method also ensures to stop the voting thread when the majority is lost, this is an additional safeguard.
+        if (!isMajorityAvailable()) {
+            if (log.isDebugEnabled())
+                log.debug("%s: majority (%d) not available anymore (%s), stopping thread", local_addr, raft.majority(), view);
+
+            stopVotingThread();
+            return;
+        }
+
         long new_term=raft.createNewTerm();
         raft.votedFor(null);
         votes.reset(view.getMembersRaw());
@@ -306,6 +316,10 @@ public abstract class BaseElection extends Protocol {
         else
             log.trace("%s: collected votes from %s in %d ms (majority=%d); starting another voting round",
                     local_addr, votes.getValidResults(), time, majority);
+    }
+
+    private boolean isMajorityAvailable() {
+        return view != null && view.size() >= raft.majority();
     }
 
     public synchronized BaseElection startVotingThread() {

@@ -49,6 +49,8 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
         c = channel(2);
         d = channel(3);
         e = channel(4);
+
+        waitUntilLeaderElected(10_000, 0, 1, 2, 3, 4);
     }
 
     /**

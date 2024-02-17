@@ -1,7 +1,6 @@
 package org.jgroups.raft.testfwk;
 
 import org.jgroups.Address;
-import org.jgroups.Header;
 import org.jgroups.Message;
 import org.jgroups.View;
 
@@ -103,12 +102,17 @@ public abstract class MockRaftCluster {
      * the returned instance.
      * </p>
      *
-     * <b>Warning:</b> Blocking a message will block the calling thread.
+     * <b>Warning:</b> Blocking a message in a synchronous cluster will block the calling thread.
+     *
+     * <p>
+     * To simulate a delay in the message, utilize the {@link #async(boolean)} method passing <code>true</code>. This
+     * will not block the invoking thread.
+     * </p>
      *
      * @param predicate: The predicate to check whether to block.
      * @return A new {@link BlockingMessageInterceptor} instance to control the blocking mechanism.
      */
-    public BlockingMessageInterceptor addCommandInterceptor(Predicate<Header> predicate) {
+    public BlockingMessageInterceptor addCommandInterceptor(Predicate<Message> predicate) {
         return this.interceptor = new BlockingMessageInterceptor(predicate);
     }
 
@@ -149,7 +153,7 @@ public abstract class MockRaftCluster {
      * @return The {@link Executor} instance to utilize in the cluster abstraction.
      */
     protected Executor createThreadPool(long max_idle_ms) {
-        int max_cores=Runtime.getRuntime().availableProcessors();
+        int max_cores = Math.max(Runtime.getRuntime().availableProcessors(), 4);
         return new ThreadPoolExecutor(0, max_cores, max_idle_ms, TimeUnit.MILLISECONDS,
                 new SynchronousQueue<>());
     }

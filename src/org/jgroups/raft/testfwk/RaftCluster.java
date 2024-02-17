@@ -22,7 +22,6 @@ public class RaftCluster extends MockRaftCluster {
     // used to 'send' requests between the various instances
     protected final Map<Address,RaftNode> nodes=new ConcurrentHashMap<>();
     protected final Map<Address,RaftNode> dropped_members=new ConcurrentHashMap<>();
-    protected boolean                     async;
 
     @Override
     public <T extends MockRaftCluster> T add(Address addr, RaftNode node) {
@@ -65,41 +64,49 @@ public class RaftCluster extends MockRaftCluster {
     }
 
     public void send(Message msg, boolean async) {
-        Address dest=msg.dest(), src=msg.src();
+        Address dest=msg.dest();
         boolean block = interceptor != null && interceptor.shouldBlock(msg);
 
         if(dest != null) {
             // Retrieve the target before possibly blocking.
             RaftNode node=nodes.get(dest);
 
-            // Blocks the invoking thread.
-            if (block) interceptor.blockMessage(msg);
-
-            if(this.async || async)
-                deliverAsync(node, msg);
-            else
-                node.up(msg);
-        }
-        else {
-            // Copy the targets before possibly blocking the caller.
-            Set<Address> targets = block
-                    ? new HashSet<>(nodes.keySet())
-                    : nodes.keySet();
-
-            // Blocks the invoking thread.
-            if (block) interceptor.blockMessage(msg);
-
-            for (Address d : targets) {
-                RaftNode n = nodes.get(d);
-                if (n == null) continue;
-
-                if(Objects.equals(d, src) && msg.isFlagSet(DONT_LOOPBACK))
-                    continue;
-                if(this.async || async)
-                    deliverAsync(n, msg);
-                else
-                    n.up(msg);
+            // Blocks the invoking thread if cluster is synchronous.
+            if (block) {
+                interceptor.blockMessage(msg, async, () -> sendSingle(node, msg, async));
+            } else {
+                sendSingle(node, msg, async);
             }
+        } else {
+            // Blocks the invoking thread if cluster is synchronous.
+            if (block) {
+                // Copy the targets before possibly blocking the caller.
+                Set<Address> targets = new HashSet<>(nodes.keySet());
+                interceptor.blockMessage(msg, async, () -> sendMany(targets, msg, async));
+            } else {
+                sendMany(nodes.keySet(), msg, async);
+            }
+        }
+    }
+
+    private void sendSingle(RaftNode node, Message msg, boolean async) {
+        if(this.async || async)
+            deliverAsync(node, msg);
+        else
+            node.up(msg);
+    }
+
+    private void sendMany(Set<Address> targets, Message msg, boolean async) {
+        for (Address d : targets) {
+            RaftNode n = nodes.get(d);
+            if (n == null) continue;
+
+            if(Objects.equals(d, msg.src()) && msg.isFlagSet(DONT_LOOPBACK))
+                continue;
+            if(this.async || async)
+                deliverAsync(n, msg);
+            else
+                n.up(msg);
         }
     }
 

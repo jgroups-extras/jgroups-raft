@@ -1,6 +1,13 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.*;
+import org.jgroups.Address;
+import org.jgroups.BytesMessage;
+import org.jgroups.EmptyMessage;
+import org.jgroups.Event;
+import org.jgroups.JChannel;
+import org.jgroups.Message;
+import org.jgroups.ObjectMessage;
+import org.jgroups.View;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.ManagedOperation;
@@ -15,12 +22,27 @@ import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.stack.Protocol;
-import org.jgroups.util.*;
+import org.jgroups.util.AverageMinMax;
+import org.jgroups.util.ByteArrayDataInputStream;
+import org.jgroups.util.ByteArrayDataOutputStream;
+import org.jgroups.util.DefaultThreadFactory;
+import org.jgroups.util.ExtendedUUID;
+import org.jgroups.util.MessageBatch;
+import org.jgroups.util.Runner;
+import org.jgroups.util.Util;
 
 import java.io.File;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
@@ -548,7 +570,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
         raft_state.reload();
-        log.trace("set last_appended=%d, commit_index=%d, current_state=%s", last_appended, commit_index, raft_state);
+        log.trace("%s: set last_appended=%d, commit_index=%d, current_state=%s", local_addr, last_appended, commit_index, raft_state);
 
         initStateMachineFromLog();
         if(!internal_state.getMembers().contains(raft_id))
@@ -738,6 +760,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             long current_term = currentTerm();
             AppendEntriesRequest r=(AppendEntriesRequest)hdr;
             ObjectMessage om=(ObjectMessage)msg;
+            log.trace("%s: from %s, %s header %s", local_addr, msg.src(), om, r);
             AppendResult res=ri.handleAppendEntriesRequest(om.getObject(), msg.src(),
                                                            r.prev_log_index, r.prev_log_term, r.entry_term,
                                                            r.leader_commit);
@@ -747,6 +770,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         else if(hdr instanceof AppendEntriesResponse) {
             AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
+            log.trace("%s: from %s res %s", local_addr, msg.src(), rsp);
             ri.handleAppendEntriesResponse(msg.src(),rsp.curr_term, rsp.result);
         }
         else if(hdr instanceof InstallSnapshotRequest) {

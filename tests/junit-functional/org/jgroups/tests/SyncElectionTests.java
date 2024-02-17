@@ -3,6 +3,7 @@ package org.jgroups.tests;
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Global;
+import org.jgroups.Header;
 import org.jgroups.MergeView;
 import org.jgroups.Message;
 import org.jgroups.ObjectMessage;
@@ -12,8 +13,10 @@ import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.BaseElection;
+import org.jgroups.protocols.raft.election.LeaderElected;
 import org.jgroups.protocols.raft.election.VoteRequest;
 import org.jgroups.protocols.raft.election.VoteResponse;
+import org.jgroups.raft.testfwk.BlockingMessageInterceptor;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
@@ -21,8 +24,10 @@ import org.jgroups.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.ResponseCollector;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -343,6 +348,106 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         assertThat(raft(idx).currentTerm()).isEqualTo(term + 1);
         assertThat(raft(idx).isLeader()).isFalse();
         assertThat(raft(idx).role()).isEqualTo("Follower");
+    }
+
+    public void testJoinerBeforeSendingElectedMessage(Class<?> ignore) throws Exception {
+        withClusterSize(3);
+        createCluster();
+
+        View view = createView(view_id++, 0, 1);
+
+        // We intercept the first `LeaderElected` message.
+        AtomicBoolean onlyOnce = new AtomicBoolean(true);
+        BlockingMessageInterceptor interceptor = cluster.addCommandInterceptor(m -> {
+            for (Map.Entry<Short, Header> h : m.getHeaders().entrySet()) {
+                if (h.getValue() instanceof LeaderElected && onlyOnce.getAndSet(false))
+                    return true;
+            }
+            return false;
+        });
+
+        // This will install the new view on the nodes and start the election process.
+        // The election will proceed as usual, until we intercept the LeaderElected node.
+        cluster.handleView(view);
+
+        System.out.println("-- wait command intercept");
+        assertThat(RaftTestUtils.eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
+
+        // At this point, the thread is blocked with the LeaderElected message.
+        // Node C joins while the message is "in-flight".
+        view = createView(view_id++, 0, 1, 2);
+
+        // Add the node again on the cluster. The first view install removed it.
+        cluster.add(address(2), node(2));
+
+        System.out.println("-- install new view with node C");
+        cluster.handleView(view);
+
+        // View installed, we can release the previous intercepted command.
+        interceptor.assertNumberOfBlockedMessages(1);
+        interceptor.releaseNext();
+
+        // The new node eventually receives the LeaderElected message.
+        System.out.println("-- wait node C receive leader elected");
+        assertThat(RaftTestUtils.eventually(() -> raft(2).leader() != null, 10, TimeUnit.SECONDS))
+                .isTrue();
+
+        waitUntilVotingThreadHasStopped();
+        assertOneLeader();
+        interceptor.assertNoBlockedMessages();
+    }
+
+    public void testQuorumLostDuringVotingMechanismRuns(Class<?> ignore) throws Throwable {
+        withClusterSize(2);
+        createCluster();
+
+        // Increase the election timeout for this test.
+        for (BaseElection election : elections()) {
+            election.voteTimeout(10_000);
+        }
+
+        View view = createView(view_id++, 0, 1);
+        cluster.async(true);
+
+        // We intercept the `VoteResponse` message.
+        AtomicBoolean onlyOnce = new AtomicBoolean(true);
+        BlockingMessageInterceptor interceptor = cluster.addCommandInterceptor(m -> {
+            // Sent by node `B`.
+            if (m.src().equals(node(1).getAddress())) {
+                for (Map.Entry<Short, Header> h : m.getHeaders().entrySet()) {
+                    if (h.getValue() instanceof VoteResponse && onlyOnce.getAndSet(false))
+                        return true;
+                }
+            }
+            return false;
+        });
+
+        // This will install the new view on the nodes and start the election process.
+        // The election will proceed as usual, until we intercept the VoteResponse from node B.
+        cluster.handleView(view);
+
+        System.out.println("-- wait command intercept");
+        assertThat(RaftTestUtils.eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
+
+        // This will cause the node to collect all the needed votes it would need to be elected leader.
+        // However, the quorum was lost mid-way, the node should never be elected!
+        interceptor.assertNumberOfBlockedMessages(1);
+
+        // At this point, the coordinator is executing the vote procedure and collecting the info from other nodes.
+        // Node B leaves at this point, which leads to a quorum loss.
+        // We release the message concurrently.
+        View lostQuorumView = createView(view_id++, 0);
+        interceptor.releaseNext();
+        cluster.handleView(lostQuorumView);
+
+        // Assert the voting thread will stop running after the quorum loss.
+        assertThat(RaftTestUtils.eventually(() -> !election(0).isVotingThreadRunning(), 10, TimeUnit.SECONDS))
+                .isTrue();
+
+        // And assert the node is not elected.
+        assertThat(raft(0).isLeader()).isFalse();
+        assertThat(raft(0).leader()).isNull();
+        interceptor.assertNoBlockedMessages();
     }
 
     protected void assertNotElected(long timeout, int ... indexes) {

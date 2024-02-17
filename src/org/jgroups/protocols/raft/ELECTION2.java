@@ -15,7 +15,6 @@ import org.jgroups.raft.util.Utils.Majority;
 import org.jgroups.util.ResponseCollector;
 
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -99,9 +98,9 @@ public class ELECTION2 extends BaseElection {
                 }
                 break;
             case lost:
-                raft.setLeaderAndTerm(null);
                 preVotingMechanism.stop();
                 stopVotingThread();
+                raft.setLeaderAndTerm(null);
                 break;
         }
     }

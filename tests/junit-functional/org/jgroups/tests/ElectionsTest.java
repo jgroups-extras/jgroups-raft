@@ -104,8 +104,11 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
 
         System.out.printf("-- current status: %n%s%n", dumpLeaderAndTerms());
 
-        // Election is not running.
-        assertThat(el.isVotingThreadRunning()).isFalse();
+        // Wait the voting thread to stop.
+        // The last step is stopping the voting thread. This means, nodes might receive the leader message,
+        // but the voting thread didn't stopped yet.
+        // We can use a shorter timeout here.
+        waitUntilVotingThreadStops(1_500, 0, 1, 2);
 
         // We start the election process. Eventually, the thread stops after collecting the necessary votes.
         el.startVotingThread();

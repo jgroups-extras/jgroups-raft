@@ -62,6 +62,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         withClusterSize(4);
         createCluster();
 
+        System.out.println("-- closing channels");
         // close C and D
         close(2);
         close(3);
@@ -77,6 +78,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
 
         // Try the change again: we have votes from A and B from before the non-leader was restarted. Now B was
         // restarted, but it cannot vote again in the same term, so we still only have 2 votes!
+        System.out.println("-- trying replicate data");
         RaftAssertion.assertLeaderlessOperationThrows(() -> raft(0).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS));
 
         // now start C. as we have a majority now (A,B,C), the change should succeed
@@ -90,6 +92,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         RAFT raft=leader();
         assertThat(raft).isNotNull();
 
+        System.out.printf("-- setting data with %s%n", raft);
         // This time, we should succeed
         raft.set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
 
@@ -151,6 +154,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         // assert we have a leader
         waitUntilLeaderElected(10_000, 0, 1, 2, 3);
 
+        System.out.println("-- shutdown channels");
         // close C and D, now everybody should have a null leader
         close(3);
         close(2);
@@ -160,21 +164,8 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
                 .filter(JChannel::isConnected)
                 .map(this::raft)
                 .allMatch((RAFT r) -> r.leader() == null);
-        assertThat(eventually(bs, 10, TimeUnit.SECONDS)).as(this::printLeaders).isTrue();
-        System.out.printf("channels:\n%s", printLeaders());
-    }
-
-    protected String printLeaders() {
-        StringBuilder sb=new StringBuilder("\n");
-        for(JChannel ch: actualChannels()) {
-            if(!ch.isConnected())
-                sb.append(String.format("%s: not connected\n", ch.getName()));
-            else {
-                RAFT raft=raft(ch);
-                sb.append(String.format("%s: leader=%s\n", ch.getName(), raft.leader()));
-            }
-        }
-        return sb.toString();
+        assertThat(eventually(bs, 10, TimeUnit.SECONDS)).as(this::dumpLeaderAndTerms).isTrue();
+        System.out.printf("channels:\n%s", dumpLeaderAndTerms());
     }
 
     protected RAFT raft(Address addr) {
