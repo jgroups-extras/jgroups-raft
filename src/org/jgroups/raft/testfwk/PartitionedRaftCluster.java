@@ -4,6 +4,8 @@ import org.jgroups.Address;
 import org.jgroups.Message;
 import org.jgroups.View;
 
+import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -48,14 +50,33 @@ public class PartitionedRaftCluster extends MockRaftCluster {
     @Override
     public void send(Message msg) {
         Address dest=msg.dest(), src=msg.src();
+        boolean block = interceptor != null && interceptor.shouldBlock(msg);
+
         if(dest != null) {
-            List<Address> connected = partitions.get(src);
+            // In case the message blocks, we copy the target.
+            // This sends a message on the view before the blocking happens.
+            List<Address> connected = block
+                    ? new ArrayList<>(partitions.get(src))
+                    : partitions.get(src);
+
+            // Blocks the invoking thread.
+            if (block) interceptor.blockMessage(msg);
+
             if (connected.contains(dest)) {
                 RaftNode node = nodes.get(dest);
                 send(node, msg);
             }
         } else {
-            for (Address a : partitions.get(src)) {
+            // In case the message blocks, we copy the target.
+            // This sends a message on the view before the blocking happens.
+            Collection<Address> targets = block
+                    ? new ArrayList<>(partitions.get(src))
+                    : partitions.get(src);
+
+            // Blocks the invoking thread.
+            if (block) interceptor.blockMessage(msg);
+
+            for (Address a : targets) {
                 RaftNode node = nodes.get(a);
                 send(node, msg);
             }

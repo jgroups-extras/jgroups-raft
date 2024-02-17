@@ -1,6 +1,7 @@
 package org.jgroups.raft.testfwk;
 
 import org.jgroups.Address;
+import org.jgroups.Header;
 import org.jgroups.Message;
 import org.jgroups.View;
 
@@ -8,6 +9,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 /**
  * Base class for the cluster implementations in the test framework.
@@ -32,6 +34,7 @@ public abstract class MockRaftCluster {
 
     protected final Executor thread_pool=createThreadPool(1000);
     protected boolean        async;
+    protected BlockingMessageInterceptor interceptor = null;
 
     /**
      * Emit the view update to all cluster members.
@@ -92,6 +95,22 @@ public abstract class MockRaftCluster {
      * @param <T>: The current instance type.
      */
     public abstract <T extends MockRaftCluster> T clear();
+
+    /**
+     * Intercept messages before sending.
+     * <p>
+     * Before sending each message, the interceptor verifies whether to block. The messages must be released utilizing
+     * the returned instance.
+     * </p>
+     *
+     * <b>Warning:</b> Blocking a message will block the calling thread.
+     *
+     * @param predicate: The predicate to check whether to block.
+     * @return A new {@link BlockingMessageInterceptor} instance to control the blocking mechanism.
+     */
+    public BlockingMessageInterceptor addCommandInterceptor(Predicate<Header> predicate) {
+        return this.interceptor = new BlockingMessageInterceptor(predicate);
+    }
 
     /**
      * Utility to create a fluent use.

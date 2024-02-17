@@ -4,10 +4,12 @@ import org.jgroups.Address;
 import org.jgroups.Message;
 import org.jgroups.View;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
 
@@ -64,17 +66,33 @@ public class RaftCluster extends MockRaftCluster {
 
     public void send(Message msg, boolean async) {
         Address dest=msg.dest(), src=msg.src();
+        boolean block = interceptor != null && interceptor.shouldBlock(msg);
+
         if(dest != null) {
+            // Retrieve the target before possibly blocking.
             RaftNode node=nodes.get(dest);
+
+            // Blocks the invoking thread.
+            if (block) interceptor.blockMessage(msg);
+
             if(this.async || async)
                 deliverAsync(node, msg);
             else
                 node.up(msg);
         }
         else {
-            for(Map.Entry<Address,RaftNode> e: nodes.entrySet()) {
-                Address d=e.getKey();
-                RaftNode n=e.getValue();
+            // Copy the targets before possibly blocking the caller.
+            Set<Address> targets = block
+                    ? new HashSet<>(nodes.keySet())
+                    : nodes.keySet();
+
+            // Blocks the invoking thread.
+            if (block) interceptor.blockMessage(msg);
+
+            for (Address d : targets) {
+                RaftNode n = nodes.get(d);
+                if (n == null) continue;
+
                 if(Objects.equals(d, src) && msg.isFlagSet(DONT_LOOPBACK))
                     continue;
                 if(this.async || async)
