@@ -56,7 +56,7 @@
             -Djgroups.tunnel.gossip_router_hosts=${jgroups.tunnel.gossip_router_hosts}
             -Dtests.tmp.dir=${tmp.dir}
             -Dlog4j.configuration=file:${conf.dir}/log4j.properties
-            -Dlog4j.configurationFile=${conf.dir}/log4j2.xml
+            -Dlog4j.configurationFile=${conf.dir}/log4j2-test.xml
             -Djava.net.preferIPv4Stack=${jgroups.useIPv4}
             -Djava.net.preferIPv6Addresses=${jgroups.useIPv6}
             -Dorg.jgrops.test.trace=${trace}

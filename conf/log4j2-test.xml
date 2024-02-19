@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <appenders>
+        <!-- follow=true doesn't work on Windows with jline/jansi -->
+        <Console name="STDOUT" target="SYSTEM_OUT" follow="false">
+            <PatternLayout pattern="%-7d{HH:mm:ss,SSS} [%p] [%t] (%c{1.}): %m%n"/>
+            <!--<PatternLayout pattern="%r [%p] %c{1}: %m%n"/>-->
+        </Console>
+    </appenders>
+    <loggers>
+        <root level="${env:LOG_LEVEL:-WARN}">
+            <appender-ref ref="STDOUT"/>
+        </root>
+
+        <!-- Utilize the STDOUT appender to find the JUnitXMLReporter. -->
+        <!-- Additivity false, otherwise we write to the root logger. -->
+        <logger name="org.jgroups" level="${env:LOG_LEVEL:-WARN}" additivity="false">
+            <appender-ref ref="STDOUT"/>
+        </logger>
+    </loggers>
+</configuration>

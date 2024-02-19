@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.function.Supplier;
 
 import org.testng.ITestContext;
 import org.testng.ITestNGMethod;
@@ -40,6 +41,10 @@ import org.testng.internal.IResultListener;
 public class JUnitXMLReporter implements IResultListener {
     protected String output_dir=null;
 
+    public static final String ANSI_RESET = "\u001B[0m";
+    public static final String ANSI_GREEN = "\u001B[32m";
+    public static final String ANSI_RED = "\u001B[31m";
+
     protected static final String XML_DEF="<?xml version=\"1.0\" encoding=\"UTF-8\" ?>";
     protected static final String CDATA="![CDATA[";
     protected static final String LT="&lt;";
@@ -47,8 +52,8 @@ public class JUnitXMLReporter implements IResultListener {
     protected static final String SYSTEM_OUT="system-out";
     protected static final String SYSTEM_ERR="system-err";
     protected static final String TESTS="tests.data";
-    protected static final String STDOUT="stdout.txt";
-    protected static final String STDERR="stderr.txt";
+    protected static final String STDOUT="stdout.log";
+    protected static final String STDERR="stderr.log";
 
     protected PrintStream old_stdout=System.out;
     protected PrintStream old_stderr=System.err;
@@ -70,11 +75,9 @@ public class JUnitXMLReporter implements IResultListener {
             deleteContents(dir);
 
         try {
-            System.setOut(new MyOutput(1));
-            System.setErr(new MyOutput(2));
-        }
-        catch(FileNotFoundException e) {
-        }
+            System.setOut(new MyOutput(stdout::get));
+            System.setErr(new MyOutput(stderr::get));
+        } catch(FileNotFoundException ignore) {}
     }
 
     /** Invoked after all test classes in this test have been run */
@@ -88,6 +91,7 @@ public class JUnitXMLReporter implements IResultListener {
             error(e.toString());
         }
         finally {
+            closeStreams();
             System.setOut(old_stdout);
             System.setErr(old_stderr);
         }
@@ -104,7 +108,7 @@ public class JUnitXMLReporter implements IResultListener {
     public void onTestSuccess(ITestResult tr) {
         if (stdout.get() != null)
             stdout.get().println("\n\n------------- SUCCESS: " + getMethodName(tr) + " -----------");
-        onTestCompleted(tr, "OK:   ", old_stdout);
+        onTestCompleted(tr, ANSI_GREEN + "OK" + ANSI_RESET + ":     ", old_stdout);
     }
 
 
@@ -116,7 +120,7 @@ public class JUnitXMLReporter implements IResultListener {
     public void onTestFailure(ITestResult tr) {
         if (stdout.get() != null)
             stdout.get().println("\n\n------------- FAILURE: " + getMethodName(tr) + " -----------");
-        onTestCompleted(tr, "FAIL: ",old_stderr);
+        onTestCompleted(tr, ANSI_RED + "FAIL" + ANSI_RESET + ":   ",old_stderr);
     }
 
     /** Invoked each time a test method is skipped */
@@ -136,7 +140,6 @@ public class JUnitXMLReporter implements IResultListener {
             if (tr.getMethod().isAfterClassConfiguration() || tr.getMethod().isAfterMethodConfiguration())
                 stdout.get().println("\n=======================\n");
         }
-        closeStreams();
     }
 
     public void onConfigurationFailure(ITestResult tr) {
@@ -551,13 +554,12 @@ public class JUnitXMLReporter implements IResultListener {
                 TMPFILE_NAME = System.getProperty("java.io.tmpdir") + "/" + "tmp.txt";
             }
         }
-        final int type;
 
-        public MyOutput(int type) throws FileNotFoundException {
+        private final Supplier<PrintStream> acquire;
+
+        public MyOutput(Supplier<PrintStream> acquire) throws FileNotFoundException {
             super(TMPFILE_NAME); // dummy name
-            this.type=type;
-            if(type != 1 && type != 2)
-                throw new IllegalArgumentException("index has to be 1 or 2");
+            this.acquire = acquire;
         }
 
         public void write(final byte[] b) {
@@ -601,7 +603,7 @@ public class JUnitXMLReporter implements IResultListener {
         }
 
         protected synchronized void append(String x, boolean newline) {
-            PrintStream tmp=type == 1? stdout.get() : stderr.get();
+            PrintStream tmp = acquire.get();
             if(tmp == null)
                 return;
             if(newline)
