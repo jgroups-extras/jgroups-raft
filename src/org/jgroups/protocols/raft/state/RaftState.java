@@ -163,6 +163,7 @@ public class RaftState {
      * @throws IllegalStateException: If trying to update between different votes within the same term.
      */
     public void setVotedFor(Address votedFor) {
+        Objects.requireNonNull(votedFor, "Voted for must not be null");
         setVotedFor(votedFor, true);
     }
 
@@ -187,6 +188,10 @@ public class RaftState {
             // If it is the same object, returns null as there is no need to flush to disk.
             if (Objects.equals(this.votedFor, votedFor)) return false;
             this.votedFor = votedFor;
+        }
+
+        if (votedFor != null && raft.getLog().isTraceEnabled()) {
+            raft.getLog().trace("%s: voted for %s in term %d", raft.addr(), votedFor, currentTerm());
         }
 
         if (save) {

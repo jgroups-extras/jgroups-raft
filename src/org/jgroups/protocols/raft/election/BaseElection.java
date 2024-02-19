@@ -203,7 +203,11 @@ public abstract class BaseElection extends Protocol {
                         local_addr, sender, new_term, raft.currentTerm());
                 return;
             case 1: // new_term > current_term
-                raft.votedFor(null);
+                log.trace("%s: received vote request from %s with higher term %d; accepting request",
+                        local_addr, sender, new_term);
+                break;
+            case 0:
+                log.trace("%s: received vote request from %s at same term %d", local_addr, sender, new_term);
                 break;
         }
 
@@ -294,7 +298,6 @@ public abstract class BaseElection extends Protocol {
         }
 
         long new_term=raft.createNewTerm();
-        raft.votedFor(null);
         votes.reset(view.getMembersRaw());
         num_voting_rounds++;
         long start=System.currentTimeMillis();
@@ -308,7 +311,7 @@ public abstract class BaseElection extends Protocol {
         if(votes.numberOfValidResponses() >= majority) {
             Address leader=determineLeader();
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
-                    local_addr, votes.getValidResults(), time, majority, leader, new_term);
+                    local_addr, votes.getResults(), time, majority, leader, new_term);
 
             // Set as leader locally before sending the message.
             // This should avoid any concurrent joiners. See: https://github.com/jgroups-extras/jgroups-raft/issues/253
@@ -349,6 +352,7 @@ public abstract class BaseElection extends Protocol {
     protected void sendVoteResponse(Address dest, long term, long last_log_term, long last_log_index) {
         VoteResponse rsp=new VoteResponse(term, last_log_term, last_log_index);
         Message vote_rsp=new EmptyMessage(dest).putHeader(id, rsp).setFlag(OOB);
+        log.trace("%s -> %s: %s", local_addr, dest, rsp);
         down_prot.down(vote_rsp);
     }
 
