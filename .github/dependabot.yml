@@ -9,7 +9,13 @@ updates:
     directory: "/"
     schedule:
       interval: daily
+      timezone: Brazil/East
+      time: "15:00"
     open-pull-requests-limit: 10
+    assignees:
+      - "jabolina"
+    reviewers:
+      - "jabolina"
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
