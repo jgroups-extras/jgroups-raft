@@ -52,6 +52,12 @@ public class Leader extends RaftImpl {
             log.trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
         switch(result.result) {
             case OK:
+                // Make sure that non-raft members do not count towards majority.
+                if (!raft.isRaftMember(sender)) {
+                    if (log.isDebugEnabled()) log.debug("%s: dropping vote of non-member %s/%s", raft.getAddress(), sender, raft.members());
+                    break;
+                }
+
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
                 boolean done = reqtab.add(result.index, sender_raft_id, this.majority);
                 if(done) {

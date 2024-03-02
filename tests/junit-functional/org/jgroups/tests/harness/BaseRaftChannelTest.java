@@ -126,6 +126,24 @@ public class BaseRaftChannelTest extends AbstractRaftTest {
     }
 
     /**
+     * Close the {@link JChannel} with the given index.
+     * <p>
+     * This method only closes the channel and remove the instance.
+     * All the underlying state is still kept.
+     * </p>
+     *
+     * @param index: Channel index to close.
+     * @throws Exception: If an error happens while closing the channel.
+     */
+    protected final void shutdown(int index) throws Exception {
+        JChannel ch = channel(index);
+        if (ch == null) return;
+
+        channels[index] = null;
+        Util.close(ch);
+    }
+
+    /**
      * Closes the given channel and deletes the {@link RAFT} state.
      *
      * @param ch: The {@link JChannel} to close.

@@ -1,5 +1,6 @@
 package org.jgroups.protocols.raft;
 
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Streamable;
 
@@ -43,6 +44,8 @@ public class InternalCommand implements Streamable {
                 break;
             case removeServer:
                 raft._removeServer(name);
+                BaseElection be = raft.getProtocolStack().findProtocol(BaseElection.class);
+                if (be != null) be.raftServerRemoved(name);
                 break;
         }
         return null;

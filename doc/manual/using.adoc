@@ -258,7 +258,20 @@ The steps to add a member are as follows (say we have `RAFT.members="A,B,C"` and
 * A new member `D` can now be started (its XML config needs to have the correct `members` attribute !)
 
 Notice that membership changes survive through restarts. If a node must be removed or added, an operation must be
-submitted, only restarting does not affect membership.
+submitted, only shutting down the node does not affect membership.
 
+Contrary to the reconfiguration defined in the Raft article, jgroups-raft only applies the membership change after the operation is committed.
+This does not violate safety, as there is still an intersection between the old and new configuration.
 
+WARNING: Currently, there are no safeguards to guarantee the quorum is maintained after a node is removed.
+It is advised to check the leader's view before applying a removal operation until safeguards are included.
 
+==== Removing the leader
+
+The leader can self-remove from the configuration.
+After the operation is committed and the leader applies it to the state machine, the leader will step down and trigger a new election.
+This causes any enqueued or outstanding request to be completed exceptionally since the leader transitions to a follower.
+
+Removing the leader in a two-node cluster and the leader crashes before the second node applies the operation to the state machine renders the cluster unavailable.
+The same problem applies to any other operation when the cluster has less than a majority of nodes available.
+The recommendation is to utilize more nodes in the cluster.
