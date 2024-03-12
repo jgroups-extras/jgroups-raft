@@ -27,6 +27,7 @@ jobs:
           distribution: temurin
           cache: maven
       - name: Build with Maven
+        timeout-minutes: 10
         id: test_runner
         run: mvn -B package --file pom.xml -Dgroups=functional
         continue-on-error: true

@@ -1,5 +1,6 @@
 package org.jgroups.tests.harness;
 
+import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.ELECTION2;
@@ -10,9 +11,11 @@ import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 
 import java.util.Arrays;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -135,7 +138,10 @@ public final class BaseRaftElectionTest {
         BooleanSupplier sameLeader = () -> Arrays.stream(rafts)
                 .map(RAFT::leader)
                 .filter(Objects::nonNull)
-                .count() >= majority;
+                .collect(Collectors.groupingBy(Function.identity(), Collectors.counting()))
+                .values().stream()
+                .max(Long::compareTo)
+                .orElse(Long.MIN_VALUE) >= majority;
 
         // Check that a majority of members have the same term.
         BooleanSupplier sameTerm = () -> {
