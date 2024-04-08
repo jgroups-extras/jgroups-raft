@@ -22,7 +22,7 @@
         <nexus.snapshot.server.url>https://repository.jboss.org/nexus/content/repositories/snapshots/</nexus.snapshot.server.url>
 
         <!-- Dependencies versions -->
-        <testng.version>7.9.0</testng.version>
+        <testng.version>7.10.0</testng.version>
         <assertj.version>3.25.3</assertj.version>
         <jgroups.version>5.3.4.Final</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
