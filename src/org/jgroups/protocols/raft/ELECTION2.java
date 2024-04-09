@@ -17,7 +17,6 @@ import org.jgroups.util.ResponseCollector;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 import static org.jgroups.Message.Flag.OOB;
 
@@ -87,13 +86,18 @@ public class ELECTION2 extends BaseElection {
                 }
                 // If we have no change in terms of majority threshold. If the view coordinator changed, we need to
                 // verify if an election is necessary.
-                if (viewCoordinatorChanged(old_view, v) && isViewCoordinator() && view.size() >= raft.majority()) {
+                if (Utils.viewCoordinatorChanged(old_view, v) && isViewCoordinator() && view.size() >= raft.majority()) {
                     preVotingMechanism.start();
                 }
                 break;
             case reached:
             case leader_lost:
+                // In case the leader is lost, we stop everything *before* starting again.
+                // This avoids cases where the leader is lost before the voting mechanism has stopped.
+                // See: https://github.com/jgroups-extras/jgroups-raft/issues/259
                 if (isViewCoordinator()) {
+                    stopVotingThread();
+                    preVotingMechanism.stop();
                     preVotingMechanism.start();
                 }
                 break;
@@ -118,11 +122,6 @@ public class ELECTION2 extends BaseElection {
         }
 
         super.handleMessage(msg, hdr);
-    }
-
-    private static boolean viewCoordinatorChanged(View old_view, View curr) {
-        if (old_view == null) return true;
-        return !Objects.equals(old_view.getCoord(), curr.getCoord());
     }
 
     /**

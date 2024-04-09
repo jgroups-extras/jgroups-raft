@@ -325,7 +325,7 @@ public abstract class BaseElection extends Protocol {
                     local_addr, votes.getValidResults(), time, majority);
     }
 
-    private boolean isMajorityAvailable() {
+    protected final boolean isMajorityAvailable() {
         return view != null && view.size() >= raft.majority();
     }
 
