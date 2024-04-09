@@ -5,6 +5,8 @@ import org.jgroups.View;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 
+import java.util.Objects;
+
 /**
  * @author Bela Ban
  * @since  1.0.6
@@ -30,6 +32,18 @@ public class Utils {
         if(leader != null && !new_view.containsMember(leader))
             return Majority.leader_lost;
         return Majority.no_change;
+    }
+
+    /**
+     * Verify if the coordinator change between two views.
+     *
+     * @param prev: The old {@link View}, it can be <code>null</code>.
+     * @param curr: The recent {@link View}.
+     * @return <code>true</code> if the coordinator changed, <code>false</code>, otherwise.
+     */
+    public static boolean viewCoordinatorChanged(View prev, View curr) {
+        if (prev == null) return true;
+        return !Objects.equals(prev.getCoord(), curr.getCoord());
     }
 
     /**

@@ -9,7 +9,6 @@ import org.jgroups.raft.util.Utils;
 import org.jgroups.raft.util.Utils.Majority;
 
 import java.util.List;
-import java.util.Objects;
 
 /**
  * The default leader election algorithm.
@@ -53,16 +52,27 @@ public class ELECTION extends BaseElection {
         log.debug("%s: existing view: %s, new view: %s, result: %s", local_addr, this.view, v, result);
         List<Address> joiners=View.newMembers(this.view, v);
         boolean has_new_members=joiners != null && !joiners.isEmpty();
+        boolean coordinatorChanged = Utils.viewCoordinatorChanged(this.view, v);
         this.view=v;
         switch(result) {
-            case no_change: // the leader resends its term/address for new members to set the term/leader
+            case no_change:
+                // the leader resends its term/address for new members to set the term/leader.
                 if(raft.isLeader() && has_new_members)
                     sendLeaderElectedMessage(raft.leader(), raft.currentTerm());
+
+                // Handle cases where the previous coordinator left *before* a leader was elected.
+                // See: https://github.com/jgroups-extras/jgroups-raft/issues/259
+                else if (coordinatorChanged && isViewCoordinator() && isMajorityAvailable() && raft.leader() == null)
+                    startVotingThread();
                 break;
             case reached:
             case leader_lost:
-                if(Objects.equals(this.view.getCoord(), local_addr)) {
+                // In case the leader is lost, we stop everything *before* starting again.
+                // This avoids cases where the leader is lost before the voting mechanism has stopped.
+                // See: https://github.com/jgroups-extras/jgroups-raft/issues/259
+                if(isViewCoordinator()) {
                     log.trace("%s: starting voting process (reason: %s, view: %s)", local_addr, result, view);
+                    stopVotingThread();
                     startVotingThread();
                 }
                 break;
