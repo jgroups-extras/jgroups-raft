@@ -278,6 +278,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public boolean      synchronous()                 {return synchronous;}
     public RAFT         synchronous(boolean b)        {synchronous=b; return this;}
 
+    public RAFT logDir(String logDir) {
+        this.log_dir = logDir;
+        return this;
+    }
 
     public void resetStats() {
         super.resetStats();

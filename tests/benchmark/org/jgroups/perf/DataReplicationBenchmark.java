@@ -1,8 +1,10 @@
-package org.jgroups.raft;
+package org.jgroups.perf;
 
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.RaftHandle;
+import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.util.Util;
 
@@ -38,7 +40,7 @@ import org.openjdk.jmh.annotations.Warmup;
 @BenchmarkMode({Mode.Throughput})
 @Warmup(iterations = 10, time = 5)
 @Measurement(iterations = 5, time = 10)
-@Fork(value = 3, jvmArgsPrepend = "-Djava.net.preferIPv4Stack=true -Djgroups.udp.ip_ttl=0")
+@Fork(value = 3, jvmArgsPrepend = "-Djava.net.preferIPv4Stack=true -Djgroups.udp.ip_ttl=0 -Djmh.executor=PLATFORM")
 public class DataReplicationBenchmark {
 
     @Benchmark
@@ -79,7 +81,7 @@ public class DataReplicationBenchmark {
                 String name = Character.toString('A' + i);
 
                 // Utilize the default configuration shipped with jgroups-raft.
-                JChannel ch = new JChannel("raft.xml");
+                JChannel ch = new JChannel("raft-benchmark.xml");
                 ch.name(name);
 
                 // A no-op state machine.
@@ -91,8 +93,9 @@ public class DataReplicationBenchmark {
                 raft.members(memberList);
 
                 // Fine-tune the RAFT protocol below.
-                raft.logClass(FileBasedLog.class.getCanonicalName());
-                raft.logUseFsync(useFsync);
+                raft.logClass(FileBasedLog.class.getCanonicalName())
+                        .logDir(String.format("%s/target/benchmark", System.getProperty("user.dir")))
+                        .logUseFsync(useFsync);
 
                 members[i] = handler;
                 ch.connect("jmh-replication");
@@ -145,7 +148,8 @@ public class DataReplicationBenchmark {
 
         @Override
         public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
-            if (data.length != dataSize) throw new IllegalArgumentException("Data size does not match");
+            if (data.length != dataSize)
+                throw new IllegalArgumentException(String.format("Data size does not match: %d != %d", data.length, dataSize));
 
             return RESPONSE;
         }

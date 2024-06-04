@@ -330,7 +330,23 @@
                         <configuration>
                             <sources>
                                 <source>tests/junit-functional</source>
+                                <source>tests/benchmark</source>
                             </sources>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>add-test-configurations</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>add-test-resource</goal>
+                        </goals>
+                        <configuration>
+                            <resources>
+                                <resource>
+                                    <directory>tests/resources</directory>
+                                </resource>
+                            </resources>
                         </configuration>
                     </execution>
                 </executions>
