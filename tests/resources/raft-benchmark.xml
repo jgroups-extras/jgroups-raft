@@ -58,6 +58,7 @@
     <raft.ELECTION />
     <raft.RAFT members="${raft_members:A,B,C}"
                raft_id="${raft_id}"
-               log_dir="${log_dir}" />
+               log_class="org.jgroups.protocols.raft.FileBasedLog"
+               log_dir="./target/benchmark" />
     <raft.REDIRECT/>
 </config>
