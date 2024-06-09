@@ -1,4 +1,4 @@
-package org.jgroups.perf;
+package org.jgroups.perf.counter;
 
 import org.HdrHistogram.AbstractHistogram;
 import org.HdrHistogram.Histogram;

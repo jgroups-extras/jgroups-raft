@@ -1,4 +1,4 @@
-package org.jgroups.perf;
+package org.jgroups.perf.jmh;
 
 import com.sun.nio.file.ExtendedOpenOption;
 import org.openjdk.jmh.annotations.*;

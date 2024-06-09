@@ -1,4 +1,4 @@
-package org.jgroups.perf;
+package org.jgroups.perf.jmh;
 
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.FileBasedLog;

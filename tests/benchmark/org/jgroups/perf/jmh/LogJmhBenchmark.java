@@ -1,4 +1,4 @@
-package org.jgroups.perf;
+package org.jgroups.perf.jmh;
 
 import org.jgroups.protocols.raft.*;
 import org.openjdk.jmh.annotations.*;

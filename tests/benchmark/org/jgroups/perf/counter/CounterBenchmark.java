@@ -1,8 +1,8 @@
-package org.jgroups.perf;
+package org.jgroups.perf.counter;
 
 import org.HdrHistogram.AbstractHistogram;
 import org.HdrHistogram.Histogram;
-import org.jgroups.blocks.atomic.BaseCounter;
+
 import org.jgroups.raft.blocks.RaftAsyncCounter;
 import org.jgroups.raft.blocks.RaftCounter;
 import org.jgroups.raft.blocks.RaftSyncCounter;
