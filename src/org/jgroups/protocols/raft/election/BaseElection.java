@@ -330,8 +330,10 @@ public abstract class BaseElection extends Protocol {
     }
 
     public synchronized BaseElection startVotingThread() {
-        if(!isVotingThreadRunning())
+        if(!isVotingThreadRunning()) {
+            log.debug("%s: starting the voting thread", local_addr);
             voting_thread.start();
+        }
         return this;
     }
 
