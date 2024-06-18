@@ -298,6 +298,7 @@ public abstract class BaseElection extends Protocol {
                 log.debug("%s: majority (%d) not available anymore (%s), stopping thread", local_addr, raft.majority(), v);
 
             raft.setLeaderAndTerm(null);
+            sendLeaderElectedMessage(null, 0);
             stopVotingThread(v);
             return;
         }
