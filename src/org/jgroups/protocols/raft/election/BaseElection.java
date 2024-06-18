@@ -295,19 +295,15 @@ public abstract class BaseElection extends Protocol {
         // The view handling method also ensures to stop the voting thread when the majority is lost, this is an additional safeguard.
         if (v.size() < majority) {
             if (log.isDebugEnabled())
-                log.debug("%s: majority (%d) not available anymore (%s), stopping thread", local_addr, raft.majority(), view);
+                log.debug("%s: majority (%d) not available anymore (%s), stopping thread", local_addr, raft.majority(), v);
 
             raft.setLeaderAndTerm(null);
-            synchronized (this) {
-                if (v == view) stopVotingThread();
-            }
+            stopVotingThread(v);
             return;
         }
 
         if (v.containsMember(raft.leader())) {
-            synchronized (this) {
-                if (v == view) stopVotingThread();
-            }
+            stopVotingThread(v);
             return;
         }
 
@@ -376,5 +372,12 @@ public abstract class BaseElection extends Protocol {
             votes.reset();
         }
         return this;
+    }
+
+    protected synchronized boolean stopVotingThread(View v) {
+        if (v == view) {
+            stopVotingThread(); return true;
+        }
+        return false;
     }
 }
