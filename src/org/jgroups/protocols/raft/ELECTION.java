@@ -72,12 +72,12 @@ public class ELECTION extends BaseElection {
                 // See: https://github.com/jgroups-extras/jgroups-raft/issues/259
                 if(isViewCoordinator()) {
                     log.trace("%s: starting voting process (reason: %s, view: %s)", local_addr, result, view);
-                    stopVotingThread();
+//                    stopVotingThread();
                     startVotingThread();
                 }
                 break;
             case lost:
-                stopVotingThread(); // if running, double-dutch
+//                stopVotingThread(); // if running, double-dutch
                 raft.setLeaderAndTerm(null);
                 break;
         }

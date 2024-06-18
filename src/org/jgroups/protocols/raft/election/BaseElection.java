@@ -232,11 +232,11 @@ public abstract class BaseElection extends Protocol {
         votes.add(msg.src(), hdr);
     }
 
-    protected Address determineLeader() {
+    protected Address determineLeader(View v) {
         Address leader=null;
         VoteResponse higher = null;
         Map<Address,VoteResponse> results=votes.getResults();
-        for(Address mbr: view.getMembersRaw()) {
+        for(Address mbr: v.getMembersRaw()) {
             VoteResponse rsp=results.get(mbr);
             if(rsp == null)
                 continue;
@@ -288,18 +288,31 @@ public abstract class BaseElection extends Protocol {
      * The process keeps running until a leader is elected or the majority is lost.
      */
     protected void runVotingProcess() {
+        View v = view;
+        int majority = raft.majority();
+
         // Before each run, verifies if the majority still in place.
         // The view handling method also ensures to stop the voting thread when the majority is lost, this is an additional safeguard.
-        if (!isMajorityAvailable()) {
+        if (v.size() < majority) {
             if (log.isDebugEnabled())
                 log.debug("%s: majority (%d) not available anymore (%s), stopping thread", local_addr, raft.majority(), view);
 
-            stopVotingThread();
+            raft.setLeaderAndTerm(null);
+            synchronized (this) {
+                if (v == view) stopVotingThread();
+            }
+            return;
+        }
+
+        if (v.containsMember(raft.leader())) {
+            synchronized (this) {
+                if (v == view) stopVotingThread();
+            }
             return;
         }
 
         long new_term=raft.createNewTerm();
-        votes.reset(view.getMembersRaw());
+        votes.reset(v.getMembersRaw());
         num_voting_rounds++;
         long start=System.currentTimeMillis();
         sendVoteRequest(new_term);
@@ -308,9 +321,8 @@ public abstract class BaseElection extends Protocol {
         votes.waitForAllResponses(vote_timeout);
         long time=System.currentTimeMillis()-start;
 
-        int majority=raft.majority();
         if(votes.numberOfValidResponses() >= majority) {
-            Address leader=determineLeader();
+            Address leader=determineLeader(v);
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
                     local_addr, votes.getResults(), time, majority, leader, new_term);
 
@@ -318,7 +330,7 @@ public abstract class BaseElection extends Protocol {
             // This should avoid any concurrent joiners. See: https://github.com/jgroups-extras/jgroups-raft/issues/253
             raft.setLeaderAndTerm(leader, new_term);
             sendLeaderElectedMessage(leader, new_term); // send to all - self
-            stopVotingThread();
+//            stopVotingThread();
         }
         else
             log.trace("%s: collected votes from %s in %d ms (majority=%d); starting another voting round",
