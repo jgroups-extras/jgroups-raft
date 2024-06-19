@@ -211,6 +211,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         // All nodes but the previous leader.
         int[] indexes = IntStream.range(0, clusterSize).filter(i -> i != leader).toArray();
         waitUntilLeaderElected(5_000, indexes);
+        waitUntilVotingThreadStops(5_000, indexes);
 
         System.out.printf("%s\n", print());
         assertOneLeader();

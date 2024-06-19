@@ -102,17 +102,20 @@ public abstract class BaseElection extends Protocol {
         num_voting_rounds=0;
     }
 
+    @Override
     public void init() throws Exception {
         super.init();
         raft=RAFT.findProtocol(RAFT.class, this, false);
     }
 
+    @Override
     public void stop() {
         stopVotingThread();
         if (raft != null)
             raft.setLeaderAndTerm(null);
     }
 
+    @Override
     public Object down(Event evt) {
         switch(evt.getType()) {
             case Event.DISCONNECT:
@@ -179,9 +182,17 @@ public abstract class BaseElection extends Protocol {
     private void handleLeaderElected(Message msg, LeaderElected hdr) {
         long term=hdr.currTerm();
         Address leader=hdr.leader();
-        stopVotingThread(); // only on the coord
-        log.trace("%s <- %s: %s", local_addr, msg.src(), hdr);
-        raft.setLeaderAndTerm(leader, term); // possibly changes the role
+        View v = this.view;
+        // Only receive messages with null view when running tests with mock cluster.
+        // Otherwise, need to make sure the leader is the current view and there's still a majority.
+        // The view could change between the leader is decided and the message arrives.
+        if (v == null || (isLeaderInView(leader, v) && isMajorityAvailable(v, raft))) {
+            log.trace("%s <- %s: %s", local_addr, msg.src(), hdr);
+            stopVotingThread(); // only on the coord
+            raft.setLeaderAndTerm(leader, term); // possibly changes the role
+        } else {
+            log.trace("%s <- %s: %s after leader left (%s)", local_addr, msg.src(), hdr, v);
+        }
     }
 
     /**
@@ -288,18 +299,13 @@ public abstract class BaseElection extends Protocol {
      * The process keeps running until a leader is elected or the majority is lost.
      */
     protected void runVotingProcess() {
-        // Before each run, verifies if the majority still in place.
-        // The view handling method also ensures to stop the voting thread when the majority is lost, this is an additional safeguard.
-        if (!isMajorityAvailable()) {
-            if (log.isDebugEnabled())
-                log.debug("%s: majority (%d) not available anymore (%s), stopping thread", local_addr, raft.majority(), view);
+        // If the thread is interrupted, means the voting thread was already stopped.
+        // We place this here just as a shortcut to not increase the term in RAFT.
+        if (Thread.interrupted()) return;
 
-            stopVotingThread();
-            return;
-        }
-
+        View electionView = this.view;
         long new_term=raft.createNewTerm();
-        votes.reset(view.getMembersRaw());
+        votes.reset(electionView.getMembersRaw());
         num_voting_rounds++;
         long start=System.currentTimeMillis();
         sendVoteRequest(new_term);
@@ -318,14 +324,44 @@ public abstract class BaseElection extends Protocol {
             // This should avoid any concurrent joiners. See: https://github.com/jgroups-extras/jgroups-raft/issues/253
             raft.setLeaderAndTerm(leader, new_term);
             sendLeaderElectedMessage(leader, new_term); // send to all - self
-            stopVotingThread();
-        }
-        else
+
+            // Hold intrinsic lock while verifying.
+            // If a view updates while this verification happens, it could lead to liveness issue where the
+            // voting thread does not continue to run, keeping a leader that left the cluster.
+            synchronized (this) {
+                // Check whether majority still in place between the collection of all votes to determining the leader.
+                // We must stop the voting thread and set the leader as null.
+                if (!isMajorityAvailable()) {
+                    log.trace("%s: majority lost (%s) before elected (%s)", local_addr, view, leader);
+                    stopVotingThread();
+                    raft.setLeaderAndTerm(null);
+                    return;
+                }
+
+                // At this point, the majority still in place, so we confirm the elected leader is still present in the view.
+                // If the leader is not in the view anymore, we keep the voting thread running.
+                if (isLeaderInView(leader, view)) {
+                    stopVotingThread();
+                    return;
+                }
+
+                if (log.isTraceEnabled())
+                    log.trace("%s: leader (%s) not in view anymore, retrying", local_addr, leader);
+            }
+        } else if (log.isTraceEnabled())
             log.trace("%s: collected votes from %s in %d ms (majority=%d); starting another voting round",
                     local_addr, votes.getValidResults(), time, majority);
     }
 
+    private static boolean isLeaderInView(Address leader, View view) {
+        return view.containsMember(leader);
+    }
+
     protected final boolean isMajorityAvailable() {
+        return isMajorityAvailable(view, raft);
+    }
+
+    private static boolean isMajorityAvailable(View view, RAFT raft) {
         return view != null && view.size() >= raft.majority();
     }
 

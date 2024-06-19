@@ -48,12 +48,13 @@ public class ELECTION extends BaseElection {
 
     @Override
     protected void handleView(View v) {
-        View view = this.view; this.view = v; // assign view before check on the election result
-        Majority result=Utils.computeMajority(view, v, raft().majority(), raft.leader());
-        log.debug("%s: existing view: %s, new view: %s, result: %s", local_addr, view, v, result);
-        List<Address> joiners=View.newMembers(view, v);
+        View previousView = this.view;
+        this.view = v;
+        Majority result=Utils.computeMajority(previousView, v, raft().majority(), raft.leader());
+        log.debug("%s: existing view: %s, new view: %s, result: %s", local_addr, previousView, v, result);
+        List<Address> joiners=View.newMembers(previousView, v);
         boolean has_new_members=joiners != null && !joiners.isEmpty();
-        boolean coordinatorChanged = Utils.viewCoordinatorChanged(view, v);
+        boolean coordinatorChanged = Utils.viewCoordinatorChanged(previousView, v);
         switch(result) {
             case no_change:
                 // the leader resends its term/address for new members to set the term/leader.
@@ -72,7 +73,6 @@ public class ELECTION extends BaseElection {
                 // See: https://github.com/jgroups-extras/jgroups-raft/issues/259
                 if(isViewCoordinator()) {
                     log.trace("%s: starting voting process (reason: %s, view: %s)", local_addr, result, view);
-                    stopVotingThread();
                     startVotingThread();
                 }
                 break;
