@@ -153,8 +153,8 @@ public abstract class MockRaftCluster {
      * @return The {@link Executor} instance to utilize in the cluster abstraction.
      */
     protected Executor createThreadPool(long max_idle_ms) {
-        int max_cores = Math.max(Runtime.getRuntime().availableProcessors(), 4);
-        return new ThreadPoolExecutor(0, max_cores, max_idle_ms, TimeUnit.MILLISECONDS,
+        // Same as Executors.newCachedThreadPool();
+        return new ThreadPoolExecutor(0, Integer.MAX_VALUE, max_idle_ms, TimeUnit.MILLISECONDS,
                 new SynchronousQueue<>());
     }
 

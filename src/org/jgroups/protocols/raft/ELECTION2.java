@@ -69,13 +69,12 @@ public class ELECTION2 extends BaseElection {
 
     @Override
     protected void handleView(View v) {
-        Majority result = Utils.computeMajority(view, v, raft().majority(), raft.leader());
-        log.debug("%s: existing view: %s, new view: %s, result: %s", local_addr, this.view, v, result);
-
-        View old_view = this.view;
+        View previousView = this.view;
         this.view = v;
+        Majority result = Utils.computeMajority(previousView, v, raft().majority(), raft.leader());
+        log.debug("%s: existing view: %s, new view: %s, result: %s", local_addr, previousView, v, result);
 
-        List<Address> joiners = View.newMembers(old_view, v);
+        List<Address> joiners = View.newMembers(previousView, v);
         boolean has_new_members = joiners != null && !joiners.isEmpty();
 
         switch (result) {
@@ -86,7 +85,7 @@ public class ELECTION2 extends BaseElection {
                 }
                 // If we have no change in terms of majority threshold. If the view coordinator changed, we need to
                 // verify if an election is necessary.
-                if (Utils.viewCoordinatorChanged(old_view, v) && isViewCoordinator() && view.size() >= raft.majority()) {
+                if (Utils.viewCoordinatorChanged(previousView, v) && isViewCoordinator() && view.size() >= raft.majority()) {
                     preVotingMechanism.start();
                 }
                 break;
