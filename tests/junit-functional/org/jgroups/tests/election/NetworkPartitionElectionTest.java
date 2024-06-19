@@ -78,7 +78,6 @@ public class NetworkPartitionElectionTest extends BaseRaftElectionTest.ClusterBa
         // Store who's the leader before merging.
         assertThat(leaders()).hasSize(1);
         RAFT leader = raft(leaders().get(0));
-        long leaderTermBefore = leader.currentTerm();
 
         System.out.printf("-- merge partition, leader=%s%n", leader);
         // Join the partitions.

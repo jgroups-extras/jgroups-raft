@@ -12,6 +12,10 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.function.Supplier;
 
 import org.testng.ITestContext;
 import org.testng.annotations.AfterClass;
@@ -110,6 +114,16 @@ public abstract class AbstractRaftTest {
      * Defines if the cluster creation should happen manually. Therefore, both creation and clear happens manually.
      */
     protected boolean createManually = false;
+
+    /**
+     * Test executor to run operations asynchronously.
+     */
+    protected final ExecutorService executor = Executors.newCachedThreadPool(t -> new Thread(t, "testing"));
+
+    @AfterClass
+    protected final void cleanup() {
+        executor.shutdown();
+    }
 
     /**
      * {@link #clusterSize}.
@@ -283,7 +297,7 @@ public abstract class AbstractRaftTest {
      * @return A new and properly configured {@link RAFT} instance.
      */
     protected final RAFT createNewRaft(String raftId) {
-        RAFT r = new RAFT()
+        RAFT r = newRaftInstance()
                 .raftId(raftId)
                 .members(getRaftMembers())
                 .logClass(getRaftLogClass())
@@ -291,6 +305,18 @@ public abstract class AbstractRaftTest {
                 .logPrefix(String.format("%s-%s", raftId, clusterName()));
         amendRAFTConfiguration(r);
         return r;
+    }
+
+    /**
+     * Creates a new instance of the {@link RAFT} protocol.
+     * <p>
+     * This method exist so subclasses can override with custom implementations.
+     * </p>
+     *
+     * @return A new {@link RAFT} instance.
+     */
+    protected RAFT newRaftInstance() {
+        return new RAFT();
     }
 
     /**
@@ -338,6 +364,27 @@ public abstract class AbstractRaftTest {
         }
 
         return members;
+    }
+
+    /**
+     * Execute the supplier asynchronously on the test executor.
+     *
+     * @param supplier: The operation to execute asynchronously.
+     * @return The {@link CompletableFuture} identifying the supplier asynchronous execution.
+     * @param <T>: The return type of the given supplier.
+     */
+    protected final <T> CompletableFuture<T> async(Supplier<T> supplier) {
+        return CompletableFuture.supplyAsync(supplier, executor);
+    }
+
+    /**
+     * Execute the given runnable asynchronously on the test executor.
+     *
+     * @param runnable: The operation to execute.
+     * @return The {@link CompletableFuture} identifying the runnable asynchronous execution.
+     */
+    protected final CompletableFuture<Void> async(Runnable runnable) {
+        return CompletableFuture.runAsync(runnable, executor);
     }
 
     /**

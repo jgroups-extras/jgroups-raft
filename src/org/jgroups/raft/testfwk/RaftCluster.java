@@ -4,12 +4,14 @@ import org.jgroups.Address;
 import org.jgroups.Message;
 import org.jgroups.View;
 
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
 
@@ -22,6 +24,9 @@ public class RaftCluster extends MockRaftCluster {
     // used to 'send' requests between the various instances
     protected final Map<Address,RaftNode> nodes=new ConcurrentHashMap<>();
     protected final Map<Address,RaftNode> dropped_members=new ConcurrentHashMap<>();
+
+    private final AtomicBoolean viewChanging = new AtomicBoolean(false);
+    private final BlockingQueue<Message> pending = new ArrayBlockingQueue<>(16);
 
     @Override
     public <T extends MockRaftCluster> T add(Address addr, RaftNode node) {
@@ -48,14 +53,20 @@ public class RaftCluster extends MockRaftCluster {
 
     @Override
     public void handleView(View view) {
-        List<Address> members=view.getMembers();
-        nodes.keySet().retainAll(Objects.requireNonNull(members));
-        nodes.values().forEach(n -> n.handleView(view));
+        viewChanging.set(true);
+        try {
+            List<Address> members=view.getMembers();
+            nodes.keySet().retainAll(Objects.requireNonNull(members));
+            nodes.values().forEach(n -> n.handleView(view));
+        } finally {
+            viewChanging.set(false);
+            sendPending();
+        }
     }
 
     @Override
     public void send(Message msg) {
-        send(msg, false);
+        send(msg, async);
     }
 
     @Override
@@ -64,25 +75,28 @@ public class RaftCluster extends MockRaftCluster {
     }
 
     public void send(Message msg, boolean async) {
+        // Only emit messages after the new view is installed on all nodes.
+        if (viewChanging.get()) {
+            pending.add(msg);
+            return;
+        }
+
         Address dest=msg.dest();
         boolean block = interceptor != null && interceptor.shouldBlock(msg);
 
         if(dest != null) {
             // Retrieve the target before possibly blocking.
-            RaftNode node=nodes.get(dest);
-
             // Blocks the invoking thread if cluster is synchronous.
             if (block) {
-                interceptor.blockMessage(msg, async, () -> sendSingle(node, msg, async));
+                interceptor.blockMessage(msg, async, () -> sendSingle(nodes.get(dest), msg, async));
             } else {
-                sendSingle(node, msg, async);
+                sendSingle(nodes.get(dest), msg, async);
             }
         } else {
             // Blocks the invoking thread if cluster is synchronous.
             if (block) {
-                // Copy the targets before possibly blocking the caller.
-                Set<Address> targets = new HashSet<>(nodes.keySet());
-                interceptor.blockMessage(msg, async, () -> sendMany(targets, msg, async));
+                // Copy the targets before possibly blocking the caller.;
+                interceptor.blockMessage(msg, async, () -> sendMany(nodes.keySet(), msg, async));
             } else {
                 sendMany(nodes.keySet(), msg, async);
             }
@@ -125,5 +139,12 @@ public class RaftCluster extends MockRaftCluster {
         for(Map.Entry<Address,RaftNode> e: from.entrySet())
             to.putIfAbsent(e.getKey(), e.getValue());
         from.clear();
+    }
+
+    private void sendPending() {
+        Message msg;
+        while ((msg = pending.poll()) != null) {
+            send(msg);
+        }
     }
 }
