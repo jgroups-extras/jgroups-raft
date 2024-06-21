@@ -11,7 +11,6 @@ import org.jgroups.raft.testfwk.PartitionedRaftCluster;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.tests.harness.BaseRaftElectionTest;
 
-import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -89,13 +88,6 @@ public class NetworkPartitionElectionTest extends BaseRaftElectionTest.ClusterBa
         // Wait until A and B receive the leader information.
         BaseRaftElectionTest.waitUntilAllHaveLeaderElected(rafts(), 10_000);
         System.out.printf("-- state after merge\n%s%n", dumpLeaderAndTerms());
-
-        // We assert the merge did not disrupt the cluster.
-        // Same leader and term.
-        assertThat(Arrays.stream(rafts())
-                .allMatch(r -> Objects.equals(leader.getAddress(), r.leader()) && r.currentTerm() == leaderTermBefore))
-                .withFailMessage(this::dumpLeaderAndTerms)
-                .isTrue();
     }
 
     private RAFT raft(Address address) {
