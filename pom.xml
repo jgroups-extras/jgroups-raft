@@ -24,7 +24,7 @@
         <!-- Dependencies versions -->
         <testng.version>7.10.2</testng.version>
         <assertj.version>3.26.0</assertj.version>
-        <jgroups.version>5.3.7.Final</jgroups.version>
+        <jgroups.version>5.3.8.Final</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
         <log4j.version>2.23.1</log4j.version>
         <jmh.version>1.37</jmh.version>
