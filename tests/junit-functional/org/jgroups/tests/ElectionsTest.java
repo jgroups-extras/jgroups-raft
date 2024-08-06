@@ -79,6 +79,51 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         testLongestLog(Map.of(b, termsB, c, termsC), c.getAddress());
     }
 
+    public void testElectionFollowersHigherTerm(Class<?> ignore) {
+        testHigherTerm(Map.of(b, 5, c, 5));
+    }
+
+    public void testElectionCoordinatorHigherTerm(Class<?> ignore) {
+        testHigherTerm(Map.of(a, 5));
+    }
+
+    private void testHigherTerm(Map<JChannel, Integer> terms) {
+        assertLeader(10_000, a.getAddress(), a, b, c);
+        long aTerm = raft(0).currentTerm();
+
+        for (Map.Entry<JChannel, Integer> entry : terms.entrySet()) {
+            setTerm(entry.getKey(), entry.getValue());
+        }
+
+        for (JChannel ch : terms.keySet()) {
+            assertThat(aTerm)
+                    .withFailMessage(this::dumpLeaderAndTerms)
+                    .isLessThan(raft(ch).currentTerm());
+        }
+
+        JChannel coord = findCoord(a, b, c);
+        assertThat(coord).isNotNull();
+
+        System.out.printf("\n\n-- starting the voting process on %s:\n", coord.getAddress());
+        BaseElection el = election(coord);
+
+        System.out.printf("-- current status: %n%s%n", dumpLeaderAndTerms());
+
+        // Wait the voting thread to stop.
+        // The last step is stopping the voting thread. This means, nodes might receive the leader message,
+        // but the voting thread didn't stopped yet.
+        // We can use a shorter timeout here.
+        waitUntilVotingThreadStops(1_500, 0, 1, 2);
+
+        // We start the election process. Eventually, the thread stops after collecting the necessary votes.
+        // Since we test with higher terms, it might take longer to the coordinator to catch up.
+        el.startVotingThread();
+        waitUntilVotingThreadStops(5_000, 0, 1, 2);
+
+        Address leader = assertLeader(10_000, null, a, b, c);
+        assertThat(leader).isEqualTo(coord.getAddress());
+    }
+
     private void testLongestLog(Map<JChannel, int[]> logs, Address ... possibleElected) {
         // Let node A be elected the first leader.
         assertLeader(10_000, a.getAddress(), a, b, c);
@@ -135,6 +180,11 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         for (int term : terms)
             le.add(new LogEntry(term, BUF));
         log.append(index + 1, le);
+    }
+
+    private void setTerm(JChannel ch, int term) {
+        RAFT raft = raft(ch);
+        raft.setLeaderAndTerm(null, term);
     }
 
     private long logLastAppended(JChannel ch) {

@@ -76,6 +76,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         assertIndices(7, 4);
 
         RAFT leader=Stream.of(rafts()).filter(r -> r != null && r.isLeader()).findFirst().orElse(null);
+        System.out.printf("-- new leader: %s%n", leader);
         assert leader != null;
         System.out.printf("-- Leader: %s, commit-table:\n%s\n", leader.getAddress(), leader.commitTable());
 
