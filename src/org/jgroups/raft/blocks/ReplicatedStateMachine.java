@@ -237,6 +237,7 @@ public class ReplicatedStateMachine<K,V> implements StateMachine {
             tmp.put(key, val);
         }
         synchronized(map) {
+            map.clear();
             map.putAll(tmp);
         }
     }
