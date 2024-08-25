@@ -1,5 +1,10 @@
 package org.jgroups.raft.filelog;
 
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
+import org.jgroups.raft.util.pmem.FileProvider;
+import org.jgroups.util.Util;
+
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -10,10 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Objects;
-
-import org.jgroups.logging.Log;
-import org.jgroups.logging.LogFactory;
-import org.jgroups.raft.util.pmem.FileProvider;
 
 /**
  * Base class to store data in a file.
@@ -29,6 +30,7 @@ public final class FileStorage implements Closeable {
 
    private static final Log LOG = LogFactory.getLog(FileStorage.class);
 
+   private final boolean isWindowsOS;
    private final File storageFile;
    private FileChannel channel;
    private RandomAccessFile raf;
@@ -51,6 +53,7 @@ public final class FileStorage implements Closeable {
       this.writeAheadBytes = writeAheadBytes;
       this.fileSize = -1;
       this.requiredFlush = Flush.None;
+      this.isWindowsOS = Util.checkForWindows();
    }
 
    public ByteBuffer ioBufferWith(final int requiredCapacity) {
@@ -188,6 +191,9 @@ public final class FileStorage implements Closeable {
       }
       // TODO: it requires fsync on the parent folder and on the destination file?
       try {
+         // If running in Windows, first release other file holder before overwriting.
+         if (isWindowsOS)
+            close();
          Files.move(tmpFile.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
       } catch (IOException failedMove) {
          try {

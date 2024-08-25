@@ -81,6 +81,7 @@ public final class RaftTestUtils {
     public static void deleteRaftLog(RAFT r) throws Exception {
         Log log = r != null ? r.log() : null;
         if (log != null) {
+            log.close();
             log.delete();
             r.log(null);
         }
