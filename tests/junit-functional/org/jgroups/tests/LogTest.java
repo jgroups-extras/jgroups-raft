@@ -35,6 +35,7 @@ public class LogTest {
 
     @AfterMethod protected void destroy() throws Exception {
         if(log != null) {
+            log.close();
             log.delete();
             log=null;
         }

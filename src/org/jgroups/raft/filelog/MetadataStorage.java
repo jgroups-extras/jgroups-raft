@@ -1,23 +1,47 @@
 package org.jgroups.raft.filelog;
 
-import java.io.ByteArrayOutputStream;
-import java.io.DataOutputStream;
-import java.io.File;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.StandardOpenOption;
+import net.jcip.annotations.NotThreadSafe;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.util.ByteBufferInputStream;
 import org.jgroups.util.Util;
 
+import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.io.RandomAccessFile;
+import java.nio.ByteBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
+
 /**
  * Stores the RAFT log metadata in a file.
  * <p>
- * The metadata includes the commit index, the current term and the last vote.
+ * The metadata includes the commit index, the current term and the last vote. The storage format keeps the fixed-size
+ * elements first and the vote last. The format follows:
+ * </p>
+ *
+ * <pre>{@code
+ * +----------------+--------------+------------------+
+ * |                |              |                  |
+ * | COMMIT 8 Bytes | TERM 8 Bytes | VOTE <Var> Bytes |
+ * |                |              |                  |
+ * +----------------+--------------+------------------+
+ * }</pre>
+ *
+ * <p>
+ * The storage mmap the file to avoid syscalls. Since these variables have frequent access, the implementation accesses
+ * the direct positions in mmap.
+ * </p>
+ *
+ * <p>
+ * <b>Platform Dependent:</b> The implementation does not utilize mmap in Windows. Due to restrictions on managing files
+ * in Windows, the data is read and written directly from the file.
+ * </p>
  *
  * @author Pedro Ruivo
  * @since 0.5.4
@@ -33,8 +57,7 @@ public class MetadataStorage {
    // Check if file length is != from the last FSYNC: this is variable-sized!
    private static final int VOTED_FOR_POS = CURRENT_TERM_POS + Global.LONG_SIZE;
    private final FileStorage fileStorage;
-   // This won't need a sys-call for frequently accessed data
-   private MappedByteBuffer commitAndTermBytes;
+   private ReadWriteWrapper wrapper;
    private boolean fsync;
 
    public MetadataStorage(File parentDir, boolean fsync) {
@@ -51,39 +74,53 @@ public class MetadataStorage {
    }
 
    public void open() throws IOException {
-      fileStorage.open();
-      commitAndTermBytes = FileChannel.open(fileStorage.getStorageFile().toPath(),
-                                            StandardOpenOption.READ, StandardOpenOption.WRITE)
-         .map(FileChannel.MapMode.READ_WRITE, 0, VOTED_FOR_POS);
+       fileStorage.open();
+       // Platform dependant.
+       // Windows has more checks for file IO. For example, we can only delete a mmap'ed file after the buffer is collected by GC.
+       // Since we don't have a way to control GC and when the contents are released, we avoid mmap on Windows altogether.
+       if (Util.checkForWindows()) {
+           FileChannelDelegate rafw = new FileChannelDelegate(new RandomAccessFile(fileStorage.getStorageFile(), "rw"));
+           wrapper = new ReadWriteWrapper(rafw, rafw, rafw, rafw);
+       } else {
+           // This won't need a sys-call for frequently accessed data
+           MappedByteBuffer mmap = FileChannel.open(fileStorage.getStorageFile().toPath(), StandardOpenOption.READ, StandardOpenOption.WRITE)
+                   .map(FileChannel.MapMode.READ_WRITE, 0, VOTED_FOR_POS);
+           wrapper = new ReadWriteWrapper(
+                   mmap::putLong,
+                   mmap::getLong,
+                   mmap::force,
+                   () -> {}
+           ) ;
+       }
    }
 
    public void close() throws IOException {
       fileStorage.close();
-      commitAndTermBytes = null;
+      wrapper.close.close();
    }
 
    public void delete() throws IOException {
       fileStorage.delete();
-      commitAndTermBytes = null;
+      wrapper = null;
    }
 
    public long getCommitIndex() {
-      return commitAndTermBytes.getLong(COMMIT_INDEX_POS);
+      return wrapper.reader.read(COMMIT_INDEX_POS);
    }
 
    public void setCommitIndex(long commitIndex) throws IOException {
-      commitAndTermBytes.putLong(COMMIT_INDEX_POS, commitIndex);
+       wrapper.writer.write(COMMIT_INDEX_POS, commitIndex);
    }
 
    public long getCurrentTerm() {
-      return commitAndTermBytes.getLong(CURRENT_TERM_POS);
+      return wrapper.reader.read(CURRENT_TERM_POS);
    }
 
    public void setCurrentTerm(long term) throws IOException {
-      commitAndTermBytes.putLong(CURRENT_TERM_POS, term);
-      if (fsync) {
-         commitAndTermBytes.force();
-      }
+       wrapper.writer.write(CURRENT_TERM_POS, term);
+       if (fsync) {
+           wrapper.flush.fsync();
+       }
    }
 
    public Address getVotedFor() throws IOException, ClassNotFoundException {
@@ -121,4 +158,128 @@ public class MetadataStorage {
    private static Address readAddress(ByteBuffer buffer) throws IOException, ClassNotFoundException {
       return Util.readAddress(new ByteBufferInputStream(buffer));
    }
+
+    /**
+     * Wrapper to hide implementation specific details of writing/reading from files.
+     *
+     * <p>
+     * This class delegates each operation to the provided classes.
+     * </p>
+     */
+    private static final class ReadWriteWrapper {
+        private final Writer writer;
+        private final Reader reader;
+        private final Flush flush;
+        private final Closeable close;
+
+        private ReadWriteWrapper(Writer writer, Reader reader, Flush flush, Closeable close) {
+            this.writer = writer;
+            this.reader = reader;
+            this.flush = flush;
+            this.close = close;
+        }
+    }
+
+    /**
+     * Implement all I/O operations delegating to a {@link FileChannel}.
+     *
+     * <p>
+     * Implements all interfaces and delegates to a {@link FileChannel} instance. All operations utilize the same
+     * {@link ByteBuffer} instance for reading and writing to the underlying file. No additional bytes are allocated
+     * after initialization.
+     * </p>
+     *
+     * <b>Thread-safety:</b> This class is <b>not</b> thread safe. It utilizes a single {@link ByteBuffer} instance in
+     * all operations.
+     */
+    @NotThreadSafe
+    private static final class FileChannelDelegate implements Writer, Reader, Flush, Closeable {
+        private final ByteBuffer buffer;
+        private final RandomAccessFile raf;
+        private final FileChannel channel;
+
+        private FileChannelDelegate(RandomAccessFile raf) {
+            this.raf = raf;
+            this.channel = raf.getChannel();
+            this.buffer = ByteBuffer.allocateDirect(Long.BYTES);
+        }
+
+        @Override
+        public long read(int position) {
+            try {
+                buffer.rewind();
+                channel.read(buffer, position);
+                buffer.rewind();
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return buffer.getLong();
+        }
+
+        @Override
+        public void write(int position, long value) {
+            buffer.rewind();
+            buffer.putLong(value);
+            try {
+                buffer.flip();
+                int w = channel.write(buffer, position);
+                if (w != Long.BYTES)
+                    throw new IllegalArgumentException("Unable to write value");
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            channel.close();
+            raf.close();
+        }
+
+        @Override
+        public void fsync() throws IOException {
+            channel.force(true);
+        }
+    }
+
+    /**
+     * Writer interface to specific file position.
+     */
+    private interface Writer {
+
+        /**
+         * Writes the given long value to the specific file position.
+         *
+         * @param position: File position to write to.
+         * @param value: Value to write.
+         */
+        void write(int position, long value);
+    }
+
+    /**
+     * Reader interface for specific file position.
+     */
+    private interface Reader {
+
+        /**
+         * Reads a long value starting at the given position. Reads the next {@link Long#BYTES} bytes.
+         *
+         * @param position:
+         * @return a long value stored in the file.
+         */
+        long read(int position);
+    }
+
+    /**
+     * Interface to flush contents to disk.
+     */
+    private interface Flush {
+
+        /**
+         * Fsync data to disk.
+         *
+         * @throws IOException: If a failure happens during the operation.
+         */
+        void fsync() throws IOException;
+    }
 }

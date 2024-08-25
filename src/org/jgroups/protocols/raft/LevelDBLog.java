@@ -1,6 +1,9 @@
 package org.jgroups.protocols.raft;
 
-import org.iq80.leveldb.*;
+import static org.fusesource.leveldbjni.JniDBFactory.factory;
+import static org.jgroups.raft.util.LongHelper.fromByteArrayToLong;
+import static org.jgroups.raft.util.LongHelper.fromLongToByteArray;
+
 import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.util.Util;
@@ -12,9 +15,11 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.function.ObjLongConsumer;
 
-import static org.fusesource.leveldbjni.JniDBFactory.factory;
-import static org.jgroups.raft.util.LongHelper.fromByteArrayToLong;
-import static org.jgroups.raft.util.LongHelper.fromLongToByteArray;
+import org.iq80.leveldb.DB;
+import org.iq80.leveldb.DBIterator;
+import org.iq80.leveldb.Options;
+import org.iq80.leveldb.WriteBatch;
+import org.iq80.leveldb.WriteOptions;
 
 /**
  * Implementation of {@link Log}
@@ -221,6 +226,7 @@ public class LevelDBLog implements Log {
             byte[] v=e.getValue();
             size+=v != null? v.length : 0;
         }
+        Util.close(it);
         return size;
     }
 
