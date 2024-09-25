@@ -469,21 +469,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     /** Creates a snapshot and truncates the log. See https://github.com/belaban/jgroups-raft/issues/7 for details */
     @ManagedOperation(description="Creates a new snapshot and truncates the log")
-    public synchronized void snapshot() throws Exception {
-        if(state_machine == null)
-            throw new IllegalStateException("state machine is null");
+    public void snapshot() throws Exception {
+        snapshotAsync().get();
+    }
 
-        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
-        internal_state.writeTo(out);
-        state_machine.writeContentTo(out);
-        ByteBuffer buf=ByteBuffer.wrap(out.buffer(), 0, out.position());
-        log_impl.setSnapshot(buf);
-        log_impl.truncate(commitIndex());
-        num_snapshots++;
-        // curr_log_size=logSizeInBytes();
-        // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
-        // behind last-appended, then this may perform the next truncation later than it should
-        curr_log_size=0;
+    public CompletableFuture<Void> snapshotAsync() {
+        CompletableFuture<Void> f = new CompletableFuture<>();
+        offer(new SnapshotRequest(f)); return f;
     }
 
     /** Loads the log entries from [first .. commit_index] into the state machine */
@@ -690,7 +682,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(synchronous) // set only for testing purposes
             handleDownRequest(retval, buf, offset, length, internal, options);
         else {
-            add(new DownRequest(retval, buf, offset, length, internal, options)); // will call handleDownRequest()
+            offer(new DownRequest(retval, buf, offset, length, internal, options)); // will call handleDownRequest()
         }
         return retval; // 4. Return CompletableFuture
     }
@@ -707,6 +699,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         catch(InterruptedException ex) {
             log.error("%s: failed adding %s to processing queue: %s", local_addr, r, ex);
             r.failed(ex);
+        }
+    }
+
+    protected void offer(Request r) {
+        if (!processing_queue.offer(r)) {
+            r.failed(new IllegalStateException("processing queue is full"));
         }
     }
 
@@ -857,6 +855,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     // Add the request to the client table, so we can return results to clients when done
                     reqtab.create(index++, raft_id, dr.f, this::majority, dr.options);
                     length+=dr.length;
+                }
+                else if (r instanceof SnapshotRequest) {
+                    SnapshotRequest sr = (SnapshotRequest) r;
+                    try {
+                        takeSnapshot(); sr.f.complete(null);
+                    } catch (Exception e) {
+                        sr.f.completeExceptionally(e);
+                        throw e;
+                    }
                 }
             }
             catch(Throwable ex) {
@@ -1048,7 +1055,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected void sendSnapshotTo(Address dest) throws Exception {
         LogEntry last_committed_entry=log_impl.get(commitIndex());
         long last_index=commit_index, last_term=last_committed_entry.term;
-        snapshot();
+        takeSnapshot();
         ByteBuffer data=log_impl.getSnapshot();
         log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.position()), dest);
         Message msg=new BytesMessage(dest, data)
@@ -1094,12 +1101,29 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             try {
                 this.log.debug("%s: current log size is %d, exceeding max_log_size of %d: creating snapshot",
                                local_addr, curr_log_size, max_log_size);
-                snapshot();
+                takeSnapshot();
             }
             catch(Exception ex) {
                 log.error("%s: failed snapshotting log: %s", local_addr, ex);
             }
         }
+    }
+
+    protected void takeSnapshot() throws Exception {
+        if(state_machine == null)
+            throw new IllegalStateException("state machine is null");
+
+        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
+        internal_state.writeTo(out);
+        state_machine.writeContentTo(out);
+        ByteBuffer buf=ByteBuffer.wrap(out.buffer(), 0, out.position());
+        log_impl.setSnapshot(buf);
+        log_impl.truncate(commitIndex());
+        num_snapshots++;
+        // curr_log_size=logSizeInBytes();
+        // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
+        // behind last-appended, then this may perform the next truncation later than it should
+        curr_log_size=0;
     }
 
     /**
@@ -1319,7 +1343,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
-    /** Generated by {@link org.jgroups.protocols.raft.RAFT#setAsync(byte[], int, int)} */
+    /** Generated by {@link RAFT#setAsync(byte[], int, int)} */
     protected static class DownRequest extends Request {
         final CompletableFuture<byte[]> f;
         final byte[]                    buf;
@@ -1344,6 +1368,24 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         public String toString() {
             return String.format("%s %d bytes", DownRequest.class.getSimpleName(), length);
+        }
+    }
+
+    protected static class SnapshotRequest extends Request {
+        final CompletableFuture<Void> f;
+
+        public SnapshotRequest(CompletableFuture<Void> f) {
+            this.f = f;
+        }
+
+        @Override
+        protected final void failed(Throwable t) {
+            f.completeExceptionally(t);
+        }
+
+        @Override
+        public String toString() {
+            return SnapshotRequest.class.getSimpleName();
         }
     }
 }
