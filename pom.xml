@@ -4,7 +4,7 @@
     <artifactId>jgroups-raft</artifactId>
     <packaging>jar</packaging>
     <name>jgroups-raft</name>
-    <version>1.0.14.Final-SNAPSHOT</version>
+    <version>1.0.14.Final</version>
     <url>https://github.com/jgroups-extras/jgroups-raft</url>
     <description>JGroups RAFT implementation</description>
 
@@ -112,7 +112,7 @@
         <connection>scm:git:git://github.com/jgroups-extras/jgroups-raft.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/jgroups-extras/jgroups-raft.git</developerConnection>
         <url>https://github.com/jgroups-extras/jgroups-raft</url>
-        <tag>HEAD</tag>
+        <tag>jgroups-raft-1.0.14.Final</tag>
     </scm>
 
     <issueManagement>
@@ -367,7 +367,7 @@
                             <executable>java</executable>
                             <arguments>
                                 <argument>-classpath</argument>
-                                <classpath/>
+                                <classpath />
                                 <argument>org.jgroups.util.XMLSchemaGenerator</argument>
                                 <argument>-o</argument>
                                 <argument>${project.build.directory}/schema</argument>
@@ -606,7 +606,7 @@
                             <executable>java</executable>
                             <arguments>
                                 <argument>-classpath</argument>
-                                <classpath/>
+                                <classpath />
                                 <argument>org.jgroups.raft.util.PropsToAsciidoc</argument>
                                 <argument>${basedir}/doc/manual/protocols-template.adoc</argument>
                             </arguments>
