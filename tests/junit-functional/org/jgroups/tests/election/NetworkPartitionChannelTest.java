@@ -1,17 +1,5 @@
 package org.jgroups.tests.election;
 
-import static java.util.Arrays.stream;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
-import static org.testng.Assert.assertEquals;
-
-import java.util.List;
-import java.util.Map;
-import java.util.OptionalInt;
-import java.util.concurrent.TimeoutException;
-import java.util.stream.IntStream;
-
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -19,10 +7,27 @@ import org.jgroups.View;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.Util;
+
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.stream.IntStream;
+
 import org.testng.annotations.Test;
+
+import static java.util.Arrays.stream;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.testng.Assert.assertEquals;
 
 /**
  * @author Zhang Yifei
+ * @see <a href="https://github.com/jgroups-extras/jgroups-raft/issues/306">Issue</a>
  */
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
 public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBased {
@@ -60,8 +65,9 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 		System.out.println("partition2: " + view(coord));
 
 		merge(leader, coord);
-		assertEquals(coordIndex(leader), coord);
-		assertEquals(coordIndex(coord), coord);
+		int finalLeader = leader;
+		assertThat(eventually(() -> coordIndex(finalLeader) == coord && coordIndex(coord) == coord, 10, TimeUnit.SECONDS))
+				.isTrue();
 		System.out.println("after merge: " + view(coord));
 
 		// ELECTION may be timeout, ELECTION2 always pass.

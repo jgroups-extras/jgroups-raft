@@ -187,9 +187,15 @@ public abstract class BaseElection extends Protocol {
         // Otherwise, need to make sure the leader is the current view and there's still a majority.
         // The view could change between the leader is decided and the message arrives.
         if (v == null || (isLeaderInView(leader, v) && isMajorityAvailable(v, raft))) {
-            log.trace("%s <- %s: %s", local_addr, msg.src(), hdr);
-            stopVotingThread(); // only on the coord
-            raft.setLeaderAndTerm(leader, term); // possibly changes the role
+            // Tries to install the new leader.
+            // We only ever stop the voting thread in case the installation goes through.
+            // This is necessary to handle partitioning cases with coordinator changes in the view.
+            // See: https://github.com/jgroups-extras/jgroups-raft/issues/306
+            int res = raft.trySetLeaderAndTerm(leader, term); // possibly changes the role
+            log.trace("%s <- %s: %s (%d)", local_addr, msg.src(), hdr, res);
+            if (res >= 0) {
+                stopVotingThread(); // only on the coord
+            }
         } else {
             log.trace("%s <- %s: %s after leader left (%s)", local_addr, msg.src(), hdr, v);
         }
