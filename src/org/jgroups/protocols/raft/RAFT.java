@@ -1206,6 +1206,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return this;
     }
 
+    public int trySetLeaderAndTerm(Address newLeader, long newTerm) {
+        return raft_state.tryAdvanceTermAndLeader(newTerm, newLeader);
+    }
+
     private void leaderUpdated(Address new_leader) {
         if(Objects.equals(local_addr, new_leader)) {
             if(!isLeader())
