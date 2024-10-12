@@ -171,10 +171,10 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 	}
 
 	private void park(int ms) {
-		long deadline = System.nanoTime() + ms * 1000_000L;
+		long deadline = System.currentTimeMillis() + ms;
 		do {
 			LockSupport.parkUntil(deadline);
-		} while (System.nanoTime() < deadline);
+		} while (System.currentTimeMillis() < deadline);
 	}
 
 	void waitUntilPreVoteThreadStops(long timeout, int... indexes) {
@@ -182,9 +182,7 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 				.filter(t -> t instanceof ELECTION2).toArray(ELECTION2[]::new);
 		if (a.length == 0) return;
 		eventually(() -> {
-			for (ELECTION2 e : a) {
-				if (e.isPreVoteThreadRunning()) return false;
-			}
+			for (ELECTION2 e : a) if (e.isPreVoteThreadRunning()) return false;
 			return true;
 		}, timeout, TimeUnit.MILLISECONDS);
 	}
