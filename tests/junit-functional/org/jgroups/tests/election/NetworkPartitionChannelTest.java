@@ -3,6 +3,7 @@ package org.jgroups.tests.election;
 import org.jgroups.*;
 import org.jgroups.protocols.SHARED_LOOPBACK;
 import org.jgroups.protocols.pbcast.GMS;
+import org.jgroups.protocols.raft.ELECTION2;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.VoteResponse;
 import org.jgroups.stack.Protocol;
@@ -12,6 +13,7 @@ import org.jgroups.util.Util;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
@@ -99,6 +101,9 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 		newTerm.release();
 		newTerm = null;
 
+		waitUntilPreVoteThreadStops(3000, coord);
+		waitUntilVotingThreadStops(3000, coord);
+
 		// ELECTION may be timeout, ELECTION2 always pass.
 		waitUntilLeaderElected(3000, indexes);
 		System.out.println(dumpLeaderAndTerms());
@@ -170,5 +175,17 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 		do {
 			LockSupport.parkUntil(deadline);
 		} while (System.nanoTime() < deadline);
+	}
+
+	void waitUntilPreVoteThreadStops(long timeout, int... indexes) {
+		ELECTION2[] a = stream(indexes).mapToObj(this::channel).filter(Objects::nonNull).map(this::election)
+				.filter(t -> t instanceof ELECTION2).toArray(ELECTION2[]::new);
+		if (a.length == 0) return;
+		eventually(() -> {
+			for (ELECTION2 e : a) {
+				if (e.isPreVoteThreadRunning()) return false;
+			}
+			return true;
+		}, timeout, TimeUnit.MILLISECONDS);
 	}
 }
