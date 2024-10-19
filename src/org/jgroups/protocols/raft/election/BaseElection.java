@@ -54,6 +54,7 @@ public abstract class BaseElection extends Protocol {
 
     private final Runner voting_thread=new Runner("voting-thread", this::runVotingProcess, null);
     private final ResponseCollector<VoteResponse> votes=new ResponseCollector<>();
+    private volatile boolean stopVoting;
 
     protected volatile View view;
 
@@ -307,7 +308,20 @@ public abstract class BaseElection extends Protocol {
     protected void runVotingProcess() {
         // If the thread is interrupted, means the voting thread was already stopped.
         // We place this here just as a shortcut to not increase the term in RAFT.
-        if (Thread.interrupted()) return;
+        if (Thread.interrupted()) {
+            stopVotingThreadInternal();
+            return;
+        }
+
+        // If externally put to stop, verify if is possible to stop.
+        if (stopVoting) {
+            // Only stop in case there is no majority or the leader is already null.
+            // Otherwise, keep running.
+            if (!isMajorityAvailable() || raft.leader() != null) {
+                stopVotingThreadInternal();
+                return;
+            }
+        }
 
         View electionView = this.view;
         long new_term=raft.createNewTerm();
@@ -339,7 +353,7 @@ public abstract class BaseElection extends Protocol {
                 // We must stop the voting thread and set the leader as null.
                 if (!isMajorityAvailable()) {
                     log.trace("%s: majority lost (%s) before elected (%s)", local_addr, view, leader);
-                    stopVotingThread();
+                    stopVotingThreadInternal();
                     raft.setLeaderAndTerm(null);
                     return;
                 }
@@ -347,13 +361,15 @@ public abstract class BaseElection extends Protocol {
                 // At this point, the majority still in place, so we confirm the elected leader is still present in the view.
                 // If the leader is not in the view anymore, we keep the voting thread running.
                 if (isLeaderInView(leader, view)) {
-                    stopVotingThread();
+                    stopVotingThreadInternal();
                     return;
                 }
-
-                if (log.isTraceEnabled())
-                    log.trace("%s: leader (%s) not in view anymore, retrying", local_addr, leader);
             }
+
+            if (log.isTraceEnabled())
+                log.trace("%s: leader (%s) not in view anymore, retrying", local_addr, leader);
+
+            stopVoting = false;
         } else if (log.isTraceEnabled())
             log.trace("%s: collected votes from %s in %d ms (majority=%d); starting another voting round",
                     local_addr, votes.getValidResults(), time, majority);
@@ -374,6 +390,7 @@ public abstract class BaseElection extends Protocol {
     public synchronized BaseElection startVotingThread() {
         if(!isVotingThreadRunning()) {
             log.debug("%s: starting the voting thread", local_addr);
+            stopVoting = false;
             voting_thread.start();
         }
         return this;
@@ -403,10 +420,18 @@ public abstract class BaseElection extends Protocol {
 
     public synchronized BaseElection stopVotingThread() {
         if(isVotingThreadRunning()) {
-            log.debug("%s: stopping the voting thread", local_addr);
-            voting_thread.stop();
-            votes.reset();
+            log.debug("%s: mark the voting thread to stop", local_addr);
+            stopVoting = true;
+
+            // Interrupt voting thread if majority lost.
+            if (!isMajorityAvailable()) stopVotingThreadInternal();
         }
         return this;
+    }
+
+    private void stopVotingThreadInternal() {
+        log.debug("%s: stopping the voting thread", local_addr);
+        voting_thread.stop();
+        votes.reset();
     }
 }

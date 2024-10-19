@@ -68,7 +68,7 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
         cluster.handleView(v2);
 
         assertThat(raft(0).leader()).isNull();
-        assertThat(election(0).isVotingThreadRunning()).isFalse();
+        assertThat(eventually(() -> !election(0).isVotingThreadRunning(), 5, TimeUnit.SECONDS)).isTrue();
 
         // Let the method return and install A as leader.
         checkPoint.trigger("A_DETERMINE_OUT_CONTINUE");
