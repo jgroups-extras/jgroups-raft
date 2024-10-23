@@ -1,6 +1,7 @@
 package org.jgroups.tests.election;
 
 import org.jgroups.*;
+import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.SHARED_LOOPBACK;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.raft.ELECTION2;
@@ -76,14 +77,18 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 		System.out.println("partition1: " + view(leader));
 		System.out.println("partition2: " + view(coord));
 
+		raft(leader).set("cmd".getBytes(), 0, 3);
+		for (int i : indexes) {
+			System.out.println(address(i) + " lastAppended: " + raft(i).lastAppended());
+		}
+
 		// block the new coordinator to advance the term in voting thread
 		newTerm = new Semaphore(0);
 
 		merge(leader, coord);
-
-		int finalLeader = leader;
-		assertThat(eventually(() -> coordIndex(finalLeader) == coord && coordIndex(coord) == coord, 10, TimeUnit.SECONDS))
-				.isTrue();
+		Util.waitUntilAllChannelsHaveSameView(30_000, 1000, channels());
+		assertEquals(coordIndex(leader), coord);
+		assertEquals(coordIndex(coord), coord);
 		System.out.println("after merge: " + view(coord));
 
 		// since the term is not advanced yet, new coordinator has accepted the existing leader, and stopping the
@@ -112,6 +117,10 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 	@Override
 	protected RAFT newRaftInstance() {
 		return new RAFT() {
+			{
+				id = ClassConfigurator.getProtocolId(RAFT.class);
+			}
+
 			@Override
 			public long createNewTerm() {
 				Semaphore s = newTerm;
