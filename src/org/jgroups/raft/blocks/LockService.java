@@ -49,6 +49,31 @@ import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.UUID;
 
 /**
+ * A state machine that maintains the holder and waiters for a specified lockId. For a lockId, it could have only one
+ * holder in same time, other acquirers will be queued as waiters, when the holder unlock from the lockId, the next
+ * holder will be polled from the waiting queue if there is a waiter.
+ * <p>
+ * The {@link Address} of the member will be used to identify the acquirers(holders and waiters), that means a new
+ * connected member will have a new identity, so a disconnected member will unlock from all related lockId
+ * automatically.
+ * For the cluster if there are members who left then the leader will unlock for those members in the state machine.
+ * A new started cluster will unlock for all previous members in the state machine. Another scenario is the cluster
+ * resume from multiple minority partitions, since the {@link Address} remain unchanged, the new leader will force
+ * unlock for all existing members in the state machine.
+ * <p>
+ * The {@link LockStatus} represent the member's locking status.
+ * <ul>
+ *     <li>{@link LockStatus#HOLDING HOLDING} - current member has held the lock, it could be returned by
+ *     {@link LockService#lock(long)} or {@link LockService#tryLock(long)}, or being notified that changed from
+ *     {@link LockStatus#WAITING WAITING} via the {@link Listener}.
+ *     <li>{@link LockStatus#WAITING WAITING} - current member is in the waiting queue since the lock is currently
+ *     held by another member, it could be returned by calling {@link LockService#lock(long)}.
+ *     <li>{@link LockStatus#NONE NONE} - current member is not holding nor waiting the lock.
+ * </ul>
+ * <p>
+ * The {@link Mutex} is a distributed implementation of {@link Lock}. It based on the lock service, a thread is holding
+ * the mutex also means the member is holding the lock in the lock service.
+ *
  * @author Zhang Yifei
  */
 public class LockService {
@@ -467,7 +492,7 @@ public class LockService {
 	 * Listen on the lock status changes
 	 */
 	public interface Listener {
-		void onStatusChange(long key, LockStatus prev, LockStatus curr);
+		void onStatusChange(long lockId, LockStatus prev, LockStatus curr);
 	}
 
 	/**
@@ -483,7 +508,7 @@ public class LockService {
 	 * A distributed lock that backed on the lock service.
 	 */
 	public class Mutex implements Lock {
-		private final long key;
+		private final long lockId;
 		private volatile LockStatus status = NONE;
 		private volatile Thread holder;
 		private final AtomicInteger acquirers = new AtomicInteger();
@@ -492,7 +517,7 @@ public class LockService {
 		private Consumer<Mutex> lockHandler, unlockHandler;
 		private long timeout = 8000;
 
-		Mutex(long key) {this.key = key;}
+		Mutex(long lockId) {this.lockId = lockId;}
 
 		/**
 		 * Set the timeout for the command executing in the lock service.
@@ -502,7 +527,7 @@ public class LockService {
 
 		/**
 		 * The lock status in the lock service
-		 * @return lock status of the key
+		 * @return lock status of the lockId
 		 */
 		public LockStatus getStatus() {return status;}
 
@@ -540,7 +565,7 @@ public class LockService {
 			while (status != HOLDING) {
 				try {
 					if (status == WAITING) notWaiting.awaitUninterruptibly();
-					else status = join(LockService.this.lock(key));
+					else status = join(LockService.this.lock(lockId));
 				} catch (Throwable e) {
 					rethrow(unlock(e));
 				}
@@ -558,7 +583,7 @@ public class LockService {
 			while (status != HOLDING) {
 				try {
 					if (status == WAITING) notWaiting.await();
-					else status = join(LockService.this.lock(key));
+					else status = join(LockService.this.lock(lockId));
 				} catch (InterruptedException e) {
 					throw unlock(e);
 				} catch (Throwable e) {
@@ -577,7 +602,7 @@ public class LockService {
 			acquirers.incrementAndGet();
 			if (status == NONE) {
 				try {
-					status = join(LockService.this.tryLock(key));
+					status = join(LockService.this.tryLock(lockId));
 				} catch (Throwable ignored) {
 				}
 			}
@@ -598,7 +623,7 @@ public class LockService {
 			while (status != HOLDING && (ns = deadline - System.nanoTime()) > 0) {
 				try {
 					if (status == WAITING) notWaiting.awaitNanos(ns);
-					else status = join(LockService.this.lock(key));
+					else status = join(LockService.this.lock(lockId));
 				} catch (InterruptedException e) {
 					throw unlock(e);
 				} catch (Throwable e) {
@@ -621,7 +646,7 @@ public class LockService {
 			if (delegate.getHoldCount() == 1) holder = null;
 			try {
 				if (acquirers.decrementAndGet() == 0 && status != NONE) {
-					join(LockService.this.unlock(key));
+					join(LockService.this.unlock(lockId));
 					status = NONE;
 				}
 			} catch (Throwable e) {
@@ -665,8 +690,8 @@ public class LockService {
 			}
 		}
 
-		void onStatusChange(long key, LockStatus prev, LockStatus curr) {
-			if (key != this.key) return;
+		void onStatusChange(long lockId, LockStatus prev, LockStatus curr) {
+			if (lockId != this.lockId) return;
 			if (curr != HOLDING && holder != null) {
 				status = curr;
 				var handler = unlockHandler;
