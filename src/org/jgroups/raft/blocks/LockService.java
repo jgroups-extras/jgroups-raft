@@ -71,8 +71,13 @@ import org.jgroups.util.UUID;
  *     <li>{@link LockStatus#NONE NONE} - current member is not holding nor waiting the lock.
  * </ul>
  * <p>
+ * Listeners could be registered to get the notification of lock statue change, The order of notifications is the same
+ * as the order of commands executed. Don't do any heavy job or block the calling thread in the listener.
+ * <p>
  * The {@link Mutex} is a distributed implementation of {@link Lock}. It based on the lock service, a thread is holding
- * the mutex also means the member is holding the lock in the lock service.
+ * the mutex also means the member is holding the lock in the lock service. There is only one {@link Mutex} instance
+ * for each lockId in a given lock service, {@link LockService#mutex(long)} method will create the instance if absent,
+ * otherwise return the existing one.
  *
  * @author Zhang Yifei
  */
