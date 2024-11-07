@@ -6,8 +6,8 @@ and a lock could have only one holder and multiple waiters at same time.
 The waiters will be queued, the first waiter could be changed to holder by the unlocking operation of last holder.
 
 == Holder Identity
-The identity of a holder or waiter has to be a member of the RAFT cluster, because of there are server initiated
-messages. currently the clients are stateless to the server after reply, so there is no way to send the server initiated
+The identity of a holder or waiter has to be a member of the RAFT cluster, because of there are server-initiated
+messages. currently the clients are stateless to the server after reply, so there is no way to send the server-initiated
 message to the client.
 I have considered to create a new protocol to maintain sessions for clients, but it will be a lot of work to do, for
 example, the session's creation and destruction has to be recorded in the RAFT log, and the liveness check of sessions
@@ -23,7 +23,16 @@ For the partition, members are in a minority subgroup will also being cleared by
 present, if all subgroups are minority, the new elected leader will force clear all previous locking status after cluster
 resumed.
 A new started cluster will clear all previous locking status as well, because of all members have a new address.
-Since the locking status has the same lifecycle as the cluster, the log storage could be in memory implementation.
+Since the locking status has the same lifecycle as the cluster, the log storage could be in-memory implementation.
+
+== Waiting Status
+Waiting status is treated the same as holding status in the case of disconnection and partitioning.
+The tricky part is how to let the waiter know that it has become the holder, this is the server-initiated message
+mentioned earlier. As members of the cluster, leader can send messages to any lock service, but in what way?
+Those messages must be in order and can't be lost or duplicated, assume a dedicated message to do this, leader will
+send them after logs are applied, and the sending process could be async, what if the leader left, the new leader can't
+ensure those messages are not lost or duplicated.
+Base on the log applying process of each member is a reliable choice, although it's not perfect.
 
 == Mutex
 With the lock service and the ReentrantLock could implement an exclusive lock cross JVMs.
