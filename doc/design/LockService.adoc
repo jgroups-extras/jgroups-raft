@@ -10,8 +10,8 @@ The identity of a holder or waiter has to be a member of the RAFT cluster, becau
 messages. currently the clients are stateless to the server after reply, so there is no way to send the server-initiated
 message to the client.
 I have considered to create a new protocol to maintain sessions for clients, but it will be a lot of work to do, for
-example, the session's creation and destruction has to be recorded in the RAFT log, and the liveness check of sessions
-etc.
+example, the session's creation and destruction needs to be recorded in the RAFT log, sessions needs to be available
+in the new leader if leadership changed, and the client actually keeps connections to all members.
 Holders and waiters in server are represented by the address(UUID) of the channel, the advantage of doing so is
 the server can clear those disconnected holders and waiters base on the view of the cluster.
 
