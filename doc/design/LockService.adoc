@@ -76,7 +76,7 @@ The scenario 3 won't happen I think, because the existing leader will always hav
 command.
 
 == Listener
-Listeners could be registered to listen on the status change of the lock. +
+Listeners could be registered to listen on the status change of locks. +
 The listener is notified by the RAFT working thread after state is updated while RAFT log applying, that means the
 listener shouldn't have heavy work, put those work in a separate thread may be. +
 I don't make any assumptions about how users will use this listener, because there are so many possibilities,

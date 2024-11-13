@@ -299,49 +299,53 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		assertEquals(service_e.lock(101L).get(3, SECONDS), WAITING);
 		events_e.next().assertEq(101L, NONE, WAITING);
 
-		// disconnect the coordinator/leader/holder
+		// Disconnect the coordinator/leader/holder
 		channel(0).disconnect(); // [B,C,D,E]
-		// reset to [B,C,D,E], notified by reset command.
+		// Resigned because of disconnection
 		events_a.next().assertEq(101L, HOLDING, NONE);
+		// Reset to [B,C,D,E], notified by reset command.
 		events_b.next().assertEq(101L, WAITING, HOLDING);
 
-		// disconnect a participant
+		// Disconnect a participant
 		channel(2).disconnect(); // [B,D,E]
-		// reset to [B,D,E], notified by reset command.
+		// Resigned because of disconnection
 		events_c.next().assertEq(101L, WAITING, NONE);
 
+		// Reset to [B,D,E]
 		service_b.unlock(101L);
 		events_b.next().assertEq(101L, HOLDING, NONE);
 		events_d.next().assertEq(101L, WAITING, HOLDING);
 
-		// disconnect the holder and lost majority
+		// Disconnect the holder and lost majority
 		channel(3).disconnect(); // [B,E]
-		// no reset, notify base on local status.
+		// Resigned because of disconnection
 		events_d.next().assertEq(101L, HOLDING, NONE);
+		// Resigned because of lost majority
 		events_e.next().assertEq(101L, WAITING, NONE);
 
-		// reconnect the previous holder and reach majority
+		// Reconnect the previous holder and reach majority.
 		service_d = reconnect(channel(3), events_d); // [B,E,D]
-		assertNull(events_d.next()); // D has a new address
-		// reset to clear all previous status, notified by reset command.
-		events_e.next().assertEq(101L, WAITING, NONE); // duplicated
+		// Nothing to do with D because it has a new address
+		assertNull(events_d.next());
+		// Reset to clear all previous status, notified by reset command.
+		events_e.next().assertEq(101L, WAITING, NONE); // duplicate notification
 
 		assertEquals(service_d.lock(101L).get(3, SECONDS), HOLDING);
 		assertEquals(service_e.lock(101L).get(3, SECONDS), WAITING);
 		events_d.next().assertEq(101L, NONE, HOLDING);
 		events_e.next().assertEq(101L, NONE, WAITING);
 
-		// disconnect to lost majority
+		// Disconnect to lost majority
 		channel(1).disconnect(); // [E,D]
-		// no reset, notify base on local status.
+		// Resigned because of lost majority
 		events_d.next().assertEq(101L, HOLDING, NONE);
 		events_e.next().assertEq(101L, WAITING, NONE);
 
-		// reconnect to reach majority
+		// Reconnect to reach majority
 		service_b = reconnect(channel(1), events_b); // [E,D,B]
-		// reset to clear all previous status, notified by reset command.
-		events_d.next().assertEq(101L, HOLDING, NONE); // duplicated
-		events_e.next().assertEq(101L, WAITING, NONE); // duplicated
+		// Reset to clear all previous status, notified by reset command.
+		events_d.next().assertEq(101L, HOLDING, NONE); // duplicate notification
+		events_e.next().assertEq(101L, WAITING, NONE); // duplicate notification
 	}
 
 	public void reset_by_partition() throws Exception {
@@ -357,17 +361,20 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		events_a.next().assertEq(101L, NONE, WAITING);
 		events_a.next().assertEq(102L, NONE, WAITING);
 
-		// partition into a majority subgroup and minority subgroup
+		// Partition into a majority subgroup and a minority subgroup
 		partition(new int[]{0, 1, 2}, new int[]{3, 4});
 
+		// Resigned because of lost majority
 		events_d.next().assertEq(101L, HOLDING, NONE);
 		events_e.next().assertEq(102L, HOLDING, NONE);
 
+		// Reset to [A,B,C], notified by reset command.
 		events_a.next().assertEq(101L, WAITING, HOLDING);
 		events_a.next().assertEq(102L, WAITING, HOLDING);
 
 		merge(0, 3);
 
+		// Reset to [A,B,C], notified by reset command.
 		events_d.next().assertEq(101L, HOLDING, NONE);
 		events_e.next().assertEq(102L, HOLDING, NONE);
 
@@ -379,9 +386,10 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		assertEquals(service_a.lockStatus(101L), HOLDING);
 		assertEquals(service_a.lockStatus(102L), HOLDING);
 
-		// partition into subgroups without majority
+		// Partition into subgroups without majority
 		partition(new int[]{0, 1}, new int[]{2}, new int[]{3, 4});
 
+		// Resigned because of lost majority
 		events_a.next().assertEq(101L, HOLDING, NONE);
 		events_a.next().assertEq(102L, HOLDING, NONE);
 		events_b.next().assertEq(101L, WAITING, NONE);
@@ -390,6 +398,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		merge(0, 2, 3);
 		waitUntilLeaderElected(0, 1, 2, 3, 4);
 
+		// Reset to clear all previous status, notified by reset command.
 		events_a.next().assertEq(101L, HOLDING, NONE);
 		events_a.next().assertEq(102L, HOLDING, NONE);
 		events_b.next().assertEq(101L, WAITING, NONE);
@@ -402,7 +411,10 @@ public class LockServiceTest extends BaseRaftChannelTest {
 
 		channel(0).disconnect();
 
+		// Resigned because of disconnection
 		events_a.next().assertEq(101L, HOLDING, NONE);
+
+		// Reset to [B,C,D,E], notified by reset command.
 		events_e.next().assertEq(101L, WAITING, HOLDING);
 	}
 
