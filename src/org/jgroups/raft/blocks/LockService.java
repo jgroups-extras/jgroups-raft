@@ -177,26 +177,20 @@ public class LockService {
 			LockStatus status = null;
 			switch (in.readByte()) {
 				case LOCK:
-					status = doLock(readLong(in), readUuid(in), false);
-					break;
+					status = doLock(readLong(in), readUuid(in), false); break;
 				case TRY_LOCK:
-					status = doLock(readLong(in), readUuid(in), true);
-					break;
+					status = doLock(readLong(in), readUuid(in), true); break;
 				case UNLOCK:
-					LockEntry lock = locks.computeIfAbsent(readLong(in), LockEntry::new);
-					doUnlock(readUuid(in), lock, null);
-					break;
+					doUnlock(readLong(in), readUuid(in)); break;
 				case UNLOCK_ALL:
-					doUnlock(readUuid(in), null);
-					break;
+					doUnlock(readUuid(in), null); break;
 				case RESET:
 					int len = readInt(in);
 					List<UUID> members = new ArrayList<>(len);
 					for (int i = 0; i < len; i++) {
 						members.add(readUuid(in));
 					}
-					doReset(members);
-					break;
+					doReset(members); break;
 			}
 			return serialize_response && status != null ? new byte[] {(byte) status.ordinal()} : null;
 		}
@@ -257,14 +251,19 @@ public class LockService {
 		return next;
 	}
 
-	protected void doUnlock(UUID member, Set<UUID> unlocking) {
-		Set<LockEntry> set = memberLocks.get(member); if (set == null) return;
-		for (LockEntry lock : set.toArray(LockEntry[]::new)) {
-			doUnlock(member, lock, unlocking);
-		}
+	protected void doUnlock(long lockId, UUID member) {
+		LockEntry lock = locks.get(lockId); if (lock == null) return;
+		LockStatus prev = doUnlock(member, lock, null);
+		if (prev != NONE) unbind(member, lock);
 	}
 
-	protected void doUnlock(UUID member, LockEntry lock, Set<UUID> unlocking) {
+	protected void doUnlock(UUID member, Set<UUID> unlocking) {
+		Set<LockEntry> set = memberLocks.get(member); if (set == null) return;
+		set.removeIf(t -> doUnlock(member, t, unlocking) != NONE);
+		if (set.isEmpty()) memberLocks.remove(member);
+	}
+
+	protected LockStatus doUnlock(UUID member, LockEntry lock, Set<UUID> unlocking) {
 		LockStatus prev = HOLDING;
 		UUID holder = null;
 		List<UUID> waiters = null;
@@ -279,7 +278,6 @@ public class LockService {
 		} else {
 			prev = lock.waiters.remove(member) ? WAITING : NONE;
 		}
-		if (prev != NONE) unbind(member, lock);
 		if (address.equals(member)) {
 			notifyListeners(lock.id, prev, NONE, false);
 		} else if (address.equals(holder)) {
@@ -299,6 +297,7 @@ public class LockService {
 				log.trace("[%s] %s unlock %s, prev: %s", address, waiter, lock.id, WAITING);
 			}
 		}
+		return prev;
 	}
 
 	protected void doReset(List<UUID> members) {

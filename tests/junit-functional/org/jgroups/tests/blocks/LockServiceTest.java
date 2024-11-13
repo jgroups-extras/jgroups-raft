@@ -373,6 +373,8 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		events_a.next().assertEq(102L, WAITING, HOLDING);
 
 		merge(0, 3);
+		waitUntilLeaderElected(0, 1, 2, 3, 4);
+		assertTrue(raft(0).isLeader());
 
 		// Reset to [A,B,C], notified by reset command.
 		events_d.next().assertEq(101L, HOLDING, NONE);
