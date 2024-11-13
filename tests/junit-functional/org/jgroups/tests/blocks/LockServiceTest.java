@@ -43,9 +43,7 @@ import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.View;
 import org.jgroups.protocols.pbcast.GMS;
-import org.jgroups.protocols.raft.ELECTION2;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.StateMachine;
@@ -226,7 +224,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		assertEquals(service_a.lockStatus(103L), HOLDING);
 
 		// unlock a
-		service_a.unlock().get(3, SECONDS);
+		service_a.unlockAll().get(3, SECONDS);
 
 		events_a.next().assertEq(102L, HOLDING, NONE);
 		assertEquals(service_a.lockStatus(102L), NONE);
@@ -241,7 +239,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		assertEquals(service_b.lockStatus(103L), HOLDING);
 
 		// unlock b
-		service_b.unlock().get(3, SECONDS);
+		service_b.unlockAll().get(3, SECONDS);
 
 		events_b.next().assertEq(101L, HOLDING, NONE);
 		assertEquals(service_b.lockStatus(101L), NONE);
@@ -253,7 +251,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		assertEquals(service_c.lockStatus(101L), HOLDING);
 
 		// unlock c
-		service_c.unlock().get(3, SECONDS);
+		service_c.unlockAll().get(3, SECONDS);
 
 		events_c.next().assertEq(101L, HOLDING, NONE);
 		assertEquals(service_c.lockStatus(101L), NONE);
@@ -282,7 +280,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		service_a.unlock(101L);
 		events_a.next().assertEq(101L, HOLDING, NONE);
 		events_c.next().assertEq(101L, WAITING, HOLDING);
-		service_c.unlock();
+		service_c.unlockAll();
 		events_c.next().assertEq(101L, HOLDING, NONE);
 		assertNull(events_b.next(1));
 	}
@@ -302,14 +300,14 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		events_e.next().assertEq(101L, NONE, WAITING);
 
 		// disconnect the coordinator/leader/holder
-		channel(0).disconnect();
-		// reset to [B,C,D,E]
+		channel(0).disconnect(); // [B,C,D,E]
+		// reset to [B,C,D,E], notified by reset command.
 		events_a.next().assertEq(101L, HOLDING, NONE);
 		events_b.next().assertEq(101L, WAITING, HOLDING);
 
 		// disconnect a participant
-		channel(2).disconnect();
-		// reset to [B,D,E]
+		channel(2).disconnect(); // [B,D,E]
+		// reset to [B,D,E], notified by reset command.
 		events_c.next().assertEq(101L, WAITING, NONE);
 
 		service_b.unlock(101L);
@@ -317,16 +315,33 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		events_d.next().assertEq(101L, WAITING, HOLDING);
 
 		// disconnect the holder and lost majority
-		channel(3).disconnect();
-		// no reset, notify NONE to all.
+		channel(3).disconnect(); // [B,E]
+		// no reset, notify base on local status.
 		events_d.next().assertEq(101L, HOLDING, NONE);
 		events_e.next().assertEq(101L, WAITING, NONE);
 
 		// reconnect the previous holder and reach majority
-		service_d = reconnect(channel(3), events_d);
-		// reset to [B,E,D], and D with new address.
-		assertNull(events_d.next());
-		events_e.next().assertEq(101L, WAITING, HOLDING);
+		service_d = reconnect(channel(3), events_d); // [B,E,D]
+		assertNull(events_d.next()); // D has a new address
+		// reset to clear all previous status, notified by reset command.
+		events_e.next().assertEq(101L, WAITING, NONE); // duplicated
+
+		assertEquals(service_d.lock(101L).get(3, SECONDS), HOLDING);
+		assertEquals(service_e.lock(101L).get(3, SECONDS), WAITING);
+		events_d.next().assertEq(101L, NONE, HOLDING);
+		events_e.next().assertEq(101L, NONE, WAITING);
+
+		// disconnect to lost majority
+		channel(1).disconnect(); // [E,D]
+		// no reset, notify base on local status.
+		events_d.next().assertEq(101L, HOLDING, NONE);
+		events_e.next().assertEq(101L, WAITING, NONE);
+
+		// reconnect to reach majority
+		service_b = reconnect(channel(1), events_b); // [E,D,B]
+		// reset to clear all previous status, notified by reset command.
+		events_d.next().assertEq(101L, HOLDING, NONE); // duplicated
+		events_e.next().assertEq(101L, WAITING, NONE); // duplicated
 	}
 
 	public void reset_by_partition() throws Exception {
@@ -418,7 +433,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 			services.get(i % services.size()).unlock(key).get(3, SECONDS);
 		}
 
-		service_c.unlock();
+		service_c.unlockAll();
 
 		leader().snapshotAsync().get(3, SECONDS);
 

@@ -1,27 +1,27 @@
 = Lock Service Design
-Zhang Yifei;
+Zhang Yifei <iameinstein@163.com>
 
 Lock service maintains the holder and waiters of a specified lockId, lockId could be seen as the identity of a lock,
-and a lock could have only one holder and multiple waiters at same time.
+and a lock could have only one holder and multiple waiters at same time. +
 The waiters will be queued, the first waiter could be changed to holder by the unlocking operation of last holder.
 
 == Holder Identity
 The identity of a holder or waiter has to be a member of the RAFT cluster, because of there are server-initiated
 messages. currently the clients are stateless to the server after reply, so there is no way to send the server-initiated
-message to the client.
+message to the client. +
 I have considered to create a new protocol to maintain sessions for clients, but it will be a lot of work to do, for
 example, the session's creation and destruction needs to be recorded in the RAFT log, sessions needs to be available
-in the new leader if leadership changed, and the client actually keeps connections to all members.
+in the new leader if leadership changed, and the client actually keeps connections to all members. +
 Holders and waiters in server are represented by the address(UUID) of the channel, the advantage of doing so is
 the server can clear those disconnected holders and waiters base on the view of the cluster.
 
 == Holding Status
 The holding status is only for connected members. Disconnected members can assume that they have released all locks,
 because the leader of the cluster will clear those leaving members from the locking status when the view change event
-arrived.
+arrived. +
 For the partition, members are in a minority subgroup will also being cleared by the leader if majority subgroup still
 present, if all subgroups are minority, the new elected leader will force clear all previous locking status after cluster
-resumed.
+resumed. +
 A new started cluster will clear all previous locking status as well, because of all members have a new address.
 Since the locking status has the same lifecycle as the cluster, the log storage could be in-memory implementation.
 
@@ -31,15 +31,67 @@ The tricky part is how to let the waiter know that it has become the holder, thi
 mentioned earlier. As members of the cluster, leader can send messages to any lock service, but in what way?
 Those messages must be in order and can't be lost or duplicated, assume a dedicated message to do this, leader will
 send them after logs are applied, and the sending process could be async, what if the leader left, the new leader can't
-ensure those messages are not lost or duplicated.
+ensure those messages are not lost or duplicated. +
 Base on the log applying process of each member is a reliable choice, although it's not perfect.
+
+== Commands
+LOCK::
+With the UUID of the member and the lockId. Hold the lock if possible, otherwise join the waiting queue.
+TRY_LOCK::
+With the UUID of the member and the lockId. Hold the lock if possible.
+UNLOCK::
+With the UUID of the member and the lockId. If the member is the holder then remove it from the holder status,
+and make the first waiter to be the next holder, if the member is a waiter then remove it from the waiting queue.
+UNLOCK_ALL::
+With the UUID of the member. Remove the member from all holding and waiting status.
+RESET::
+With the UUIDs of members that currently connected. Check all holds and waiters if it's in the list,
+if not then remove it from all holding and waiting status, notice the waiter that being promoted to the holder during
+unlocking should be in the list as well. It's an internal command, it's not exposed to users.
+
+=== Reset
+Members will resign from holder and waiter status when it's disconnected or in a minority subgroup of partition, it
+notifies listeners that it has unlocked from all locks, but in the state machine, unlocking hasn't really happened yet.
+Unlocking will happen immediately by reset command if the leader still present, or happened eventually after a new
+leader present. +
+There are two types reset, one is to reset with the list of current members, and another one is to reset with an empty
+list which means all state will be cleared. +
+The first one is used when the leader found members leaving or a new leader is elected because of previous leader
+leaving. +
+The second one is used when a new leader is elected and not because of the previous leader leaving. +
+
+Scenarios for electing a new leader::
+. Majority is just reached.
+** New member connected
+** Disconnected member reconnected
+** Merging views (no subgroup has majority members)
+. Leader leave, and majority still there.
+. There is a leader, but view merging cause the coordinator changed and the new coordinator started a new term voting
+before knowing the existence of leader, and the new coordinator become next leader.
+
+Above scenario 1 use second way to reset, because potentially all members have resigned. +
+Above scenario 2 will use first way to reset, because the cluster has majority members all the time, these members
+won't resign. +
+The scenario 3 won't happen I think, because the existing leader will always have longer log because of the reset
+command.
+
+== Listener
+Listeners could be registered to listen on the status change of the lock. +
+The listener is notified by the RAFT working thread after state is updated while RAFT log applying, that means the
+listener shouldn't have heavy work, put those work in a separate thread may be. +
+I don't make any assumptions about how users will use this listener, because there are so many possibilities,
+maybe just simply set a flag, maybe start/stop a service and its working thread, maybe start/stop a job in a thread
+pool, the job may be serial or parallel, so I choose not to assume that just simply notify it in a timely and orderly
+manner, completely consistent with the local state machine. +
+The notification to the listener may be earlier or later than the command execution result, it depends on the member is
+the leader or a follower.
 
 == Mutex
 With the lock service and the ReentrantLock could implement an exclusive lock cross JVMs.
 
 === Command executing
 The mutex's methods involve executing commands in the lock service, RaftException will be thrown when the command fails
-to execute.
+to execute. +
 The command executing process is uninterruptible to avoid the inconsistent state, but a timeout could be set to control
 the waiting time.
 

@@ -33,7 +33,6 @@ import org.jgroups.Address;
 import org.jgroups.ChannelListener;
 import org.jgroups.Event;
 import org.jgroups.JChannel;
-import org.jgroups.MergeView;
 import org.jgroups.Message;
 import org.jgroups.UpHandler;
 import org.jgroups.View;
@@ -49,9 +48,9 @@ import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.UUID;
 
 /**
- * A state machine that maintains the holder and waiters for a specified lockId. For a lockId, it could have only one
- * holder in same time, other acquirers will be queued as waiters, when the holder unlock from the lockId, the next
- * holder will be polled from the waiting queue if there is a waiter.
+ * A state machine that maintains the holder and waiters for a specified lockId. For a lockId, it has only one holder
+ * in same time, other acquirers will be queued as waiters, when the holder unlock from the lockId, the next holder will
+ * be polled from the waiting queue if there is a waiter.
  * <p>
  * The {@link Address} of the member will be used to identify the acquirers(holders and waiters), that means a new
  * connected member will have a new identity, so a disconnected member will unlock from all related lockId
@@ -71,7 +70,7 @@ import org.jgroups.util.UUID;
  *     <li>{@link LockStatus#NONE NONE} - current member is not holding nor waiting the lock.
  * </ul>
  * <p>
- * Listeners could be registered to get the notification of lock statue change, The order of notifications is the same
+ * Listeners could be registered to get the notification of lock status change. The order of notifications is the same
  * as the order of commands executed. Don't do any heavy job or block the calling thread in the listener.
  * <p>
  * The {@link Mutex} is a distributed implementation of {@link Lock}. It based on the lock service, a thread is holding
@@ -91,7 +90,8 @@ public class LockService {
 	protected final Map<UUID, Set<LockEntry>> memberLocks = new LinkedHashMap<>();
 
 	protected volatile View view;
-	protected ExtendedUUID address;
+	protected volatile boolean inTransition;
+	protected volatile ExtendedUUID address;
 
 	protected final ConcurrentMap<Long, LockStatus> lockStatus = new ConcurrentHashMap<>();
 	protected final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
@@ -205,14 +205,7 @@ public class LockService {
 		public void roleChanged(Role role) {
 			if (role == Role.Leader) {
 				try {
-					// Reset after the leader is elected
-					View v = view;
-					boolean clear = false;
-					if (v instanceof MergeView) {
-						int majority = raft.raft().majority();
-						clear = ((MergeView) v).getSubgroups().stream().allMatch(t -> t.size() < majority);
-					}
-					reset(clear ? null : v);
+					reset(inTransition ? view : null);
 				} catch (Throwable e) {
 					log.error("Fail to send reset command", e);
 				}
@@ -237,7 +230,7 @@ public class LockService {
 
 		@Override
 		public void channelDisconnected(JChannel channel) {
-			cleanup();
+			resign(); view = null; inTransition = false;
 		}
 	}
 
@@ -337,7 +330,7 @@ public class LockService {
 			if (prev == curr) return;
 		}
 		Mutex mutex = mutexes.get(lockId);
-		if (mutex != null) mutex.onStatusChange(lockId, prev, curr);
+		if (mutex != null) mutex.onStatusChange(prev, curr);
 		for (Listener listener : listeners) {
 			try {
 				listener.onStatusChange(lockId, prev, curr);
@@ -349,15 +342,19 @@ public class LockService {
 
 	protected void handleView(View next) {
 		View prev = this.view; this.view = next;
+		Address leader = raft.leader();
 		if (log.isTraceEnabled()) {
-			log.trace("[%s] View accepted: %s, prev: %s, leader: %s", address, next, prev, raft.leader());
+			log.trace("[%s] View accepted: %s, prev: %s, leader: %s", address, next, prev, leader);
 		}
 
 		if (prev != null) {
 			int majority = raft.raft().majority();
+			inTransition = prev.size() >= majority && next.size() >= majority
+					&& leader != null && !next.containsMember(leader);
+
 			if (prev.size() >= majority && next.size() < majority) { // lost majority
-				// In partition case if majority is still working, it will be forced to unlock by reset command.
-				cleanup();
+				// In partition case if majority is still working, it will be unlocked by reset command.
+				resign();
 			} else if (!next.containsMembers(prev.getMembersRaw()) && raft.isLeader()) { // member left
 				try {
 					reset(next);
@@ -368,7 +365,7 @@ public class LockService {
 		}
 	}
 
-	protected void cleanup() {
+	protected void resign() {
 		lockStatus.forEach((k, v) -> notifyListeners(k, v, NONE, true));
 	}
 
@@ -382,7 +379,7 @@ public class LockService {
 			writeUuid((UUID) member, out);
 		}
 		assert out.position() <= 6 + len * 16;
-		invoke(out).thenApply(t -> null).exceptionally(e -> {
+		invoke(out).exceptionally(e -> {
 			log.error("Fail to reset to " + view, e); return null;
 		});
 	}
@@ -457,7 +454,7 @@ public class LockService {
 	 * Release all related locks for this member.
 	 * @return async completion
 	 */
-	public CompletableFuture<Void> unlock() {
+	public CompletableFuture<Void> unlockAll() {
 		var out = new ByteArrayDataOutputStream(17);
 		out.writeByte(UNLOCK_ALL);
 		writeUuid(address(), out);
@@ -695,8 +692,7 @@ public class LockService {
 			}
 		}
 
-		void onStatusChange(long lockId, LockStatus prev, LockStatus curr) {
-			if (lockId != this.lockId) return;
+		void onStatusChange(LockStatus prev, LockStatus curr) {
 			if (curr != HOLDING && holder != null) {
 				status = curr;
 				var handler = unlockHandler;
