@@ -362,7 +362,8 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		events_a.next().assertEq(102L, NONE, WAITING);
 
 		// Partition into a majority subgroup and a minority subgroup
-		partition(new int[]{0, 1, 2}, new int[]{3, 4});
+		// Put the minority subgroup first, otherwise it will receive the AppendEntriesRequest of reset command.
+		partition(new int[]{3, 4}, new int[]{0, 1, 2});
 
 		// Resigned because of lost majority
 		events_d.next().assertEq(101L, HOLDING, NONE);
@@ -428,7 +429,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		assertEquals(service_b.lock(101L).get(3, SECONDS), WAITING);
 		events_b.next().assertEq(101L, NONE, WAITING);
 
-		partition(new int[]{0, 2, 3, 4}, new int[]{1});
+		partition(new int[]{1}, new int[]{0, 2, 3, 4});
 
 		events_b.next().assertEq(101, WAITING, NONE);
 

@@ -90,7 +90,7 @@ public class LockService {
 	protected final Map<UUID, Set<LockEntry>> memberLocks = new LinkedHashMap<>();
 
 	protected volatile View view;
-	protected volatile boolean inTransition;
+	protected volatile Address lastLeader;
 	protected volatile ExtendedUUID address;
 
 	protected final ConcurrentMap<Long, LockStatus> lockStatus = new ConcurrentHashMap<>();
@@ -199,7 +199,7 @@ public class LockService {
 		public void roleChanged(Role role) {
 			if (role == Role.Leader) {
 				try {
-					reset(inTransition ? view : null);
+					reset(lastLeader != null ? view : null);
 				} catch (Throwable e) {
 					log.error("Fail to send reset command", e);
 				}
@@ -224,7 +224,7 @@ public class LockService {
 
 		@Override
 		public void channelDisconnected(JChannel channel) {
-			resign(); view = null; inTransition = false;
+			resign(); view = null; lastLeader = null; address = null;
 		}
 	}
 
@@ -341,16 +341,13 @@ public class LockService {
 
 	protected void handleView(View next) {
 		View prev = this.view; this.view = next;
-		Address leader = raft.leader();
+		Address leader = raft.leader(); lastLeader = leader;
 		if (log.isTraceEnabled()) {
 			log.trace("[%s] View accepted: %s, prev: %s, leader: %s", address, next, prev, leader);
 		}
 
 		if (prev != null) {
 			int majority = raft.raft().majority();
-			inTransition = prev.size() >= majority && next.size() >= majority
-					&& leader != null && !next.containsMember(leader);
-
 			if (prev.size() >= majority && next.size() < majority) { // lost majority
 				// In partition case if majority is still working, it will be unlocked by reset command.
 				resign();
@@ -369,6 +366,9 @@ public class LockService {
 	}
 
 	protected void reset(View view) {
+		if (log.isTraceEnabled()) {
+			log.trace("[%s] Send reset command: %s", address, view);
+		}
 		Address[] members = view != null ? view.getMembersRaw() : new Address[0];
 		int len = members.length;
 		var out = new ByteArrayDataOutputStream(6 + len * 16);
