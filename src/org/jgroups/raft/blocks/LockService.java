@@ -87,7 +87,7 @@ public class LockService {
 
 	protected final RaftHandle raft;
 	protected final Map<Long, LockEntry> locks = new HashMap<>();
-	protected final Map<UUID, Set<LockEntry>> memberLocks = new LinkedHashMap<>();
+	protected final Map<UUID, Set<LockEntry>> memberLocks = new HashMap<>();
 
 	protected volatile View view;
 	protected volatile Address lastLeader;

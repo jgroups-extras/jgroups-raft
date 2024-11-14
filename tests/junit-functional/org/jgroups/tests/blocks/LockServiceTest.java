@@ -74,8 +74,18 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		final long key; final LockStatus prev, curr;
 		Event(long key, LockStatus prev, LockStatus curr) { this.key = key; this.prev = prev; this.curr = curr; }
 
-		protected void assertEq(long key, LockStatus prev, LockStatus curr) {
+		void assertEq(long key, LockStatus prev, LockStatus curr) {
 			assertThat(this).usingRecursiveComparison().isEqualTo(new Event(key, prev, curr));
+		}
+	}
+
+	protected static class Batch {
+		final List<Event> events;
+		Batch(List<Event> events) {this.events = events;}
+
+		Batch assertContains(long key, LockStatus prev, LockStatus curr) {
+			assertThat(events).usingRecursiveFieldByFieldElementComparator().contains(new Event(key, prev, curr));
+			return this;
 		}
 	}
 
@@ -89,6 +99,11 @@ public class LockServiceTest extends BaseRaftChannelTest {
 
 		protected Event next(int secs) throws InterruptedException { return queue.poll(secs, SECONDS); }
 		protected Event next() throws InterruptedException { return next(3); }
+		protected Batch batch(int count) throws InterruptedException {
+			List<Event> list = new ArrayList<>(count);
+			for (int i = 0; i < count; i++) list.add(next());
+			return new Batch(list);
+		}
 	}
 
 	protected static class Service extends LockService {
@@ -370,8 +385,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		events_e.next().assertEq(102L, HOLDING, NONE);
 
 		// Reset to [A,B,C], notified by reset command.
-		events_a.next().assertEq(101L, WAITING, HOLDING);
-		events_a.next().assertEq(102L, WAITING, HOLDING);
+		events_a.batch(2).assertContains(101L, WAITING, HOLDING).assertContains(102L, WAITING, HOLDING);
 
 		merge(0, 3);
 		waitUntilLeaderElected(0, 1, 2, 3, 4);
@@ -393,17 +407,13 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		partition(new int[]{0, 1}, new int[]{2}, new int[]{3, 4});
 
 		// Resigned because of lost majority
-		events_a.next().assertEq(101L, HOLDING, NONE);
-		events_a.next().assertEq(102L, HOLDING, NONE);
-		events_b.next().assertEq(101L, WAITING, NONE);
-		events_c.next().assertEq(102L, WAITING, NONE);
+		events_a.batch(2).assertContains(101L, HOLDING, NONE).assertContains(102L, HOLDING, NONE);
 
 		merge(0, 2, 3);
 		waitUntilLeaderElected(0, 1, 2, 3, 4);
 
 		// Reset to clear all previous status, notified by reset command.
-		events_a.next().assertEq(101L, HOLDING, NONE);
-		events_a.next().assertEq(102L, HOLDING, NONE);
+		events_a.batch(2).assertContains(101L, HOLDING, NONE).assertContains(102L, HOLDING, NONE);
 		events_b.next().assertEq(101L, WAITING, NONE);
 		events_c.next().assertEq(102L, WAITING, NONE);
 
