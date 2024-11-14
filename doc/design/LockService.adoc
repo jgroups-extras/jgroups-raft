@@ -62,18 +62,21 @@ The second one is used when a new leader is elected and not because of the previ
 
 Scenarios for electing a new leader::
 . Majority is just reached.
-** New member connected
-** Disconnected member reconnected
-** Merging views (no subgroup has majority members)
+.. New member connected
+.. Disconnected member reconnected
+.. Merging views (no subgroup has majority members)
 . Leader leave, and majority still there.
-. There is a leader, but view merging cause the coordinator changed and the new coordinator started a new term voting
-before knowing the existence of leader, and the new coordinator become next leader.
+. There is a leader in majority subgroup, but view merging cause the coordinator changed and the new coordinator started
+a new term voting before knowing the existence of leader.
+.. The new coordinator is elected to be the new leader.
+.. The existing leader is re-elected to be the leader of next term.
 
-Above scenario 1 use second way to reset, because potentially all members have resigned. +
-Above scenario 2 will use first way to reset, because the cluster has majority members all the time, these members
+Above scenario 1 will reset to empty, because potentially all members have resigned. +
+Above scenario 2 will reset to current members, because the cluster has majority members all the time, these members
 won't resign. +
-The scenario 3 won't happen I think, because the existing leader will always have longer log because of the reset
+Scenario 3.1 won't happen I think, because the existing leader will always have longer log because of the reset
 command.
+Scenario 3.2 will reset to current members.
 
 == Listener
 Listeners could be registered to listen on the status change of locks. +
