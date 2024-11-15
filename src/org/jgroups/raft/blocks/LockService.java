@@ -253,17 +253,16 @@ public class LockService {
 
 	protected void doUnlock(long lockId, UUID member) {
 		LockEntry lock = locks.get(lockId); if (lock == null) return;
-		LockStatus prev = doUnlock(member, lock, null);
-		if (prev != NONE) unbind(member, lock);
+		if (doUnlock(member, lock, null)) unbind(member, lock);
 	}
 
 	protected void doUnlock(UUID member, Set<UUID> unlocking) {
 		Set<LockEntry> set = memberLocks.get(member); if (set == null) return;
-		set.removeIf(t -> doUnlock(member, t, unlocking) != NONE);
+		set.removeIf(t -> doUnlock(member, t, unlocking));
 		if (set.isEmpty()) memberLocks.remove(member);
 	}
 
-	protected LockStatus doUnlock(UUID member, LockEntry lock, Set<UUID> unlocking) {
+	protected boolean doUnlock(UUID member, LockEntry lock, Set<UUID> unlocking) {
 		LockStatus prev = HOLDING;
 		UUID holder = null;
 		List<UUID> waiters = null;
@@ -297,7 +296,7 @@ public class LockService {
 				log.trace("[%s] %s unlock %s, prev: %s", address, waiter, lock.id, WAITING);
 			}
 		}
-		return prev;
+		return prev != NONE;
 	}
 
 	protected void doReset(List<UUID> members) {

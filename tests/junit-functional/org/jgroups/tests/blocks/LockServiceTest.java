@@ -31,6 +31,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
@@ -389,17 +391,17 @@ public class LockServiceTest extends BaseRaftChannelTest {
 
 		merge(0, 3);
 		waitUntilLeaderElected(0, 1, 2, 3, 4);
-		assertTrue(raft(0).isLeader());
+		assertTrue(raft(0).isLeader()); // A has longer log
 
 		// Reset to [A,B,C], notified by reset command.
 		events_d.next().assertEq(101L, HOLDING, NONE);
 		events_e.next().assertEq(102L, HOLDING, NONE);
 
+		// Holder is A all the time
 		assertEquals(service_b.lock(101L).get(3, SECONDS), WAITING);
 		assertEquals(service_c.lock(102L).get(3, SECONDS), WAITING);
 		events_b.next().assertEq(101L, NONE, WAITING);
 		events_c.next().assertEq(102L, NONE, WAITING);
-
 		assertEquals(service_a.lockStatus(101L), HOLDING);
 		assertEquals(service_a.lockStatus(102L), HOLDING);
 
@@ -408,6 +410,8 @@ public class LockServiceTest extends BaseRaftChannelTest {
 
 		// Resigned because of lost majority
 		events_a.batch(2).assertContains(101L, HOLDING, NONE).assertContains(102L, HOLDING, NONE);
+		events_b.next().assertEq(101L, WAITING, NONE);
+		events_c.next().assertEq(102L, WAITING, NONE);
 
 		merge(0, 2, 3);
 		waitUntilLeaderElected(0, 1, 2, 3, 4);
@@ -417,9 +421,10 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		events_b.next().assertEq(101L, WAITING, NONE);
 		events_c.next().assertEq(102L, WAITING, NONE);
 
+		// There is no holder after reset
 		assertEquals(service_a.lock(101L).get(3, SECONDS), HOLDING);
-		events_a.next().assertEq(101L, NONE, HOLDING);
 		assertEquals(service_e.lock(101L).get(3, SECONDS), WAITING);
+		events_a.next().assertEq(101L, NONE, HOLDING);
 		events_e.next().assertEq(101L, NONE, WAITING);
 
 		channel(0).disconnect();
@@ -592,32 +597,40 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		Mutex a = service_a.mutex(101);
 		Mutex b = service_b.mutex(101);
 
-		for (Mutex t : List.of(a, b)) {
+		for (Mutex mutex : List.of(a, b)) {
 			CompletableFuture<Mutex> unlocked = new CompletableFuture<>();
 			CompletableFuture<Mutex> locked = new CompletableFuture<>();
-			t.setUnexpectedUnlockHandler(unlocked::complete);
-			t.setUnexpectedLockHandler(locked::complete);
+			mutex.setUnexpectedUnlockHandler(unlocked::complete);
+			mutex.setUnexpectedLockHandler(locked::complete);
 
-			t.lock();
+			mutex.lock();
 			try {
-				t.service().unlock(101).join();
-				assertSame(unlocked.get(3, SECONDS), t);
-				assertSame(t.getHolder(), Thread.currentThread());
-				assertEquals(t.getStatus(), NONE);
+				// Unexpected unlock
+				mutex.service().unlock(101).join();
+				// Callback
+				assertSame(unlocked.get(3, SECONDS), mutex);
+				// Inconsistent state
+				assertSame(mutex.getHolder(), Thread.currentThread());
+				assertEquals(mutex.getStatus(), NONE);
 			} finally {
-				t.unlock();
+				mutex.unlock();
 			}
 
-			t.service().lock(101).join();
-			assertSame(locked.get(3, SECONDS), t);
-			assertEquals(t.getStatus(), HOLDING);
-
-			if (t.tryLock()) t.unlock();
-			assertEquals(t.getStatus(), NONE);
+			// Unexpected lock
+			mutex.service().lock(101).join();
+			// Callback
+			assertSame(locked.get(3, SECONDS), mutex);
+			// Inconsistent state
+			assertEquals(mutex.getStatus(), HOLDING);
+			// Fix it with mutex instance
+			if (mutex.tryLock()) mutex.unlock();
+			assertEquals(mutex.getStatus(), NONE);
 		}
 
+		// Unexpected unlock for waiting status, it will retry to lock instead of calling the handler.
 		a.lock(); CompletableFuture<Void> f;
 		try {
+			// lock async
 			f = CompletableFuture.runAsync(() -> {
 				b.lock();
 				try {
@@ -626,14 +639,44 @@ public class LockServiceTest extends BaseRaftChannelTest {
 					b.unlock();
 				}
 			});
+			// Make sure the thread is blocked in WAITING status
 			Util.waitUntil(5000, 1000, () -> service_b.lockStatus(101) == WAITING);
+			// Successfully unlock with lock service
 			service_b.unlock(101).get(3, SECONDS);
+			// Make sure all logs is applied which means mutex has been notified all status changes
 			waitUntilNodesApplyAllLogs();
+			// The thread is awakened by unlocking, and lock again.
 			Util.waitUntil(5000, 1000, () -> service_b.lockStatus(101) == WAITING);
 		} finally {
 			a.unlock();
 		}
-		f.get(5, SECONDS);
+		f.get(5, SECONDS); // check error
+	}
+
+	public void fast_response_and_slow_log() throws TimeoutException {
+		Mutex b = service_b.mutex(101); // must be a follower
+
+		b.service().addListener((lockId, prev, next) -> {
+			LockSupport.parkNanos(10_000_000); // slow down the log applying (notification)
+		});
+		AtomicInteger locked = new AtomicInteger(), unlocked = new AtomicInteger();
+		b.setUnexpectedLockHandler(t -> locked.incrementAndGet());
+		b.setUnexpectedUnlockHandler(t -> unlocked.incrementAndGet());
+
+		for (int i = 0; i < 10; i++) {
+			b.lock(); b.unlock();
+		}
+		waitUntilNodesApplyAllLogs();
+
+		for (int i = 0; i < 10; i++) {
+			b.lock(); b.unlock();
+		}
+		b.lock();
+		waitUntilNodesApplyAllLogs();
+		b.unlock();
+
+		assertEquals(unlocked.get(), 0);
+		assertEquals(locked.get(), 0);
 	}
 
 	public void mutex_exception() {
