@@ -21,8 +21,7 @@ because the leader of the cluster will clear those leaving members from the lock
 arrived. +
 For the partition, members are in a minority subgroup will also being cleared by the leader if majority subgroup still
 present, if all subgroups are minority, the new elected leader will force clear all previous locking status after cluster
-resumed. +
-A new started cluster will clear all previous locking status as well, because of all members have a new address.
+resumed. A new started cluster will clear all previous locking status as well. +
 Since the locking status has the same lifecycle as the cluster, the log storage could be in-memory implementation.
 
 == Waiting Status
@@ -48,6 +47,8 @@ RESET::
 With the UUIDs of members that currently connected. Check all holds and waiters if it's in the list,
 if not then remove it from all holding and waiting status, notice the waiter that being promoted to the holder during
 unlocking should be in the list as well. It's an internal command, it's not exposed to users.
+QUERY::
+With the UUID of the member and the lockId. It's a read-only command that returns the current lock status.
 
 === Reset
 Members will resign from holder and waiter status when it's disconnected or in a minority subgroup of partition, it
@@ -79,15 +80,8 @@ command.
 Scenario 3.2 will reset to current members.
 
 == Listener
-Listeners could be registered to listen on the status change of locks. +
-The listener is notified by the RAFT working thread after state is updated while RAFT log applying, that means the
-listener shouldn't have heavy work, put those work in a separate thread may be. +
-I don't make any assumptions about how users will use this listener, because there are so many possibilities,
-maybe just simply set a flag, maybe start/stop a service and its working thread, maybe start/stop a job in a thread
-pool, the job may be serial or parallel, so I choose not to assume that just simply notify it in a timely and orderly
-manner, completely consistent with the local state machine. +
-The notification to the listener may be earlier or later than the command execution result, it depends on the member is
-the leader or a follower.
+Listeners could be registered to listen on the status change of locks. In the leader node, listeners are notified by
+the RAFT working thread, and in followers, it will be notified by the thread that delivered the response message.
 
 == Mutex
 With the lock service and the ReentrantLock could implement an exclusive lock cross JVMs.

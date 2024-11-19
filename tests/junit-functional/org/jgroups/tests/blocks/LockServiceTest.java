@@ -98,6 +98,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 			queue.offer(new Event(key, prev, curr));
 		}
 
+		protected void assertEmpty() { assertThat(queue).isEmpty(); }
 		protected Event next(int secs) throws InterruptedException { return queue.poll(secs, SECONDS); }
 		protected Event next() throws InterruptedException { return next(3); }
 		protected Batch batch(int count) throws InterruptedException {
@@ -326,8 +327,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		channel(2).disconnect(); // [B,D,E]
 		// Resigned because of disconnection
 		events_c.next().assertEq(101L, WAITING, NONE);
-
-		// Reset to [B,D,E]
+		// Reset to [B,D,E], D is next waiter.
 		service_b.unlock(101L);
 		events_b.next().assertEq(101L, HOLDING, NONE);
 		events_d.next().assertEq(101L, WAITING, HOLDING);
@@ -341,27 +341,31 @@ public class LockServiceTest extends BaseRaftChannelTest {
 
 		// Reconnect the previous holder and reach majority.
 		service_d = reconnect(channel(3), events_d); // [B,E,D]
-		// Nothing to do with D because it has a new address
-		assertNull(events_d.next());
-		// Reset to clear all previous status, notified by reset command.
-		events_e.next().assertEq(101L, WAITING, NONE); // duplicate notification
-
-		assertEquals(service_d.lock(101L).get(3, SECONDS), HOLDING);
-		assertEquals(service_e.lock(101L).get(3, SECONDS), WAITING);
-		events_d.next().assertEq(101L, NONE, HOLDING);
-		events_e.next().assertEq(101L, NONE, WAITING);
+		waitUntilLeaderElected(1, 3, 4);
+		// Reset to empty, there is no holder or waiter.
+		assertEquals(service_b.lock(101L).get(3, SECONDS), HOLDING);
+		events_b.next().assertEq(101L, NONE, HOLDING);
+		assertEquals(service_d.lock(101L).get(3, SECONDS), WAITING);
+		events_d.next().assertEq(101L, NONE, WAITING);
+		assertEquals(service_e.lockStatus(101L), NONE);
+		events_e.assertEmpty();
 
 		// Disconnect to lost majority
-		channel(1).disconnect(); // [E,D]
+		channel(4).disconnect(); // [B,D]
 		// Resigned because of lost majority
-		events_d.next().assertEq(101L, HOLDING, NONE);
-		events_e.next().assertEq(101L, WAITING, NONE);
+		events_b.next().assertEq(101L, HOLDING, NONE);
+		events_d.next().assertEq(101L, WAITING, NONE);
 
 		// Reconnect to reach majority
-		service_b = reconnect(channel(1), events_b); // [E,D,B]
-		// Reset to clear all previous status, notified by reset command.
-		events_d.next().assertEq(101L, HOLDING, NONE); // duplicate notification
-		events_e.next().assertEq(101L, WAITING, NONE); // duplicate notification
+		service_e = reconnect(channel(4), events_e); // [B,D,E]
+		waitUntilLeaderElected(1, 3, 4);
+		// Reset to empty, there is no holder or waiter.
+		assertEquals(service_e.lock(101L).get(3, SECONDS), HOLDING);
+		events_e.next().assertEq(101L, NONE, HOLDING);
+		assertEquals(service_b.lockStatus(101L), NONE);
+		events_b.assertEmpty();
+		assertEquals(service_d.lockStatus(101L), NONE);
+		events_d.assertEmpty();
 	}
 
 	public void reset_by_partition() throws Exception {
@@ -392,17 +396,15 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		waitUntilLeaderElected(0, 1, 2, 3, 4);
 		assertTrue(raft(0).isLeader()); // A has longer log
 
-		// Reset to [A,B,C], notified by reset command.
-		events_d.next().assertEq(101L, HOLDING, NONE);
-		events_e.next().assertEq(102L, HOLDING, NONE);
-
-		// Holder is A all the time
+		// Reset to [A,B,C], holder is A all the time
 		assertEquals(service_b.lock(101L).get(3, SECONDS), WAITING);
-		assertEquals(service_c.lock(102L).get(3, SECONDS), WAITING);
 		events_b.next().assertEq(101L, NONE, WAITING);
+		assertEquals(service_c.lock(102L).get(3, SECONDS), WAITING);
 		events_c.next().assertEq(102L, NONE, WAITING);
 		assertEquals(service_a.lockStatus(101L), HOLDING);
 		assertEquals(service_a.lockStatus(102L), HOLDING);
+		assertEquals(service_d.lockStatus(101L), NONE); events_d.assertEmpty();
+		assertEquals(service_e.lockStatus(102L), NONE); events_e.assertEmpty();
 
 		// Partition into subgroups without majority
 		partition(new int[]{0, 1}, new int[]{2}, new int[]{3, 4});
@@ -415,21 +417,20 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		merge(0, 2, 3);
 		waitUntilLeaderElected(0, 1, 2, 3, 4);
 
-		// Reset to clear all previous status, notified by reset command.
-		events_a.batch(2).assertContains(101L, HOLDING, NONE).assertContains(102L, HOLDING, NONE);
-		events_b.next().assertEq(101L, WAITING, NONE);
-		events_c.next().assertEq(102L, WAITING, NONE);
-
-		// There is no holder after reset
-		assertEquals(service_a.lock(101L).get(3, SECONDS), HOLDING);
+		// Reset to empty, there is no holder after reset
+		assertEquals(service_d.lock(101L).get(3, SECONDS), HOLDING);
+		events_d.next().assertEq(101L, NONE, HOLDING);
 		assertEquals(service_e.lock(101L).get(3, SECONDS), WAITING);
-		events_a.next().assertEq(101L, NONE, HOLDING);
 		events_e.next().assertEq(101L, NONE, WAITING);
+		assertEquals(service_a.lockStatus(101L), NONE);
+		assertEquals(service_a.lockStatus(102L), NONE); events_a.assertEmpty();
+		assertEquals(service_b.lockStatus(101L), NONE); events_b.assertEmpty();
+		assertEquals(service_c.lockStatus(102L), NONE); events_c.assertEmpty();
 
-		channel(0).disconnect();
+		channel(3).disconnect();
 
 		// Resigned because of disconnection
-		events_a.next().assertEq(101L, HOLDING, NONE);
+		events_d.next().assertEq(101L, HOLDING, NONE);
 
 		// Reset to [B,C,D,E], notified by reset command.
 		events_e.next().assertEq(101L, WAITING, HOLDING);

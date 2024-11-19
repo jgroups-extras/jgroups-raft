@@ -54,10 +54,9 @@ import org.jgroups.util.UUID;
  * The {@link Address} of the member will be used to identify the acquirers(holders and waiters), that means a new
  * connected member will have a new identity, so a disconnected member will unlock from all related lockId
  * automatically.
- * For the cluster if there are members who left then the leader will unlock for those members in the state machine.
- * A new started cluster will unlock for all previous members in the state machine. Another scenario is the cluster
- * resume from multiple minority partitions, since the {@link Address} remain unchanged, the new leader will force
- * unlock for all existing members in the state machine.
+ * For the cluster if there are leaving members, the leader will unlock for those members in the state machine.
+ * A newly started cluster or cluster resuming from multiple minority partitions will unlock for all previous members
+ * in the state machine.
  * <p>
  * The {@link LockStatus} represent the member's locking status.
  * <ul>
@@ -82,7 +81,7 @@ import org.jgroups.util.UUID;
 public class LockService {
 	protected static final Log log = LogFactory.getLog(LockService.class);
 
-	protected static final byte LOCK = 1, TRY_LOCK = 2, UNLOCK = 3, UNLOCK_ALL = 4, RESET = 5;
+	protected static final byte LOCK = 1, TRY_LOCK = 2, UNLOCK = 3, UNLOCK_ALL = 4, RESET = 5, QUERY = 6;
 
 	protected final RaftHandle raft;
 	protected final Map<Long, LockEntry> locks = new HashMap<>();
@@ -152,8 +151,8 @@ public class LockService {
 			}
 
 			// notify base on local status
-			lockStatus.forEach((k, v) -> notifyListeners(k, v, tmp.remove(k), false));
-			tmp.forEach((k, v) -> notifyListeners(k, NONE, v, false));
+			lockStatus.forEach((k, v) -> onStateChange(k, v, tmp.remove(k), true));
+			tmp.forEach((k, v) -> onStateChange(k, NONE, v, true));
 		}
 
 		@Override
@@ -171,7 +170,7 @@ public class LockService {
 		}
 
 		@Override
-		public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+		public byte[] apply(byte[] data, int offset, int length, boolean response) throws Exception {
 			var in = new ByteArrayDataInputStream(data, offset, length);
 			LockStatus status = null;
 			switch (in.readByte()) {
@@ -190,8 +189,10 @@ public class LockService {
 						members.add(readUuid(in));
 					}
 					doReset(members); break;
+				case QUERY:
+					if (response) status = doQuery(readLong(in), readUuid(in)); break;
 			}
-			return serialize_response && status != null ? new byte[] {(byte) status.ordinal()} : null;
+			return response && status != null ? new byte[] {(byte) status.ordinal()} : null;
 		}
 
 		@Override
@@ -242,7 +243,7 @@ public class LockService {
 		}
 		if (prev != next) bind(member, lock);
 		if (address.equals(member)) {
-			notifyListeners(lockId, prev, next, false);
+			onStateChange(lockId, prev, next, false);
 		}
 		if (log.isTraceEnabled()) {
 			log.trace("[%s] %s lock %s, prev: %s, next: %s", address, member, lockId, prev, next);
@@ -277,9 +278,9 @@ public class LockService {
 			prev = lock.waiters.remove(member) ? WAITING : NONE;
 		}
 		if (address.equals(member)) {
-			notifyListeners(lock.id, prev, NONE, false);
+			onStateChange(lock.id, prev, NONE, false);
 		} else if (address.equals(holder)) {
-			notifyListeners(lock.id, WAITING, HOLDING, false);
+			onStateChange(lock.id, WAITING, HOLDING, false);
 		}
 		if (log.isTraceEnabled()) {
 			log.trace("[%s] %s unlock %s, prev: %s", address, member, lock.id, prev);
@@ -289,7 +290,7 @@ public class LockService {
 		if (waiters != null) for (UUID waiter : waiters) {
 			unbind(waiter, lock);
 			if (address.equals(waiter)) {
-				notifyListeners(lock.id, WAITING, NONE, false);
+				onStateChange(lock.id, WAITING, NONE, false);
 			}
 			if (log.isTraceEnabled()) {
 				log.trace("[%s] %s unlock %s, prev: %s", address, waiter, lock.id, WAITING);
@@ -307,6 +308,18 @@ public class LockService {
 		for (var id : prev) doUnlock(id, prev);
 	}
 
+	protected LockStatus doQuery(Long lockId, UUID member) {
+		LockEntry lock = locks.get(lockId);
+		LockStatus status;
+		if (lock == null || lock.holder == null) status = NONE;
+		else if (lock.holder.equals(member)) status = HOLDING;
+		else status = lock.waiters.contains(member) ? WAITING : NONE;
+		if (log.isTraceEnabled()) {
+			log.trace("[%s] query %s: %s", address, member, status);
+		}
+		return status;
+	}
+
 	protected void bind(UUID member, LockEntry lock) {
 		memberLocks.computeIfAbsent(member, k -> new LinkedHashSet<>()).add(lock);
 	}
@@ -317,23 +330,13 @@ public class LockService {
 		});
 	}
 
-	protected void notifyListeners(long lockId, LockStatus prev, LockStatus curr, boolean force) {
-		if (!force && raft.leader() == null) return;
-		if (prev == null) prev = NONE;
-		if (curr == null) curr = NONE;
-		LockStatus local = curr == NONE ? lockStatus.remove(lockId) : lockStatus.put(lockId, curr);
-		if (prev == curr) {
-			prev = local == null ? NONE : local;
-			if (prev == curr) return;
-		}
-		Mutex mutex = mutexes.get(lockId);
-		if (mutex != null) mutex.onStatusChange(prev, curr);
-		for (Listener listener : listeners) {
-			try {
-				listener.onStatusChange(lockId, prev, curr);
-			} catch (Throwable e) {
-				log.error("Fail to notify listener, lock: %s, prev: %s, curr: %s", lockId, prev, curr, e);
-			}
+	protected void onStateChange(long lockId, LockStatus prev, LockStatus curr, boolean snapshot) {
+		if (raft.leader() == null) return; // initStateMachineFromLog
+		if (curr == null) curr = NONE; if (prev == curr) return;
+		// In followers, logs and responses of multiple commands can be included in one batch message, since RAFT is
+		// below REDIRECT in protocol stack, the commands applying may occur before the responses completing.
+		if (curr == HOLDING && (prev == WAITING || snapshot)) {
+			query(lockId);
 		}
 	}
 
@@ -360,7 +363,7 @@ public class LockService {
 	}
 
 	protected void resign() {
-		lockStatus.forEach((k, v) -> notifyListeners(k, v, NONE, true));
+		lockStatus.forEach((k, v) -> notifyListeners(k, NONE));
 	}
 
 	protected void reset(View view) {
@@ -379,6 +382,15 @@ public class LockService {
 		invoke(out).exceptionally(e -> {
 			log.error("Fail to reset to " + view, e); return null;
 		});
+	}
+
+	protected void query(long lockId) {
+		var out = new ByteArrayDataOutputStream(26);
+		out.writeByte(QUERY);
+		writeLong(lockId, out);
+		writeUuid(address(), out);
+		assert out.position() <= 26;
+		invoke(out).thenApply(t -> notifyListeners(lockId, LockStatus.values()[t[0]]));
 	}
 
 	/**
@@ -408,6 +420,7 @@ public class LockService {
 	 * Acquire the lock, will join the waiting queue if the lock is held by another member currently.
 	 * @param lockId the lock's id
 	 * @return HOLDING if hold the lock, WAITING if in the waiting queue.
+	 * @throws RaftException if exception happens during sending or executing commands in the lock service.
 	 */
 	public CompletableFuture<LockStatus> lock(long lockId) {
 		var out = new ByteArrayDataOutputStream(26);
@@ -415,13 +428,14 @@ public class LockService {
 		writeLong(lockId, out);
 		writeUuid(address(), out);
 		assert out.position() <= 26;
-		return invoke(out).thenApply(t -> LockStatus.values()[t[0]]);
+		return invoke(out).thenApply(t -> notifyListeners(lockId, LockStatus.values()[t[0]]));
 	}
 
 	/**
 	 * Try to acquire the lock, won't join the waiting queue.
 	 * @param lockId the lock's id
 	 * @return HOLDING if hold the lock, NONE if the lock is held by another member.
+	 * @throws RaftException if exception happens during sending or executing commands in the lock service.
 	 */
 	public CompletableFuture<LockStatus> tryLock(long lockId) {
 		var out = new ByteArrayDataOutputStream(26);
@@ -429,7 +443,7 @@ public class LockService {
 		writeLong(lockId, out);
 		writeUuid(address(), out);
 		assert out.position() <= 26;
-		return invoke(out).thenApply(t -> LockStatus.values()[t[0]]);
+		return invoke(out).thenApply(t -> notifyListeners(lockId, LockStatus.values()[t[0]]));
 	}
 
 	/**
@@ -437,6 +451,7 @@ public class LockService {
 	 * is one. Remove from waiting queue if it's waiting. Do nothing if neither of them.
 	 * @param lockId the lock's id
 	 * @return async completion
+	 * @throws RaftException if exception happens during sending or executing commands in the lock service.
 	 */
 	public CompletableFuture<Void> unlock(long lockId) {
 		var out = new ByteArrayDataOutputStream(26);
@@ -444,19 +459,20 @@ public class LockService {
 		writeLong(lockId, out);
 		writeUuid(address(), out);
 		assert out.position() <= 26;
-		return invoke(out).thenApply(t -> null);
+		return invoke(out).thenApply(t -> { notifyListeners(lockId, NONE); return null; });
 	}
 
 	/**
 	 * Release all related locks for this member.
 	 * @return async completion
+	 * @throws RaftException if exception happens during sending or executing commands in the lock service.
 	 */
 	public CompletableFuture<Void> unlockAll() {
 		var out = new ByteArrayDataOutputStream(17);
 		out.writeByte(UNLOCK_ALL);
 		writeUuid(address(), out);
 		assert out.position() <= 17;
-		return invoke(out).thenApply(t -> null);
+		return invoke(out).thenApply(t -> { resign(); return null; });
 	}
 
 	protected UUID address() {
@@ -469,6 +485,22 @@ public class LockService {
 		} catch (Throwable e) {
 			throw new RaftException("Fail to execute command", e);
 		}
+	}
+
+	protected LockStatus notifyListeners(long lockId, LockStatus curr) {
+		LockStatus prev = curr == NONE ? lockStatus.remove(lockId) : lockStatus.put(lockId, curr);
+		if (prev == null) prev = NONE;
+		if (prev == curr) return curr;
+		Mutex mutex = mutexes.get(lockId);
+		if (mutex != null) mutex.onStatusChange(prev, curr);
+		for (Listener listener : listeners) {
+			try {
+				listener.onStatusChange(lockId, prev, curr);
+			} catch (Throwable e) {
+				log.error("Fail to notify listener, lock: %s, prev: %s, curr: %s", lockId, prev, curr, e);
+			}
+		}
+		return curr;
 	}
 
 	/**
@@ -706,7 +738,7 @@ public class LockService {
 				} catch (Throwable e) {
 					log.error("Error occurred on lock handler", e);
 				}
-			} else if (prev == WAITING) {
+			} else if (prev == WAITING && acquirers.get() > 0) {
 				delegate.lock();
 				try {
 					if (status == WAITING) {
