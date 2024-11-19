@@ -593,6 +593,39 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		});
 	}
 
+	public void mutex_reentrant() throws InterruptedException {
+		Mutex a = service_a.mutex(101);
+		Mutex b = service_b.mutex(101);
+
+		for (int i = 0; i < 10; i++) {
+			b.lock();
+			assertEquals(b.getHolder(), Thread.currentThread());
+		}
+
+		for (int i = 0; i < 10; i++) {
+			assertTrue(b.tryLock());
+			assertEquals(b.getHolder(), Thread.currentThread());
+		}
+
+		for (int i = 0; i < 10; i++) {
+			assertTrue(b.tryLock(1, SECONDS));
+			assertEquals(b.getHolder(), Thread.currentThread());
+		}
+
+		for (int i = 0; i < 30; i++) {
+			assertEquals(b.getHolder(), Thread.currentThread());
+			assertFalse(CompletableFuture.supplyAsync(b::tryLock).join());
+			assertFalse(a.tryLock());
+			b.unlock();
+		}
+
+		assertNull(b.getHolder());
+		assertTrue(b.tryLock());
+		assertEquals(b.getHolder(), Thread.currentThread());
+		b.unlock();
+		assertNull(b.getHolder());
+	}
+
 	public void mutex_inconsistency() throws Exception {
 		Mutex a = service_a.mutex(101);
 		Mutex b = service_b.mutex(101);
@@ -643,8 +676,6 @@ public class LockServiceTest extends BaseRaftChannelTest {
 			Util.waitUntil(5000, 1000, () -> service_b.lockStatus(101) == WAITING);
 			// Successfully unlock with lock service
 			service_b.unlock(101).get(3, SECONDS);
-			// Make sure all logs is applied which means mutex has been notified all status changes
-			waitUntilNodesApplyAllLogs();
 			// The thread is awakened by unlocking, and lock again.
 			Util.waitUntil(5000, 1000, () -> service_b.lockStatus(101) == WAITING);
 		} finally {
@@ -657,7 +688,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		Mutex b = service_b.mutex(101); // must be a follower
 
 		b.service().addListener((lockId, prev, next) -> {
-			LockSupport.parkNanos(10_000_000); // slow down the log applying (notification)
+			LockSupport.parkNanos(10_000_000); // slow down the log applying
 		});
 		AtomicInteger locked = new AtomicInteger(), unlocked = new AtomicInteger();
 		b.setUnexpectedLockHandler(t -> locked.incrementAndGet());
