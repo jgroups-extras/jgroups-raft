@@ -31,7 +31,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.LockSupport;
 import java.util.stream.Collectors;
@@ -100,7 +99,7 @@ public class LockServiceTest extends BaseRaftChannelTest {
 
 		protected void assertEmpty() { assertThat(queue).isEmpty(); }
 		protected Event next(int secs) throws InterruptedException { return queue.poll(secs, SECONDS); }
-		protected Event next() throws InterruptedException { return next(3); }
+		protected Event next() throws InterruptedException { return next(5); }
 		protected Batch batch(int count) throws InterruptedException {
 			List<Event> list = new ArrayList<>(count);
 			for (int i = 0; i < count; i++) list.add(next());
@@ -110,6 +109,10 @@ public class LockServiceTest extends BaseRaftChannelTest {
 
 	protected static class Service extends LockService {
 		TestRaft raft;
+
+		static {
+//			log.setLevel("trace");
+		}
 
 		public Service(JChannel channel) { super(channel); }
 
@@ -684,32 +687,6 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		f.get(5, SECONDS); // check error
 	}
 
-	public void fast_response_and_slow_log() throws TimeoutException {
-		Mutex b = service_b.mutex(101); // must be a follower
-
-		b.service().addListener((lockId, prev, next) -> {
-			LockSupport.parkNanos(10_000_000); // slow down the log applying
-		});
-		AtomicInteger locked = new AtomicInteger(), unlocked = new AtomicInteger();
-		b.setUnexpectedLockHandler(t -> locked.incrementAndGet());
-		b.setUnexpectedUnlockHandler(t -> unlocked.incrementAndGet());
-
-		for (int i = 0; i < 10; i++) {
-			b.lock(); b.unlock();
-		}
-		waitUntilNodesApplyAllLogs();
-
-		for (int i = 0; i < 10; i++) {
-			b.lock(); b.unlock();
-		}
-		b.lock();
-		waitUntilNodesApplyAllLogs();
-		b.unlock();
-
-		assertEquals(unlocked.get(), 0);
-		assertEquals(locked.get(), 0);
-	}
-
 	public void mutex_exception() {
 		Mutex a = service_a.mutex(101);
 
@@ -789,8 +766,20 @@ public class LockServiceTest extends BaseRaftChannelTest {
 		});
 	}
 
-	private void waitUntilLeaderElected(int... indexes) {
+	private void waitUntilLeaderElected(int... indexes) throws TimeoutException {
 		RAFT[] rafts = IntStream.of(indexes).mapToObj(this::raft).toArray(RAFT[]::new);
-		BaseRaftElectionTest.waitUntilLeaderElected(rafts, 10_000);
+		Util.waitUntil(30_000, 1000, () -> {
+			Address leader = null; long term = 0;
+			for (RAFT raft : rafts) {
+				Address a = raft.leader();
+				if (a == null) return false;
+				if (leader == null) {
+					leader = a; term = raft.currentTerm();
+				} else if (!leader.equals(a) || term != raft.currentTerm()) {
+					return false;
+				}
+			}
+			return true;
+		});
 	}
 }

@@ -9,6 +9,8 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -122,9 +124,9 @@ public class LockService {
 
 		protected UUID unlock() {
 			// make sure it's a consistent result for all nodes
-			var i = waiters.iterator();
+			Iterator<UUID> i = waiters.iterator();
 			if (!i.hasNext()) return holder = null;
-			var v = i.next(); i.remove(); return holder = v;
+			UUID v = i.next(); i.remove(); return holder = v;
 		}
 	}
 
@@ -144,21 +146,18 @@ public class LockService {
 				locks.put(id, lock);
 				bind(lock.holder, lock);
 				if (address.equals(lock.holder)) tmp.put(lock.id, HOLDING);
-				for (var waiter : lock.waiters) {
+				for (UUID waiter : lock.waiters) {
 					bind(waiter, lock);
 					if (address.equals(waiter)) tmp.put(lock.id, WAITING);
 				}
 			}
-
-			// notify base on local status
-			lockStatus.forEach((k, v) -> onStateChange(k, v, tmp.remove(k), true));
-			tmp.forEach((k, v) -> onStateChange(k, NONE, v, true));
+			tmp.forEach((k, v) -> onCommit(k, null, v, false));
 		}
 
 		@Override
 		public void writeContentTo(DataOutput out) {
 			writeInt((int) locks.values().stream().filter(t -> t.holder != null).count(), out);
-			for (var lock : locks.values()) {
+			for (LockEntry lock : locks.values()) {
 				if (lock.holder == null) continue;
 				writeLong(lock.id, out);
 				writeUuid(lock.holder, out);
@@ -243,7 +242,7 @@ public class LockService {
 		}
 		if (prev != next) bind(member, lock);
 		if (address.equals(member)) {
-			onStateChange(lockId, prev, next, false);
+			onCommit(lockId, prev, next, false);
 		}
 		if (log.isTraceEnabled()) {
 			log.trace("[%s] %s lock %s, prev: %s, next: %s", address, member, lockId, prev, next);
@@ -257,15 +256,15 @@ public class LockService {
 	}
 
 	protected void doUnlock(UUID member, Set<UUID> unlocking) {
-		Set<LockEntry> set = memberLocks.get(member); if (set == null) return;
-		set.removeIf(t -> doUnlock(member, t, unlocking));
-		if (set.isEmpty()) memberLocks.remove(member);
+		Set<LockEntry> set = memberLocks.remove(member); if (set == null) return;
+		for (LockEntry lock : set) doUnlock(member, lock, unlocking);
 	}
 
 	protected boolean doUnlock(UUID member, LockEntry lock, Set<UUID> unlocking) {
 		LockStatus prev = HOLDING;
 		UUID holder = null;
 		List<UUID> waiters = null;
+		boolean reset = unlocking != null;
 		if (member.equals(lock.holder)) {
 			do {
 				if (holder != null) {
@@ -278,9 +277,9 @@ public class LockService {
 			prev = lock.waiters.remove(member) ? WAITING : NONE;
 		}
 		if (address.equals(member)) {
-			onStateChange(lock.id, prev, NONE, false);
+			onCommit(lock.id, prev, NONE, reset);
 		} else if (address.equals(holder)) {
-			onStateChange(lock.id, WAITING, HOLDING, false);
+			onCommit(lock.id, WAITING, HOLDING, reset);
 		}
 		if (log.isTraceEnabled()) {
 			log.trace("[%s] %s unlock %s, prev: %s", address, member, lock.id, prev);
@@ -290,7 +289,7 @@ public class LockService {
 		if (waiters != null) for (UUID waiter : waiters) {
 			unbind(waiter, lock);
 			if (address.equals(waiter)) {
-				onStateChange(lock.id, WAITING, NONE, false);
+				onCommit(lock.id, WAITING, NONE, true);
 			}
 			if (log.isTraceEnabled()) {
 				log.trace("[%s] %s unlock %s, prev: %s", address, waiter, lock.id, WAITING);
@@ -300,12 +299,12 @@ public class LockService {
 	}
 
 	protected void doReset(List<UUID> members) {
-		Set<UUID> prev = new LinkedHashSet<>(memberLocks.keySet());
+		Set<UUID> prev = new HashSet<>(memberLocks.keySet());
 		if (log.isTraceEnabled()) {
 			log.trace("[%s] reset %s to %s", address, prev, members);
 		}
-		for (var id : members) prev.remove(id);
-		for (var id : prev) doUnlock(id, prev);
+		for (UUID member : members) prev.remove(member);
+		for (UUID member : prev) doUnlock(member, prev);
 	}
 
 	protected LockStatus doQuery(Long lockId, UUID member) {
@@ -315,7 +314,7 @@ public class LockService {
 		else if (lock.holder.equals(member)) status = HOLDING;
 		else status = lock.waiters.contains(member) ? WAITING : NONE;
 		if (log.isTraceEnabled()) {
-			log.trace("[%s] query %s: %s", address, member, status);
+			log.trace("[%s] %s query %s, status: %s", address, member, lockId, status);
 		}
 		return status;
 	}
@@ -330,13 +329,20 @@ public class LockService {
 		});
 	}
 
-	protected void onStateChange(long lockId, LockStatus prev, LockStatus curr, boolean snapshot) {
-		if (raft.leader() == null) return; // initStateMachineFromLog
-		if (curr == null) curr = NONE; if (prev == curr) return;
+	protected void onCommit(long lockId, LockStatus prev, LockStatus curr, boolean reset) {
+		if (prev == curr) return;
 		// In followers, logs and responses of multiple commands can be included in one batch message, since RAFT is
 		// below REDIRECT in protocol stack, the commands applying may occur before the responses completing.
-		if (curr == HOLDING && (prev == WAITING || snapshot)) {
+		if (curr == HOLDING && (prev == WAITING || prev == null && lockStatus.get(lockId) != HOLDING)) {
 			query(lockId);
+		} else if (reset) {
+			LockStatus status = lockStatus.get(lockId);
+			if (curr == NONE && status != null || curr == HOLDING && status != HOLDING) {
+				if (log.isTraceEnabled()) {
+					log.trace("[%s] Suspicious status %s, lockId: %s, expected: %s", address, status, lockId, curr);
+				}
+				query(lockId);
+			}
 		}
 	}
 
@@ -363,6 +369,9 @@ public class LockService {
 	}
 
 	protected void resign() {
+		if (log.isTraceEnabled()) {
+			log.trace("[%s] resign from %s", address, lockStatus);
+		}
 		lockStatus.forEach((k, v) -> notifyListeners(k, NONE));
 	}
 
@@ -390,7 +399,10 @@ public class LockService {
 		writeLong(lockId, out);
 		writeUuid(address(), out);
 		assert out.position() <= 26;
-		invoke(out).thenApply(t -> notifyListeners(lockId, LockStatus.values()[t[0]]));
+		invoke(out).whenComplete((r, e) -> {
+			if (e != null) log.error("Fail to query on " + lockId, e);
+			else notifyListeners(lockId, LockStatus.values()[r[0]]);
+		});
 	}
 
 	/**
@@ -413,7 +425,7 @@ public class LockService {
 	 * @return lock status
 	 */
 	public LockStatus lockStatus(long lockId) {
-		var v = lockStatus.get(lockId); return v == null ? NONE : v;
+		LockStatus v = lockStatus.get(lockId); return v == null ? NONE : v;
 	}
 
 	/**
