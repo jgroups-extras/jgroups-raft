@@ -23,10 +23,10 @@
 
         <!-- Dependencies versions -->
         <testng.version>7.10.2</testng.version>
-        <assertj.version>3.26.3</assertj.version>
+        <assertj.version>3.27.0</assertj.version>
         <jgroups.version>5.3.13.Final</jgroups.version>
         <leveldbjni.version>1.8</leveldbjni.version>
-        <log4j.version>2.24.1</log4j.version>
+        <log4j.version>2.24.3</log4j.version>
         <jmh.version>1.37</jmh.version>
         <mashona.version>1.1.0</mashona.version>
 
@@ -525,13 +525,13 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
-                    <version>3.5.1</version>
+                    <version>3.5.2</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-dependency-plugin</artifactId>
-                    <version>3.8.0</version>
+                    <version>3.8.1</version>
                 </plugin>
 
                 <plugin>
@@ -549,7 +549,7 @@
                 <plugin>
                     <groupId>org.asciidoctor</groupId>
                     <artifactId>asciidoctor-maven-plugin</artifactId>
-                    <version>3.0.0</version>
+                    <version>3.1.1</version>
                     <dependencies>
                         <dependency>
                             <groupId>org.asciidoctor</groupId>
