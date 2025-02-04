@@ -27,7 +27,7 @@ jgroups-raft is [verified with Jepsen](https://github.com/jgroups-extras/jepsen-
 To get started developing with jgroups-raft:
 
 * Take a look at the complete [documentation](https://belaban.github.io/jgroups-raft/manual/index.html);
-* Details about the implementation are available in the [design documents](https://github.com/jgroups-extras/jgroups-raft/tree/master/doc/design).
+* Details about the implementation are available in the [design documents](https://github.com/jgroups-extras/jgroups-raft/tree/main/doc/design).
 
 
 ## Contributing
