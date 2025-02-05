@@ -111,7 +111,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected boolean                   dynamic_view_changes=true;
 
     @Property(description="The fully qualified name of the class implementing Log")
-    protected String                    log_class="org.jgroups.protocols.raft.LevelDBLog";
+    protected String                    log_class="org.jgroups.protocols.raft.FileBasedLog";
 
     @Property(description="Arguments to the log impl, e.g. k1=v1,k2=v2. These will be passed to init()")
     protected String                    log_args;
