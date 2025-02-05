@@ -3,10 +3,10 @@ name: Java CI with Maven
 on:
   push:
     branches:
-      - 'main'
+      - '*'
   pull_request:
     branches:
-      - 'main'
+      - '*'
   workflow_dispatch:
 
 permissions:
@@ -14,11 +14,18 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        java: [11, 17, 21]
-
+        os:
+          - "ubuntu-latest"
+          # Uncomment once https://github.com/jgroups-extras/jgroups-raft/issues/332 is fixed
+          #- "windows-latest"
+          #- "macos-latest"
+        # Keep this list as: all supported LTS JDKs, the latest GA JDK, and optionally the latest EA JDK (if available).
+        # https://www.oracle.com/java/technologies/java-se-support-roadmap.html
+        java: [ 11, 17, 21, 23 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,17 +38,14 @@ jobs:
       - name: Build with Maven
         timeout-minutes: 10
         id: test_runner
-        run: mvn -B package --file pom.xml -Dgroups=functional
-        continue-on-error: true
-
+        run: mvn --batch-mode --no-transfer-progress package -Dgroups=functional
       - name: Generate test reports
-        # Only generate and upload reports if tests failed.
+        # Only generate reports if tests failed.
         if: failure()
-        run: mvn -B surefire-report:report-only
-
-        # Only run upload if tests failed.
+        run: mvn --batch-mode --no-transfer-progress surefire-report:report-only
       - name: Generate and upload test reports
-        if: steps.test_runner.outputs.status == 'failure'
+        # Only upload reports if tests failed.
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: Test reports
