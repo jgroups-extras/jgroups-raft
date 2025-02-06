@@ -40,7 +40,7 @@ The code required to be written for a full Raft implementation is smaller than i
 The feature set of jgroups-raft includes
 
 * Leader election and append entries functionality by consensus
-* Persistent log (using LevelDB)
+* Persistent log (using FileBasedLog)
 * Dynamic addition and removal of cluster nodes
 * Cluster wide atomic counters
 * Replicated hash maps (replicated state machines)
