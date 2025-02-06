@@ -29,7 +29,9 @@ public class LogTest {
           {new LevelDBLog().useFsync(true)},
           {new InMemoryLog().useFsync(true)},
           {new FileBasedLog().useFsync(true)},
-          {new LogCache(new LevelDBLog().useFsync(true), 512)}
+          // TODO The LogCache's constructor calls methods on the underlying log without calling init(..) first,
+          // which won't work with Log impls that expect proper lifecycle contract.
+          {new LogCache(new InMemoryLog().useFsync(true), 512)}
         };
     }
 

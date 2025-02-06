@@ -25,7 +25,6 @@
         <testng.version>7.10.2</testng.version>
         <assertj.version>3.27.1</assertj.version>
         <jgroups.version>5.3.13.Final</jgroups.version>
-        <leveldbjni.version>1.8</leveldbjni.version>
         <log4j.version>2.24.3</log4j.version>
         <jmh.version>1.37</jmh.version>
         <mashona.version>1.1.0</mashona.version>
@@ -174,11 +173,6 @@
             <groupId>org.jgroups</groupId>
             <artifactId>jgroups</artifactId>
             <version>${jgroups.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.fusesource.leveldbjni</groupId>
-            <artifactId>leveldbjni-all</artifactId>
-            <version>${leveldbjni.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>

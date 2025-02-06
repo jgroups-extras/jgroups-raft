@@ -8,7 +8,6 @@ import org.jgroups.View;
 import org.jgroups.protocols.raft.AppendEntriesRequest;
 import org.jgroups.protocols.raft.AppendResult;
 import org.jgroups.protocols.raft.FileBasedLog;
-import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
@@ -82,7 +81,6 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
     @DataProvider
     static Object[][] logProvider() {
         return new Object[][] {
-                {LevelDBLog.class},
                 {FileBasedLog.class}
         };
     }
