@@ -422,9 +422,6 @@ public abstract class BaseElection extends Protocol {
         if(isVotingThreadRunning()) {
             log.debug("%s: mark the voting thread to stop", local_addr);
             stopVoting = true;
-
-            // Interrupt voting thread if majority lost.
-            if (!isMajorityAvailable()) stopVotingThreadInternal();
         }
         return this;
     }

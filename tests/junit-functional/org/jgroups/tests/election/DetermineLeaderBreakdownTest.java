@@ -68,7 +68,6 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
         cluster.handleView(v2);
 
         assertThat(raft(0).leader()).isNull();
-        assertThat(eventually(() -> !election(0).isVotingThreadRunning(), 5, TimeUnit.SECONDS)).isTrue();
 
         // Let the method return and install A as leader.
         checkPoint.trigger("A_DETERMINE_OUT_CONTINUE");
@@ -76,6 +75,7 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
         System.out.println("-- waiting leader to remain null without majority");
 
         // Utilize the eventually method to make sure the leader is always null in the next 3 seconds.
+        assertThat(eventually(() -> !election(0).isVotingThreadRunning(), 5, TimeUnit.SECONDS)).isTrue();
         BooleanSupplier bs = () -> raft(0).leader() != null;
         assertThat(eventually(bs, 3, TimeUnit.SECONDS))
                 .withFailMessage(this::dumpLeaderAndTerms)
