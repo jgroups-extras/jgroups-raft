@@ -1,9 +1,5 @@
 package org.jgroups.raft.protocols.tests;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -26,6 +22,10 @@ import java.util.stream.Stream;
 import org.assertj.core.api.Assertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc

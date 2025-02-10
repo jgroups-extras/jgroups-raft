@@ -182,7 +182,7 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
 
     @Override
     public int hashCode() { // why is this method needed?
-        synchronized(map) {
+        synchronized (map) {
             return map.hashCode();
         }
     }

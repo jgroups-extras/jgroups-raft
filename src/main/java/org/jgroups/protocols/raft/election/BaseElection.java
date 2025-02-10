@@ -20,6 +20,7 @@ import org.jgroups.util.MessageBatch;
 import org.jgroups.util.ResponseCollector;
 import org.jgroups.util.Runner;
 
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
@@ -60,9 +61,15 @@ public abstract class BaseElection extends Protocol {
     private final ResponseCollector<VoteResponse> votes=new ResponseCollector<>();
     private volatile boolean stopVoting;
 
+    // TODO: properly handle how these values are collected.
+    private volatile Instant electionStart;
+    private volatile Instant electionEnd;
+
     protected volatile View view;
 
-    public long                            voteTimeout() {return vote_timeout;}
+    public long voteTimeout() {
+        return vote_timeout;
+    }
 
     /**
      * Defines the default timeout in milliseconds to utilize during any election operation.
@@ -98,6 +105,16 @@ public abstract class BaseElection extends Protocol {
             return isVotingThreadRunning();
         }
         return false;
+    }
+
+    @ManagedOperation(description = "Instant a new election started")
+    public Instant electionStart() {
+        return electionStart;
+    }
+
+    @ManagedOperation(description = "Instant a new election ended")
+    public Instant electionEnd() {
+        return electionEnd;
     }
 
     protected abstract void handleView(View v);
@@ -202,6 +219,7 @@ public abstract class BaseElection extends Protocol {
             log.trace("%s <- %s: %s (%d)", local_addr, msg.src(), hdr, res);
             if (res >= 0) {
                 stopVotingThread(); // only on the coord
+                electionEnd = Instant.now();
             }
         } else {
             log.trace("%s <- %s: %s after leader left (%s)", local_addr, msg.src(), hdr, v);
@@ -412,6 +430,7 @@ public abstract class BaseElection extends Protocol {
             log.debug("%s: starting the voting thread", local_addr);
             stopVoting = false;
             voting_thread.start();
+            electionStart = Instant.now();
         }
         return this;
     }

@@ -5,6 +5,12 @@ import java.io.DataOutput;
 
 /**
  * Interface of a state machine which stores data in memory. Committed log entries are applied to the state machine.
+ *
+ * // Explain when it is invoked in the context of the algorithm.
+ * // Emphasise it must be deterministic, should not rely on outside factors (thread spawn, real-time, etc).
+ * // Internally it is invoked by a single thread, so it is thread-safe.
+ * // Explain what happens if the method fails.
+ *
  * @author Bela Ban
  * @since  0.1
  */
@@ -20,7 +26,9 @@ public interface StateMachine {
      * @throws Exception Thrown on deserialization or other failure
      */
     // todo: use ByteBuffers?
-    byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception;
+    default byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+        return null;
+    }
 
     /**
      * Reads the contents of the state machine from an input stream.
