@@ -1,5 +1,28 @@
 package org.jgroups.protocols.raft;
 
+import java.io.File;
+import java.net.InetAddress;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
+import java.util.function.Function;
+import java.util.function.ObjLongConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.jgroups.Address;
 import org.jgroups.BytesMessage;
 import org.jgroups.EmptyMessage;
@@ -33,29 +56,6 @@ import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Runner;
 import org.jgroups.util.Util;
-
-import java.io.File;
-import java.net.InetAddress;
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.LongAdder;
-import java.util.function.Function;
-import java.util.function.ObjLongConsumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 
 /**
@@ -267,6 +267,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description="The current leader (can be null if there is currently no leader) ")
     public Address      leader()                      {return raft_state.leader();}
+    public String       leaderRaftId()                {
+        Address leader=leader();
+        return leader != null? Util.bytesToString(((ExtendedUUID)leader).get(raft_id_key)) : null;
+    };
     public RAFT         leader(Address new_leader)    {this.raft_state.setLeader(new_leader); return this;}
     public boolean      isLeader()                    {return leader() != null && Objects.equals(leader(), local_addr);}
 

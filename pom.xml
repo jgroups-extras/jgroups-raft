@@ -10,9 +10,9 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
-        <maven.compiler.release>11</maven.compiler.release>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
 
         <!-- nexus-staging-maven-plugin -->
         <autoReleaseAfterClose>true</autoReleaseAfterClose>
@@ -28,6 +28,7 @@
         <log4j.version>2.25.2</log4j.version>
         <jmh.version>1.37</jmh.version>
         <mashona.version>1.1.0</mashona.version>
+        <protostream.version>5.0.13.Final</protostream.version>
 
         <!-- test properties -->
         <ansi.strip />
@@ -159,6 +160,19 @@
             <artifactId>jgroups</artifactId>
             <version>${jgroups.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>org.infinispan.protostream</groupId>
+            <artifactId>protostream</artifactId>
+            <version>${protostream.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.infinispan.protostream</groupId>
+            <artifactId>protostream-types</artifactId>
+            <version>${protostream.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
             <artifactId>log4j-api</artifactId>
@@ -276,7 +290,7 @@
                 <artifactId>maven-pmd-plugin</artifactId>
                 <version>${version.pmd.plugin}</version>
                 <configuration>
-                    <targetJdk>11</targetJdk>
+                    <targetJdk>17</targetJdk>
                     <linkXRef>false</linkXRef>
                     <minimumTokens>100</minimumTokens>
                     <outputDirectory>${project.build.directory}/pmd</outputDirectory>
@@ -347,8 +361,23 @@
             <plugin>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <configuration>
-                    <source>11</source>
-                    <target>11</target>
+                    <source>17</source>
+                    <target>17</target>
+
+                    <!-- Annotation processors -->
+                    <annotationProcessorPaths>
+                        <annotationProcessorPath>
+                            <groupId>org.infinispan.protostream</groupId>
+                            <artifactId>protostream-processor</artifactId>
+                            <version>${protostream.version}</version>
+                        </annotationProcessorPath>
+
+                        <path>
+                            <groupId>org.openjdk.jmh</groupId>
+                            <artifactId>jmh-generator-annprocess</artifactId>
+                            <version>${jmh.version}</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
             </plugin>
 
@@ -367,8 +396,8 @@
                 <configuration>
                     <rules>
                         <requireJavaVersion>
-                            <!-- require JDK 11 to run the build -->
-                            <version>[11,)</version>
+                            <!-- require JDK 17 to run the build -->
+                            <version>[17,)</version>
                         </requireJavaVersion>
                         <requireMavenVersion>
                             <version>3.0.4</version>
@@ -663,6 +692,7 @@
                                 </goals>
 
                                 <configuration>
+                                    <sourceDocumentName>manual.adoc</sourceDocumentName>
                                     <sourceDirectory>src/docs/manual</sourceDirectory>
                                     <outputDirectory>${project.build.directory}/doc/manual</outputDirectory>
                                 </configuration>
@@ -676,7 +706,7 @@
                                 </goals>
 
                                 <configuration>
-                                    <sourceDocumentName>manual.adoc</sourceDocumentName>
+                                    <sourceDocumentName>index.adoc</sourceDocumentName>
                                     <sourceDirectory>src/docs/design</sourceDirectory>
                                     <outputDirectory>${project.build.directory}/doc/design</outputDirectory>
                                 </configuration>

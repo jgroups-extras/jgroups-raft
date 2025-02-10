@@ -13,6 +13,7 @@ function list_benchmarks() {
   printf "\tDataReplicationBenchmark\n"
   printf "\tLogJmhBenchmark\n"
   printf "\tStorageAppenderBenchmark\n"
+  printf "\tNewApiReplicationBenchmark\n"
   help;
 }
 

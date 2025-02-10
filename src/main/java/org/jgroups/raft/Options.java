@@ -9,29 +9,35 @@ import java.io.IOException;
 
 /**
  * Options to pass to {@link Settable#setAsync(byte[], int, int)} call
+ *
  * @author Bela Ban
- * @since  1.0.9
+ * @since 1.0.9
  */
 public class Options implements SizeStreamable {
 
     public static final Options DEFAULT_OPTIONS = new Options();
 
-    protected boolean ignore_return_value;
-
-    public boolean ignoreReturnValue() {return ignore_return_value;}
-
-    public Options ignoreReturnValue(boolean ignore) {this.ignore_return_value=ignore; return this;}
+    protected boolean ignoreReturnValue;
 
     public static Options create(boolean ignore_retval) {
         return new Options().ignoreReturnValue(ignore_retval);
     }
 
+    public boolean ignoreReturnValue() {
+        return ignoreReturnValue;
+    }
+
+    public Options ignoreReturnValue(boolean ignore) {
+        this.ignoreReturnValue = ignore;
+        return this;
+    }
+
     public void writeTo(DataOutput out) throws IOException {
-        out.writeBoolean(ignore_return_value);
+        out.writeBoolean(ignoreReturnValue);
     }
 
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
-        ignore_return_value=in.readBoolean();
+        ignoreReturnValue = in.readBoolean();
     }
 
     public int serializedSize() {
@@ -39,21 +45,19 @@ public class Options implements SizeStreamable {
     }
 
     public String toString() {
-        return String.format("%s", ignore_return_value? "[ignore-retval]" : "");
+        return String.format("%s", ignoreReturnValue ? "[ignore-retval]" : "");
     }
 
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Options)) return false;
+        if (!(o instanceof Options options)) return false;
 
-        Options options = (Options) o;
-
-        return ignore_return_value == options.ignore_return_value;
+        return ignoreReturnValue == options.ignoreReturnValue;
     }
 
     @Override
     public int hashCode() {
-        return ignore_return_value ? 1 : 0;
+        return ignoreReturnValue ? 1 : 0;
     }
 }
