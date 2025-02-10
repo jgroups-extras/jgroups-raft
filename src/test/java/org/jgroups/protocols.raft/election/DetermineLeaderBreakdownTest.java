@@ -175,7 +175,6 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
 
         public DetermineLeaderCheckpoint() {
             setId(ELECTION_ID);
-            level("trace");
         }
 
         @Override

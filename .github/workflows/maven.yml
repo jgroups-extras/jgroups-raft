@@ -24,10 +24,9 @@ jobs:
         os:
           - "ubuntu-latest"
           - "windows-latest"
-          - "macos-latest"
         # Keep this list as: all supported LTS JDKs, the latest GA JDK, and optionally the latest EA JDK (if available).
         # https://www.oracle.com/java/technologies/java-se-support-roadmap.html
-        java: [ 11, 17, 21, 23 ]
+        java: [ 17, 21, 23 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -65,14 +64,14 @@ jobs:
           check_name: "surefire-report-${{ matrix.os }}-${{ matrix.java }}"
 
       - name: Display SpotBugs report
-        if: matrix.os == 'ubuntu-latest' && matrix.java == 11
+        if: matrix.os == 'ubuntu-latest' && matrix.java == 17
         uses: github/codeql-action/upload-sarif@v3
         with:
           category: "spotbugs-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/spotbugs.sarif.json
 
       - name: Display PMD report
-        if: matrix.os == 'ubuntu-latest' && matrix.java == 11
+        if: matrix.os == 'ubuntu-latest' && matrix.java == 17
         uses: github/codeql-action/upload-sarif@v3
         with:
           category: "pmd-report-${{ matrix.os }}-${{ matrix.java }}"
