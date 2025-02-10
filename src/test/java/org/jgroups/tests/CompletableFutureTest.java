@@ -2,11 +2,16 @@ package org.jgroups.tests;
 
 import org.jgroups.Global;
 import org.jgroups.util.Util;
+
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.function.BiConsumer;
+
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import java.util.concurrent.*;
-import java.util.function.BiConsumer;
 
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class CompletableFutureTest {

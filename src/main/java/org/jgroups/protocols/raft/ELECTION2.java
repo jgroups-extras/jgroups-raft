@@ -194,7 +194,7 @@ public class ELECTION2 extends BaseElection {
          * @param hdr The response message.
          */
         public void includeResponse(Address sender, PreVoteResponse hdr) {
-            preVotingResponses.add(sender, hdr);;
+            preVotingResponses.add(sender, hdr);
 
             int majority = raft.majority();
             if (preVotingResponses.hasAllResponses() && preVotingResponses.numberOfValidResponses() >= majority) {

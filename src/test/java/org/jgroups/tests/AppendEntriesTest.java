@@ -200,7 +200,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
             ProtocolStack stack=ch.getProtocolStack();
             DISCARD discard=new DISCARD().discardAll(true).setAddress(ch.getAddress());
             stack.insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
-        };
+        }
 
         // Add the first entry, this will time out as there's no majority
         stateMachine(0).timeout(500);

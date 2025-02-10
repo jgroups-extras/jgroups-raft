@@ -1,12 +1,18 @@
 package org.jgroups.tests;
 
 import org.jgroups.Global;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.AppendEntriesRequest;
+import org.jgroups.protocols.raft.AppendEntriesResponse;
+import org.jgroups.protocols.raft.AppendResult;
+import org.jgroups.protocols.raft.InstallSnapshotRequest;
+import org.jgroups.protocols.raft.REDIRECT;
+import org.jgroups.protocols.raft.RaftHeader;
 import org.jgroups.protocols.raft.election.VoteRequest;
 import org.jgroups.protocols.raft.election.VoteResponse;
 import org.jgroups.raft.Options;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
+
 import org.testng.annotations.Test;
 
 import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_ENTRY_NOT_FOUND;

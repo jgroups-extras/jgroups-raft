@@ -35,7 +35,7 @@ import org.testng.internal.IResultListener;
 /**
  * Listener generating XML output suitable to be processed by JUnitReport.
  * Copied from TestNG (www.testng.org) and modified
- * 
+ *
  * @author Bela Ban
  */
 public class JUnitXMLReporter implements IResultListener {
@@ -175,7 +175,7 @@ public class JUnitXMLReporter implements IResultListener {
                     output=tmp;
                 }
             }
-            
+
             if(stdout.get() == null)
                 stdout.set(new PrintStream(new FileOutputStream(_stdout, true)));
             if(stderr.get() == null)

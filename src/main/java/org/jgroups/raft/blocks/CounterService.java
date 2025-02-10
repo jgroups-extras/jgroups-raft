@@ -1,6 +1,5 @@
 package org.jgroups.raft.blocks;
 
-import net.jcip.annotations.GuardedBy;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.blocks.atomic.CounterFunction;
@@ -12,7 +11,13 @@ import org.jgroups.protocols.raft.Role;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.StateMachine;
-import org.jgroups.util.*;
+import org.jgroups.util.AsciiString;
+import org.jgroups.util.Bits;
+import org.jgroups.util.ByteArrayDataInputStream;
+import org.jgroups.util.ByteArrayDataOutputStream;
+import org.jgroups.util.CompletableFutures;
+import org.jgroups.util.Streamable;
+import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -23,6 +28,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import net.jcip.annotations.GuardedBy;
 
 /**
  * Provides a consensus based distributed counter (similar to AtomicLong) which can be atomically updated across a cluster.

@@ -1,6 +1,10 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.*;
+import org.jgroups.Address;
+import org.jgroups.BytesMessage;
+import org.jgroups.Event;
+import org.jgroups.Message;
+import org.jgroups.View;
 import org.jgroups.annotations.MBean;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.pbcast.GMS;

@@ -6,9 +6,13 @@ import org.jgroups.View;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.raft.util.Utils.Majority;
 import org.jgroups.util.Util;
+
 import org.testng.annotations.Test;
 
-import static org.jgroups.raft.util.Utils.Majority.*;
+import static org.jgroups.raft.util.Utils.Majority.leader_lost;
+import static org.jgroups.raft.util.Utils.Majority.lost;
+import static org.jgroups.raft.util.Utils.Majority.no_change;
+import static org.jgroups.raft.util.Utils.Majority.reached;
 
 /**
  * @author Bela Ban

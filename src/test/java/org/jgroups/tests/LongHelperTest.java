@@ -40,5 +40,4 @@ public class LongHelperTest {
         byte[] b = fromLongToByteArray(number);
         return fromByteArrayToLong(b);
     }
-
 }

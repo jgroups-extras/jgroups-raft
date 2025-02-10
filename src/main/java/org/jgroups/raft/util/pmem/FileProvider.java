@@ -3,7 +3,6 @@ package org.jgroups.raft.util.pmem;
 import java.io.File;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
-import java.nio.file.StandardOpenOption;
 
 /**
  * Creates {@link FileChannel}.

@@ -2,16 +2,24 @@ package org.jgroups.tests;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
-import org.jgroups.protocols.raft.*;
+import org.jgroups.protocols.raft.FileBasedLog;
+import org.jgroups.protocols.raft.InMemoryLog;
+import org.jgroups.protocols.raft.LevelDBLog;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntries;
+import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.util.Util;
+
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
-import static org.testng.Assert.*;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
 
 /**
  * Tests all {@link org.jgroups.protocols.raft.Log} implementations for correctness
