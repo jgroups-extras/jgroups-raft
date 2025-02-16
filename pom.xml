@@ -65,6 +65,7 @@
 
         <!-- Code quality red tape. -->
         <version.puppycrawl>10.21.2</version.puppycrawl>
+        <version.spotbugs.plugin>4.9.1.0</version.spotbugs.plugin>
 
         <!-- Plugins -->
         <version.nexus3.plugin>1.0.13</version.nexus3.plugin>
@@ -256,33 +257,29 @@
             <plugin>
                 <groupId>com.github.spotbugs</groupId>
                 <artifactId>spotbugs-maven-plugin</artifactId>
-                <version>4.8.6.6</version>
-                <dependencies>
-                    <!-- overwrite dependency on spotbugs if you want to specify the version of spotbugs -->
-                    <dependency>
-                        <groupId>com.github.spotbugs</groupId>
-                        <artifactId>spotbugs</artifactId>
-                        <version>4.9.1</version>
-                    </dependency>
-                </dependencies>
+                <version>${version.spotbugs.plugin}</version>
                 <configuration>
                     <outputDirectory>${project.build.directory}/spotbugs</outputDirectory>
-                    <spotbugsXmlOutputDirectory>${project.build.outputDirectory}/spotbugs</spotbugsXmlOutputDirectory>
-                    <xmlOutput>true</xmlOutput>
+                    <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs</spotbugsXmlOutputDirectory>
+                    <xmlOutput>false</xmlOutput>
                     <htmlOutput>true</htmlOutput>
+                    <sarifOutput>true</sarifOutput>
+                    <sarifOutputFilename>spotbugs.sarif.json</sarifOutputFilename>
+                    <addSourceDirs>true</addSourceDirs>
                 </configuration>
             </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
-                <version>3.14.0</version>
+                <version>3.26.0</version>
                 <configuration>
                     <targetJdk>11</targetJdk>
                     <linkXRef>false</linkXRef>
                     <sourceEncoding>${project.build.sourceEncoding}</sourceEncoding>
                     <minimumTokens>100</minimumTokens>
                     <outputDirectory>${project.build.directory}/pmd</outputDirectory>
+                    <format>net.sourceforge.pmd.renderers.SarifRenderer</format>
                 </configuration>
             </plugin>
 
