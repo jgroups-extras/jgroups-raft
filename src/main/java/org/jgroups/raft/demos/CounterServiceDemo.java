@@ -57,11 +57,11 @@ public class CounterServiceDemo {
                         break;
                     case '1':
                         long val=counter.incrementAndGet();
-                        System.out.printf("%s: %s\n", counter.getName(), val);
+                        System.out.printf("%s: %s%n", counter.getName(), val);
                         break;
                     case '2':
                         val=counter.decrementAndGet();
-                        System.out.printf("%s: %s\n", counter.getName(), val);
+                        System.out.printf("%s: %s%n", counter.getName(), val);
                         break;
                     case '3':
                         long expect=Util.readLongFromStdin("expected value: ");
@@ -92,7 +92,7 @@ public class CounterServiceDemo {
                                 System.out.println("-- count=" + retval);
                         }
                         long diff=System.currentTimeMillis() - start;
-                        System.out.printf("\n%d incrs took %d ms; %.2f ops /sec\n", NUM, diff, (NUM / (diff / 1000.0)));
+                        System.out.printf("%n%d incrs took %d ms; %.2f ops /sec%n", NUM, diff, (NUM / (diff / 1000.0)));
                         break;
                     case '7':
                         NUM=Util.readIntFromStdin("num: ");
@@ -101,7 +101,7 @@ public class CounterServiceDemo {
                         for(int i=1; i <= NUM; i++) {
                             Thread t=new Thread(() -> {
                                 long ret=ctr.incrementAndGet();
-                                System.out.printf("[%d] val=%d\n", Thread.currentThread().getId(), ret);
+                                System.out.printf("[%d] val=%d%n", Thread.currentThread().getId(), ret);
                             });
                             t.start();
                         }
@@ -111,6 +111,9 @@ public class CounterServiceDemo {
                         break;
                     case '\n':
                         System.out.println(counter.getName() + ": " + counter.get() + "\n");
+                        break;
+                    default:
+                        System.out.println("Unknown option: " + key);
                         break;
                 }
             }

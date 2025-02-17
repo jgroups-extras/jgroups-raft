@@ -83,7 +83,7 @@ public final class FileStorage implements Closeable {
    public void open() throws IOException {
       if (channel == null) {
          final FileChannel pmemChannel = FileProvider.openPMEMChannel(storageFile, 1024, true, true);
-         if (channel == null) {
+         if (pmemChannel == null) {
             final RandomAccessFile raf = new RandomAccessFile(storageFile, "rw");
             this.channel = raf.getChannel();
             this.raf = raf;
@@ -160,13 +160,14 @@ public final class FileStorage implements Closeable {
       }
       try {
          switch (requiredFlush) {
-
             case Metadata:
                channel.force(true);
                break;
             case Data:
                channel.force(false);
                break;
+            default:
+               throw new IllegalStateException("Unknown flush type " + requiredFlush);
          }
       } finally {
          requiredFlush = Flush.None;

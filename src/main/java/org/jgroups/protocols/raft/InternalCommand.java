@@ -44,6 +44,8 @@ public class InternalCommand implements Streamable {
             case removeServer:
                 raft._removeServer(name);
                 break;
+            default:
+                throw new IllegalStateException("Unknown operation type: " + type);
         }
         return null;
     }
