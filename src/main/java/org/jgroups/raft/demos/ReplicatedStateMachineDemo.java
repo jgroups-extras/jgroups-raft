@@ -50,12 +50,12 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
             }
 
             @Override public void remove(String key, Object old_val) {
-                System.out.printf("-- remove(%s) -> %s\n", key, old_val);
+                System.out.printf("-- remove(%s) -> %s%n", key, old_val);
             }
 
             @Override
             public void get(String key, Object val) {
-                System.out.printf("-- get(%s) -> %s\n", key, val);
+                System.out.printf("-- get(%s) -> %s%n", key, val);
             }
         });
         if(listen)
@@ -131,7 +131,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         server.start();
         JmxConfigurator.register(server, Util.getMBeanServer(), "rsm:name=rsm");
         int local_port=server.localAddress() instanceof IpAddress? ((IpAddress)server.localAddress()).getPort(): 0;
-        System.out.printf("\n-- %s listening at %s:%s\n\n", ReplicatedStateMachineDemo.class.getSimpleName(),
+        System.out.printf("%n-- %s listening at %s:%s%n%n", ReplicatedStateMachineDemo.class.getSimpleName(),
                           bind_addr != null? bind_addr : "0.0.0.0",  local_port);
     }
 
@@ -184,6 +184,9 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                 case 'x':
                     looping=false;
                     break;
+                default:
+                    System.out.println("Unknown option: " + input);
+                    break;
             }
         }
     }
@@ -232,7 +235,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     }
 
     protected String getView() {
-        return String.format("local address: %s\nview: %s", ch.getAddress(), ch.getView());
+        return String.format("local address: %s%nview: %s", ch.getAddress(), ch.getView());
     }
 
     protected static String read(String name) {
@@ -254,7 +257,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     }
 
     protected String dumpLog() {
-        return String.format("\nindex (term): command\n---------------------\n%s\n", rsm.dumpLog());
+        return String.format("%nindex (term): command%n---------------------%n%s%n", rsm.dumpLog());
     }
 
     protected void sendResponse(Address target, Object rsp) throws Exception {
@@ -304,8 +307,8 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
                 port=Integer.parseInt(args[++i]);
                 continue;
             }
-            System.out.printf("\n%s [-props <config>] [-name <name>] [-timeout timeout]\n" +
-                                "                   [-bind_addr <bind address>] [-port <bind port>] [-nohup]\n\n",
+            System.out.printf("%n%s [-props <config>] [-name <name>] [-timeout timeout]%n" +
+                                "                   [-bind_addr <bind address>] [-port <bind port>] [-nohup]%n%n",
                               ReplicatedStateMachineDemo.class.getSimpleName());
             return;
         }

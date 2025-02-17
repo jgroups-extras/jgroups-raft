@@ -73,7 +73,7 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
             throw (Exception)obj;
         if(obj != null) {
             if(verbose)
-                System.out.printf("-- result from %s: %s\n", sender, obj);
+                System.out.printf("-- result from %s: %s%n", sender, obj);
             else
                 System.out.println(obj);
         }
@@ -98,7 +98,7 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
                 verbose=true;
                 continue;
             }
-            System.out.printf("\n%s [-host host] [-port port] [-verbose]\n\n",
+            System.out.printf("%n%s [-host host] [-port port] [-verbose]%n%n",
                               ReplicatedStateMachineClient.class.getSimpleName());
             return;
         }
@@ -111,7 +111,7 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
     public void connectionClosed(Connection conn) {
         client.stop();
         running=false;
-        System.out.printf("connection to %s closed\n", conn.peerAddress());
+        System.out.printf("connection to %s closed%n", conn.peerAddress());
     }
 
     @Override
@@ -148,6 +148,9 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
                 case 'x':
                     client.stop();
                     running=false;
+                    break;
+                default:
+                    System.out.println("Unknown option: " + input);
                     break;
             }
         }

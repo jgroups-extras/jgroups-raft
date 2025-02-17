@@ -163,17 +163,17 @@ public class ProgrammaticRSM {
             rsm.addNotificationListener(new ReplicatedStateMachine.Notification<>() {
                 @Override
                 public void put(String key, Object val, Object old_val) {
-                    System.out.printf("-- put(%s, %s) -> %s\n", key, val, old_val);
+                    System.out.printf("-- put(%s, %s) -> %s%n", key, val, old_val);
                 }
 
                 @Override
                 public void remove(String key, Object old_val) {
-                    System.out.printf("-- remove(%s) -> %s\n", key, old_val);
+                    System.out.printf("-- remove(%s) -> %s%n", key, old_val);
                 }
 
                 @Override
                 public void get(String key, Object val) {
-                    System.out.printf("-- get(%s) -> %s\n", key, val);
+                    System.out.printf("-- get(%s) -> %s%n", key, val);
                 }
             });
 
@@ -284,13 +284,16 @@ public class ProgrammaticRSM {
                 case 'x':
                     looping=false;
                     break;
+                default:
+                    System.out.println("Unknown option: " + input);
+                    break;
             }
         }
     }
 
     protected static void put(String key, String value) {
         if(key == null || value == null) {
-            System.err.printf("Key (%s) or value (%s) is null\n",key,value);
+            System.err.printf("Key (%s) or value (%s) is null%n",key,value);
             return;
         }
         try {
@@ -303,7 +306,7 @@ public class ProgrammaticRSM {
 
     protected static void get(String key) {
         if(key == null) {
-            System.err.printf("Key (%s) is null\n",key);
+            System.err.println("Key null is null");
             return;
         }
 
@@ -342,7 +345,7 @@ public class ProgrammaticRSM {
     }
 
     protected static void dumpLog() {
-        System.out.printf("\nindex (term): command\n---------------------\n%s\n",
+        System.out.printf("%nindex (term): command%n---------------------%n%s%n",
                           rsm.dumpLog());
     }
 
