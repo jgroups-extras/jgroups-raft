@@ -103,7 +103,10 @@ public class FileBasedLog implements Log {
          }
          Files.deleteIfExists(snapshotPath());
          if (logDir != null) {
-            logDir.delete(); // must be empty in order to be deleted
+            // must be empty in order to be deleted
+            if (!logDir.delete()) {
+               throw new IllegalStateException("Unable to delete directory " + logDir.getAbsolutePath());
+            }
             logDir = null;
          }
       } catch (IOException e) {
