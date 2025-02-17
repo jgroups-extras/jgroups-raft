@@ -36,10 +36,8 @@ public class NO_DUPES extends Protocol {
     protected volatile View       view;
 
     public Object down(Event evt) {
-        switch(evt.getType()) {
-            case Event.VIEW_CHANGE:
-                view=evt.getArg();
-                break;
+        if (evt.getType() == Event.VIEW_CHANGE) {
+            view = evt.getArg();
         }
         return down_prot.down(evt);
     }

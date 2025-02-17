@@ -19,6 +19,7 @@ import org.jgroups.util.Util;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -191,7 +192,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
                 InternalCommand.Type type=hdr.type == RequestType.ADD_SERVER? InternalCommand.Type.addServer
                   : InternalCommand.Type.removeServer;
                 try {
-                    raft.changeMembers(new String(msg.getArray(), msg.getOffset(), msg.getLength()), type)
+                    raft.changeMembers(new String(msg.getArray(), msg.getOffset(), msg.getLength(), StandardCharsets.UTF_8), type)
                       .whenComplete(rsp_handler);
                 }
                 catch(Throwable t) {

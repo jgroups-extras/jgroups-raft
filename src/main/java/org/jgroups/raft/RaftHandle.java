@@ -37,12 +37,20 @@ public class RaftHandle implements Settable {
      *           Can be null, ie. if it is set later via {@link #stateMachine(StateMachine)}.
      */
     public RaftHandle(JChannel ch, StateMachine sm) {
-        if((this.ch=ch) == null)
+        if(ch == null)
             throw new IllegalStateException("channel must not be null");
-        if((raft=RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
+
+        RAFT r;
+        if((r=RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
             throw new IllegalStateException("RAFT protocol was not found");
-        if((settable=RAFT.findProtocol(Settable.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
+
+        Settable s;
+        if((s=RAFT.findProtocol(Settable.class, ch.getProtocolStack().getTopProtocol(),true)) == null)
             throw new IllegalStateException("did not find a protocol implementing Settable (e.g. REDIRECT or RAFT)");
+
+        this.ch = ch;
+        this.raft = r;
+        this.settable = s;
         stateMachine(sm);
     }
 

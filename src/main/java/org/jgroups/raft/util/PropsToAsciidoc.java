@@ -17,11 +17,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Reader;
-import java.io.StringWriter;
 import java.io.Writer;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -59,7 +59,7 @@ public class PropsToAsciidoc {
         try {
             // first copy protocols-template.adoc file into protocols-template.adoc.xml
             File f = new File(temp_file);
-            copy(new FileReader(prot_file), new FileWriter(f));
+            copy(new FileReader(prot_file, StandardCharsets.UTF_8), new FileWriter(f, StandardCharsets.UTF_8));
 
             ClassLoader cl=Thread.currentThread().getContextClassLoader();
             Set<Class<?>> classes=Util.findClassesAssignableFrom("org.jgroups.protocols.raft", Protocol.class, cl);
@@ -243,7 +243,7 @@ public class PropsToAsciidoc {
                             String s=readUntilBracket(in);
                             out.write(n1);
                             out.write(n2);
-                            out.write(s.getBytes());
+                            out.write(s.getBytes(StandardCharsets.UTF_8));
                             out.write('}');
                         }
                         else {
@@ -284,7 +284,7 @@ public class PropsToAsciidoc {
     protected static void writeVarToStream(String var, Properties p, OutputStream out) throws IOException {
         String val=(String)p.get(var);
         if(val != null)
-            out.write(val.getBytes());
+            out.write(val.getBytes(StandardCharsets.UTF_8));
     }
 
     /** Reads until the next bracket '}' and returns the string excluding the bracket, or throws an exception if
@@ -301,17 +301,6 @@ public class PropsToAsciidoc {
                     sb.append((char)ch);
             }
         }
-    }
-
-    private static String fileToString(File f) throws Exception {
-        StringWriter output = new StringWriter();
-        FileReader input = new FileReader(f);
-        char[] buffer = new char[8 * 1024];
-        int n = 0;
-        while (-1 != (n = input.read(buffer))) {
-            output.write(buffer, 0, n);
-        }
-        return output.toString();
     }
 
     public static int copy(Reader input, Writer output) throws IOException {

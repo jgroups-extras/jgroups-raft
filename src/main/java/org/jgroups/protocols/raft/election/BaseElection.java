@@ -129,6 +129,8 @@ public abstract class BaseElection extends Protocol {
             case Event.VIEW_CHANGE:
                 handleView(evt.getArg());
                 break;
+            default:
+                break;
         }
         return down_prot.down(evt);
     }
@@ -232,6 +234,8 @@ public abstract class BaseElection extends Protocol {
             case 0:
                 log.trace("%s: received vote request from %s at same term %d", local_addr, sender, new_term);
                 break;
+            default:
+                throw new IllegalStateException("Unknown term result: " + result);
         }
 
         Address voted_for=raft.votedFor();
