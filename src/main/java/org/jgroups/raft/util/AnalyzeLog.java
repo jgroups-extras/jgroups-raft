@@ -68,7 +68,7 @@ public class AnalyzeLog {
     }
 
     protected void _analyze(String path) throws Exception {
-        System.out.printf("\n---------- Analyze: %s ----------\n", path);
+        System.out.printf("%n---------- Analyze: %s ----------%n", path);
         try(Log l=createLog()) {
             l.init(path, null);
             long first=l.firstAppended(), commit=l.commitIndex(), last=l.lastAppended(), term=l.currentTerm();
@@ -80,12 +80,12 @@ public class AnalyzeLog {
                     persistent_state=new PersistentState();
                     DataInput snapshot=new ByteArrayDataInputStream(sn);
                     persistent_state.readFrom(snapshot);
-                    System.out.printf("----------\npersistent state: \n%s\n-----------\n", persistent_state);
-                    System.out.printf("----------\nsnapshot: %s\n-----------\n", snapshot_reader.apply(snapshot));
+                    System.out.printf("----------%npersistent state: %n%s%n-----------%n", persistent_state);
+                    System.out.printf("----------%nsnapshot: %s%n-----------%n", snapshot_reader.apply(snapshot));
                 }
             }
 
-            System.out.printf("first=%d, commit-index=%d, last-appended=%d, term=%d, voted-for=%s\n",
+            System.out.printf("first=%d, commit-index=%d, last-appended=%d, term=%d, voted-for=%s%n",
                               first, commit, last, term, votedfor);
 
             for(long i=Math.max(1, first); i <= last; i++) {
@@ -99,7 +99,7 @@ public class AnalyzeLog {
                 LogEntry entry=l.get((int)i);
                 if(entry != null) {
                     String log_contents=reader != null? reader.apply(entry) : entry.toString();
-                    System.out.printf("%d [%d]: %s %s\n", i, entry.term(), log_contents, sj);
+                    System.out.printf("%d [%d]: %s %s%n", i, entry.term(), log_contents, sj);
                 }
             }
         }
@@ -130,7 +130,7 @@ public class AnalyzeLog {
             }
             if(args[i].startsWith("-h")) {
                 System.out.printf("%s [-log_class <log class>] [-reader <class.method>] " +
-                                    "[-snapshot_reader <class.method>] [logfiles]\n",
+                                    "[-snapshot_reader <class.method>] [logfiles]%n",
                                   AnalyzeLog.class.getSimpleName());
                 return;
             }
