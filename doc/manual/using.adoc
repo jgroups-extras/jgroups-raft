@@ -14,7 +14,7 @@ Currently, jgroups-raft requires JDK 11. jgroups-raft can be included in the POM
 ----
 
 Where `X`=major, `Y`=minor, and `Z`=patch.
-The tags are available on https://github.com/belaban/jgroups-raft/tags[GitHub releases].
+The tags are available on https://github.com/jgroups-extras/jgroups-raft/tags[GitHub releases].
 
 === Cluster members and identity
 
@@ -133,7 +133,7 @@ public interface StateMachine {
 
 All cluster members maintain a persistent log and append all changes as log entries to the end of the log. To prevent
 logs from growing indefinitely, a _snapshot_ of the state machine can be made and the log truncated. This is done
-(programatically) with method `snapshot()`, or declaratively (see below).
+(programmatically) with method `snapshot()`, or declaratively (see below).
 
 This method calls `StateMachine.writeContentTo()` to dump the state of the state machine into a snapshot file and then
 truncates the log. New members who don't have a log yet are initialized by sending them the snapshot first. After that,
@@ -225,7 +225,7 @@ A sample XML configuration file is shown below (edited for brevity):
      (and may, in the future) be replaced with a different election protocol. Attributes `election_min_interval` and
      `election_max_interval` define the range from which jgroups-raft picks a random election timeout.
 <3> `RAFT`: the main protocol implementing log appending and committing, handling state machine updates, snapshotting etc.
-     Attribute `members` defines the (fixed) membership (may still be redfined by `addServer`/`removeServer` log entries
+     Attribute `members` defines the (fixed) membership (may still be redefined by `addServer`/`removeServer` log entries
      when initializing a member from the persistent log). Attribute `raft_id` defines the ID of the current member (needs
      to be an element of `members`, as discussed earlier).
 <4> `REDIRECT` is used to redirect requests to the current Raft leader, or to throw an exception if no member is leader

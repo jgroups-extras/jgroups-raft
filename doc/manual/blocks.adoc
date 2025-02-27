@@ -52,7 +52,7 @@ possibly stale, but having a faster response since the request does not go throu
 The behavior is changed by calling `ReplicatedStateMachine.allowDirtyReads(boolean)`.
 
 NOTE: A quorum read creates an entry in the persistent log. See
-https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
+https://github.com/jgroups-extras/jgroups-raft/issues/18[Issue 18] for details.
 
 [[CounterService]]
 === CounterService
@@ -244,7 +244,7 @@ is ordered correctly wrt writes in the log, it will always return correct values
 
 The cost is that reads take up space in the persistent logs and that we need consensus (majority) for reads. In the next
 release of jgroups-raft, the mechanism for client reads as suggested in the Raft paper will be implemented. See
-https://github.com/belaban/jgroups-raft/issues/18[Issue 18] for details.
+https://github.com/jgroups-extras/jgroups-raft/issues/18[Issue 18] for details.
 
 ==== Ignoring return values
 Sometimes, a caller is not interested in the result of an operation. E.g. a stress test may want to update a counter
