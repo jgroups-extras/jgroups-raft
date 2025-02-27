@@ -125,38 +125,6 @@ public class LogEntryStorage {
       }
    }
 
-   /**
-    * This is not used but for testing, hence it's not using any batching optimization as
-    * {@link #appendWithoutOverwriteCheck} does.
-    */
-   private int appendOverwriteCheck(LogEntry[] entries, long index, long position) throws IOException {
-      int term = 0;
-      for (LogEntry entry : entries) {
-         Header header = new Header(position, index, entry);
-         if (!entryExists(header)) {
-            final ByteBuffer buffer = fileStorage.ioBufferWith(header.totalLength);
-            header.writeTo(buffer);
-            buffer.put(entry.command(), entry.offset(), entry.length());
-            buffer.flip();
-            fileStorage.write(header.position);
-            buffer.clear();
-            setFilePosition(header.index, header.position);
-            term =(int)Math.max(entry.term(), term);
-         }
-         position = header.nextPosition();
-         ++index;
-      }
-
-      lastAppended = index - 1;
-      if (positionCache.invalidateFrom(index)) {
-         fileStorage.truncateTo(position);
-      }
-      if (fsync) {
-         fileStorage.flush();
-      }
-      return term;
-   }
-
    private int appendWithoutOverwriteCheck(LogEntries entries, long index, long position) throws IOException {
       int term = 0;
       int batchBytes = 0;
@@ -279,17 +247,6 @@ public class LogEntryStorage {
          position = header.nextPosition();
          ++startIndex;
       }
-   }
-
-   private boolean entryExists(Header header) throws IOException {
-      Header existing = readHeader(this, header.position);
-      if (existing == null) {
-         return false;
-      }
-      if (existing.equals(header)) { // same entry, skip overwriting
-         return true;
-      }
-      throw new IllegalStateException();
    }
 
    public void useFsync(final boolean value) {
