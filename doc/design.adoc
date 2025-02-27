@@ -65,7 +65,7 @@ Candidate:: Waits for election responses. Becomes Leader if it wins the election
 Leader:: Starts the heartbeat. Goes back to Follower is it sees a message with a higher term. Handles all client requests
          by sending them to the followers and committing them in case of a majority response.
 
-There's a common superclass `RaftImpl` which handles all of the common state and other ancilary functions (e.g. timers).
+There's a common superclass `RaftImpl` which handles all of the common state and other ancillary functions (e.g. timers).
 
 === Properties
 heartbeat_interval:: Interval (in ms) at which the heartbeats are set (default: 50 ms)

@@ -1,9 +1,7 @@
+= Raft in JGroups
 
-RAFT in JGroups
-===============
+== Goals
 
-Goals
------
 . Implement the RAFT consensus protocol in JGroups
 . Provide an API to RAFT
 . Implement etcd (?) [API and REST interface]
@@ -11,8 +9,8 @@ Goals
 . View installation via consensus ?
 
 
-Advantages of using JGroups as basis for a RAFT impl
-----------------------------------------------------
+== Advantages of using JGroups as basis for a RAFT impl
+
 * Transports already available: UDP, TCP
 ** Contains thread pools, priority delivery (OOB), batching etc
 * Variety of discovery protocols
@@ -23,14 +21,14 @@ Advantages of using JGroups as basis for a RAFT impl
 * Sync/async cluster RPC
 
 
-Design overview
----------------
+== Design overview
+
 * Raft building block over a channel
 ** Communicates with RAFT protocol via events (like COUNTER or CENTRAL_LOCK)
 
 
-Design issues
--------------
+== Design issues
+
 * Separate protocols for
 ** Leader election
 *** Could be omitted as JGroups already has a leader
@@ -50,8 +48,8 @@ Design issues
 *** JGroups coordinator != RAFT leader
 
 
-Replace RAFT's heartbeat mechanism
-----------------------------------
+== Replace RAFT's heartbeat mechanism
+
 * The problem is that the AppendEntries RPC is used for log shipping *and* heartbeating
 * The heartbeating part is done (ca. every 20-30 ms) even when no logs have to be shipped
 ** This is annoying as
@@ -77,8 +75,8 @@ Replace RAFT's heartbeat mechanism
 * Issues: look at whether merging can be done with this mechanism, too
 
 
-Misc
-----
+== Misc
+
 * Seperate GitHub project for now for RAFT protocol and building block
 ** May be moved into JGroups once it is stable
 ** But for now, with a separate project we can release quickly and independently
@@ -89,8 +87,8 @@ Misc
 * Use of LevelDB / JDBM2 for persistence ?
 
 
-Issues
-------
+== Issues
+
 * What happens with client requests when no leader is elected ?
 ** Are they queued ?
 
@@ -103,7 +101,7 @@ Issues
 
 * We cannot use JGroups leader election (coordinators) because *a new leader may not contain
   all of the committed log entries !*
-  ** In RAFT's leader election algorithm, only candidates will all (or the most) committed entries can become leaders
+  ** In RAFT's leader election algorithm, only candidates with all (or the most) committed entries can become leaders
 
 
 
