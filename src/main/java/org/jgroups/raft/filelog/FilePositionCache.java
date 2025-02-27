@@ -68,10 +68,8 @@ public class FilePositionCache {
             throw new IllegalArgumentException("The required pageOffset is beyond page capacity");
          }
          final long oldValue = positions[pageOffset];
-         if (oldValue == EMPTY) {
-            if (pageOffset > lastNotEmptyOffset) {
-               lastNotEmptyOffset = pageOffset;
-            }
+         if (oldValue == EMPTY && pageOffset > lastNotEmptyOffset) {
+            lastNotEmptyOffset = pageOffset;
          }
          positions[pageOffset] = position;
          return oldValue;
@@ -181,7 +179,7 @@ public class FilePositionCache {
          return false;
       }
       boolean clearSomething = positionPages.get(pageIndex).clearFrom(toPageOffset(cacheIndex));
-      for (int i = (pageIndex + 1); i < positionPages.size(); i++) {
+      for (int i = pageIndex + 1; i < positionPages.size(); i++) {
          clearSomething |= positionPages.get(i).clear();
       }
       return clearSomething;
@@ -223,7 +221,7 @@ public class FilePositionCache {
          newLogIndex++;
       }
       newLogIndex += (PAGE_CAPACITY - (positionPage.lastNotEmptyOffset + 1));
-      for (int i = (pageIndex + 1); i < oldPages; i++) {
+      for (int i = pageIndex + 1; i < oldPages; i++) {
          final PositionPage page = positionPages.get(i);
          if (page != null) {
             final int lastNotEmptyPageOffset = page.lastNotEmptyOffset;

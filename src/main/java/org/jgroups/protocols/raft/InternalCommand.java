@@ -55,6 +55,6 @@ public class InternalCommand implements Streamable {
         return type + (type == Type.noop? "" : "(" + name + ")");
     }
 
-    public enum Type {addServer, removeServer, noop};
+    public enum Type {addServer, removeServer, noop}
 
 }

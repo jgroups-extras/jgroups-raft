@@ -54,6 +54,6 @@ public class Options implements SizeStreamable {
 
     @Override
     public int hashCode() {
-        return (ignore_return_value ? 1 : 0);
+        return ignore_return_value ? 1 : 0;
     }
 }

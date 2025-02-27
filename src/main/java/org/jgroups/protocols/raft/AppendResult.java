@@ -14,7 +14,7 @@ import java.io.IOException;
  */
 public class AppendResult implements Streamable {
 
-    public enum Result {OK, FAIL_ENTRY_NOT_FOUND, FAIL_CONFLICTING_PREV_TERM};
+    public enum Result {OK, FAIL_ENTRY_NOT_FOUND, FAIL_CONFLICTING_PREV_TERM}
 
     /** True if the append succeeded, false otherwise */
     protected Result  result;

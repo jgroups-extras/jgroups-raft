@@ -86,21 +86,21 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
         boolean     verbose=false;
 
         for(int i=0; i < args.length; i++) {
-            if(args[i].equals("-host")) {
-                host=InetAddress.getByName(args[++i]);
-                continue;
+            switch (args[i]) {
+                case "-host":
+                    host = InetAddress.getByName(args[++i]);
+                    continue;
+                case "-port":
+                    port = Integer.parseInt(args[++i]);
+                    continue;
+                case "-verbose":
+                    verbose = true;
+                    continue;
+                default:
+                    System.out.printf("%n%s [-host host] [-port port] [-verbose]%n%n",
+                            ReplicatedStateMachineClient.class.getSimpleName());
+                    return;
             }
-            if(args[i].equals("-port")) {
-                port=Integer.parseInt(args[++i]);
-                continue;
-            }
-            if(args[i].equals("-verbose")) {
-                verbose=true;
-                continue;
-            }
-            System.out.printf("%n%s [-host host] [-port port] [-verbose]%n%n",
-                              ReplicatedStateMachineClient.class.getSimpleName());
-            return;
         }
         ReplicatedStateMachineClient cl=new ReplicatedStateMachineClient(verbose);
         cl.start(host, port);
