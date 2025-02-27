@@ -111,7 +111,7 @@ public class ELECTION2 extends BaseElection {
     @Override
     protected void handleMessage(Message msg, RaftHeader hdr) {
         if (hdr instanceof PreVoteRequest) {
-            handlePreVoteRequest(msg, (PreVoteRequest) hdr);
+            handlePreVoteRequest(msg);
             return;
         }
 
@@ -135,9 +135,8 @@ public class ELECTION2 extends BaseElection {
      * itself. The sender is checking if a cluster-wide election round should be started.
      *
      * @param message: The message received.
-     * @param hdr: The message header.
      */
-    private void handlePreVoteRequest(Message message, PreVoteRequest hdr) {
+    private void handlePreVoteRequest(Message message) {
         sendPreVoteResponse(message.getSrc());
     }
 

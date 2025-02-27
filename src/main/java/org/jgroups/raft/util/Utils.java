@@ -26,7 +26,7 @@ public class Utils {
     }
 
     public static boolean majorityLost(View old, View new_view, int majority) {
-        return (old != null && old.size() >= majority) && new_view.size() < majority;
+        return old != null && old.size() >= majority && new_view.size() < majority;
     }
 
     public static Majority computeMajority(View old, View new_view, int majority, Address leader) {

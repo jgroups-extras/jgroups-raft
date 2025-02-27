@@ -115,10 +115,8 @@ public final class FileStorage implements Closeable {
       }
       try {
          final int written = channel.write(ioBuffer, position);
-         if (written < dataLength) {
-            if (!growFile) {
-               fileSize = position + written;
-            }
+         if (written < dataLength && !growFile) {
+            fileSize = position + written;
          }
          if (written > 0 && requiredFlush == Flush.None) {
             requiredFlush = Flush.Data;

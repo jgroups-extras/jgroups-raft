@@ -227,7 +227,7 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     protected Object snapshot() {
         try {
             rsm.snapshot();
-            return "snapshot suceeded";
+            return "snapshot succeeded";
         }
         catch(Exception e) {
             return String.format("snapshot failed: %s", e);
@@ -279,38 +279,34 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
         int         port=2065;
 
         for(int i=0; i < args.length; i++) {
-            if(args[i].equals("-props")) {
-                props=args[++i];
-                continue;
+            switch (args[i]) {
+                case "-props":
+                    props = args[++i];
+                    continue;
+                case "-name":
+                    name = args[++i];
+                    continue;
+                case "-listen":
+                    listen = true;
+                    continue;
+                case "-nohup":
+                    nohup = true;
+                    continue;
+                case "-timeout":
+                    timeout = Long.parseLong(args[++i]);
+                    continue;
+                case "-bind_addr":
+                    bind_addr = InetAddress.getByName(args[++i]);
+                    continue;
+                case "-port":
+                    port = Integer.parseInt(args[++i]);
+                    continue;
+                default:
+                    System.out.printf("%n%s [-props <config>] [-name <name>] [-timeout timeout]%n" +
+                                    "                   [-bind_addr <bind address>] [-port <bind port>] [-nohup]%n%n",
+                            ReplicatedStateMachineDemo.class.getSimpleName());
+                    return;
             }
-            if(args[i].equals("-name")) {
-                name=args[++i];
-                continue;
-            }
-            if(args[i].equals("-listen")) {
-                listen=true;
-                continue;
-            }
-            if(args[i].equals("-nohup")) {
-                nohup=true;
-                continue;
-            }
-            if(args[i].equals("-timeout")) {
-                timeout=Long.parseLong(args[++i]);
-                continue;
-            }
-            if(args[i].equals("-bind_addr")) {
-                bind_addr=InetAddress.getByName(args[++i]);
-                continue;
-            }
-            if(args[i].equals("-port")) {
-                port=Integer.parseInt(args[++i]);
-                continue;
-            }
-            System.out.printf("%n%s [-props <config>] [-name <name>] [-timeout timeout]%n" +
-                                "                   [-bind_addr <bind address>] [-port <bind port>] [-nohup]%n%n",
-                              ReplicatedStateMachineDemo.class.getSimpleName());
-            return;
         }
         new ReplicatedStateMachineDemo().start(props, name, timeout, bind_addr, port, listen, nohup);
     }
