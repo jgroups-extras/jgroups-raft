@@ -90,31 +90,29 @@ public class ProgrammaticRSM {
         List<String> members=null;
 
         for(int i=0; i < args.length; i++) {
-            if(args[i].equals("-name")) {
-                name=args[++i];
-                continue;
+            switch (args[i]) {
+                case "-name":
+                    name = args[++i];
+                    continue;
+                case "-timeout":
+                    timeout = Long.parseLong(args[++i]);
+                    continue;
+                case "-bind_addr":
+                    bind_addr = args[++i];
+                    continue;
+                case "-bind_port":
+                    bind_port = Integer.parseInt(args[++i]);
+                    continue;
+                case "-members":
+                    members = Util.parseCommaDelimitedStrings(args[++i]);
+                    continue;
+                default:
+                    System.out.println("ReplicatedStateMachine -members members -name name" +
+                            "                       [-timeout timeout] -tcp true|false]\n" +
+                            "                       [-bind_addr addr] [-bind_port port]\n" +
+                            " Example: -members A,B,C,D -name C");
+                    return;
             }
-            if(args[i].equals("-timeout")) {
-                timeout=Long.parseLong(args[++i]);
-                continue;
-            }
-            if(args[i].equals("-bind_addr")) {
-                bind_addr=args[++i];
-                continue;
-            }
-            if(args[i].equals("-bind_port")) {
-                bind_port=Integer.parseInt(args[++i]);
-                continue;
-            }
-            if(args[i].equals("-members")) {
-                members=Util.parseCommaDelimitedStrings(args[++i]);
-                continue;
-            }
-            System.out.println("ReplicatedStateMachine -members members -name name" +
-                               "                       [-timeout timeout] -tcp true|false]\n" +
-                               "                       [-bind_addr addr] [-bind_port port]\n" +
-                               " Example: -members A,B,C,D -name C");
-            return;
         }
 
         if(members == null || members.isEmpty())

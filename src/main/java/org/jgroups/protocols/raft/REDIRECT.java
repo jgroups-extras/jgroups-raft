@@ -49,7 +49,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         ClassConfigurator.add(REDIRECT_HDR, RedirectHeader.class);
     }
 
-    public enum RequestType {REQ, ADD_SERVER, REMOVE_SERVER, RSP};
+    public enum RequestType {REQ, ADD_SERVER, REMOVE_SERVER, RSP}
 
 
     protected RAFT                raft;
@@ -294,7 +294,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         }
 
         public short getMagicId() {
-            return REDIRECT.REDIRECT_HDR;
+            return REDIRECT_HDR;
         }
 
         public Supplier<? extends Header> create() {

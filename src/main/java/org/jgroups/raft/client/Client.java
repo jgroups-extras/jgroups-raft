@@ -63,7 +63,7 @@ public class Client {
         }
 
         try {
-            Client.start(dest, port, add_server, remove_server);
+            start(dest, port, add_server, remove_server);
         } catch (Throwable t) {
             t.printStackTrace();
             System.exit(1);
