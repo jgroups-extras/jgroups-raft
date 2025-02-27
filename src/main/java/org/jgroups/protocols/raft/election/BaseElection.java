@@ -329,13 +329,11 @@ public abstract class BaseElection extends Protocol {
         }
 
         // If externally put to stop, verify if is possible to stop.
-        if (stopVoting) {
+        if (stopVoting && (!isMajorityAvailable() || raft.leader() != null)) {
             // Only stop in case there is no majority or the leader is already null.
             // Otherwise, keep running.
-            if (!isMajorityAvailable() || raft.leader() != null) {
-                stopVotingThreadInternal();
-                return;
-            }
+            stopVotingThreadInternal();
+            return;
         }
 
         View electionView = this.view;

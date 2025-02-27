@@ -62,15 +62,15 @@ public class Leader extends RaftImpl {
                 boolean done = reqtab.add(result.index, sender_raft_id, this.majority);
                 if(done) {
                     raft.commitLogTo(result.index, true);
-                }
-                // Send commits immediately.
-                // Note that, an entry is committed by a MAJORITY, this means that some of the nodes doesn't know the entry exist yet.
-                // This way, send the commit messages any time we handle an append response.
-                if(raft.send_commits_immediately) {
-                    // Done is only true when reaching a majority threshold, we also need to check is committed to resend
-                    // to slower nodes.
-                    if (done || reqtab.isCommitted(result.index))
+
+                    // Send commits immediately.
+                    // Note that, an entry is committed by a MAJORITY, this means that some of the nodes doesn't know the entry exist yet.
+                    // This way, send the commit messages any time we handle an append response.
+                    if(raft.send_commits_immediately && reqtab.isCommitted(result.index)) {
+                        // Done is only true when reaching a majority threshold, we also need to check is committed to resend
+                        // to slower nodes.
                         sendCommitMessageToFollowers();
+                    }
                 }
                 break;
                 // todo: change

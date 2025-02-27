@@ -66,6 +66,7 @@
         <!-- Code quality red tape. -->
         <version.puppycrawl>10.21.2</version.puppycrawl>
         <version.spotbugs.plugin>4.9.1.0</version.spotbugs.plugin>
+        <version.pmd.plugin>3.26.0</version.pmd.plugin>
 
         <!-- Plugins -->
         <version.nexus3.plugin>1.0.13</version.nexus3.plugin>
@@ -272,11 +273,10 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-pmd-plugin</artifactId>
-                <version>3.26.0</version>
+                <version>${version.pmd.plugin}</version>
                 <configuration>
                     <targetJdk>11</targetJdk>
                     <linkXRef>false</linkXRef>
-                    <sourceEncoding>${project.build.sourceEncoding}</sourceEncoding>
                     <minimumTokens>100</minimumTokens>
                     <outputDirectory>${project.build.directory}/pmd</outputDirectory>
                     <format>net.sourceforge.pmd.renderers.SarifRenderer</format>

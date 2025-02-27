@@ -92,7 +92,7 @@ public class CounterServiceDemo {
                                 System.out.println("-- count=" + retval);
                         }
                         long diff=System.currentTimeMillis() - start;
-                        System.out.printf("%n%d incrs took %d ms; %.2f ops /sec%n", NUM, diff, (NUM / (diff / 1000.0)));
+                        System.out.printf("%n%d incrs took %d ms; %.2f ops /sec%n", NUM, diff, NUM / (diff / 1000.0));
                         break;
                     case '7':
                         NUM=Util.readIntFromStdin("num: ");
@@ -147,24 +147,23 @@ public class CounterServiceDemo {
         long repl_timeout=5000;
         boolean allow_dirty_reads=true;
         for(int i=0; i < args.length; i++) {
-            if(args[i].equals("-props")) {
-                properties=args[++i];
-                continue;
+            switch (args[i]) {
+                case "-props":
+                    properties = args[++i];
+                    continue;
+                case "-name":
+                    name = args[++i];
+                    continue;
+                case "repl_timeout":
+                    repl_timeout = Long.parseLong(args[++i]);
+                    continue;
+                case "-allow_dirty_reads":
+                    allow_dirty_reads = Boolean.parseBoolean(args[++i]);
+                    continue;
+                default:
+                    help();
+                    return;
             }
-            if(args[i].equals("-name")) {
-                name=args[++i];
-                continue;
-            }
-            if(args[i].equals("repl_timeout")) {
-                repl_timeout=Long.parseLong(args[++i]);
-                continue;
-            }
-            if(args[i].equals("-allow_dirty_reads")) {
-                allow_dirty_reads=Boolean.parseBoolean(args[++i]);
-                continue;
-            }
-            help();
-            return;
         }
 
 
