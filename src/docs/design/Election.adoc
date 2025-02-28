@@ -1,15 +1,17 @@
+= Election based on JGroups views
+:author: Bela Ban
+:description: The design of the ELECTION algorithm for leader election.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
 
-Election based on JGroups views
-===============================
-Author: Bela Ban
 
+== Motivation
 
-Motivation
-----------
 The current impl of jgroups-raft ignores the functionality (failure detection, view changes) JGroups offers and
-implements leader election more or less as described in [1].
+implements leader election more or less as described in <<ongaro-dissertation-el>>.
 
 By rewriting that part to reuse JGroups functionality, the following advantages can be had:
+
 * More deterministic voting process, each round is _orchestrated_ by the coordinator
 * Code reduction, reuse of proven code
 * Many failure detection protocols are available
@@ -19,10 +21,10 @@ By rewriting that part to reuse JGroups functionality, the following advantages 
 * No elections unless triggered by view changes -> this reduces competing elections
 
 
-In a nutshell
--------------
+=== In a nutshell
+
 * Leader election is started only on view changes
-* Contrary to [1], there are only leaders or followers, *no* candidates
+* Contrary to <<ongaro-dissertation-el>>, there are only leaders or followers, *no* candidates
 * Once a leader is elected, there won't be any elections until a new view (not including the leader, or dropping below
   the majority) is installed
 * New members get the term and the leader's address via a message from the current leader (LeaderElected)
@@ -38,61 +40,62 @@ voting is stopped and a LeaderElected message (with the new term and leader) is 
 
 
 
-Implementation
---------------
+== Implementation
 
-State
------
+=== State
+
 - term: the current term
 - leader: the address of the leader
 - voted-for: the address of the member we voted for in the current term
 
 
-On reception of view change
----------------------------
+=== On reception of view change
+
 - Coordinator: if the majority is reached or the leader left -> start the voting thread
 - Leader: new members joined -> send a LeaderElected msg to new members
 - If the majority is lost -> leader=null
 
-Voting thread
--------------
+=== Voting thread
+
 - Periodically: increment term and send a VoteRequest(term) to all members (+self)
 - Terminates when LeaderElected message is received, or on shutdown
 
-On reception of VoteRequest(term)
----------------------------------
-- If term < current_term: reject (don't send a VoteResponse)
-- Else:
-      - If term > current_term -> voted-for=null, current_term=term
-      - If voted-for == null or voted-for == vote requester -> set voted-for=vote requester, send VoteResponse
-- Send a VoteResponse (containing the current term and last log index and last log term) back to the sender
+=== On reception of VoteRequest(term)
+
+* If term < current_term: reject (don't send a VoteResponse)
+* Else:
+      ** If term > current_term -> voted-for=null, current_term=term
+      ** If voted-for == null or voted-for == vote requester -> set voted-for=vote requester, send VoteResponse
+* Send a VoteResponse (containing the current term and last log index and last log term) back to the sender
   (Example current_term=26 (the number of elections held so far), last_log_index=2012, last_log_term=6)
 
 
-On reception of VoteResponse
-----------------------------
+=== On reception of VoteResponse
+
 (on coordinator)
-- If enough votes
-    -> Determine the leader based on highest last log term / index / rank
-    -> Set term to max of all received current terms
-    -> Send LeaderElected(leader,term) message to all members (+self)
-    -> Stop voting thread
-- Else
-    -> Continue
+
+* If enough votes
+    ** Determine the leader based on highest last log term / index / rank
+    ** Set term to max of all received current terms
+    ** Send LeaderElected(leader,term) message to all members (+self)
+    ** Stop voting thread
+* Else
+    ** Continue
 
 
-On reception of LeaderElected(leader,term) message
---------------------------------------------------
+=== On reception of LeaderElected(leader,term) message
+
 - if(leader == self) -> become leader
 - Only on the coordinator: stop the Voting thread
 - Set term and leader
 
 
-Leader: on reception of any request(term)
------------------------------------------
+=== Leader: on reception of any request(term)
+
 - If term > current_term -> step down as leader and become follower
 - If term < current_term -> reject / send negative rsp (depending on role and protocol (RAFT,ELECTION))
 
+[bibliography]
+== References
 
-
-[1] https://github.com/ongardie/dissertation
+* [[[ongaro-dissertation-el,1]]] Ongaro, D. (2014). Consensus: Bridging theory and practice. Stanford University.

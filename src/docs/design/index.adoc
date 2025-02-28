@@ -1,0 +1,31 @@
+= Distributed consensus with JGroups Raft
+Bela Ban <belaban@yahoo.com>
+José Bolina <jbolina@redhat.com>
+:toc2:
+:toclevels: 3
+:icons:
+:homepage: http://belaban.github.io/jgroups-raft
+:source-highlighter: pygments
+:doctype: book
+:sectnums:
+:partnums:
+
+&copy; Red Hat 2014 – 2025
+
+This document is licensed under the
+http://creativecommons.org/licenses/by-sa/3.0/us/legalcode["Creative Commons Attribution-ShareAlike (CC-BY-SA) 3.0"]
+license.
+
+[colophon]
+= About
+
+This is the JGroups Raft design documents.
+It contains a collection of design documents for the various components of JGroups Raft.
+
+include::./AppendEntries.adoc[AppendEntries design]
+
+include::./Election.adoc[ELECTION algorithm design]
+
+include::./Election2.adoc[ELECTION2 algorithm design]
+
+include::./Log.adoc[Persistent log design]
