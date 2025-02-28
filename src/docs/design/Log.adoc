@@ -1,8 +1,8 @@
-
-
-The persistent log (org.jgroups.protocols.raft.Log)
-===================================================
-Author: Bela Ban
+= The persistent log (org.jgroups.protocols.raft.Log)
+:author: Bela Ban
+:description: The design of the ELECTION algorithm for leader election.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
 
 The persistent log maintains a list of log entries, where each entry has a term and a byte[] buffer to store the command
 to be applied to the state machine.
@@ -11,111 +11,125 @@ A log starts at index 1, so the first element is always unused (marker element).
 Iteration works on elements in range [first_appended .. last_appended]
 
 
-Variables
-----------
+== Variables
+
 - first_appended: the index of the first appended item. Initial value: 0
 - last_appended: the index of the last added item. Initial value: 0
 - commit_index: the index of the last committed item. Always <= last_appended. Initial value: 0
 
 
-Initial state (at the leader)
------------------------------
+== Initial state (at the leader)
+
 The initial log looks like this (conceptually shown as an array):
 
+[ditaa]
+----
                     0   1   2   3   4
                   ---------------------
                   | - |   |   |   |   |
                   ---------------------
                     ^
                     |
-  first_appended ----
+  first_appended ---+
                     |
-  last_appended -----
+  last_appended ----+
                     |
-  commit_index ------
-
+  commit_index -----+
+----
 
 
 After adding A and B:
 
+[ditaa]
+----
                     0   1   2   3   4
                   ---------------------
                   | - | A | B |   |   |
                   ---------------------
                     ^       ^
                     |       |
-  first_appended ----       |
+  first_appended ---+       |
                     |       |
-  last_appended -------------
+  last_appended ----+-------+
                     |
-  commit_index ------
-
+  commit_index -----+
+----
 
 
 Now we got acks from a majority of members for index 2:
 
+[ditaa]
+----
                     0   1   2   3   4
                   ---------------------
                   | - | A | B |   |   |
                   ---------------------
                     ^       ^
                     |       |
-  first_appended ----       |
+  first_appended ---+       |
                             |
-  last_appended -------------
+  last_appended ------------+
                             |
-  commit_index --------------
-
+  commit_index -------------+
+----
 
 After adding a few more log entries:
 
+[ditaa]
+----
                     0   1   2   3   4   5   6   7   8
                   -------------------------------------
                   | - | A | B | C | D | D | E | F | G |
                   -------------------------------------
                     ^
                     |
-  first_appended ----                       ^       ^
+  first_appended ---+                       ^       ^
                                             |       |
-  last_appended -------------------------------------
+  last_appended ----------------------------+-------+
                                             |
-  commit_index ------------------------------
-
+  commit_index -----------------------------+
+----
 
 We now have 8 log entries, but thus far only committed 6.
 
 Now the log is truncated at the last committed entry (Log.truncate(6)):
 
+[ditaa]
+----
                     6   7   8   9  10  11  12  13  14
                   -------------------------------------
                   | E | F | G |   |   |   |   |   |   |
                   -------------------------------------
                     ^       ^
                     |       |
-  first_appended ----       |
+  first_appended ---+       |
                     |       |
-  last_appended -------------
+  last_appended ----+-------+
                     |
-  commit_index ------
+  commit_index -----+
+----
 
-
-- All entries from [1 .. 6] were written to a snapshot
-- The array was wiped and the first entry is now the last committed entry written to the snapshot (6)
-  - This is needed because we need that entry to compare to (prev entry) on the next log append
-- first_appended is set to 6
+* All entries from [1 .. 6] were written to a snapshot
+* The array was wiped and the first entry is now the last committed entry written to the snapshot (6)
+  ** This is needed because we need that entry to compare to (prev entry) on the next log append
+* first_appended is set to 6
 
 Now a log entry H with index 9 is added:
+
+[ditaa]
+----
                     6   7   8   9  10  11  12  13  14
                   -------------------------------------
                   | E | F | G | H |   |   |   |   |   |
                   -------------------------------------
                     ^           ^
                     |           |
-  first_appended ----           |
+  first_appended ---+           |
                     |           |
-  last_appended -----------------
+  last_appended ----+-----------+
                     |
-  commit_index ------
+  commit_index -----+
+----
 
 - last_appended is advanced
 - commit_index will also advance when acks from the majority have been received
