@@ -17,11 +17,11 @@ atlassian*
 keystore/
 tmp/
 bla*.java
-doc/manual/target
+src/docs/manual/target
 doc/manual/*.css
-doc/manual/build/*
+src/docs/manual/build/*
 doc/manual/*.tmp
-doc/manual/*-generated.adoc
+src/docs/manual/*-generated.adoc
 doc/tutorial/target
 conf/MANIFEST.MF
 target/

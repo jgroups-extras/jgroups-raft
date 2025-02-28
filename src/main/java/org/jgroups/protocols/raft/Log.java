@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.function.ObjLongConsumer;
 
 /**
- * The interface for a persistent log. See doc/design/Log.txt for details.
+ * The interface for a persistent log. See doc/design/Log.adoc for details.
  * @author Bela Ban
  * @since  0.1
  */

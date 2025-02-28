@@ -1,7 +1,8 @@
 = ELECTION2 Design
-José Bolina <jbolina@redhat.com>
+:author: José Bolina <jbolina@redhat.com>
 :description: The design of the ELECTION2 algorithm for leader election.
-:homepage: http://belaban.github.io/jgroups-raft
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
 
 `ELECTION2` is an alternative election algorithm.
 It builds on the base `ELECTION` algorithm to include a pre-voting mechanism that verifies the need to start an election round.
@@ -122,6 +123,7 @@ Meeting any of these requirements, the coordinator proceeds and starts the ELECT
 The pre-voting phase of `ELECTION2` adds a delay before starting the leader election algorithm, which is the downside of `ELECTION2`.
 In addition to the algorithm based on view changes, `ELECTION2` should provide a robust and stable leader election algorithm, covering the issue of `ELECTION`.
 
+[bibliography]
 == References
 
 * [[[cloudflare-outage,1]]] Lianza, T., &amp; Snook, C. (2020, November 27). A Byzantine failure in the real world. The Cloudflare Blog. https://blog.cloudflare.com/a-byzantine-failure-in-the-real-world/
