@@ -572,6 +572,7 @@
             <id>manual</id>
             <properties>
                 <skipTests>true</skipTests>
+                <checkstyle.skip>true</checkstyle.skip>
             </properties>
             <build>
                 <plugins>
@@ -594,7 +595,7 @@
                                 <argument>-classpath</argument>
                                 <classpath />
                                 <argument>org.jgroups.raft.util.PropsToAsciidoc</argument>
-                                <argument>${basedir}/doc/manual/protocols-template.adoc</argument>
+                                <argument>${basedir}/src/docs/manual/protocols-template.adoc</argument>
                             </arguments>
                         </configuration>
                     </plugin>
@@ -606,10 +607,20 @@
                         <artifactId>asciidoctor-maven-plugin</artifactId>
 
                         <configuration>
-                            <sourceDirectory>${basedir}/doc/manual</sourceDirectory>
                             <requires>
                                 <require>asciidoctor-diagram</require>
                             </requires>
+                            <attributes>
+                                <revdate>${maven.build.timestamp}</revdate>
+                                <organization>${project.organization.name}</organization>
+                                <source-highlighter>rouge</source-highlighter>
+                                <rouge-style>github</rouge-style>
+                                <icons>font</icons>
+                                <toclevels>3</toclevels>
+                                <sectnums>true</sectnums>
+                                <sectnumlevels>3</sectnumlevels>
+                                <sectanchors>true</sectanchors>
+                            </attributes>
                         </configuration>
 
                         <executions>
@@ -621,20 +632,22 @@
                                 </goals>
 
                                 <configuration>
-                                    <sourceDocumentName>manual.adoc</sourceDocumentName>
-
+                                    <sourceDirectory>src/docs/manual</sourceDirectory>
                                     <outputDirectory>${project.build.directory}/doc/manual</outputDirectory>
-                                    <attributes>
-                                        <revdate>${maven.build.timestamp}</revdate>
-                                        <organization>${project.organization.name}</organization>
-                                        <source-highlighter>rouge</source-highlighter>
-                                        <rouge-style>github</rouge-style>
-                                        <icons>font</icons>
-                                        <toclevels>3</toclevels>
-                                        <sectnums>true</sectnums>
-                                        <sectnumlevels>3</sectnumlevels>
-                                        <sectanchors>true</sectanchors>
-                                    </attributes>
+                                </configuration>
+                            </execution>
+
+                            <execution>
+                                <id>generate-design</id>
+                                <phase>prepare-package</phase>
+                                <goals>
+                                    <goal>process-asciidoc</goal>
+                                </goals>
+
+                                <configuration>
+                                    <sourceDocumentName>manual.adoc</sourceDocumentName>
+                                    <sourceDirectory>src/docs/design</sourceDirectory>
+                                    <outputDirectory>${project.build.directory}/doc/design</outputDirectory>
                                 </configuration>
                             </execution>
                         </executions>
