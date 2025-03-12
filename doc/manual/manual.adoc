@@ -31,3 +31,5 @@ include::./using.adoc[Using jgroups-raft]
 include::./blocks.adoc[Building blocks]
 
 include::./protocols-generated.adoc[Protocol list]
+
+include::./migration.adoc[Migration guide]
