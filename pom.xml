@@ -67,6 +67,7 @@
         <version.puppycrawl>10.21.2</version.puppycrawl>
         <version.spotbugs.plugin>4.9.1.0</version.spotbugs.plugin>
         <version.pmd.plugin>3.26.0</version.pmd.plugin>
+        <version.jacoco.plugin>0.8.12</version.jacoco.plugin>
 
         <!-- Plugins -->
         <version.nexus3.plugin>1.0.13</version.nexus3.plugin>
@@ -284,6 +285,36 @@
             </plugin>
 
             <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${version.jacoco.plugin}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/jacoco</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <excludes>
+                        <exclude>org/jgroups/raft/demos/*.class</exclude>
+                        <exclude>org/jgroups/raft/client/*.class</exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+
+            <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nxrm3-maven-plugin</artifactId>
                 <version>${version.nexus3.plugin}</version>
@@ -431,7 +462,7 @@
                         <usedefaultlisteners>false</usedefaultlisteners>
                         <listener>${testNGListeners}</listener>
                     </properties>
-                    <argLine>${jgroups.tests.jvmargs} -Djdk.attach.allowAttachSelf=true</argLine>
+                    <argLine>${argLine} ${jgroups.tests.jvmargs} -Djdk.attach.allowAttachSelf=true</argLine>
                     <!-- Use TCP for plugin <-> fork JVM communication -->
                     <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory" />
                     <!-- Disable modular classpath -->
