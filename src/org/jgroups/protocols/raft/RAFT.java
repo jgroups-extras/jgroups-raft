@@ -135,7 +135,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected boolean                   send_commits_immediately;
 
     @Property(description="Max number of bytes a log can have until a snapshot is created",type=AttributeType.BYTES)
-    protected int                       max_log_size=1_000_000;
+    protected long                      max_log_size=1_000_000;
 
     protected int                       _max_log_cache_size=1024;
 
@@ -248,8 +248,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public RAFT         resendInterval(long val)      {resend_interval=val; return this;}
     public boolean      sendCommitsImmediately()      {return send_commits_immediately;}
     public RAFT         sendCommitsImmediately(boolean v) {send_commits_immediately=v; return this;}
-    public int          maxLogSize()                  {return max_log_size;}
-    public RAFT         maxLogSize(int val)           {max_log_size=val; return this;}
+    public long         maxLogSize()                  {return max_log_size;}
+    public RAFT         maxLogSize(long val)           {max_log_size=val; return this;}
     public long         currentLogSize()              {return curr_log_size;}
     @ManagedAttribute(description="Number of pending requests")
     public int          requestTableSize()            {return request_table != null? request_table.size() : 0;}
