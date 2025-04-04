@@ -204,6 +204,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     // used to add/remove servers one-by-one
     protected CompletableFuture<byte[]> add_server_future=CompletableFuture.completedFuture(null);
 
+    // Identify whether the start method was executed.
+    private boolean protocolStarted;
+
     /* ============================== EXPERIMENTAL - most of these metrics will be removed again ================== */
 
     @ManagedAttribute(description="Size of remove-queue")
@@ -259,7 +262,20 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public Address      leader()                      {return raft_state.leader();}
     public RAFT         leader(Address new_leader)    {this.raft_state.setLeader(new_leader); return this;}
     public boolean      isLeader()                    {return Objects.equals(leader(), local_addr);}
-    public RAFT         stateMachine(StateMachine sm) {this.state_machine=sm; return this;}
+
+    public RAFT         stateMachine(StateMachine sm) {
+        boolean load = state_machine == null && !state_machine_loaded;
+        this.state_machine=sm;
+        if (load && protocolStarted) {
+            try {
+                initStateMachineFromLog();
+            } catch (Exception e) {
+                log.warn("%s: failed to initialize state machine from log: %s", local_addr, e);
+            }
+        }
+        return this;
+    }
+
     public StateMachine stateMachine()                {return state_machine;}
     public CommitTable  commitTable()                 {return commit_table;}
 
@@ -578,6 +594,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(_max_log_cache_size > 0)  // the log cache is enabled
             log_impl=new LogCache(log_impl, _max_log_cache_size);
         runner.start();
+        protocolStarted = true;
     }
 
 
