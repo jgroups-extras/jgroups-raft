@@ -274,11 +274,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         boolean load = state_machine == null && !state_machine_loaded;
         this.state_machine=sm;
         if (load && protocolStarted) {
-            try {
-                initStateMachineFromLog();
-            } catch (Exception e) {
-                log.warn("%s: failed to initialize state machine from log: %s", local_addr, e);
-            }
+           try {
+              initStateMachineFromLog();
+           } catch (Exception e) {
+              log.warn("%s: failed to initialize state machine from log: %s", local_addr, e);
+           }
         }
         return this;
     }
