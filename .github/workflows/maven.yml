@@ -59,18 +59,20 @@ jobs:
             target/surefire-reports
 
       - name: Display surefire-reports
-        if: failure() || success()
+        if: failure()
         uses: scacap/action-surefire-report@v1
         with:
           check_name: "surefire-report-${{ matrix.os }}-${{ matrix.java }}"
 
       - name: Display SpotBugs report
+        if: matrix.os == 'ubuntu-latest' && matrix.java == 11
         uses: github/codeql-action/upload-sarif@v3
         with:
           category: "spotbugs-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/spotbugs.sarif.json
 
       - name: Display PMD report
+        if: matrix.os == 'ubuntu-latest' && matrix.java == 11
         uses: github/codeql-action/upload-sarif@v3
         with:
           category: "pmd-report-${{ matrix.os }}-${{ matrix.java }}"
