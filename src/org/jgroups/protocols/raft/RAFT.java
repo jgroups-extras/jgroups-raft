@@ -261,7 +261,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="The current leader (can be null if there is currently no leader) ")
     public Address      leader()                      {return raft_state.leader();}
     public RAFT         leader(Address new_leader)    {this.raft_state.setLeader(new_leader); return this;}
-    public boolean      isLeader()                    {return Objects.equals(leader(), local_addr);}
+    public boolean      isLeader()                    {return leader() != null && Objects.equals(leader(), local_addr);}
 
     public RAFT         stateMachine(StateMachine sm) {
         boolean load = state_machine == null && !state_machine_loaded;
