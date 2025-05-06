@@ -1,0 +1,153 @@
+= Learner Nodes
+:author: José Bolina <jbolina@redhat.com>
+:description: Documents the design of learner nodes in Raft.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+
+[abstract]
+--
+Currently, JGroups Raft defines roles for LEADER and FOLLOWER, without a distinct CANDIDATE role.
+This document outlines the implementation of the LEARNER node role.
+It details the problems this new role addresses, the planned implementation strategy, and aspects that are out of scope for this version.
+--
+
+== Introduction
+
+This document introduces learner nodes for JGroups Raft.
+Learner nodes are non-voting members within the cluster.
+While learners receive replicated entries from the leader, they do not contribute to the quorum for replication or participate in leader elections.
+In JGroups Raft, learner nodes bring some advantages:
+
+Enhanced Read Scalability::
+Learner nodes can serve read operations locally without impacting the quorum required for committing write operations.
+They can also assist during maintenance or recovery scenarios.
+
+Simplified Membership Changes::
+The process of adding or removing nodes from the Raft cluster can be cumbersome and prone to errors.
+Initializing new nodes as learners makes this process simpler and safer.
+
+To understand the context, it is important to distinguish between two membership concepts in a JGroups Raft cluster: JGroups members and Raft members.
+Historically, JGroups Raft has enforced a strict requirement for these two sets of members to be identical; a node would fail to start if it was a JGroups member but not a configured Raft member.
+JGroups members comprise all nodes present in the current JGroups view.
+Raft members are those nodes explicitly configured in the `RAFT.members` property.
+All changes to the Raft membership (e.g., adding a new node as a Raft member) are subject to the consensus protocol.
+
+With the introduction of learner nodes, we will decouple JGroups membership from Raft membership.
+Every Raft member will also be a JGroups member, but the converse will no longer necessarily be true.
+In practice, this means the JGroups view (`JM`) could encompass a set of members `JM={A, B, ..., Z}`, while the Raft members (`RM`) consist of a subset, `RM={A, B, C}`.
+Any nodes in the difference `JM - RM` (i.e., `{D, E, ..., Z}`) will automatically function as learner nodes.
+
+The introduction of learner nodes also presents certain considerations:
+
+Increased Complexity::
+A new role inherently adds complexity, particularly in handling edge cases to ensure safety properties are never violated.
+
+Resource Consumption::
+While learners can significantly aid in scaling the cluster, especially if dirty reads are permitted, they are not without cost and still consume computing resources.
+
+This implementation is targeted for JGroups Raft version 1.1.x and subsequent releases.
+Some related issues in GitHub in the time of writing:
+
+* https://github.com/jgroups-extras/jgroups-raft/issues/354[#354]: Introduce learner role
+* https://github.com/jgroups-extras/jgroups-raft/issues/355[#355]: Proposal: introduce dynamically scalable RAFT cluster.
+* https://github.com/jgroups-extras/jgroups-raft/issues/246[#246]: Leader stepping down with membership change
+* https://github.com/jgroups-extras/jgroups-raft/issues/245[#245]: Restarting node after membership change
+* https://github.com/jgroups-extras/jgroups-raft/issues/176[#176]: Dynamic membership changes
+
+== Implementation
+
+The `RAFT` class will be modified to identify learner nodes by verifying if a given `raft_id` corresponds to a configured Raft member.
+During startup, after the state machine and internal state have been initialized from the log, a node not listed as a Raft member will automatically transition to the learner role, instead of throwing an exception.
+Consequently, an application instance can start and connect to the `JChannel` without modifications to the core Raft member list, successfully beginning operation as a learner.
+
+A learner node effectively operates similarly to a follower, but with specific restrictions.
+The learner will still receive requests from the leader to replicate entries and apply them to its local log.
+The learner will also continue to send append result acknowledgments to the leader; this feedback is necessary for the leader to track the log offset for sending entries (to both followers and learners) and is particularly critical when a node starts with an empty log.
+The key restrictions are:
+
+Never Vote in Elections:: A learner node will never become a leader or vote in an election.
++
+This will be implemented by updating the `BaseElection` class to only consider current Raft members in vote counting.
+Additionally, the handling of `VoteRequest` messages will be updated: if the node receiving the request is a learner, it will not reply.
+This design still permits a learner to coordinate an election on behalf of Raft members should it become the JGroups coordinator.
+
+Never Count Towards Replication Quorum:: A learner’s acknowledgment does not contribute to the commit quorum for a message.
++
+The learner will operate similarly to a follower in this regard and will reply to the leader with the append result.
+If the result was successful but originated from a learner, the leader will disregard this successful acknowledgment for quorum purposes.
+If the result was unsuccessful (e.g., a log mismatch), the leader will process this unsuccessful result as it currently does for followers (e.g., for catching up).
+
+Handle Operations:: A learner node will still process certain operations.
++
+For read requests, learners will be capable of performing dirty reads from their local state machine.
+This capability significantly improves scalability for read operations.
+For write operations, requests arriving at a learner will be redirected if the `<raft.REDIRECT />` protocol is present in the JGroups stack.
+
+=== Promotion
+
+A learner node can be promoted to a follower (and subsequently may become a leader) through a standard Raft membership change operation.
+After the membership change operation is processed by the `RAFT` consensus mechanism and committed, the node will subsequently operate as a follower, participating in elections and replication quorums.
+
+This approach of initializing nodes as learners and allowing for later promotion improves cluster scalability when adding new nodes.
+An application utilizing JGroups Raft can launch a new instance.
+Once this new instance's log is up-to-date with the leader (as a learner), an operator can initiate a membership change to promote it to a follower, if deemed necessary.
+
+=== Demotion
+
+A current Raft member can be demoted to a learner node.
+This occurs when a membership operation removes the node from the Raft member list while it remains a JGroups member.
+This approach is useful during maintenance periods.
+A node can be removed as a Raft member (becoming a learner), continue to serve reads (if configured) or redirect writes, and then be stopped without affecting the write quorum of the remaining Raft members.
+When the node restarts, it will resume its learner role, synchronizing from its log state at the time of shutdown.
+
+=== Usage
+
+The primary goal for introducing learner roles is to mitigate common operational errors and enhance operational ease-of-use.
+The addition of this role will simplify cluster scaling (both up and down) and ease Raft membership management.
+New nodes will be able to join the JGroups cluster without immediately requiring a formal Raft membership change operation.
+This approach addresses several existing challenges, including:
+
+* The need for manual pre-configuration of a node before it starts to include it in the Raft membership.
+* Difficulties in removing and restarting a voting node without impacting quorum.
+* The availability gap <<raft>> experienced by new nodes when joining the Raft member list directly as voting members.
+
+Applications can then start new nodes seamlessly.
+These nodes will join the JGroups cluster.
+If they are not (yet) configured as Raft members, they will automatically start as learner nodes and receive and replicate entries from the leader.
+An operator can monitor the cluster (e.g., via JMX) to verify whether a learner has caught up with the leader's log and then, if desired, submit a membership change operation to promote the learner to a follower.
+
+Leaving a node as a learner is not expected to negatively impact the Raft members.
+Replication will continue to function correctly as long as a majority of Raft members are available.
+Learners in the cluster will continue to accept and handle operations as defined (e.g., serving dirty reads or redirecting writes).
+
+== Non-goals
+
+As described in the Raft dissertation <<raft>> and observed in other implementations <<etcd>>, the concept of learner nodes can encompass additional functionalities.
+This section clarifies functionalities that are explicitly out of scope for this initial implementation:
+
+No Automatic Promotion:: We are not implementing automatic promotion of a learner to a follower.
++
+In the standard Raft protocol, reconfiguration (a membership change) is always needed to include a new member in the cluster, as this also serves as a discovery mechanism for the Raft algorithm itself.
+Therefore, one must issue a membership operation for the leader to be aware of the new member.
+An automatic promotion might make sense if the reconfiguration happens first and then, after the learner catches up, it promotes to a follower.
+In the JGroups Raft context, this specific type of automatic promotion does not offer significant advantages.
+JGroups inherently handles node discovery upon channel connection, so the leader will be aware of new JGroups members (potential learners) without any Raft-level membership operations.
+Thus, a Raft membership operation is only required when an explicit promotion of a learner to a follower is desired.
+
+No Constraint on Learner Count::
+There will be no predefined constraint on the number of learners in the cluster.
+A cluster could have multiple learners simultaneously, potentially exceeding the number of Raft (voting) members.
+
+== Conclusion
+
+This document has detailed the proposed addition of learner nodes to JGroups Raft.
+This feature will enhance cluster scalability, improve operational scaling, and simplify management.
+The design draws inspiration from the Raft dissertation <<raft>>, adapted to leverage the inherent strengths and functionalities of JGroups.
+
+In this implementation, a JGroups member that is not part of the configured Raft membership will operate as a learner node.
+The learner will replicate entries to its local log and handle operations (such as serving reads or redirecting writes), but it will not participate in the quorum for entry commitment or leader election.
+
+[bibliography]
+== References
+
+* [[[raft,1]]] Ongaro, D. (2014). Consensus: Bridging theory and practice. Stanford University.
+* [[[etcd,2]]] Learner. (2021, July 23). Etcd. https://etcd.io/docs/v3.3/learning/learner/ (Accessed: 06 May 2025).
