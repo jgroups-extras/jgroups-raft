@@ -3,7 +3,9 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.Message;
 
-import static org.jgroups.protocols.raft.AppendResult.Result.*;
+import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_CONFLICTING_PREV_TERM;
+import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_ENTRY_NOT_FOUND;
+import static org.jgroups.protocols.raft.AppendResult.Result.OK;
 
 /**
  * Base class for the different roles a RAFT node can have (follower, candidate, leader)

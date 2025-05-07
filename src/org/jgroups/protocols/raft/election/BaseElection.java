@@ -14,14 +14,18 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.RaftHeader;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.ResponseCollector;
 import org.jgroups.util.Runner;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import static org.jgroups.Message.Flag.OOB;
 import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
@@ -236,6 +240,13 @@ public abstract class BaseElection extends Protocol {
                     local_addr, voted_for, new_term, sender);
             return;
         }
+
+        if (!raft.members().contains(raft.raftId())) {
+            log.trace("%s: is a learner, it does not vote; dropping request from %s",
+                    local_addr, sender);
+            return;
+        }
+
         Log log_impl=raft.log();
         if(log_impl == null)
             return;
@@ -325,7 +336,7 @@ public abstract class BaseElection extends Protocol {
 
         View electionView = this.view;
         long new_term=raft.createNewTerm();
-        votes.reset(electionView.getMembersRaw());
+        votes.reset(filterToRaftMembers(electionView.getMembersRaw()));
         num_voting_rounds++;
         long start=System.currentTimeMillis();
         sendVoteRequest(new_term);
@@ -373,6 +384,13 @@ public abstract class BaseElection extends Protocol {
         } else if (log.isTraceEnabled())
             log.trace("%s: collected votes from %s in %d ms (majority=%d); starting another voting round",
                     local_addr, votes.getValidResults(), time, majority);
+    }
+
+    private Collection<Address> filterToRaftMembers(Address ... allMembers) {
+        Collection<String> raftMembers = raft.members();
+        return Arrays.stream(allMembers)
+                .filter(address -> raftMembers.contains(Utils.extractRaftId(address)))
+                .collect(Collectors.toList());
     }
 
     private static boolean isLeaderInView(Address leader, View view) {

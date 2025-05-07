@@ -12,6 +12,8 @@ import org.jgroups.tests.harness.RaftAssertion;
 import org.jgroups.util.Bits;
 import org.jgroups.util.CompletableFutures;
 import org.jgroups.util.Util;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,10 +29,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
-
-import org.assertj.core.api.Assertions;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -50,19 +48,6 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
     @AfterMethod
     protected void destroy() throws Exception {
         destroyCluster();
-    }
-
-
-    /** Start a member not in {A,B,C} -> expects an exception */
-    public void testStartOfNonMember() throws Exception {
-        withClusterSize(3);
-        createCluster();
-
-        JChannel nonMember = createDisconnectedChannel("X");
-        Assertions.assertThatThrownBy(() -> nonMember.connect(clusterName()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessage(String.format("raft-id X is not listed in members %s", getRaftMembers()));
-        close(nonMember);
     }
 
     /** Calls addServer() on non-leader. Calling {@link org.jgroups.protocols.raft.RAFT#addServer(String)}

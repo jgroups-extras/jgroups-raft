@@ -7,16 +7,14 @@ import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.tests.harness.BaseRaftElectionTest;
 import org.jgroups.tests.harness.RaftAssertion;
 import org.jgroups.util.Util;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.Test;
 
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
-import org.assertj.core.api.Assertions;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
@@ -38,18 +36,6 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
     protected void destroy() throws Exception {
         destroyCluster();
     }
-
-
-    /** Start a member not in {A,B,C} -> expects an exception */
-    public void testStartOfNonMember(Class<?> ignore) throws Exception {
-        withClusterSize(2);
-        JChannel non_member=createDisconnectedChannel("X");
-        Assertions.assertThatThrownBy(() -> non_member.connect(clusterName()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageStartingWith("raft-id X is not listed in members");
-        close(non_member);
-    }
-
 
     /**
      * Membership is {A,B,C,D}, majority 3. Members A and B are up. Try to append an entry won't work as A and B don't

@@ -21,6 +21,7 @@ import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RequestTable;
+import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.AverageMinMax;
 import org.jgroups.util.ByteArrayDataInputStream;
@@ -586,7 +587,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         initStateMachineFromLog();
         if(!internal_state.getMembers().contains(raft_id))
-            throw new IllegalStateException(String.format("raft-id %s is not listed in members %s", raft_id, internal_state.getMembers()));
+            changeRole(Role.Learner);
 
         curr_log_size=logSizeInBytes();
         log_impl.useFsync(_log_use_fsync);
@@ -948,6 +949,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             current.add(name);
             internal_state.setMembers(current);
             computeMajority();
+
+            // If the local node just became a Raft member it was learner and was promoted now.
+            if (name.equals(raft_id)) {
+                changeRole(Role.Follower);
+            }
         }
     }
 
@@ -957,6 +963,18 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(current.remove(name)) {
             internal_state.setMembers(current);
             computeMajority();
+
+            // The local node was removed as a Raft member.
+            // The follow-up behavior might change depending on the current role.
+            if (name.equals(raft_id)) {
+                // If it is the leader, it should step down and trigger a new election.
+                if (isLeader()) {
+                    throw new UnsupportedOperationException("Not implemented yet");
+                }
+
+                // Then, it will become a learner node.
+                changeRole(Role.Learner);
+            }
         }
     }
 
@@ -1232,9 +1250,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             if(!isLeader())
                 log.debug("%s: becoming Leader", local_addr);
             changeRole(Role.Leader);   // no-op if already a leader
+        } else {
+            Role r = Utils.isRaftMember(raft_id, members())
+                    ? Role.Follower
+                    : Role.Learner;
+            changeRole(r); // no-op if already a follower
         }
-        else
-            changeRole(Role.Follower); // no-op if already a follower
     }
 
     protected static <T> void notify(RequestTable.Entry<T> e, byte[] rsp) {
@@ -1248,7 +1269,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected RAFT changeRole(Role new_role) {
-        RaftImpl new_impl=new_role == Role.Leader? new Leader(this) : new Follower(this);
+        RaftImpl new_impl = createRaftInstance(new_role);
         RaftImpl old_impl=impl;
         if(old_impl == null || !old_impl.getClass().equals(new_impl.getClass())) {
             if(old_impl != null)
@@ -1260,6 +1281,22 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             notifyRoleChangeListeners(new_role);
         }
         return this;
+    }
+
+    private RaftImpl createRaftInstance(Role role) {
+        switch (role) {
+            case Leader:
+                return new Leader(this);
+
+            case Follower:
+                return new Follower(this);
+
+            case Learner:
+                return new Learner(this);
+
+            default:
+                throw new IllegalArgumentException("Unknown raft role: " + role);
+        }
     }
 
     /** If cmd is not null, execute it. Else parse buf into InternalCommand then call cmd.execute() */
@@ -1310,8 +1347,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 log.warn("address %s is not an ExtendedUUID but a %s", addr, addr.getClass().getSimpleName());
             else {
                 ExtendedUUID uuid=(ExtendedUUID)addr;
-                byte[] val=uuid.get(raft_id_key);
-                String m=val != null? Util.bytesToString(val) : null;
+                String m=Utils.extractRaftId(uuid);
                 if(m == null)
                     log.error("address %s doesn't have a raft-id", addr);
                 else if(!mbrs.add(m))

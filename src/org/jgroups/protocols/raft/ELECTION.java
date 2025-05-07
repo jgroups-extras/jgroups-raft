@@ -50,7 +50,7 @@ public class ELECTION extends BaseElection {
     protected void handleView(View v) {
         View previousView = this.view;
         this.view = v;
-        Majority result=Utils.computeMajority(previousView, v, raft().majority(), raft.leader());
+        Majority result=Utils.computeMajority(previousView, v, raft);
         log.debug("%s: existing view: %s, new view: %s, result: %s", local_addr, previousView, v, result);
         List<Address> joiners=View.newMembers(previousView, v);
         boolean has_new_members=joiners != null && !joiners.isEmpty();
