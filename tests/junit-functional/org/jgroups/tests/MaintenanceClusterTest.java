@@ -12,8 +12,8 @@ import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.jgroups.tests.harness.Helper.assertCommitIndex;
-import static org.jgroups.tests.harness.Helper.waitUntilAllRaftsHaveLeader;
+import static org.jgroups.tests.harness.RaftAssertion.assertCommitIndex;
+import static org.jgroups.tests.harness.RaftAssertion.waitUntilAllRaftsHaveLeader;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class MaintenanceClusterTest extends BaseRaftChannelTest {
@@ -28,7 +28,15 @@ public class MaintenanceClusterTest extends BaseRaftChannelTest {
         destroyCluster();
     }
 
-    public void testMaintenanceWorkflow() throws Exception {
+    public void testMaintenanceWorkflowFollower() throws Exception {
+        runMaintenanceWorkflow(false);
+    }
+
+    public void testMaintenanceWorkflowLeader() throws Exception {
+        runMaintenanceWorkflow(true);
+    }
+
+    private void runMaintenanceWorkflow(boolean removeLeader) throws Exception {
         // A cluster is created with all the three nodes.
         withClusterSize(3);
         createCluster();
@@ -41,13 +49,14 @@ public class MaintenanceClusterTest extends BaseRaftChannelTest {
         // After a certain point, a node needs to be removed for maintenance.
         // The leader will remove it.
         RAFT leader = leader();
-        int removeIndex = followerIndex();
+        int removeIndex = removeIndex(removeLeader);
         RAFT node = raft(removeIndex);
 
         leader.removeServer(node.raftId()).get(10, TimeUnit.SECONDS);
         assertThat(eventually(() -> node.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
 
         // After the node is removed and become learner, the cluster continues to operate.
+        if (removeLeader) waitUntilAllRaftsHaveLeader(channels(), this::raft);
         insertEntries();
 
         // Until, the operator decides to stop the removed node.
@@ -62,29 +71,30 @@ public class MaintenanceClusterTest extends BaseRaftChannelTest {
         // It should connect to the cluster and start as learner.
         createCluster();
         RAFT restarted = raft(removeIndex);
+        RAFT restartedLeader = leader();
         assertThat(restarted.role()).isEqualTo("Learner");
-        assertThat(leader.members()).hasSize(2).doesNotContain(restarted.raftId());
+        assertThat(restartedLeader.members()).hasSize(2).doesNotContain(restarted.raftId());
 
         // Eventually the learner will catch up with the cluster.
-        assertCommitIndex(10_000, leader.lastAppended(), leader.lastAppended(), this::raft, channel(removeIndex));
+        assertCommitIndex(10_000, restartedLeader.lastAppended(), restartedLeader.lastAppended(), this::raft, channel(removeIndex));
 
         // The node is added again as a Raft member.
-        leader.addServer(restarted.raftId()).get(10, TimeUnit.SECONDS);
+        restartedLeader.addServer(restarted.raftId()).get(10, TimeUnit.SECONDS);
         assertThat(eventually(() -> restarted.role().equals("Follower"), 10, TimeUnit.SECONDS)).isTrue();
 
         // And the cluster continues to operate.
         insertEntries();
     }
 
-    private int followerIndex() {
+    private int removeIndex(boolean isLeader) {
         JChannel[] channels = channels();
         for (int i = 0; i < channels.length; i++) {
             RAFT r = raft(channels[i]);
-            if (!r.isLeader())
+            if (r.isLeader() == isLeader)
                 return i;
         }
 
-        throw new AssertionError("Follower not found");
+        throw new AssertionError("Requested node not found");
     }
 
     private void insertEntries() throws Exception {

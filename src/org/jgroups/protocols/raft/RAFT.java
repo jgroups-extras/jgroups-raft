@@ -14,6 +14,7 @@ import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.protocols.raft.state.RaftState;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
@@ -969,7 +970,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             if (name.equals(raft_id)) {
                 // If it is the leader, it should step down and trigger a new election.
                 if (isLeader()) {
-                    throw new UnsupportedOperationException("Not implemented yet");
+                    log.trace("%s: leader stepping down and starting election", local_addr);
+                    BaseElection be = RAFT.findProtocol(BaseElection.class, this, true);
+                    if (be != null)
+                        be.startVotingThread();
                 }
 
                 // Then, it will become a learner node.
