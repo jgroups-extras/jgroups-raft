@@ -1,5 +1,6 @@
 package org.jgroups.tests;
 
+import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
@@ -8,7 +9,9 @@ import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
+import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
@@ -56,7 +59,14 @@ public class MaintenanceClusterTest extends BaseRaftChannelTest {
         assertThat(eventually(() -> node.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
 
         // After the node is removed and become learner, the cluster continues to operate.
-        if (removeLeader) waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        if (removeLeader) {
+            // We wait until a new leader is elected.
+            RAFT[] rafts = Arrays.stream(channels()).map(this::raft).toArray(RAFT[]::new);
+            Address previousLeader = leader.addr();
+            BooleanSupplier bs = () -> Arrays.stream(rafts).noneMatch(r -> previousLeader.equals(r.leader()));
+            assertThat(eventually(bs, 10, TimeUnit.SECONDS)).isTrue();
+            waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        }
         insertEntries();
 
         // Until, the operator decides to stop the removed node.

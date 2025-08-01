@@ -30,6 +30,7 @@ import org.assertj.core.api.Assertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
@@ -69,7 +70,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
 
         // when
         byte[] data="foo".getBytes();
-        byte[] result=raft.set(data, 0, data.length, 1, TimeUnit.SECONDS);
+        byte[] result=raft.set(data, 0, data.length, 1, SECONDS);
 
         // then
         assertThat(result)
@@ -124,7 +125,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         BooleanSupplier bs = () -> Arrays.stream(actualChannels())
                 .map(this::raft)
                 .allMatch(r -> r.leader() == null);
-        assertThat(eventually(bs, 5, TimeUnit.SECONDS))
+        assertThat(eventually(bs, 5, SECONDS))
                 .as(this::dumpLeaderAndTerms)
                 .isTrue();
 
@@ -701,9 +702,9 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
     }
 
     protected static void assertLogIndices(Log log, int last_appended, int commit_index, int term) {
-        assertThat(log.lastAppended()).isEqualTo(last_appended);
-        assertThat(log.commitIndex()).isEqualTo(commit_index);
-        assertThat(log.currentTerm()).isEqualTo(term);
+        assertThat(eventually(() -> log.lastAppended() == last_appended, 5, SECONDS)).isTrue();
+        assertThat(eventually(() -> log.commitIndex() == commit_index, 5, SECONDS)).isTrue();
+        assertThat(eventually(() -> log.currentTerm() == term, 5, SECONDS)).isTrue();
     }
 
     protected void assertCommitIndex(long timeout, long expected_commit, long expected_applied, JChannel... channels) {

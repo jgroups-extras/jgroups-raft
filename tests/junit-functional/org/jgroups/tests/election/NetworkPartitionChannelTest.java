@@ -47,8 +47,6 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 		clusterSize = 5;
 		indexes = IntStream.range(0, clusterSize).toArray();
 		recreatePerMethod = true;
-		System.setProperty(AbstractRaftTest.ENABLE_TRACE_CLASSES,
-				"org.jgroups.protocols.raft.ELECTION,org.jgroups.protocols.raft.ELECTION2");
 	}
 
 	public void electionAfterMerge(Class<?> ignore) throws Exception {

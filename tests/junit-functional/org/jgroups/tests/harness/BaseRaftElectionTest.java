@@ -1,6 +1,5 @@
 package org.jgroups.tests.harness;
 
-import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.ELECTION2;
@@ -11,7 +10,6 @@ import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 
 import java.util.Arrays;
-import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
