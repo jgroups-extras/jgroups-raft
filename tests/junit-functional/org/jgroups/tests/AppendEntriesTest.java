@@ -1,5 +1,9 @@
 package org.jgroups.tests;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -29,10 +33,6 @@ import java.util.stream.Stream;
 import org.assertj.core.api.Assertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc
@@ -91,6 +91,18 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         assertStateMachineEventuallyMatch(0, 1, 2);
     }
 
+    public void testReadOperations() throws Exception {
+        init(true);
+        for(int i=1; i <= 10; i++)
+            stateMachine(0).put(i, i);
+
+        assertStateMachineEventuallyMatch(0, 1, 2);
+
+        // Verify read operation local on leader and with redirect.
+        assertThat(stateMachine(0).get(1)).isEqualTo(1);
+        assertThat(stateMachine(2).get(1)).isEqualTo(1);
+    }
+
 
     public void testRedirect() throws Exception {
         init(true);
@@ -99,7 +111,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
     }
 
 
-    public void testPutWithoutLeader() throws Exception {
+    public void testGetAndPutWithoutLeader() throws Exception {
         withClusterSize(3);
         createCluster(1);
 
@@ -108,6 +120,10 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         Assertions.assertThatThrownBy(() -> stateMachine(0).put(1, 1))
                 .isInstanceOf(RaftLeaderException.class)
                 .hasMessage("there is currently no leader to forward set() request to");
+
+        Assertions.assertThatThrownBy(() -> stateMachine(0).get(1))
+                .isInstanceOf(RaftLeaderException.class)
+                .hasMessage("there is currently no leader to forward get() request to");
     }
 
 

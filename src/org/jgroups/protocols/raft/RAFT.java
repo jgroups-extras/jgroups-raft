@@ -21,6 +21,7 @@ import org.jgroups.raft.Settable;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
+import org.jgroups.raft.util.ReadOnlyRequestRepository;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
@@ -172,6 +173,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected RequestTable<String>      request_table;
     protected CommitTable               commit_table;
+    protected ReadOnlyRequestRepository<DownRequest> readOnlyRequests;
 
     protected final List<RoleChange>    role_change_listeners=new ArrayList<>();
 
@@ -692,7 +694,16 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return setAsync(buf, offset, length, false, options);
     }
 
+    @Override
+    public CompletableFuture<byte[]> getAsync(byte[] buf, int offset, int length, Options options) throws Exception {
+        return submit(buf, offset, length, options, false, true);
+    }
+
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, boolean internal, Options options) {
+        return submit(buf, offset, length, options, internal, false);
+    }
+
+    private CompletableFuture<byte[]> submit(byte[] buf, int offset, int length, Options options, boolean internal, boolean readOnly) {
         Address leader = leader();
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw notCurrentLeader();
@@ -705,9 +716,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return retval;
         }
         if(synchronous) // set only for testing purposes
-            handleDownRequest(retval, buf, offset, length, internal, options);
+            handleDownRequest(retval, buf, offset, length, internal, options, readOnly);
         else {
-            offer(new DownRequest(retval, buf, offset, length, internal, options)); // will call handleDownRequest()
+            offer(new DownRequest(retval, buf, offset, length, internal, options, readOnly)); // will call handleDownRequest()
         }
         return retval; // 4. Return CompletableFuture
     }
@@ -735,7 +746,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     /** This method is always called by a single thread only, and does therefore not need to be reentrant */
     protected void handleDownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length,
-                                     boolean internal, Options opts) {
+                                     boolean internal, Options opts, boolean readOnly) {
         Address leader = leader();
         if(leader == null || !Objects.equals(leader,local_addr))
             throw notCurrentLeader();
@@ -744,10 +755,21 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         // 1. Append to the log
         long prev_index=last_appended;
-        long curr_index=++last_appended;
         long current_term=currentTerm();
         LogEntry entry=log_impl.get(prev_index);
         long prev_term=entry != null? entry.term : 0;
+
+        if (readOnly) {
+            readOnlyRequests.register(commit_index, new DownRequest(f, buf, offset, length, internal, opts, true));
+            Message msg=new ObjectMessage(null, new LogEntries())
+                    .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
+                            current_term, commit_index))
+                    .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+            down_prot.down(msg);
+            return;
+        }
+
+        long curr_index=++last_appended;
         LogEntries entries=new LogEntries().add(new LogEntry(current_term, buf, offset, length, internal));
         last_appended=log_impl.append(curr_index, entries);
         num_successful_append_requests+=entries.size();
@@ -858,6 +880,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         int                  length=0;
         long                 current_term = currentTerm();
         Address              leader = leader();
+        boolean              hasOperations = false;
 
         for(Request r: q) {
             try {
@@ -874,7 +897,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                         dr.f.completeExceptionally(notCurrentLeader());
                         continue;
                     }
+                    hasOperations = true;
+                    if (dr.isReadOnly() && !dr.internal) {
+                        readOnlyRequests.register(commit_index, dr);
+                        continue;
+                    }
 
+                    // Only write to log and broadcast write operations.
                     entries.add(new LogEntry(current_term, dr.buf, dr.offset, dr.length, dr.internal));
 
                     // Add the request to the client table, so we can return results to clients when done
@@ -896,7 +925,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             }
         }
 
-        if(entries.size() == 0)
+        if(!hasOperations)
             return;
 
         // handle down requests
@@ -916,17 +945,19 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         down_prot.down(msg);
 
-        // Appends entries to my own log
-        last_appended=log_impl.append(curr_index, entries);
-        int batch_size=entries.size();
-        num_successful_append_requests+=batch_size;
-        avg_append_entries_batch_size.add(batch_size);
+        if (entries.size() != 0) {
+            // Appends entries to my own log
+            last_appended=log_impl.append(curr_index, entries);
+            int batch_size=entries.size();
+            num_successful_append_requests+=batch_size;
+            avg_append_entries_batch_size.add(batch_size);
+        }
 
         // see if we can already commit some entries
         long highest_committed=prev_index+1;
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
-        if(highest_committed > prev_index+1)
+        if(highest_committed > prev_index+1 || entries.size() == 0)
             commitLogTo(highest_committed, true);
         snapshotIfNeeded(length);
     }
@@ -947,6 +978,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         List<Address> mbrs=new ArrayList<>(jg_mbrs);
         mbrs.remove(local_addr);
         commit_table=new CommitTable(mbrs, last_appended +1);
+    }
+
+    void createReadOnlyRequestRepository() {
+        this.readOnlyRequests = ReadOnlyRequestRepository.<DownRequest>builder(this::majority)
+                .withCommitter(this::applyReadOnlyRequests)
+                .withDestroyer(this::failReadOnlyRequests)
+                .build();
     }
 
     protected void _addServer(String name) {
@@ -1122,7 +1160,29 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         long last_successful_apply=applyCommits(to, serialize_response);
         commit_index=Math.max(commit_index, last_successful_apply);
         log_impl.commitIndex(commit_index);
+        if (readOnlyRequests != null) readOnlyRequests.advance(commit_index);
         return this;
+    }
+
+    private void applyReadOnlyRequests(Collection<DownRequest> requests) {
+        // Apply all read-only operations less than commit index to the state machine.
+        for (DownRequest dr : requests) {
+            Options opts = dr.options;
+            boolean serializeResponse = opts == null || !opts.ignoreReturnValue();
+
+            try {
+                byte[] resp = state_machine.apply(dr.buf, dr.offset, dr.length, serializeResponse);
+                dr.f.complete(resp);
+            } catch (Exception e) {
+                dr.f.completeExceptionally(e);
+            }
+        }
+    }
+
+    private void failReadOnlyRequests(Collection<DownRequest> requests) {
+        for (DownRequest request : requests) {
+            request.f.completeExceptionally(notCurrentLeader());
+        }
     }
 
 
@@ -1418,15 +1478,17 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         final int                       offset, length;
         final boolean                   internal;
         final Options                   options;
+        final boolean                   readOnly;
 
         public DownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length,
-                           boolean internal, Options opts) {
+                           boolean internal, Options opts, boolean readOnly) {
             this.f=f;
             this.buf=buf;
             this.offset=offset;
             this.length=length;
             this.internal=internal;
             this.options=opts;
+            this.readOnly = readOnly;
         }
 
         @Override
@@ -1436,6 +1498,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         public String toString() {
             return String.format("%s %d bytes", DownRequest.class.getSimpleName(), length);
+        }
+
+        public boolean isReadOnly() {
+            return readOnly;
         }
     }
 

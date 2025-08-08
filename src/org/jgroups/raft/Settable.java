@@ -41,9 +41,32 @@ public interface Settable {
         return future.get(timeout, unit);
     }
 
+    /**
+     * Synchronous get operation bounded by a timeout.
+     * <p>
+     * This method blocks until the change has been committed or a timeout occurred.
+     * </p>
+     *
+     * @param buf The buffer representing the read-only operation to submit to the state machine.
+     * @param offset The offset to skip the bytes in the buffer.
+     * @param length The number of bytes to use from the buffer starting at offset.
+     * @param timeout The operation timeout value.
+     * @param unit The unit of the operation timeout value.
+     * @return A buffer representing the result after submitting the read-only operation.
+     * @throws Exception Thrown if the operation could not be submitted.
+     * @see #getAsync(byte[], int, int, Options)
+     */
+    default byte[] get(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception {
+        CompletableFuture<byte[]> cf = getAsync(buf, offset, length, null);
+        return cf.get(timeout, unit);
+    }
 
     default CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length) throws Exception {
         return setAsync(buf, offset, length, null);
+    }
+
+    default CompletableFuture<byte[]> getAsync(byte[] buf, int offset, int length) throws Exception {
+        return getAsync(buf, offset, length, null);
     }
 
     /**
@@ -56,4 +79,25 @@ public interface Settable {
      * @return A CompletableFuture which can be used to fetch the result.
      */
     CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Options options) throws Exception;
+
+    /**
+     * Asynchronous get operation that returns immediately without blocking.
+     * <p>
+     * This method submits a read-only operation to the state machine. Read-only operations are treated differently by
+     * the replication algorithm. Since read-only operations <b>do not</b> change the state-machine state, these operations
+     * are not appended to the replicated log.
+     * </p>
+     *
+     * <p>
+     * <#>Warning:</b> Do not change the state-machine state by operations submitted through this method. Otherwise, the
+     * state-machine will diverge and lead to an undefined state.
+     * </p>
+     *
+     * @param buf The buffer representing the read-only operation to submit to the state machine.
+     * @param offset The offset to skip the bytes in the buffer.
+     * @param length The number of bytes to use from the buffer starting at offset.
+     * @return A buffer representing the result after submitting the read-only operation.
+     * @throws Exception Thrown if the operation could not be submitted.
+     */
+    CompletableFuture<byte[]> getAsync(byte[] buf, int offset, int length, Options options) throws Exception;
 }

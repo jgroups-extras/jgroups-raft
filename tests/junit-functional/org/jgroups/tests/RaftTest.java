@@ -1,5 +1,7 @@
 package org.jgroups.tests;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -147,6 +149,15 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         assertIndices(1011, 1011, expected_term, raft_a);
         assertIndices(1011, 1010, expected_term, raft_b);
         assertCommitTableIndeces(address(1), raft_a, 1010, 1011, 1012);
+
+        // Submit read operations, these operations are read-only and not change the log indexes.
+        for (int i = 0; i < 10; i++) {
+            assertThat(get(rha)).isEqualTo(5010);
+        }
+
+        // Both A and B are synchronized now, and the read-only operations haven't moved the indexes.
+        assertIndices(1011, 1011, expected_term, raft_a);
+        assertIndices(1011, 1011, expected_term, raft_b);
     }
 
 
@@ -441,6 +452,13 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(delta, val, 0);
         byte[] retval=rh.set(val, 0, val.length, 5, TimeUnit.SECONDS);
+        return Bits.readInt(retval, 0);
+    }
+
+    protected static int get(RaftHandle rh) throws Exception {
+        byte[] val=new byte[Integer.BYTES];
+        Bits.writeInt(0, val, 0);
+        byte[] retval=rh.get(val, 0, val.length, 5, TimeUnit.SECONDS);
         return Bits.readInt(retval, 0);
     }
 

@@ -27,6 +27,7 @@ public class Leader extends RaftImpl {
         super.init();
         raft.createRequestTable();
         raft.createCommitTable();
+        raft.createReadOnlyRequestRepository();
     }
 
     public void destroy() {
@@ -36,6 +37,7 @@ public class Leader extends RaftImpl {
         raft.commit_table=null;
 
         if (reqTable != null) reqTable.destroy(raft.notCurrentLeader());
+        if (raft.readOnlyRequests != null) raft.readOnlyRequests.destroy();
     }
 
 
@@ -56,6 +58,7 @@ public class Leader extends RaftImpl {
                 if (!Utils.isRaftMember(sender_raft_id, raft.members()))
                     break;
 
+                raft.readOnlyRequests.commit(raft.commit_index);
                 boolean done = reqtab.add(result.index, sender_raft_id, this.majority);
                 if(done) {
                     raft.commitLogTo(result.index, true);

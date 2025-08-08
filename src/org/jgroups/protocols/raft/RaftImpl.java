@@ -43,7 +43,7 @@ public abstract class RaftImpl {
         raft.leader(leader);
         long curr_index=prev_index+1;
         // we got an empty AppendEntries message containing only leader_commit, or the index is below the commit index
-        if(entries == null || curr_index <= raft.commitIndex()) {
+        if(entries == null || entries.size() == 0 || curr_index <= raft.commitIndex()) {
             raft.commitLogTo(leader_commit, false);
             return new AppendResult(OK, raft.lastAppended()).commitIndex(raft.commitIndex());
         }
