@@ -1,6 +1,12 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.*;
+import org.jgroups.Address;
+import org.jgroups.BytesMessage;
+import org.jgroups.Event;
+import org.jgroups.Global;
+import org.jgroups.Header;
+import org.jgroups.Message;
+import org.jgroups.View;
 import org.jgroups.annotations.MBean;
 import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.raft.Options;
@@ -55,11 +61,21 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
     @Override
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Options options) throws Exception {
-        Address leader=leader("set()");
+        return readWriteAsync(buf, offset, length, options, false);
+    }
+
+    @Override
+    public CompletableFuture<byte[]> getAsync(byte[] buf, int offset, int length, Options options) throws Exception {
+        return readWriteAsync(buf, offset, length, options, true);
+    }
+
+    private CompletableFuture<byte[]> readWriteAsync(byte[] buf, int offset, int length, Options options, boolean readOnly) throws Exception {
+        Address leader=leader(readOnly? "get()" : "set()");
 
         // we are the current leader: pass the call to the RAFT protocol
-        if(Objects.equals(local_addr, leader))
-            return raft.setAsync(buf, offset, length);
+        if(Objects.equals(local_addr, leader)) {
+            return readOnly ? raft.getAsync(buf, offset, length) : raft.setAsync(buf, offset, length);
+        }
 
         // add a unique ID to the request table, so we can correlate the response to the request
         int req_id=request_ids.getAndIncrement();
@@ -71,11 +87,10 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         // we're not the current leader -> redirect request to leader and wait for response or timeout
         log.trace("%s: redirecting request %d to leader %s", local_addr, req_id, leader);
         Message redirect=new BytesMessage(leader, buf, offset, length)
-          .putHeader(id, new RedirectHeader(RequestType.REQ, req_id, false).options(options));
+                .putHeader(id, new RedirectHeader(RequestType.REQ, req_id, false).options(options).readOnly(readOnly));
         down_prot.down(redirect);
         return future;
     }
-
 
     @Override
     public CompletableFuture<byte[]> addServer(String name) throws Exception {
@@ -129,13 +144,18 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     protected void handleEvent(Message msg, RedirectHeader hdr) {
         Address sender=msg.src();
         Options opts=hdr.options();
+        ResponseHandler rsp_handler=new ResponseHandler(sender, hdr.corr_id, opts);
         switch(hdr.type) {
             case REQ:
                 log.trace("%s: received redirected request %d from %s", local_addr, hdr.corr_id, sender);
-                ResponseHandler rsp_handler=new ResponseHandler(sender, hdr.corr_id, opts);
                 try {
-                    raft.setAsync(msg.getArray(), msg.getOffset(), msg.getLength(), opts)
-                      .whenComplete(rsp_handler);
+                    CompletableFuture<byte[]> cf;
+                    if (hdr.isReadOnly()) {
+                        cf = raft.getAsync(msg.getArray(), msg.getOffset(), msg.getLength(), opts);
+                    } else {
+                        cf = raft.setAsync(msg.getArray(), msg.getOffset(), msg.getLength(), opts);
+                    }
+                    cf.whenComplete(rsp_handler);
                 }
                 catch(Throwable t) {
                     rsp_handler.apply(t);
@@ -262,6 +282,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         protected int         corr_id;   // correlation ID at the sender, so responses can unblock requests (keyed by ID)
         protected boolean     exception; // true if RSP is an exception
         protected Options     options=new Options();
+        protected boolean     readOnly;
 
         public RedirectHeader() {}
 
@@ -280,17 +301,27 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         }
 
         public int serializedSize() {
-            return Global.BYTE_SIZE*2 + Bits.size(corr_id) + Global.BYTE_SIZE;
+            return Global.BYTE_SIZE*3 + Bits.size(corr_id) + Global.BYTE_SIZE;
         }
 
         public RedirectHeader options(Options opts) {if(opts != null && !options.equals(opts)) this.options=opts; return this;}
         public Options        options()             {return this.options;}
+
+        public boolean isReadOnly() {
+            return readOnly;
+        }
+
+        public RedirectHeader readOnly(boolean readOnly) {
+            this.readOnly = readOnly;
+            return this;
+        }
 
         public void writeTo(DataOutput out) throws IOException {
             out.writeByte((byte)type.ordinal());
             Bits.writeIntCompressed(corr_id, out);
             out.writeBoolean(exception);
             options.writeTo(out);
+            out.writeBoolean(readOnly);
         }
 
         public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
@@ -298,6 +329,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
             corr_id=Bits.readIntCompressed(in);
             exception=in.readBoolean();
             options.readFrom(in);
+            readOnly = in.readBoolean();
         }
 
         public String toString() {

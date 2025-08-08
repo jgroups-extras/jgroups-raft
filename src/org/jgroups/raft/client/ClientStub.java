@@ -74,6 +74,11 @@ public class ClientStub implements Settable, Closeable {
         return setAsync(CLIENT.RequestType.set_req, buf, offset, length);
     }
 
+    @Override
+    public CompletableFuture<byte[]> getAsync(byte[] buf, int offset, int length, Options ignored) throws Exception {
+        return setAsync(CLIENT.RequestType.get_req, buf, offset, length);
+    }
+
     public CompletableFuture<byte[]> setAsync(CLIENT.RequestType type,
                                               byte[] buf, int offset, int length) throws Exception {
            CompletableFuture<byte[]> req=new CompletableFuture<>();

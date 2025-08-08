@@ -37,7 +37,7 @@ public class CLIENT extends Protocol implements Runnable {
     protected static final short  CLIENT_ID = 523;
     protected static final byte[] BUF={};
 
-    public enum RequestType {set_req, add_server, remove_server, type, rsp}
+    public enum RequestType {set_req, add_server, remove_server, type, rsp, get_req}
 
     static {
         ClassConfigurator.addProtocol(CLIENT_ID, CLIENT.class);
@@ -163,6 +163,8 @@ public class CLIENT extends Protocol implements Runnable {
                     case set_req:
                         settable.setAsync(buffer, 0, buffer.length).whenComplete(completion_handler);
                         break;
+                    case get_req:
+                        settable.getAsync(buffer, 0, buffer.length, null).whenComplete(completion_handler);
                     case add_server:
                         dyn_membership.addServer(Util.bytesToString(buffer)).whenComplete(completion_handler);
                         break;

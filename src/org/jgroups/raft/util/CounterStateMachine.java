@@ -26,7 +26,7 @@ public class CounterStateMachine implements StateMachine {
         int val=Bits.readInt(data, offset);
         if(val < 0)
             subtractions.incrementAndGet();
-        else
+        else if (val > 0)
             additions.incrementAndGet();
         int old_counter=counter.get();
         counter.addAndGet(val);
