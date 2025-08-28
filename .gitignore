@@ -30,3 +30,4 @@ lib/
 *.db
 *.properties
 .ant-targets-build.xml
+pom.xml.releaseBackup
