@@ -16,10 +16,12 @@ import java.util.Iterator;
 
 /**
  * Intercepts JOIN and MERGE requests on the coordinator and rejects members whose addition would lead to members
- * with duplicate raft-ids in the view.</p>
+ * with duplicate raft-ids in the view.
+ * <p>
  * Every member's address must be an {@link org.jgroups.util.ExtendedUUID} and have a "raft-id" key whose value
  * is the raft-id. When intercepting a JOIN request whose sender has a raft-id that's already in the view, we send
- * back a {@link org.jgroups.protocols.pbcast.JoinRsp} with a rejection message.</p>
+ * back a {@link org.jgroups.protocols.pbcast.JoinRsp} with a rejection message.
+ * </p>
  * Very similar to {@link org.jgroups.protocols.AUTH}.
  * @author Bela Ban
  * @since  0.2

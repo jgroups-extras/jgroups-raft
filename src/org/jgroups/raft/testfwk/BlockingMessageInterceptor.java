@@ -54,7 +54,7 @@ public final class BlockingMessageInterceptor {
     /**
      * Check if the given message should be blocked.
      *
-     * @param message: Message to check the headers.
+     * @param message Message to check the headers.
      * @return <code>true</code> if the message blocks. <code>false</code>, otherwise.
      */
     public boolean shouldBlock(Message message) {
@@ -69,12 +69,12 @@ public final class BlockingMessageInterceptor {
      * simulates a delay in the message delivery and does not block the invoking thread.
      * </p>
      *
-     * @param message: Message identified to block.
-     * @param async: Whether to block the thread or introduce an asynchronous delay.
-     * @param onComplete: Block to run after the asynchronous delay finishes. Must be non-null in case
+     * @param message Message identified to block.
+     * @param async Whether to block the thread or introduce an asynchronous delay.
+     * @param onComplete Block to run after the asynchronous delay finishes. Must be non-null in case
      *                    {@param async} is <code>true</code>.
-     * @throws RuntimeException: An unchecked exception in case the thread is interrupted.
-     * @throws AssertionError: If the execution is async and there is no runnable to run on completion.
+     * @throws RuntimeException An unchecked exception in case the thread is interrupted.
+     * @throws AssertionError If the execution is async and there is no runnable to run on completion.
      */
     public void blockMessage(Message message, boolean async, Runnable onComplete) {
         assert !async || onComplete != null : "Async operations need to pass runnable on complete";
@@ -94,8 +94,8 @@ public final class BlockingMessageInterceptor {
      * Invoking this method will <b>block</b> the invoking thread.
      * </p>
      *
-     * @param message: Message identified to block.
-     * @see #blockMessage(Message, boolean, Runnable).
+     * @param message Message identified to block.
+     * @see #blockMessage(Message, boolean, Runnable)
      */
     public void blockMessage(Message message) {
         blockMessage(message, false, null);
@@ -104,7 +104,7 @@ public final class BlockingMessageInterceptor {
     /**
      * Releases the next blocked message in line.
      *
-     * @throws IllegalStateException: In case there is no blocked message.
+     * @throws IllegalStateException In case there is no blocked message.
      */
     public void releaseNext() {
         Waiter waiter;
@@ -121,8 +121,8 @@ public final class BlockingMessageInterceptor {
     /**
      * Helper to assert an expected number of blocked messages.
      *
-     * @param size: Expected number of blocked messages.
-     * @throws AssertionError: In case the actual number of blocked messages is different.
+     * @param size Expected number of blocked messages.
+     * @throws AssertionError In case the actual number of blocked messages is different.
      */
     public void assertNumberOfBlockedMessages(int size) {
         int s = numberOfBlockedMessages();
@@ -132,7 +132,7 @@ public final class BlockingMessageInterceptor {
     /**
      * Helper to assert there is no more blocked messages.
      *
-     * @throws AssertionError: In case there is still blocked messages.
+     * @throws AssertionError In case there is still blocked messages.
      */
     public void assertNoBlockedMessages() {
         assertNumberOfBlockedMessages(0);

@@ -16,7 +16,7 @@ public interface Log extends Closeable {
 
     /** Called after the instance has been created
      * @param log_name The name of the log. Implementations can create a DB or file named after this, e.g.
-     *                 /tmp/<log_name></log_name>.log
+     *                 {@code /tmp/<log_name></log_name>.log}
      * @param args A hashmap of configuration information (impl-dependent) to configure itself. May be null
      */
     void init(String log_name, Map<String,String> args) throws Exception;
@@ -95,7 +95,7 @@ public interface Log extends Closeable {
     LogEntry get(long index);
 
     /**
-     * Truncates the log up to (and excluding) index. All entries < index are removed. First = index.
+     * Truncates the log up to (and excluding) index. All entries &lt; index are removed. First = index.
      * @param index_exclusive If greater than commit_index, commit_index will be used instead
      */
     void truncate(long index_exclusive);

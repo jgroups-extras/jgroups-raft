@@ -58,22 +58,25 @@ import java.util.regex.Pattern;
 
 
 /**
- * Implementation of the <a href="https://github.com/ongardie/dissertation">RAFT consensus protocol</a> in JGroups<p/>
- * [1] https://github.com/ongardie/dissertation<br/>
+ * Implementation of the <a href="https://github.com/ongardie/dissertation">RAFT consensus protocol</a> in JGroups
+ * <p>
  * The implementation uses a queue to which the following types of requests are added: down-requests (invocations of
  * {@link #setAsync(byte[], int, int)})
  * and up-requests (requests or responses received in {@link #up(Message)} or {@link #up(MessageBatch)}).
- * <br/>
+ * </p>
+ * <p>
  * Leaders handle down-requests (resulting in sending AppendEntriesRequests) and up-requests (responses).
  * Followers handle only up-requests (AppendEntriesRequests) and send responses. Note that the periodic sending of
  * AppendEntriesRequests (if needed) is also done by the queue handling thread.
- * <br/>
- * The use of the queue makes the RAFT protocol effectively <em>single-threaded</em>; ie. only 1 thread ever changes
+ * </p>
+ * The use of the queue makes the RAFT protocol effectively <em>single-threaded</em>; i.e. only 1 thread ever changes
  * state, so synchronization can be removed altogether. The only exception to this is invocation of
  * {@link #changeRole(Role)}, called by {@link ELECTION}: this still needs to be changed (probably by adding it as an
  * event to the queue, too).
+ *
  * @author Bela Ban
  * @since  0.1
+ * @see <a href="https://github.com/ongardie/dissertation">RAFT Consensus Protocol</a>
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol implements Settable, DynamicMembership {
@@ -659,9 +662,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /**
      * Triggers a flush of the entries to the given member.
      *
-     * @param member: The not-null member address to send the entries.
-     * @throws IllegalStateException: Thrown in case the current node is <b>not</b> the leader.
-     * @throws NullPointerException: Thrown in case the {@param member} is null.
+     * @param member The not-null member address to send the entries.
+     * @throws IllegalStateException Thrown in case the current node is <b>not</b> the leader.
+     * @throws NullPointerException Thrown in case the {@param member} is null.
      */
     public void flushCommitTable(Address member) {
         if (!isLeader()) throw new IllegalStateException("Currently not the leader, should be " + leader());
@@ -673,13 +676,16 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     /**
      * Called by a building block to apply a change to all state machines in a cluster. This starts the consensus
-     * protocol to get a majority to commit this change.<p/>
-     * This call is non-blocking and returns a future as soon as the AppendEntries message has been sent.<p/>
+     * protocol to get a majority to commit this change.
+     * <p>
+     * This call is non-blocking and returns a future as soon as the AppendEntries message has been sent.
      * Only applicable on the leader
+     * </p>
+     *
      * @param buf The command
      * @param offset The offset into the buffer
      * @param length The length of the buffer
-     * @return A CompletableFuture. Can be used to wait for the result (sync). A blocking caller could call
+     * @return A {@link CompletableFuture}. Can be used to wait for the result (sync). A blocking caller could call
      *         set(), then call future.get() to block for the result.
      */
     public CompletableFuture<byte[]> setAsync(byte[] buf, int offset, int length, Options options) {

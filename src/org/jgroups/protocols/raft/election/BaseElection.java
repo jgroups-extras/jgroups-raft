@@ -67,9 +67,9 @@ public abstract class BaseElection extends Protocol {
     /**
      * Defines the default timeout in milliseconds to utilize during any election operation.
      *
-     * @param timeoutMs: Timeout value in milliseconds.
+     * @param timeoutMs Timeout value in milliseconds.
      * @return This election instance.
-     * @throws IllegalArgumentException: In case timeout is less than or equal to 0.
+     * @throws IllegalArgumentException In case timeout is less than or equal to 0.
      */
     public BaseElection voteTimeout(long timeoutMs) {
         if (timeoutMs <= 0) throw new IllegalArgumentException("Timeout should be greater than 0.");
@@ -210,8 +210,8 @@ public abstract class BaseElection extends Protocol {
      * Handle a received VoteRequest sent by the coordinator; send back the last log term and index. Restricts execution
      * to a single process per term. Do not reply the request if voted for another process in the same term.
      *
-     * @param msg: The received message.
-     * @param hdr: The received header.
+     * @param msg The received message.
+     * @param hdr The received header.
      */
     private void handleVoteRequest(Message msg, VoteRequest hdr) {
         Address sender = msg.src();
@@ -288,8 +288,8 @@ public abstract class BaseElection extends Protocol {
      * This verification ensures the decided leader has the longest log.
      * </p>
      *
-     * @param one: The base to check against.
-     * @param other: The candidate response to check.
+     * @param one The base to check against.
+     * @param other The candidate response to check.
      * @return <code>true</code> if {@param other} is higher than {@param one}. <code>false</code>, otherwise.
      */
     private boolean isHigher(VoteResponse one, VoteResponse other) {

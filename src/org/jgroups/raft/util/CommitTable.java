@@ -12,8 +12,10 @@ import java.util.stream.Collectors;
 
 /**
  * Keeps track of next_index and match_index for each cluster member (excluding this leader).
- * Used to (1) compute the commit_index and (2) to resend log entries to members which haven't yet seen them.<p/>
- * Only created on the leader
+ * <p>
+ * Used to (1) compute the commit_index and (2) to resend log entries to members which haven't yet seen them.
+ * Only created on the leader.
+ * </p>
  * @author Bela Ban
  * @since  0.1
  */

@@ -23,21 +23,28 @@ public interface StateMachine {
     byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception;
 
     /**
-     * Reads the contents of the state machine from an input stream. This can be the case when an InstallSnapshot RPC
-     * is used to bootstrap a new node, or a node that's lagging far behind.<p/>
+     * Reads the contents of the state machine from an input stream.
+     * <p>
+     * This can be the case when an InstallSnapshot RPC
+     * is used to bootstrap a new node, or a node that's lagging far behind.
      * The parsing depends on the concrete state machine implementation, but the idea is that the stream is a sequence
-     * of commands, each of which can be passed to {@link #apply(byte[], int, int, boolean)}.<p/>
+     * of commands, each of which can be passed to {@link #apply(byte[], int, int, boolean)}.
+     * </p>
+     * <p>
      * The state machine may need to block modifications until the contents have been set (unless e.g. copy-on-write
-     * is used)<p/>
-     * The state machine implementation may need to remove all contents before populating itself from the stream.
+     * is used). The state machine implementation may need to remove all contents before populating itself from the stream.
+     * </p>
+     *
      * @param in The input stream
      */
     void   readContentFrom(DataInput in) throws Exception;
 
     /**
      * Writes the contents of the state machine to an output stream. This is typically called on the leader to
-     * provide state to a new node, or a node that's lagging far behind.<p/>
+     * provide state to a new node, or a node that's lagging far behind.
+     * <p>
      * Updates to the state machine may need to be put on hold while the state is written to the output stream.
+     * </p>
      * @param out The output stream
      */
     void   writeContentTo(DataOutput out) throws Exception;

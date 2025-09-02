@@ -67,8 +67,8 @@ public class Utils {
     /**
      * Verify if the coordinator change between two views.
      *
-     * @param prev: The old {@link View}, it can be <code>null</code>.
-     * @param curr: The recent {@link View}.
+     * @param prev The old {@link View}, it can be <code>null</code>.
+     * @param curr The recent {@link View}.
      * @return <code>true</code> if the coordinator changed, <code>false</code>, otherwise.
      */
     public static boolean viewCoordinatorChanged(View prev, View curr) {
@@ -82,8 +82,8 @@ public class Utils {
      *     <b>Warning:</b> This should be used in tests only.
      * </p>
      *
-     * @param r: RAFT instance to delete the log contents.
-     * @throws Exception: If an exception happens while deleting the log.
+     * @param r RAFT instance to delete the log contents.
+     * @throws Exception If an exception happens while deleting the log.
      * @deprecated Use {@link RaftTestUtils#deleteRaftLog(RAFT)} instead.
      */
     @Deprecated(since = "1.0.13", forRemoval = true)

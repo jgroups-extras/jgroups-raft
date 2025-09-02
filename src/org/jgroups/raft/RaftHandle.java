@@ -10,8 +10,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.ObjLongConsumer;
 
 /**
- * Main interaction point for applications with jgroups-raft. Provides methods to make changes, register a state machine,
- * get commit-index and last-applied, register {@link org.jgroups.protocols.raft.RAFT.RoleChange} listeners etc<p/>
+ * Main interaction point for applications with jgroups-raft.
+ * <p>
+ * Provides methods to make changes, register a state machine,
+ * get commit-index and last-applied, register {@link org.jgroups.protocols.raft.RAFT.RoleChange} listeners etc.
+ * </p>
  * Sample use:
  * <pre>
  *     JChannel ch=createChannel();
@@ -67,7 +70,7 @@ public class RaftHandle implements Settable {
      * and executed serially. The membership change adds an entry to the log, meaning it tolerates crashes and
      * restarts and only has an effect after a majority of members commit it.</p>
      *
-     * @param server: The server RAFT ID to add.
+     * @param server The server RAFT ID to add.
      * @return A {@link CompletableFuture} that completes once the command is committed.
      * @throws Exception if dynamic view changes are not enabled.
      * @throws IllegalStateException if the node is not the leader.
@@ -79,7 +82,7 @@ public class RaftHandle implements Settable {
     /**
      * Asynchronously removes a server from the RAFT cluster.
      *
-     * @param server: The server RAFT ID to remove.
+     * @param server The server RAFT ID to remove.
      * @return A {@link CompletableFuture} that completes once the command is committed.
      * @throws Exception if dynamic view changes are not enabled.
      * @throws IllegalStateException if the node is not the leader.

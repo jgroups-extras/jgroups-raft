@@ -84,7 +84,7 @@ public class RaftState {
     /**
      * Try advancing the term, and if succeeding, the leader is null.
      *
-     * @param newTerm: The term to advance to.
+     * @param newTerm The term to advance to.
      * @return Has the same result as <code>Long.compare(newTerm, currentTerm());</code>.
      * @see #tryAdvanceTermAndLeader(long, Address)
      */
@@ -98,10 +98,10 @@ public class RaftState {
      * A lower term has no effect. A higher term updates the node's current term to {@param newTerm}, and the leader to
      * {@param newLeader} and vote to <code>null</code>. The term and vote are written to disk.
      *
-     * @param newTerm: New term to update to.
-     * @param newLeader: The leader to update in case the term advances.
+     * @param newTerm New term to update to.
+     * @param newLeader The leader to update in case the term advances.
      * @return Has the same result as <code>Long.compare(newTerm, currentTerm());</code>. That is, -1 if the
-     *         <code>newTerm < currentTerm()</code>, 0 if both are equal, and 1 if <code>currentTerm()</code> is higher.
+     *         {@code newTerm < currentTerm()}, 0 if both are equal, and 1 if {@code currentTerm()} is higher.
      */
     public int tryAdvanceTermAndLeader(long newTerm, Address newLeader) {
         boolean saveVote = false;
@@ -137,8 +137,8 @@ public class RaftState {
      * A leader can not change within the same term. The update only happens when a new leader is elected
      * (null -> new leader) or when the leader steps down (current leader -> null).
      *
-     * @param newLeader: The new leader to update to.
-     * @throws IllegalStateException: If trying to update between different leaders in the same term.
+     * @param newLeader The new leader to update to.
+     * @throws IllegalStateException If trying to update between different leaders in the same term.
      */
     public synchronized void setLeader(Address newLeader) {
         if (this.leader != null && newLeader != null && !Objects.equals(this.leader, newLeader))
@@ -159,8 +159,8 @@ public class RaftState {
      * <p>
      * Follows the same logic as {@link #setLeader(Address)}. The vote is also written to disk.
      *
-     * @param votedFor: The vote in the current term.
-     * @throws IllegalStateException: If trying to update between different votes within the same term.
+     * @param votedFor The vote in the current term.
+     * @throws IllegalStateException If trying to update between different votes within the same term.
      */
     public void setVotedFor(Address votedFor) {
         Objects.requireNonNull(votedFor, "Voted for must not be null");

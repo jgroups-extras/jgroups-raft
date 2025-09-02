@@ -28,8 +28,9 @@ import static org.jgroups.Message.Flag.OOB;
  * edge cases. As a rule of thumb, if deploying in an unstable network with frequent partitions, this protocol should
  * give a more stable mechanism, avoid leader disruptions, and avoid possible liveness issues. Otherwise,
  * {@link ELECTION} is the default choice.
+ * </p>
  *
- * <p><h3>Pre-Voting phase:</h3>
+ * <h2>Pre-Voting phase:</h2>
  *
  * This extension includes the pre-voting mechanism proposed in Ongaro's dissertation (§9.6). In the current
  * implementation, a pre-voting phase starts in case the current node is the new view coordinator and:
@@ -134,8 +135,8 @@ public class ELECTION2 extends BaseElection {
      * the node replies with its current known leader address. This is because the sender is not interested in electing
      * itself. The sender is checking if a cluster-wide election round should be started.
      *
-     * @param message: The message received.
-     * @param hdr: The message header.
+     * @param message The message received.
+     * @param hdr The message header.
      */
     private void handlePreVoteRequest(Message message, PreVoteRequest hdr) {
         sendPreVoteResponse(message.getSrc());
@@ -189,8 +190,8 @@ public class ELECTION2 extends BaseElection {
          * Once all responses are collected and there is still a majority, the responses are parsed to verify if an
          * election phase should start.
          *
-         * @param sender: The response sender.
-         * @param hdr: The response message.
+         * @param sender The response sender.
+         * @param hdr The response message.
          */
         public void includeResponse(Address sender, PreVoteResponse hdr) {
             preVotingResponses.add(sender, hdr);;
