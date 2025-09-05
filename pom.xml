@@ -64,12 +64,31 @@
         </jgroups.tests.jvmargs>
 
         <!-- Utilized by Asciidoctor to set the generation date. -->
-        <asciidoctorj.diagram.versio>2.2.5</asciidoctorj.diagram.versio>
+        <asciidoctorj.diagram.version>3.0.1</asciidoctorj.diagram.version>
+        <asciidoctorj.diita.version>1.0.3</asciidoctorj.diita.version>
         <maven.build.timestamp.format>yyyy-MM-dd HH</maven.build.timestamp.format>
+
+        <!-- Plugins -->
+        <version.nexus3.plugin>1.0.7</version.nexus3.plugin>
+        <version.clean.plugin>3.5.0</version.clean.plugin>
+        <version.compiler.plugin>3.12.1</version.compiler.plugin>
+        <version.enforcer.plugin>3.6.0</version.enforcer.plugin>
+        <version.install.plugin>3.1.4</version.install.plugin>
+        <version.jar.plugin>2.4</version.jar.plugin>
+        <version.resources.plugin>3.3.1</version.resources.plugin>
+        <version.source.plugin>3.3.1</version.source.plugin>
+        <version.surefire.plugin>3.0.0-M6</version.surefire.plugin>
+        <version.surefire-report.plugin>3.2.5</version.surefire-report.plugin>
+        <version.dependency.plugin>3.8.1</version.dependency.plugin>
+        <version.build-helper.plugin>3.6.1</version.build-helper.plugin>
+        <version.exec.plugin>3.1.1</version.exec.plugin>
+        <version.asciidoctor.plugin>3.2.0</version.asciidoctor.plugin>
+        <version.javadoc.plugin>3.11.3</version.javadoc.plugin>
+        <version.gpg.plugin>3.2.8</version.gpg.plugin>
     </properties>
 
     <organization>
-        <name>JBoss, a division of Red Hat</name>
+        <name>JBoss, IBM</name>
         <url>http://www.jboss.org</url>
     </organization>
 
@@ -77,6 +96,8 @@
         <developer>
             <name>José Bolina</name>
             <email>jbolina@redhat.com</email>
+            <organization>IBM</organization>
+            <organizationUrl>https://www.ibm.com</organizationUrl>
         </developer>
         <developer>
             <name>Bela Ban</name>
@@ -130,39 +151,6 @@
             <url>${nexus.snapshot.server.url}</url>
         </snapshotRepository>
     </distributionManagement>
-
-    <repositories>
-        <repository>
-            <id>jboss-public-repository-group</id>
-            <name>JBoss Public Maven Repository Group</name>
-            <url>https://repository.jboss.org/nexus/content/groups/public/</url>
-            <layout>default</layout>
-            <releases>
-                <enabled>true</enabled>
-                <updatePolicy>never</updatePolicy>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-                <updatePolicy>interval:120</updatePolicy>
-            </snapshots>
-        </repository>
-
-        <repository>
-            <id>jboss-snapshots-repository</id>
-            <name>JBoss Nexus snapshots repository</name>
-            <url>https://repository.jboss.org/nexus/repository/snapshots</url>
-            <layout>default</layout>
-            <releases>
-                <enabled>false</enabled>
-                <updatePolicy>never</updatePolicy>
-            </releases>
-            <snapshots>
-                <enabled>true</enabled>
-                <updatePolicy>interval:120</updatePolicy>
-            </snapshots>
-        </repository>
-    </repositories>
-
 
     <dependencies>
         <dependency>
@@ -264,7 +252,7 @@
             <plugin>
                 <groupId>org.sonatype.plugins</groupId>
                 <artifactId>nxrm3-maven-plugin</artifactId>
-                <version>1.0.7</version>
+                <version>${version.nexus3.plugin}</version>
                 <extensions>true</extensions>
                 <configuration>
                     <nexusUrl>https://repository.jboss.org/nexus</nexusUrl>
@@ -314,7 +302,7 @@
                 <configuration>
                     <rules>
                         <requireJavaVersion>
-                            <!-- require JDK 1.7 to run the build -->
+                            <!-- require JDK 11 to run the build -->
                             <version>[11,)</version>
                         </requireJavaVersion>
                         <requireMavenVersion>
@@ -400,16 +388,6 @@
                 </executions>
             </plugin>
 
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-release-plugin</artifactId>
-                <version>3.1.1</version>
-                <configuration>
-                    <arguments>-DskipTests=true -Dmaven.test.skip=true -Dmaven.javadoc.skip=true</arguments>
-                    <preparationGoals>clean</preparationGoals>
-                </configuration>
-            </plugin>
-
             <!-- Disable default tests: they won't run since they are lacking configuration -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -478,129 +456,85 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-clean-plugin</artifactId>
-                    <version>3.5.0</version>
+                    <version>${version.clean.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.12.1</version>
+                    <version>${version.compiler.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-deploy-plugin</artifactId>
-                    <version>3.1.4</version>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>${version.enforcer.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-install-plugin</artifactId>
-                    <version>3.1.4</version>
+                    <version>${version.install.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
-                    <version>2.4</version>
+                    <version>${version.jar.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-resources-plugin</artifactId>
-                    <version>3.3.1</version>
+                    <version>${version.resources.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
-                    <version>3.3.1</version>
+                    <version>${version.source.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.0.0-M6</version>
+                    <version>${version.surefire.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-report-plugin</artifactId>
-                    <version>3.2.5</version>
-                </plugin>
-
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-failsafe-plugin</artifactId>
-                    <version>3.5.3</version>
+                    <version>${version.surefire-report.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-dependency-plugin</artifactId>
-                    <version>3.8.1</version>
+                    <version>${version.dependency.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>build-helper-maven-plugin</artifactId>
-                    <version>3.6.1</version>
+                    <version>${version.build-helper.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>exec-maven-plugin</artifactId>
-                    <version>3.1.1</version>
+                    <version>${version.exec.plugin}</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.asciidoctor</groupId>
                     <artifactId>asciidoctor-maven-plugin</artifactId>
-                    <version>3.2.0</version>
-                </plugin>
-
-                <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
-                <plugin>
-                    <groupId>org.eclipse.m2e</groupId>
-                    <artifactId>lifecycle-mapping</artifactId>
-                    <version>1.0.0</version>
-                    <configuration>
-                        <lifecycleMappingMetadata>
-                            <pluginExecutions>
-                                <pluginExecution>
-                                    <action>
-                                        <ignore />
-                                    </action>
-                                </pluginExecution>
-                            </pluginExecutions>
-                        </lifecycleMappingMetadata>
-                    </configuration>
+                    <version>${version.asciidoctor.plugin}</version>
                 </plugin>
             </plugins>
         </pluginManagement>
     </build>
 
     <profiles>
-        <profile>
-            <id>jboss-releases-repository</id>
-            <repositories>
-                <repository>
-                    <id>jboss-releases-repository</id>
-                    <name>JBoss Public Maven Repository Staging</name>
-                    <url>https://repository.jboss.org/nexus/repository/releases/</url>
-                    <layout>default</layout>
-                    <releases>
-                        <enabled>true</enabled>
-                        <updatePolicy>never</updatePolicy>
-                    </releases>
-                    <snapshots>
-                        <enabled>true</enabled>
-                        <updatePolicy>interval:120</updatePolicy>
-                    </snapshots>
-                </repository>
-            </repositories>
-        </profile>
-
         <profile>
             <!-- Profile to generate the manual. -->
             <id>manual</id>
@@ -675,13 +609,13 @@
                             <dependency>
                                 <groupId>org.asciidoctor</groupId>
                                 <artifactId>asciidoctorj-diagram</artifactId>
-                                <version>3.0.1</version>
+                                <version>${asciidoctorj.diagram.version}</version>
                             </dependency>
 
                             <dependency>
                                 <groupId>org.asciidoctor</groupId>
                                 <artifactId>asciidoctorj-diagram-ditaamini</artifactId>
-                                <version>1.0.3</version>
+                                <version>${asciidoctorj.diita.version}</version>
                             </dependency>
                         </dependencies>
                     </plugin>
@@ -690,7 +624,7 @@
         </profile>
 
         <profile>
-            <id>community-release</id>
+            <id>release</id>
             <activation>
                 <activeByDefault>false</activeByDefault>
             </activation>
@@ -699,7 +633,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-javadoc-plugin</artifactId>
-                        <version>3.11.3</version>
+                        <version>${version.javadoc.plugin}</version>
                         <executions>
                             <execution>
                                 <id>javadoc</id>
@@ -711,7 +645,7 @@
                         </executions>
                         <configuration>
                             <source>${maven.compiler.target}</source>
-                            <doclint>all</doclint>
+                            <doclint>none</doclint>
                             <detectLinks>false</detectLinks>
                             <detectOfflineLinks>false</detectOfflineLinks>
                         </configuration>
@@ -720,7 +654,7 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
-                        <version>3.2.8</version>
+                        <version>${version.gpg.plugin}</version>
                         <executions>
                             <execution>
                                 <id>sign-artifact</id>

@@ -89,7 +89,7 @@ public interface Settable {
      * </p>
      *
      * <p>
-     * <#>Warning:</b> Do not change the state-machine state by operations submitted through this method. Otherwise, the
+     * <b>Warning:</b> Do not change the state-machine state by operations submitted through this method. Otherwise, the
      * state-machine will diverge and lead to an undefined state.
      * </p>
      *
