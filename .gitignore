@@ -31,3 +31,4 @@ lib/
 *.properties
 .ant-targets-build.xml
 pom.xml.releaseBackup
+pom.xml.versionsBackup
