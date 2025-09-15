@@ -77,7 +77,7 @@
         <version.jar.plugin>3.4.2</version.jar.plugin>
         <version.resources.plugin>3.3.1</version.resources.plugin>
         <version.source.plugin>3.3.1</version.source.plugin>
-        <version.surefire.plugin>3.5.3</version.surefire.plugin>
+        <version.surefire.plugin>3.5.4</version.surefire.plugin>
         <version.surefire-report.plugin>3.5.3</version.surefire-report.plugin>
         <version.dependency.plugin>3.8.1</version.dependency.plugin>
         <version.build-helper.plugin>3.6.1</version.build-helper.plugin>
