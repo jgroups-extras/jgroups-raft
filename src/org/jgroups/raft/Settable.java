@@ -42,6 +42,24 @@ public interface Settable {
     }
 
     /**
+     * Synchronous get operation without time bound.
+     * <p>
+     * This method blocks until the change has been committed.
+     * </p>
+     *
+     * @param buf The buffer representing the read-only operation to submit to the state machine.
+     * @param offset The offset to skip the bytes in the buffer.
+     * @param length The number of bytes to use from the buffer starting at offset.
+     * @return A buffer representing the result after submitting the read-only operation.
+     * @throws Exception Thrown if the operation could not be submitted.
+     * @see #getAsync(byte[], int, int, Options)
+     */
+    default byte[] get(byte[] buf, int offset, int length) throws Exception {
+        CompletableFuture<byte[]> cf = getAsync(buf, offset, length, null);
+        return cf.get();
+    }
+
+    /**
      * Synchronous get operation bounded by a timeout.
      * <p>
      * This method blocks until the change has been committed or a timeout occurred.
@@ -96,6 +114,7 @@ public interface Settable {
      * @param buf The buffer representing the read-only operation to submit to the state machine.
      * @param offset The offset to skip the bytes in the buffer.
      * @param length The number of bytes to use from the buffer starting at offset.
+     * @param options Options to pass along in the call chain, may be null.
      * @return A buffer representing the result after submitting the read-only operation.
      * @throws Exception Thrown if the operation could not be submitted.
      */

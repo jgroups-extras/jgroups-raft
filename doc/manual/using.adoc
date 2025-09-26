@@ -101,7 +101,29 @@ When committing the change, every state machine needs to de-serialize the buffer
 its state (see <<ImplementingStateMachine>>). If there is a return value to the `put()` call, e.g. the previous value
 associated with `key`, then it will be serialized into a buffer and returned as result of one of the `setX()` calls.
 
+==== Reading values
 
+The `getX()` methods can be used to read the current state:
+
+[source,java]
+----
+byte[] get(byte[] buf, int offset, int length) throws Exception; // <1>
+byte[] get(byte[] buf, int offset, int length, long timeout, TimeUnit unit) throws Exception; // <2>
+CompletableFuture<byte[]> getAsync(byte[] buf, int offset, int length); // <3>
+----
+<1> A synchronous call to read a value. The caller blocks until the operation is complete.
+<2> Same as above, except this call has a defined timeout.
+<3> An asynchronous version that returns a `CompletableFuture` and does not block the caller.
+
+To provide high performance for read-heavy workloads, JGroups Raft implements the read-only optimization described in the Raft dissertation (Section 6.4).
+This allows the leader to serve read requests without writing to the Raft log, which increases the throughput and don't grow the persistent log, which also helps during restarts.
+
+The process works as follows: when the leader receives a read request, it first confirms with a quorum of followers that it is still the leader.
+Once its leadership is verified, it serves the read request based on its current committed state.
+The leader can batch several read operations and sever them together after each confirmation.
+This leadership check ensures data consistency while avoiding the cost of a full consensus round for every read.
+
+WARNING: Do *not* update the state machine using the `getX` methods. This could leave the state machine in an undefined state.
 
 
 [[ImplementingStateMachine]]
@@ -234,9 +256,6 @@ A sample XML configuration file is shown below (edited for brevity):
 
 This is a regular JGroups XML configuration, except that jgroups-raft added a few additional protocols.
 
-
-
-
 [[DynamicMembership]]
 === Adding and removing members dynamically
 
@@ -260,5 +279,16 @@ The steps to add a member are as follows (say we have `RAFT.members="A,B,C"` and
 Notice that membership changes survive through restarts. If a node must be removed or added, an operation must be
 submitted, only restarting does not affect membership.
 
+==== Learner nodes
 
+JGroups Raft supports **learner nodes** to scale read-heavy applications.
+Learners act as read-only replicas that mirror the leader's log but don't participate in the voting process.
+Because they don't affect the quorum, you can add as many as needed.
+This is ideal for reducing latency by placing nodes closer to your users without altering the core cluster's fault tolerance.
 
+The primary role of a learner node is to facilitate safe and seamless cluster expansion.
+When you add a new server directly to a Raft cluster, there's a risk of temporary unavailability because the new server needs time to catch up with the leader's log.
+By adding the new server as a learner first, it can replicate the log without being a voting member.
+Once it is fully synchronized with the leader, it can be promoted to a follower, gaining voting rights and becoming a full member of the cluster without any disruption.
+
+NOTE: You can learn (pun intended) more in the https://github.com/jgroups-extras/jgroups-raft/blob/bc1702d66d6d741105d97e34fe8902b1eb8c05c8/doc/design/LearnerNodes.adoc[design document].
