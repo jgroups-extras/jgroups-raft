@@ -589,6 +589,8 @@
                                 </goals>
 
                                 <configuration>
+                                    <sourceDocumentName>manual.adoc</sourceDocumentName>
+
                                     <outputDirectory>${project.build.directory}/doc/manual</outputDirectory>
                                     <attributes>
                                         <revdate>${maven.build.timestamp}</revdate>
