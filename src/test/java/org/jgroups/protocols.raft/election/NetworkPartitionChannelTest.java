@@ -12,7 +12,6 @@ import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.raft.ELECTION2;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.stack.Protocol;
-import org.jgroups.tests.harness.AbstractRaftTest;
 import org.jgroups.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.Util;
 
@@ -50,8 +49,6 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
         clusterSize = 5;
         indexes = IntStream.range(0, clusterSize).toArray();
         recreatePerMethod = true;
-        System.setProperty(AbstractRaftTest.ENABLE_TRACE_CLASSES,
-                "org.jgroups.protocols.raft.ELECTION,org.jgroups.protocols.raft.ELECTION2");
     }
 
     public void electionAfterMerge(Class<?> ignore) throws Exception {
