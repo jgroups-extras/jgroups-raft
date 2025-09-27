@@ -182,7 +182,7 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
 
     @Override
     public int hashCode() { // why is this method needed?
-        synchronized (map) {
+        synchronized(map) {
             return map.hashCode();
         }
     }
@@ -198,7 +198,7 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
      * @return Null, or the previous value associated with key (if present)
      */
     public V put(K key, V val) throws Exception {
-        return invoke(PUT, key, val, false);
+        return invoke(PUT, key, val, false, false);
     }
 
     /**
@@ -217,7 +217,7 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
             }
         }
 
-        return invoke(GET, key, null, false);
+        return invoke(GET, key, null, false, true);
     }
 
     /**
@@ -227,7 +227,7 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
      * @param key The key to be removed
      */
     public V remove(K key) throws Exception {
-        return invoke(REMOVE, key, null, true);
+        return invoke(REMOVE, key, null, true, false);
     }
 
     /**
@@ -311,7 +311,7 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
         }
     }
 
-    protected V invoke(byte command, K key, V val, boolean ignore_return_value) throws Exception {
+    protected V invoke(byte command, K key, V val, boolean ignore_return_value, boolean isRead) throws Exception {
         ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(256);
         try {
             out.writeByte(command);
@@ -323,7 +323,12 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
         }
 
         byte[] buf = out.buffer();
-        byte[] rsp = raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
+        byte[] rsp;
+        if (isRead) {
+            rsp = raft.get(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
+        } else {
+            rsp = raft.set(buf, 0, out.position(), repl_timeout, TimeUnit.MILLISECONDS);
+        }
         return ignore_return_value || rsp == null ? null : Util.objectFromByteBuffer(rsp, 0, rsp.length, class_loader);
     }
 
