@@ -1,4 +1,4 @@
-package org.jgroups.raft.tests.utils;
+package org.jgroups.raft.util;
 
 import org.jgroups.util.Bits;
 import org.jgroups.util.Streamable;
