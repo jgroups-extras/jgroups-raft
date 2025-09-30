@@ -8,5 +8,7 @@ module org.jgroups.raft {
    requires static java.management;
 
    exports org.jgroups.raft;
+   exports org.jgroups.raft.blocks;
+   exports org.jgroups.raft.util;
    exports org.jgroups.protocols.raft;
 }
