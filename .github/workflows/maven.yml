@@ -45,7 +45,7 @@ jobs:
       - name: Generate and upload test reports
         # Only upload reports if tests failed.
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: Test reports
           # Once SUREFIRE-2219 is finished we can upload only the html report.
