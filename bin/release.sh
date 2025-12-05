@@ -66,7 +66,7 @@ echo "Updating POM files to release version: $releaseVersion"
 mvn versions:set -DnewVersion="$releaseVersion" -DprocessAllModules=true -DgenerateBackupPoms=false
 
 echo "Committing release version $releaseVersion"
-git add '**/pom.xml'
+git add 'pom.xml'
 git commit -m "Releasing version $releaseVersion" --no-verify
 
 echo "Building project artifacts for $releaseVersion"
@@ -85,7 +85,7 @@ echo "Updating POM files to next development version: $nextVersion..."
 mvn versions:set -DnewVersion="$nextVersion" -DprocessAllModules=true -DgenerateBackupPoms=false
 
 echo "Committing next development version to $nextVersion"
-git add '**/pom.xml'
+git add 'pom.xml'
 git commit -m "Next version $nextVersion" --no-verify
 
 echo "Pushing commits and tags to remote repository"
