@@ -7,22 +7,28 @@ import org.jgroups.raft.metrics.ElectionMetrics;
 import org.jgroups.raft.metrics.LogMetrics;
 import org.jgroups.raft.metrics.PerformanceMetrics;
 
-public class GroupsRaftMetricsCollector implements JGroupsRaftMetrics {
+public class JGroupsRaftMetricsCollector implements JGroupsRaftMetrics {
 
+    private final RAFT raft;
     private final ElectionMetrics electionMetrics;
+    private final PerformanceMetrics performanceMetrics;
 
-    public GroupsRaftMetricsCollector(RAFT raft, BaseElection election) {
+    public JGroupsRaftMetricsCollector(RAFT raft, BaseElection election) {
+        this.raft = raft;
         this.electionMetrics = new ElectionMetricsCollector(election);
+        SystemMetricsTracker smt = new SystemMetricsTracker();
+        raft.systemMetricsTracker(smt);
+        this.performanceMetrics = smt;
     }
 
     @Override
     public int getTotalNodes() {
-        throw new UnsupportedOperationException();
+        return raft.members().size();
     }
 
     @Override
     public int getActiveNodes() {
-        throw new UnsupportedOperationException();
+        return raft.getTransport().view().size();
     }
 
     @Override
@@ -37,6 +43,6 @@ public class GroupsRaftMetricsCollector implements JGroupsRaftMetrics {
 
     @Override
     public PerformanceMetrics performanceMetrics() {
-        throw new UnsupportedOperationException();
+        return performanceMetrics;
     }
 }

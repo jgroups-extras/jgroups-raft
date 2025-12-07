@@ -1,15 +1,15 @@
 package org.jgroups.raft.internal;
 
-import java.util.function.Function;
-
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.Follower;
 import org.jgroups.protocols.raft.Leader;
 import org.jgroups.protocols.raft.Learner;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.Role;
+import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.JGroupsRaft;
 import org.jgroups.raft.JGroupsRaftAdministration;
+import org.jgroups.raft.JGroupsRaftHealthCheck;
 import org.jgroups.raft.JGroupsRaftMetrics;
 import org.jgroups.raft.JGroupsRaftRole;
 import org.jgroups.raft.JGroupsRaftState;
@@ -19,10 +19,15 @@ import org.jgroups.raft.StateMachineWrite;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.exceptions.JRaftException;
-import org.jgroups.raft.internal.metrics.GroupsRaftMetricsCollector;
+import org.jgroups.raft.internal.metrics.JGroupsRaftMetricsCollector;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.serialization.Serializer;
 import org.jgroups.raft.internal.statemachine.StateMachineWrapper;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.BiConsumer;
+import java.util.function.Function;
 
 /**
  * Default implementation of the {@link JGroupsRaft} interface.
@@ -36,11 +41,11 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
 
     private final JGroupsRaftParameters<T> parameters;
     private final boolean attachedChannel;
-    private final Serializer serializer;
     private final CommandRegistry<T> registry;
     private final StateMachineWrapper<T> wrapper;
 
-    private Settable settable;
+    private final List<BiConsumer<JGroupsRaftRole, JGroupsRaftRole>> listeners = new CopyOnWriteArrayList<>();
+
     private JGroupsRaftMetrics metrics;
     private JGroupsRaftState state;
     private JGroupsRaftAdministration administration;
@@ -51,7 +56,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         this.parameters = parameters;
         this.attachedChannel = !parameters.channel().isConnected();
         this.registry = new CommandRegistry<>(parameters.sm(), parameters.api());
-        this.serializer = Serializer.protoStream(parameters.registry());
+        Serializer serializer = Serializer.protoStream(parameters.registry());
         this.wrapper = new StateMachineWrapper<>(parameters.sm(), parameters.api(), registry, serializer);
         this.role = JGroupsRaftRole.NONE;
     }
@@ -73,8 +78,15 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         if ((raft = RAFT.findProtocol(RAFT.class, channel.getProtocolStack().getTopProtocol(), true)) == null)
             throw new IllegalStateException("RAFT protocol was not found");
 
+        // Find the election protocol to collect election metrics.
+        // The election protocol is also a required mechanism for RAFT to work.
+        BaseElection election;
+        if ((election = RAFT.findProtocol(BaseElection.class, channel.getProtocolStack().getTopProtocol(), true)) == null)
+            throw new IllegalStateException("did not find a protocol implementing for election (e.g. ELECTION or ELECTION2)");
+
         // Search for the first protocol in the stack implementing Settable.
         // For example, we might have REDIRECT in the stack to send the command to the correct RAFT leader.
+        Settable settable;
         if ((settable = RAFT.findProtocol(Settable.class, channel.getProtocolStack().getTopProtocol(), true)) == null)
             throw new IllegalStateException("did not find a protocol implementing Settable (e.g. REDIRECT or RAFT)");
 
@@ -93,7 +105,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         // Only instantiate metric collection if it was enabled during startup.
         boolean metricsEnabled = parameters.runtimeProperties().getBoolean(JGroupsRaftMetrics.METRICS_ENABLED);
         metrics = metricsEnabled
-                ? new GroupsRaftMetricsCollector(raft, null)
+                ? new JGroupsRaftMetricsCollector(raft, election)
                 : JGroupsRaftMetrics.disabled();
 
         // The state is just a view over the RAFT protocol.
@@ -139,6 +151,10 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         started = true;
     }
 
+    JChannel channel() {
+        return parameters.channel();
+    }
+
     private void handleRoleUpdate(String clazz) {
         if (clazz.equals(Leader.class.getSimpleName())) {
             handleRoleUpdate(Role.Leader);
@@ -159,11 +175,22 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
     }
 
     private void handleRoleUpdate(Role r) {
+        JGroupsRaftRole before = this.role;
         this.role = switch (r) {
             case Leader -> JGroupsRaftRole.LEADER;
             case Follower -> JGroupsRaftRole.FOLLOWER;
             case Learner -> JGroupsRaftRole.LEARNER;
         };
+
+        if (before != this.role) {
+            listeners.forEach(l -> {
+                try {
+                    l.accept(before, this.role);
+                } catch (Throwable t) {
+                    // Ignore
+                }
+            });
+        }
     }
 
     @Override
@@ -223,6 +250,26 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
     public JGroupsRaftState state() {
         ensureInstanceInitialized();
         return state;
+    }
+
+    @Override
+    public JGroupsRaftMetrics metrics() {
+        return metrics;
+    }
+
+    @Override
+    public JGroupsRaftHealthCheck healthCheck() {
+        return null;
+    }
+
+    @Override
+    public void listenRoleChanges(BiConsumer<JGroupsRaftRole, JGroupsRaftRole> consumer) {
+        listeners.add(consumer);
+    }
+
+    @Override
+    public void removeRoleChangeListener(BiConsumer<JGroupsRaftRole, JGroupsRaftRole> consumer) {
+        listeners.remove(consumer);
     }
 
     private void ensureInstanceInitialized() {

@@ -11,7 +11,7 @@
         <root level="warn">
             <appender-ref ref="STDOUT"/>
         </root>
-        <logger name="org.jgroups" level="warn"/>
+        <logger name="org.jgroups" level="info"/>
         <logger name="org.jgroups.protocols.raft.RAFT"     level="warn"/>
         <logger name="org.jgroups.protocols.raft.ELECTION" level="warn"/>
     </loggers>

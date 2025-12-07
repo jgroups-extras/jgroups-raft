@@ -8,8 +8,6 @@ import org.jgroups.raft.metrics.PerformanceMetrics;
 
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.Map;
 
 import static org.jgroups.raft.configuration.RuntimeProperties.PROPERTY_PREFIX;
 
@@ -84,11 +82,6 @@ public interface JGroupsRaftMetrics {
             @Override
             public double getReplicationLag() {
                 return -1;
-            }
-
-            @Override
-            public Map<String, Long> getNodeLogIndices() {
-                return Collections.emptyMap();
             }
         };
         private static final LatencyMetrics LATENCY_METRICS = new LatencyMetrics() {

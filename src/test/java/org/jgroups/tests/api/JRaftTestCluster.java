@@ -122,7 +122,7 @@ public final class JRaftTestCluster<T extends StateMachine> {
                 T sm = stateMachineFactory.get();
                 channels[i] = channel(i);
                 JGroupsRaft<T> raft = JGroupsRaft.builder(sm, clazz)
-                        .withChannel(channels[i])
+                        .withJChannel(channels[i])
                         .registerSerializationContextInitializer(new TestSerializationInitializerImpl())
                         .configureRaft()
                             .withRaftId(Character.toString('A' + i))

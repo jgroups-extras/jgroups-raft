@@ -2,6 +2,7 @@ package org.jgroups.raft.configuration;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.JGroupsRaft;
@@ -71,6 +72,7 @@ public final class RaftProtocolBuilder<T> implements NestedBuilder<Void, JGroups
     }
 
     public RaftProtocolBuilder<T> withMembers(List<String> members) {
+        Objects.requireNonNull(members, "members cannot be null");
         this.members = new ArrayList<>(members);
         return this;
     }

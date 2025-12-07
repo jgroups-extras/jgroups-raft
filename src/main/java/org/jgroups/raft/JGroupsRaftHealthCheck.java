@@ -15,11 +15,14 @@ import java.util.Map;
  */
 public interface JGroupsRaftHealthCheck {
 
+    boolean isNodeReady();
+
     ClusterHealth getClusterHealth();
 
     Collection<NodeHealthDetail> getNodeHealthDetails();
 
     enum ClusterHealth {
+        NOT_RUNNING,
         HEALTHY,
         DEGRADED,
         FAILURE,

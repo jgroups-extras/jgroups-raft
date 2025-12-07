@@ -15,6 +15,7 @@ import org.jgroups.raft.logger.JRaftEventLogger;
 import java.io.InputStream;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -123,7 +124,15 @@ import org.infinispan.protostream.SerializationContextInitializer;
 @ThreadSafe
 public interface JGroupsRaft<T> {
 
-    final class Builder<T> implements org.jgroups.raft.util.pattern.Builder<JGroupsRaft<T>> {
+    interface JGroupsBuilderStep<R, B extends org.jgroups.raft.util.pattern.Builder<R>> {
+        B withJGroupsConfig(InputStream jgroupsConfig);
+
+        B withJGroupsConfig(String jgroupsConfig);
+
+        B withJChannel(JChannel channel);
+    }
+
+    final class Builder<T> implements org.jgroups.raft.util.pattern.Builder<JGroupsRaft<T>>, JGroupsBuilderStep<JGroupsRaft<T>, Builder<T>> {
         private final T stateMachine;
         private final Class<T> api;
         private final SerializationRegistry registry;
@@ -225,7 +234,7 @@ public interface JGroupsRaft<T> {
          * @param channel the JGroups channel to be used.
          * @return the builder instance.
          */
-        public Builder<T> withChannel(JChannel channel) {
+        public Builder<T> withJChannel(JChannel channel) {
             this.channel = channel;
             return this;
         }
@@ -338,6 +347,13 @@ public interface JGroupsRaft<T> {
                 }
             }
 
+            // If configuration was null, the channel is present.
+            // If it is not connected yet, we apply the settings from the builder.
+            if (!channel.isConnected()) {
+                RAFT r = RAFT.findProtocol(RAFT.class, channel.getProtocolStack().getTopProtocol(), true);
+                if (r != null) raftBuilder.build(r);
+            }
+
             if (clusterName == null && channel.isConnected())
                 clusterName = channel.getClusterName();
 
@@ -354,7 +370,7 @@ public interface JGroupsRaft<T> {
      * @param <T> the type of the state machine
      * @throws NullPointerException if any of the arguments is null.
      */
-    static <T> Builder<T> builder(T stateMachine, Class<T> api) {
+    static <T> JGroupsBuilderStep<JGroupsRaft<T>, Builder<T>> builder(T stateMachine, Class<T> api) {
         Objects.requireNonNull(stateMachine, "state machine cannot be null");
         Objects.requireNonNull(api, "api class cannot be null");
         return new Builder<>(stateMachine, api);
@@ -567,4 +583,48 @@ public interface JGroupsRaft<T> {
      * @return Raft's internal state.
      */
     JGroupsRaftState state();
+
+    /**
+     * Metrics related to the Raft algorithm and command execution.
+     *
+     * <p>
+     * This API provides access to metrics related to the Raft algorithm and command execution. The metrics can be
+     * utilized to monitor the cluster's performance and behavior.
+     * </p>
+     *
+     * @return metrics related to the Raft algorithm and command execution.
+     */
+    JGroupsRaftMetrics metrics();
+
+    /**
+     * Health check utility to check the node health.
+     *
+     * <p>
+     * Health check is local, no calls are run remotely. The caller can invoke the methods periodically to verify the
+     * local node's health. Collecting the health of all nodes in the cluster is the responsibility of the caller.
+     * </p>
+     *
+     * @return health check utility
+     * @see JGroupsRaftHealthCheck
+     */
+    JGroupsRaftHealthCheck healthCheck();
+
+    /**
+     * Registers a listener to be notified when the role of the node changes.
+     *
+     * <p>
+     * The consumer is invoked when the role of the node changes. The consumer is synchronously and
+     * should not block.
+     * </p>
+     *
+     * @param consumer the consumer to be notified when the role of the node changes.
+     */
+    void listenRoleChanges(BiConsumer<JGroupsRaftRole, JGroupsRaftRole> consumer);
+
+    /**
+     * Removes a previously registered listener.
+     *
+     * @param consumer the consumer to be removed.
+     */
+    void removeRoleChangeListener(BiConsumer<JGroupsRaftRole, JGroupsRaftRole> consumer);
 }
