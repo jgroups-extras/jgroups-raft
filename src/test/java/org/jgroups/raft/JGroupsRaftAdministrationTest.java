@@ -1,8 +1,8 @@
 package org.jgroups.raft;
 
 import org.jgroups.Global;
-import org.jgroups.raft.tests.api.JRaftTestCluster;
-import org.jgroups.raft.tests.api.SimpleKVStateMachine;
+import org.jgroups.raft.api.JRaftTestCluster;
+import org.jgroups.raft.api.SimpleKVStateMachine;
 
 import java.util.Set;
 import java.util.concurrent.TimeUnit;

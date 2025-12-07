@@ -1,4 +1,4 @@
-package org.jgroups.raft.tests.api;
+package org.jgroups.raft.api;
 
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.InMemoryLog;

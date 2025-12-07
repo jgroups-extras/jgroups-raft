@@ -1,4 +1,4 @@
-package org.jgroups.raft.tests.serialization;
+package org.jgroups.raft.serialization;
 
 import java.util.Arrays;
 import java.util.Objects;

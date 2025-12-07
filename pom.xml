@@ -24,11 +24,12 @@
         <!-- Dependencies versions -->
         <testng.version>7.11.0</testng.version>
         <assertj.version>3.27.6</assertj.version>
-        <jgroups.version>5.4.11.Final</jgroups.version>
+        <jgroups.version>5.5.1.Final</jgroups.version>
         <log4j.version>2.25.2</log4j.version>
         <jmh.version>1.37</jmh.version>
         <mashona.version>1.1.0</mashona.version>
-        <protostream.version>5.0.13.Final</protostream.version>
+        <hdrhistogram.version>2.2.2</hdrhistogram.version>
+        <protostream.version>6.0.0</protostream.version>
 
         <!-- test properties -->
         <ansi.strip />
@@ -65,7 +66,7 @@
         <maven.build.timestamp.format>yyyy-MM-dd HH</maven.build.timestamp.format>
 
         <!-- Code quality red tape. -->
-        <version.puppycrawl>10.21.2</version.puppycrawl>
+        <version.puppycrawl>12.2.0</version.puppycrawl>
         <version.spotbugs.plugin>4.9.1.0</version.spotbugs.plugin>
         <version.pmd.plugin>3.26.0</version.pmd.plugin>
         <version.jacoco.plugin>0.8.12</version.jacoco.plugin>
@@ -200,7 +201,7 @@
         <dependency>
             <groupId>org.hdrhistogram</groupId>
             <artifactId>HdrHistogram</artifactId>
-            <version>2.2.2</version>
+            <version>${hdrhistogram.version}</version>
             <optional>true</optional>
         </dependency>
 
@@ -379,6 +380,25 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
+
+                <executions>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+
+                        <configuration>
+                            <compilerArgs>
+                                <arg>--add-modules</arg>
+                                <arg>java.desktop</arg>
+                                <arg>--add-reads</arg>
+                                <arg>org.jgroups.raft=java.desktop</arg>
+                            </compilerArgs>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
@@ -419,6 +439,7 @@
                         <configuration>
                             <sources>
                                 <source>${basedir}/src/test/benchmark</source>
+                                <source>${basedir}/src/test/demo</source>
                             </sources>
                         </configuration>
                     </execution>

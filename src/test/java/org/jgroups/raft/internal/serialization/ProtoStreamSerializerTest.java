@@ -3,9 +3,9 @@ package org.jgroups.raft.internal.serialization;
 import org.jgroups.Global;
 import org.jgroups.raft.JGroupsRaftCustomMarshaller;
 import org.jgroups.raft.internal.registry.SerializationRegistry;
-import org.jgroups.raft.tests.serialization.TestDataHolderCustom;
-import org.jgroups.raft.tests.serialization.TestDataHolderProto;
-import org.jgroups.raft.tests.serialization.TestSerializationInitializerImpl;
+import org.jgroups.raft.serialization.TestDataHolderCustom;
+import org.jgroups.raft.serialization.TestDataHolderProto;
+import org.jgroups.raft.serialization.TestSerializationInitializerImpl;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;

@@ -1,4 +1,4 @@
-package org.jgroups.raft.tests.api;
+package org.jgroups.raft.api;
 
 import org.infinispan.protostream.annotations.ProtoFactory;
 import org.infinispan.protostream.annotations.ProtoField;

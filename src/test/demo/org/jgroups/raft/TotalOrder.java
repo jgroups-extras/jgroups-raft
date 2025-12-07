@@ -1,4 +1,9 @@
-package org.jgroups.raft.demo;
+package org.jgroups.raft;
+
+import org.jgroups.JChannel;
+import org.jgroups.Receiver;
+import org.jgroups.View;
+import org.jgroups.util.Util;
 
 import java.awt.BorderLayout;
 import java.awt.Button;
@@ -26,16 +31,6 @@ import org.infinispan.protostream.annotations.Proto;
 import org.infinispan.protostream.annotations.ProtoField;
 import org.infinispan.protostream.annotations.ProtoSchema;
 import org.infinispan.protostream.annotations.ProtoSyntax;
-import org.jgroups.JChannel;
-import org.jgroups.Receiver;
-import org.jgroups.View;
-import org.jgroups.raft.JGroupsRaft;
-import org.jgroups.raft.JGroupsRaftCustomMarshaller;
-import org.jgroups.raft.JGroupsRaftStateMachine;
-import org.jgroups.raft.StateMachineField;
-import org.jgroups.raft.StateMachineRead;
-import org.jgroups.raft.StateMachineWrite;
-import org.jgroups.util.Util;
 
 public class TotalOrder extends Frame {
     private static final Font def_font=new Font("Helvetica", Font.BOLD, 12);

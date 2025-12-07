@@ -1,6 +1,4 @@
-package org.jgroups.raft.tests.serialization;
-
-import org.jgroups.raft.internal.serialization.RaftSerializationInitializer;
+package org.jgroups.raft.api;
 
 import org.infinispan.protostream.SerializationContextInitializer;
 import org.infinispan.protostream.annotations.ProtoSchema;
@@ -8,13 +6,10 @@ import org.infinispan.protostream.annotations.ProtoSyntax;
 
 @ProtoSchema(
         allowNullFields = true,
-        dependsOn = {
-                RaftSerializationInitializer.class
-        },
         includeClasses = {
-                TestDataHolderProto.class,
+                KeyValueProto.class,
         },
-        schemaFileName = "test.raft.proto",
+        schemaFileName = "test-api.raft.proto",
         schemaFilePath = "proto/generated",
         schemaPackageName = "org.jgroups.raft.test",
         service = false,
