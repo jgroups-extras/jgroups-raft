@@ -5,14 +5,9 @@ import org.jgroups.raft.metrics.ElectionMetrics;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 
-public class ElectionMetricsCollector implements ElectionMetrics {
-
-    private final BaseElection election;
-
-    public ElectionMetricsCollector(BaseElection election) {
-        this.election = election;
-    }
+record ElectionMetricsCollector(BaseElection election) implements ElectionMetrics {
 
     @Override
     public String getLeaderRaftId() {
@@ -26,6 +21,6 @@ public class ElectionMetricsCollector implements ElectionMetrics {
 
     @Override
     public Duration getTimeSinceLastLeaderChange() {
-        return Duration.between(election.electionStart(), election.electionEnd());
+        return Duration.of(election.timeSinceLastElection(), ChronoUnit.MILLIS);
     }
 }

@@ -189,8 +189,8 @@ public class TotalOrder extends Frame {
                 }
             });
             raft = JGroupsRaft.builder(canvas, CanvasStateMachine.class)
+                    .withJChannel(channel)
                     .withClusterName("total-order")
-                    .withChannel(channel)
                     .registerSerializationContextInitializer(new TotalOrderSerializationInitializerImpl())
                     .registerMarshaller(new JGroupsRaftCustomMarshaller<int[][]>() {
                         @Override

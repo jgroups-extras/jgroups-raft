@@ -1,7 +1,5 @@
 package org.jgroups.raft.metrics;
 
-import java.util.Map;
-
 /**
  * Metrics for log replication.
  *
@@ -20,6 +18,4 @@ public interface LogMetrics {
     long getUncommittedLogEntries();
 
     double getReplicationLag();
-
-    Map<String, Long> getNodeLogIndices();
 }

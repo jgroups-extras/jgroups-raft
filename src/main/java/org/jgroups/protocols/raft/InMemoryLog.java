@@ -26,6 +26,7 @@ import java.util.function.ObjLongConsumer;
 public class InMemoryLog implements Log {
     // keeps all logs, keyed by name
     public static final Map<String,Log> logs=new ConcurrentHashMap<>();
+    private boolean                   fsync;
     private long                      current_term;
     private long                      first_appended;
     private long                      last_appended;
@@ -60,11 +61,12 @@ public class InMemoryLog implements Log {
     }
 
     public Log useFsync(boolean f) {
+        this.fsync = f;
         return this;
     }
 
     public boolean useFsync() {
-        return false;
+        return fsync;
     }
 
     @Override

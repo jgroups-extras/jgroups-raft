@@ -20,6 +20,7 @@ import org.jgroups.util.MessageBatch;
 import org.jgroups.util.ResponseCollector;
 import org.jgroups.util.Runner;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
@@ -61,7 +62,6 @@ public abstract class BaseElection extends Protocol {
     private final ResponseCollector<VoteResponse> votes=new ResponseCollector<>();
     private volatile boolean stopVoting;
 
-    // TODO: properly handle how these values are collected.
     private volatile Instant electionStart;
     private volatile Instant electionEnd;
 
@@ -107,14 +107,22 @@ public abstract class BaseElection extends Protocol {
         return false;
     }
 
-    @ManagedOperation(description = "Instant a new election started")
+    @ManagedAttribute(description = "Instant a new election started", type = AttributeType.TIME)
     public Instant electionStart() {
         return electionStart;
     }
 
-    @ManagedOperation(description = "Instant a new election ended")
+    @ManagedAttribute(description = "Instant a new election ended", type = AttributeType.TIME)
     public Instant electionEnd() {
         return electionEnd;
+    }
+
+    @ManagedAttribute(description = "Time in milliseconds since the last election ended", type = AttributeType.TIME)
+    public long timeSinceLastElection() {
+        if (electionEnd == null)
+            return -1;
+
+        return Duration.between(electionEnd, raft.timeService().now()).toMillis();
     }
 
     protected abstract void handleView(View v);
@@ -219,7 +227,6 @@ public abstract class BaseElection extends Protocol {
             log.trace("%s <- %s: %s (%d)", local_addr, msg.src(), hdr, res);
             if (res >= 0) {
                 stopVotingThread(); // only on the coord
-                electionEnd = Instant.now();
             }
         } else {
             log.trace("%s <- %s: %s after leader left (%s)", local_addr, msg.src(), hdr, v);
@@ -428,9 +435,9 @@ public abstract class BaseElection extends Protocol {
     public synchronized BaseElection startVotingThread() {
         if(!isVotingThreadRunning()) {
             log.debug("%s: starting the voting thread", local_addr);
+            electionStart = raft.timeService().now();
             stopVoting = false;
             voting_thread.start();
-            electionStart = Instant.now();
         }
         return this;
     }
@@ -448,6 +455,12 @@ public abstract class BaseElection extends Protocol {
         Message msg=new EmptyMessage(null).putHeader(id, hdr).setFlag(DONT_LOOPBACK);
         log.trace("%s -> all (-self): %s", local_addr, hdr);
         down_prot.down(msg);
+        if (electionStart != null) {
+            electionEnd = raft.timeService().now();
+            if (electionEnd != null && raft.systemMetricsTracker() != null) {
+                raft.systemMetricsTracker().recordElectionLatency(Duration.between(electionStart, electionEnd).toNanos());
+            }
+        }
     }
 
     protected void sendVoteResponse(Address dest, long term, long last_log_term, long last_log_index) {

@@ -1,5 +1,46 @@
 package org.jgroups.protocols.raft;
 
+import org.jgroups.Address;
+import org.jgroups.BytesMessage;
+import org.jgroups.EmptyMessage;
+import org.jgroups.Event;
+import org.jgroups.JChannel;
+import org.jgroups.Message;
+import org.jgroups.ObjectMessage;
+import org.jgroups.View;
+import org.jgroups.annotations.MBean;
+import org.jgroups.annotations.ManagedAttribute;
+import org.jgroups.annotations.ManagedOperation;
+import org.jgroups.annotations.Property;
+import org.jgroups.conf.AttributeType;
+import org.jgroups.conf.ClassConfigurator;
+import org.jgroups.protocols.raft.election.BaseElection;
+import org.jgroups.protocols.raft.internal.request.BaseRequest;
+import org.jgroups.protocols.raft.internal.request.CallableDownRequest;
+import org.jgroups.protocols.raft.internal.request.DownRequest;
+import org.jgroups.protocols.raft.internal.request.RequestFactory;
+import org.jgroups.protocols.raft.internal.request.UpRequest;
+import org.jgroups.protocols.raft.state.RaftState;
+import org.jgroups.raft.Options;
+import org.jgroups.raft.Settable;
+import org.jgroups.raft.StateMachine;
+import org.jgroups.raft.internal.metrics.SystemMetricsTracker;
+import org.jgroups.raft.util.CommitTable;
+import org.jgroups.raft.util.LogCache;
+import org.jgroups.raft.util.ReadOnlyRequestRepository;
+import org.jgroups.raft.util.RequestTable;
+import org.jgroups.raft.util.TimeService;
+import org.jgroups.raft.util.Utils;
+import org.jgroups.stack.Protocol;
+import org.jgroups.util.AverageMinMax;
+import org.jgroups.util.ByteArrayDataInputStream;
+import org.jgroups.util.ByteArrayDataOutputStream;
+import org.jgroups.util.DefaultThreadFactory;
+import org.jgroups.util.ExtendedUUID;
+import org.jgroups.util.MessageBatch;
+import org.jgroups.util.Runner;
+import org.jgroups.util.Util;
+
 import java.io.File;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
@@ -22,40 +63,6 @@ import java.util.function.Function;
 import java.util.function.ObjLongConsumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-
-import org.jgroups.Address;
-import org.jgroups.BytesMessage;
-import org.jgroups.EmptyMessage;
-import org.jgroups.Event;
-import org.jgroups.JChannel;
-import org.jgroups.Message;
-import org.jgroups.ObjectMessage;
-import org.jgroups.View;
-import org.jgroups.annotations.MBean;
-import org.jgroups.annotations.ManagedAttribute;
-import org.jgroups.annotations.ManagedOperation;
-import org.jgroups.annotations.Property;
-import org.jgroups.conf.AttributeType;
-import org.jgroups.conf.ClassConfigurator;
-import org.jgroups.protocols.raft.election.BaseElection;
-import org.jgroups.protocols.raft.state.RaftState;
-import org.jgroups.raft.Options;
-import org.jgroups.raft.Settable;
-import org.jgroups.raft.StateMachine;
-import org.jgroups.raft.util.CommitTable;
-import org.jgroups.raft.util.LogCache;
-import org.jgroups.raft.util.ReadOnlyRequestRepository;
-import org.jgroups.raft.util.RequestTable;
-import org.jgroups.raft.util.Utils;
-import org.jgroups.stack.Protocol;
-import org.jgroups.util.AverageMinMax;
-import org.jgroups.util.ByteArrayDataInputStream;
-import org.jgroups.util.ByteArrayDataOutputStream;
-import org.jgroups.util.DefaultThreadFactory;
-import org.jgroups.util.ExtendedUUID;
-import org.jgroups.util.MessageBatch;
-import org.jgroups.util.Runner;
-import org.jgroups.util.Util;
 
 
 /**
@@ -199,10 +206,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @Property(description="Max size in items the processing queue can have",type=AttributeType.SCALAR)
     protected int                       processing_queue_max_size=9182;
 
-    /** All requests are added to this queue; a single thread processes this queue - hence no synchronization issues */
-    protected BlockingQueue<Request>    processing_queue;
+    @Property(description = "Collect system metrics")
+    protected boolean                   collect_system_metrics = false;
 
-    protected final List<Request>       remove_queue=new ArrayList<>();
+
+    /** All requests are added to this queue; a single thread processes this queue - hence no synchronization issues */
+    protected BlockingQueue<BaseRequest>    processing_queue;
+
+    protected final List<BaseRequest>       remove_queue=new ArrayList<>();
 
     protected Runner                    runner; // the single thread processing the request queue
 
@@ -213,6 +224,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     // Identify whether the start method was executed.
     private boolean protocolStarted;
+
+    private TimeService timeService = null;
+    private RequestFactory requestFactory = null;
+    private SystemMetricsTracker systemMetricsTracker = null;
 
     /* ============================== EXPERIMENTAL - most of these metrics will be removed again ================== */
 
@@ -305,9 +320,31 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public boolean      synchronous()                 {return synchronous;}
     public RAFT         synchronous(boolean b)        {synchronous=b; return this;}
 
+    public RAFT timeService(TimeService timeService) {
+        this.timeService = timeService;
+        return this;
+    }
+
+    public TimeService timeService() {
+        return timeService;
+    }
+
+    public RAFT systemMetricsTracker(SystemMetricsTracker systemMetricsTracker) {
+        this.systemMetricsTracker = systemMetricsTracker;
+        return this;
+    }
+
+    public SystemMetricsTracker systemMetricsTracker() {
+        return systemMetricsTracker;
+    }
+
     public RAFT logDir(String logDir) {
         this.log_dir = logDir;
         return this;
+    }
+
+    public String logDir() {
+        return log_dir;
     }
 
     public void resetStats() {
@@ -359,6 +396,18 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Hit ratio of the cache")
     public double logCacheHitRatio() {
         return log_impl instanceof LogCache? ((LogCache)log_impl).hitRatio() : 0;
+    }
+
+    @ManagedAttribute(description = "Mean latency of replication in nanoseconds")
+    public double replicationMeanLatency() {
+        if (systemMetricsTracker == null) return -1;
+        return systemMetricsTracker.getReplicationLatency().getAvgLatency();
+    }
+
+    @ManagedAttribute(description = "Mean latency of user operations in nanoseconds")
+    public double userOperationMeanLatency() {
+        if (systemMetricsTracker == null) return -1;
+        return systemMetricsTracker.getCommandProcessingLatency().getAvgLatency();
     }
 
     @Property(description="List of members (logical names); majority is computed from it")
@@ -502,7 +551,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     public CompletableFuture<Void> snapshotAsync() {
         CompletableFuture<Void> f = new CompletableFuture<>();
-        offer(new SnapshotRequest(f)); return f;
+        new RuntimeException("Submit snapshot task").printStackTrace(System.err);
+        offer(requestFactory.createCallableRequest(() -> {
+            takeSnapshot();
+            return null;
+        }, f));
+        return f;
     }
 
     /** Loads the log entries from [first .. commit_index] into the state machine */
@@ -586,6 +640,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             log_name=createLogName(log_prefix, "log");
             log_impl.init(log_name, args);
         }
+
+        if (collect_system_metrics && systemMetricsTracker == null)
+            systemMetricsTracker = new SystemMetricsTracker();
+        if (timeService == null)
+            timeService = TimeService.create(systemMetricsTracker != null);
+        requestFactory = new RequestFactory(timeService, systemMetricsTracker);
 
         if(!(local_addr instanceof ExtendedUUID))
             throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
@@ -722,7 +782,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(synchronous) // set only for testing purposes
             handleDownRequest(retval, buf, offset, length, internal, options, readOnly);
         else {
-            offer(new DownRequest(retval, buf, offset, length, internal, options, readOnly)); // will call handleDownRequest()
+            offer(requestFactory.createDownRequest(retval, buf, offset, length, internal, options, readOnly)); // will call handleDownRequest()
         }
         return retval; // 4. Return CompletableFuture
     }
@@ -732,7 +792,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                              RAFT.class.getSimpleName(), local_addr, commit_index, last_appended, raft_state);
     }
 
-    protected void add(Request r) {
+    protected void add(BaseRequest r) {
         try {
             processing_queue.put(r);
         }
@@ -742,7 +802,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
-    protected void offer(Request r) {
+    protected void offer(BaseRequest r) {
+        r.startUserOperation();
         if (!processing_queue.offer(r)) {
             r.failed(new IllegalStateException("processing queue is full"));
         }
@@ -762,9 +823,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         long current_term=currentTerm();
         LogEntry entry=log_impl.get(prev_index);
         long prev_term=entry != null? entry.term : 0;
+        DownRequest dr = (DownRequest) requestFactory.createDownRequest(f, buf, offset, length, internal, opts, readOnly);
 
         if (readOnly) {
-            readOnlyRequests.register(commit_index, new DownRequest(f, buf, offset, length, internal, opts, true));
+            readOnlyRequests.register(commit_index, dr);
             Message msg=new ObjectMessage(null, new LogEntries())
                     .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
                             current_term, commit_index))
@@ -779,7 +841,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         num_successful_append_requests+=entries.size();
 
         // 2. Add the request to the client table, so we can return results to clients when done
-        reqtab.create(curr_index, raft_id, f, this::majority, opts);
+        reqtab.create(curr_index, raft_id, dr, this::majority, dr.options());
 
         // 3. Multicast an AppendEntries message (exclude self)
         Message msg=new ObjectMessage(null, entries)
@@ -837,7 +899,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected void processQueue() {
-        Request first_req;
+        BaseRequest first_req;
         try {
             first_req=processing_queue.poll(resend_interval, TimeUnit.MILLISECONDS);
             if(first_req == null) { // poll() timed out
@@ -877,8 +939,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
-    protected void process(List<Request> q) {
-        RequestTable<String> reqtab=request_table;
+    protected void process(List<BaseRequest> q) {
         LogEntries           entries=new LogEntries();
         long                 index=last_appended+1;
         int                  length=0;
@@ -886,46 +947,40 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         Address              leader = leader();
         boolean              hasOperations = false;
 
-        for(Request r: q) {
+        for(BaseRequest r: q) {
             try {
-                if(r instanceof UpRequest) {
-                    UpRequest up=(UpRequest)r;
-                    handleUpRequest(up.msg, up.hdr);
+                r.startReplication();
+                if(r instanceof UpRequest up) {
+                    handleUpRequest(up.message(), up.header());
                 }
-                else if(r instanceof DownRequest) {
-                    DownRequest dr=(DownRequest)r;
+                else if(r instanceof DownRequest dr) {
                     // Complete the request exceptionally.
                     // The request could either be lost in the reqtab reference or fail with an NPE below.
                     // It would only complete in case a timeout is associated.
                     if (!isLeader()) {
-                        dr.f.completeExceptionally(notCurrentLeader());
+                        dr.failed(notCurrentLeader());
                         continue;
                     }
                     hasOperations = true;
-                    if (dr.isReadOnly() && !dr.internal) {
+                    if (dr.isReadOnly() && !dr.isInternal()) {
                         readOnlyRequests.register(commit_index, dr);
                         continue;
                     }
 
                     // Only write to log and broadcast write operations.
-                    entries.add(new LogEntry(current_term, dr.buf, dr.offset, dr.length, dr.internal));
+                    entries.add(new LogEntry(current_term, dr.buffer(), dr.offset(), dr.length(), dr.isInternal()));
 
                     // Add the request to the client table, so we can return results to clients when done
-                    reqtab.create(index++, raft_id, dr.f, this::majority, dr.options);
-                    length+=dr.length;
+                    request_table.create(index++, raft_id, dr, this::majority, dr.options());
+                    length+=dr.length();
                 }
-                else if (r instanceof SnapshotRequest) {
-                    SnapshotRequest sr = (SnapshotRequest) r;
-                    try {
-                        takeSnapshot(); sr.f.complete(null);
-                    } catch (Exception e) {
-                        sr.f.completeExceptionally(e);
-                        throw e;
-                    }
+                else if (r instanceof CallableDownRequest<?> cr) {
+                    cr.complete();
                 }
             }
             catch(Throwable ex) {
                 log.error("%s: failed handling request %s: %s", local_addr, r, ex);
+                r.failed(ex);
             }
         }
 
@@ -959,7 +1014,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         // see if we can already commit some entries
         long highest_committed=prev_index+1;
-        while(reqtab.isCommitted(highest_committed))
+        while(request_table.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1 || entries.size() == 0)
             commitLogTo(highest_committed, true);
@@ -1171,21 +1226,21 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     private void applyReadOnlyRequests(Collection<DownRequest> requests) {
         // Apply all read-only operations less than commit index to the state machine.
         for (DownRequest dr : requests) {
-            Options opts = dr.options;
+            Options opts = dr.options();
             boolean serializeResponse = opts == null || !opts.ignoreReturnValue();
 
             try {
-                byte[] resp = state_machine.apply(dr.buf, dr.offset, dr.length, serializeResponse);
-                dr.f.complete(resp);
+                byte[] resp = state_machine.apply(dr.buffer(), dr.offset(), dr.length(), serializeResponse);
+                dr.complete(resp);
             } catch (Exception e) {
-                dr.f.completeExceptionally(e);
+                dr.failed(e);
             }
         }
     }
 
     private void failReadOnlyRequests(Collection<DownRequest> requests) {
         for (DownRequest request : requests) {
-            request.f.completeExceptionally(notCurrentLeader());
+            request.failed(notCurrentLeader());
         }
     }
 
@@ -1451,79 +1506,5 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected void computeMajority() {
         majority=(internal_state.getMembers().size() / 2) + 1;
-    }
-
-
-    protected static class Request {
-
-        protected void failed(Throwable t) { }
-
-    }
-
-    /** Received by up(Message) or up(MessageBatch) */
-    protected static class UpRequest extends Request {
-        private final Message    msg;
-        private final RaftHeader hdr;
-
-        public UpRequest(Message msg, RaftHeader hdr) {
-            this.msg=msg;
-            this.hdr=hdr;
-        }
-
-        public String toString() {
-            return String.format("%s %s", UpRequest.class.getSimpleName(), hdr);
-        }
-    }
-
-    /** Generated by {@link RAFT#setAsync(byte[], int, int)} */
-    protected static class DownRequest extends Request {
-        final CompletableFuture<byte[]> f;
-        final byte[]                    buf;
-        final int                       offset, length;
-        final boolean                   internal;
-        final Options                   options;
-        final boolean                   readOnly;
-
-        public DownRequest(CompletableFuture<byte[]> f, byte[] buf, int offset, int length,
-                           boolean internal, Options opts, boolean readOnly) {
-            this.f=f;
-            this.buf=buf;
-            this.offset=offset;
-            this.length=length;
-            this.internal=internal;
-            this.options=opts;
-            this.readOnly = readOnly;
-        }
-
-        @Override
-        protected final void failed(Throwable t) {
-            f.completeExceptionally(t);
-        }
-
-        public String toString() {
-            return String.format("%s %d bytes", DownRequest.class.getSimpleName(), length);
-        }
-
-        public boolean isReadOnly() {
-            return readOnly;
-        }
-    }
-
-    protected static class SnapshotRequest extends Request {
-        final CompletableFuture<Void> f;
-
-        public SnapshotRequest(CompletableFuture<Void> f) {
-            this.f = f;
-        }
-
-        @Override
-        protected final void failed(Throwable t) {
-            f.completeExceptionally(t);
-        }
-
-        @Override
-        public String toString() {
-            return SnapshotRequest.class.getSimpleName();
-        }
     }
 }
