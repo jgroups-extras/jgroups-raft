@@ -8,7 +8,7 @@ import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.testfwk.BlockingMessageInterceptor;
 import org.jgroups.raft.testfwk.PartitionedRaftCluster;
 import org.jgroups.raft.testfwk.RaftTestUtils;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 
 import java.util.Map;
 import java.util.Objects;
@@ -18,7 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
 public class NetworkPartitionElectionTest extends BaseRaftElectionTest.ClusterBased<PartitionedRaftCluster> {

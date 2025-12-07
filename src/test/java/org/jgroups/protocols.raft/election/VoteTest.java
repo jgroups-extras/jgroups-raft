@@ -4,8 +4,8 @@ import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
-import org.jgroups.tests.harness.RaftAssertion;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
+import org.jgroups.raft.tests.harness.RaftAssertion;
 import org.jgroups.util.Util;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
@@ -18,7 +18,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
  * Tests that a member cannot vote twice. Issue: https://github.com/belaban/jgroups-raft/issues/24

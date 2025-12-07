@@ -8,7 +8,7 @@ import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.StateMachineField;
 import org.jgroups.raft.StateMachineRead;
 import org.jgroups.raft.StateMachineWrite;
-import org.jgroups.tests.api.JRaftTestCluster;
+import org.jgroups.raft.tests.api.JRaftTestCluster;
 import org.jgroups.util.Util;
 
 import java.io.DataInput;

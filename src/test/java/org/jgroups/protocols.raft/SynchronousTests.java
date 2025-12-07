@@ -9,10 +9,10 @@ import org.jgroups.raft.Options;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
+import org.jgroups.raft.tests.harness.BaseRaftClusterTest;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.CounterStateMachine;
 import org.jgroups.stack.Protocol;
-import org.jgroups.tests.harness.BaseRaftClusterTest;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
 

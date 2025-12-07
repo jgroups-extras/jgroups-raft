@@ -4,7 +4,7 @@ import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
-import org.jgroups.tests.harness.BaseStateMachineTest;
+import org.jgroups.raft.tests.harness.BaseStateMachineTest;
 
 import java.util.Arrays;
 import java.util.concurrent.TimeUnit;

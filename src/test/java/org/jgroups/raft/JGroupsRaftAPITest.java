@@ -1,22 +1,23 @@
 package org.jgroups.raft;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+import org.jgroups.Global;
+import org.jgroups.raft.command.JGroupsRaftCommandOptions;
+import org.jgroups.raft.exceptions.JRaftException;
+import org.jgroups.raft.tests.api.JRaftTestCluster;
+import org.jgroups.raft.tests.api.SimpleKVStateMachine;
+import org.jgroups.raft.tests.api.TestSerializationInitializerImpl;
 
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-import org.jgroups.Global;
-import org.jgroups.raft.command.JGroupsRaftCommandOptions;
-import org.jgroups.raft.exceptions.JRaftException;
-import org.jgroups.tests.api.JRaftTestCluster;
-import org.jgroups.tests.api.SimpleKVStateMachine;
-import org.jgroups.tests.api.TestSerializationInitializerImpl;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class JGroupsRaftAPITest {

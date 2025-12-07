@@ -9,9 +9,9 @@ import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.testfwk.RaftCluster;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
-import org.jgroups.tests.harness.CheckPoint;
-import org.jgroups.tests.harness.RaftAssertion;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
+import org.jgroups.raft.tests.harness.CheckPoint;
+import org.jgroups.raft.tests.harness.RaftAssertion;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;

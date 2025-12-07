@@ -7,8 +7,8 @@ import org.jgroups.View;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.pbcast.NAKACK2;
 import org.jgroups.raft.testfwk.RaftTestUtils;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.stack.ProtocolStack;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
 
 import java.util.Arrays;
 import java.util.HashMap;

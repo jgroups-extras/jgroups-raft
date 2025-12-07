@@ -12,12 +12,12 @@ import org.jgroups.protocols.raft.AppendEntriesRequest;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.DummyStateMachine;
 import org.jgroups.raft.testfwk.BlockingMessageInterceptor;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
-import org.jgroups.tests.DummyStateMachine;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.ResponseCollector;
 
 import java.util.Arrays;
@@ -36,7 +36,7 @@ import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
  * Uses the synchronous test framework to test {@link org.jgroups.protocols.raft.ELECTION}
