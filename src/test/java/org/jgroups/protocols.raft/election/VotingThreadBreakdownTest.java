@@ -5,8 +5,8 @@ import org.jgroups.View;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.testfwk.RaftCluster;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
-import org.jgroups.tests.harness.CheckPoint;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
+import org.jgroups.raft.tests.harness.CheckPoint;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;

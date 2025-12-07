@@ -16,10 +16,10 @@ import org.jgroups.protocols.pbcast.NAKACK2;
 import org.jgroups.protocols.pbcast.STABLE;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.RaftHandle;
+import org.jgroups.raft.tests.harness.BaseStateMachineTest;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.CounterStateMachine;
 import org.jgroups.stack.Protocol;
-import org.jgroups.tests.harness.BaseStateMachineTest;
 import org.jgroups.util.Bits;
 import org.jgroups.util.Util;
 

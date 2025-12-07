@@ -9,8 +9,8 @@ import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.testfwk.RaftCluster;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.raft.util.CounterStateMachine;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.Bits;
 
 import java.util.ArrayList;
@@ -25,7 +25,8 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 
 /**
  * Tests replaying of requests after leader changes, to advance commit index<be/>

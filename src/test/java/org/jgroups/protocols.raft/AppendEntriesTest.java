@@ -1,15 +1,16 @@
-package org.jgroups.raft.protocols.tests;
+package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.DISCARD;
 import org.jgroups.protocols.TP;
+import org.jgroups.raft.DummyStateMachine;
 import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
 import org.jgroups.raft.testfwk.RaftTestUtils;
-import org.jgroups.stack.ProtocolStack;
 import org.jgroups.raft.tests.harness.BaseStateMachineTest;
+import org.jgroups.stack.ProtocolStack;
 import org.jgroups.util.Util;
 
 import java.util.Arrays;

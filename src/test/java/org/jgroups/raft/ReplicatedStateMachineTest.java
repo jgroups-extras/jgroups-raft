@@ -6,7 +6,6 @@ import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
-import org.jgroups.tests.DummyStateMachine;
 import org.jgroups.util.Util;
 
 import java.util.Arrays;

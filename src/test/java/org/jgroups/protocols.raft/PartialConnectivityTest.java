@@ -5,7 +5,7 @@ import org.jgroups.Global;
 import org.jgroups.View;
 import org.jgroups.raft.testfwk.PartitionedRaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.Util;
 
 import java.util.List;
@@ -19,8 +19,8 @@ import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.waitUntilAllHaveLeaderElected;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.waitUntilAllHaveLeaderElected;
 
 @Test(groups= Global.FUNCTIONAL, singleThreaded=true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
 public class PartialConnectivityTest extends BaseRaftElectionTest.ClusterBased<PartitionedRaftCluster> {

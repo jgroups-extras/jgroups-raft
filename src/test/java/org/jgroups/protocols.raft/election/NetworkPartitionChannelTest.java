@@ -11,8 +11,8 @@ import org.jgroups.protocols.SHARED_LOOPBACK;
 import org.jgroups.protocols.pbcast.GMS;
 import org.jgroups.protocols.raft.ELECTION2;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.stack.Protocol;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.Util;
 
 import java.util.List;
@@ -32,7 +32,7 @@ import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toMap;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 import static org.testng.Assert.assertEquals;
 
 /**

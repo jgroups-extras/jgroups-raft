@@ -8,13 +8,13 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.DummyStateMachine;
 import org.jgroups.raft.testfwk.BlockingMessageInterceptor;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
-import org.jgroups.tests.DummyStateMachine;
-import org.jgroups.tests.harness.BaseRaftElectionTest;
-import org.jgroups.tests.harness.RaftAssertion;
+import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
+import org.jgroups.raft.tests.harness.RaftAssertion;
 
 import java.util.Arrays;
 import java.util.List;
@@ -29,7 +29,7 @@ import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
 public class ViewChangeElectionTest extends BaseRaftElectionTest.ClusterBased<RaftCluster> {

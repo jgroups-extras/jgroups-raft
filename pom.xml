@@ -35,7 +35,7 @@
         <jgroups.tests.parallel.threads>2</jgroups.tests.parallel.threads>
         <defaultTestNGGroups>functional</defaultTestNGGroups>
         <defaultExcludedTestNGGroups>broken</defaultExcludedTestNGGroups>
-        <testNGListeners>org.jgroups.raft.util.JUnitXMLReporter</testNGListeners>
+        <testNGListeners>org.jgroups.raft.utils.JUnitXMLReporter</testNGListeners>
 
         <jgroups.bind_addr>localhost</jgroups.bind_addr>
         <jgroups.tcpping.initial_hosts>localhost[7800],localhost[7801]</jgroups.tcpping.initial_hosts>
