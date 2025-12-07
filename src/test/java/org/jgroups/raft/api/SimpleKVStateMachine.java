@@ -1,4 +1,4 @@
-package org.jgroups.raft.tests.api;
+package org.jgroups.raft.api;
 
 import org.jgroups.raft.JGroupsRaftStateMachine;
 import org.jgroups.raft.StateMachine;

@@ -1,4 +1,7 @@
-package org.jgroups.raft.tests.examples;
+package org.jgroups.raft;
+
+import org.jgroups.protocols.raft.InMemoryLog;
+import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -11,14 +14,6 @@ import org.infinispan.protostream.SerializationContextInitializer;
 import org.infinispan.protostream.annotations.Proto;
 import org.infinispan.protostream.annotations.ProtoSchema;
 import org.infinispan.protostream.annotations.ProtoSyntax;
-import org.jgroups.protocols.raft.InMemoryLog;
-import org.jgroups.raft.JGroupsRaft;
-import org.jgroups.raft.JGroupsRaftRole;
-import org.jgroups.raft.JGroupsRaftStateMachine;
-import org.jgroups.raft.StateMachineField;
-import org.jgroups.raft.StateMachineRead;
-import org.jgroups.raft.StateMachineWrite;
-import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 
 public class ReplicatedHashMapExample {
 

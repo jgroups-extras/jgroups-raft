@@ -5,8 +5,8 @@ import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.internal.DangerousJGroupsRaftUtil;
-import org.jgroups.raft.tests.api.SimpleKVStateMachine;
-import org.jgroups.raft.tests.api.TestSerializationInitializerImpl;
+import org.jgroups.raft.api.SimpleKVStateMachine;
+import org.jgroups.raft.api.TestSerializationInitializerImpl;
 
 import java.util.Collections;
 

@@ -5,7 +5,7 @@ import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.StateMachineField;
 import org.jgroups.raft.internal.registry.SerializationRegistry;
 import org.jgroups.raft.internal.serialization.Serializer;
-import org.jgroups.raft.tests.serialization.TestSerializationInitializerImpl;
+import org.jgroups.raft.serialization.TestSerializationInitializerImpl;
 
 import java.io.DataInput;
 import java.io.DataOutput;
