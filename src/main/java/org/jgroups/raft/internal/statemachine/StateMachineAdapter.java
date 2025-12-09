@@ -1,8 +1,5 @@
 package org.jgroups.raft.internal.statemachine;
 
-import java.io.DataInput;
-import java.io.DataOutput;
-
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.RaftCommand;
@@ -10,16 +7,17 @@ import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.registry.ReplicatedMethodWrapper;
 import org.jgroups.raft.internal.serialization.Serializer;
 
+import java.io.DataInput;
+import java.io.DataOutput;
+
 final class StateMachineAdapter<T> implements StateMachine {
     private final CommandRegistry<T> registry;
     private final Serializer serializer;
     private final StateMachineSnapshotter<T> snapshotter;
-    private final T delegate;
 
     StateMachineAdapter(Serializer serializer, CommandRegistry<T> registry, T delegate) {
         this.registry = registry;
         this.serializer = serializer;
-        this.delegate = delegate;
         this.snapshotter = new StateMachineSnapshotter<>(delegate, serializer);
     }
 

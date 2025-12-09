@@ -380,25 +380,6 @@
                         </path>
                     </annotationProcessorPaths>
                 </configuration>
-
-                <executions>
-                    <execution>
-                        <id>default-testCompile</id>
-                        <phase>test-compile</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-
-                        <configuration>
-                            <compilerArgs>
-                                <arg>--add-modules</arg>
-                                <arg>java.desktop</arg>
-                                <arg>--add-reads</arg>
-                                <arg>org.jgroups.raft=java.desktop</arg>
-                            </compilerArgs>
-                        </configuration>
-                    </execution>
-                </executions>
             </plugin>
 
             <plugin>

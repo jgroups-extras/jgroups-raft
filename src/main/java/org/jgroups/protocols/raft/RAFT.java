@@ -285,7 +285,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public String       leaderRaftId()                {
         Address leader=leader();
         return leader != null? Util.bytesToString(((ExtendedUUID)leader).get(raft_id_key)) : null;
-    };
+    }
     public RAFT         leader(Address new_leader)    {this.raft_state.setLeader(new_leader); return this;}
     public boolean      isLeader()                    {return leader() != null && Objects.equals(leader(), local_addr);}
 

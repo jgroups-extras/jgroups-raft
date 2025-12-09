@@ -3,7 +3,6 @@ package org.jgroups.raft.internal;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.DynamicMembership;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.JGroupsRaftAdministration;
 import org.jgroups.util.CompletableFutures;
 
@@ -14,18 +13,15 @@ import java.util.concurrent.CompletionStage;
 final class JGroupsRaftAdministrationImpl implements JGroupsRaftAdministration {
 
     private final DynamicMembership membership;
-    private final BaseElection election;
     private final RAFT raft;
 
-    private JGroupsRaftAdministrationImpl(DynamicMembership membership, BaseElection election, RAFT raft) {
+    private JGroupsRaftAdministrationImpl(DynamicMembership membership, RAFT raft) {
         this.membership = membership;
-        this.election = election;
         this.raft = raft;
     }
 
     static JGroupsRaftAdministration create(JChannel channel) {
         DynamicMembership membership;
-        BaseElection election;
         RAFT raft;
 
         // Search for the first protocol implementing membership changes.
@@ -34,14 +30,14 @@ final class JGroupsRaftAdministrationImpl implements JGroupsRaftAdministration {
             throw new IllegalStateException("did not find a protocol implementing DynamicMembership (e.g. REDIRECT or RAFT)");
 
         // Search for election protocol.
-        if ((election = RAFT.findProtocol(BaseElection.class, channel.getProtocolStack().getTopProtocol(), true)) == null)
-            throw new IllegalStateException("did not find a protocol implementing DynamicMembership (e.g. REDIRECT or RAFT)");
+//        if ((election = RAFT.findProtocol(BaseElection.class, channel.getProtocolStack().getTopProtocol(), true)) == null)
+//            throw new IllegalStateException("did not find a protocol implementing DynamicMembership (e.g. REDIRECT or RAFT)");
 
         // Search for RAFT protocol for general management.
         if ((raft = RAFT.findProtocol(RAFT.class, channel.getProtocolStack().getTopProtocol(), true)) == null)
             throw new IllegalStateException("RAFT protocol was not found");
 
-        return new JGroupsRaftAdministrationImpl(membership, election, raft);
+        return new JGroupsRaftAdministrationImpl(membership, raft);
     }
 
     @Override
