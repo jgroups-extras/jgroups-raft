@@ -1,6 +1,8 @@
 package org.jgroups.raft.internal;
 
 import org.jgroups.JChannel;
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.Follower;
 import org.jgroups.protocols.raft.Leader;
 import org.jgroups.protocols.raft.Learner;
@@ -38,6 +40,8 @@ import java.util.function.Function;
  * @see JGroupsRaft
  */
 final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
+
+    private static final Log LOG = LogFactory.getLog(JGroupsRaftImpl.class);
 
     private final JGroupsRaftParameters<T> parameters;
     private final boolean attachedChannel;
@@ -187,7 +191,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
                 try {
                     l.accept(before, this.role);
                 } catch (Throwable t) {
-                    // Ignore
+                    LOG.error("Failed to invoke role listener", t);
                 }
             });
         }

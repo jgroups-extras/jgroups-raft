@@ -18,6 +18,7 @@ jobs:
     permissions:
       checks: write
       contents: read
+      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -26,7 +27,7 @@ jobs:
           - "windows-latest"
         # Keep this list as: all supported LTS JDKs, the latest GA JDK, and optionally the latest EA JDK (if available).
         # https://www.oracle.com/java/technologies/java-se-support-roadmap.html
-        java: [ 17, 21, 23 ]
+        java: [ 17, 21, 25 ]
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -65,14 +66,14 @@ jobs:
 
       - name: Display SpotBugs report
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           category: "spotbugs-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/spotbugs.sarif.json
 
       - name: Display PMD report
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           category: "pmd-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/pmd.sarif.json

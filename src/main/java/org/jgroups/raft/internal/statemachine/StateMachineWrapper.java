@@ -1,17 +1,17 @@
 package org.jgroups.raft.internal.statemachine;
 
+import org.jgroups.raft.Settable;
+import org.jgroups.raft.StateMachine;
+import org.jgroups.raft.command.JGroupsRaftCommandOptions;
+import org.jgroups.raft.internal.registry.CommandRegistry;
+import org.jgroups.raft.internal.serialization.Serializer;
+
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.function.Function;
-
-import org.jgroups.raft.Settable;
-import org.jgroups.raft.StateMachine;
-import org.jgroups.raft.command.JGroupsRaftCommandOptions;
-import org.jgroups.raft.internal.registry.CommandRegistry;
-import org.jgroups.raft.internal.serialization.Serializer;
 
 public final class StateMachineWrapper<T> implements StateMachine {
 
@@ -36,9 +36,9 @@ public final class StateMachineWrapper<T> implements StateMachine {
     public void initialize(Settable settable) {
         this.settable = settable;
 
-        if (verifyGenerateClasses(api)) {
+        if (verifyGenerateClasses()) {
             this.type = WrapperType.GENERATED;
-            this.wrapper = useGeneratedSources(null);
+            this.wrapper = useGeneratedSources();
             return;
         }
 
@@ -51,7 +51,7 @@ public final class StateMachineWrapper<T> implements StateMachine {
             return function.apply(wrapper);
 
         if (type == WrapperType.GENERATED) {
-            return submitGeneratedWithOptions(function, options);
+            return submitGeneratedWithOptions();
         }
 
         return submitProxyWithOptions(wrapper, function, options);
@@ -59,19 +59,19 @@ public final class StateMachineWrapper<T> implements StateMachine {
 
     public T createWrapper(JGroupsRaftCommandOptions options, Class<? extends Annotation> restricted) {
         if (type == WrapperType.GENERATED) {
-            T dispatcher = useGeneratedSources(restricted);
-            return createGeneratedWithOptions(dispatcher, options);
+            T dispatcher = useGeneratedSources();
+            return createGeneratedWithOptions();
         }
 
         T dispatcher = useProxy(restricted);
         return createProxyWithOptions(dispatcher, options);
     }
 
-    private static <T> boolean verifyGenerateClasses(Class<T> api) {
+    private static <T> boolean verifyGenerateClasses() {
         return false;
     }
 
-    private T useGeneratedSources(Class<? extends Annotation> restricted) {
+    private T useGeneratedSources() {
         throw new UnsupportedOperationException();
     }
 
@@ -103,12 +103,12 @@ public final class StateMachineWrapper<T> implements StateMachine {
         );
     }
 
-    private <O> O submitGeneratedWithOptions(Function<T, O> function, JGroupsRaftCommandOptions options) {
+    private <O> O submitGeneratedWithOptions() {
         // Implementation for generated sources would go here
         throw new UnsupportedOperationException();
     }
 
-    private T createGeneratedWithOptions(T dispatcher, JGroupsRaftCommandOptions options) {
+    private T createGeneratedWithOptions() {
         throw new UnsupportedOperationException();
     }
 

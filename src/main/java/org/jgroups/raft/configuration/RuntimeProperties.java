@@ -415,7 +415,7 @@ public interface RuntimeProperties {
 
         @Override
         public RuntimeProperties build() {
-            return RuntimeProperties.from(properties);
+            return from(properties);
         }
     }
 }
