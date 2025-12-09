@@ -44,7 +44,7 @@ jobs:
         run: mvn --batch-mode --no-transfer-progress package -Dgroups=functional
 
       - name: Generate reports
-        # Only generate reports if tests failed.
+        if: matrix.os == 'ubuntu-latest' && matrix.java == 17
         run: mvn --batch-mode --no-transfer-progress surefire-report:report-only spotbugs:spotbugs pmd:pmd
 
       - name: Generate and upload test reports
