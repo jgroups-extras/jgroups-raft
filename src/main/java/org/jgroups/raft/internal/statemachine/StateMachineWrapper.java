@@ -59,7 +59,7 @@ public final class StateMachineWrapper<T> implements StateMachine {
 
     public T createWrapper(JGroupsRaftCommandOptions options, Class<? extends Annotation> restricted) {
         if (type == WrapperType.GENERATED) {
-            T dispatcher = useGeneratedSources();
+            //T dispatcher = useGeneratedSources();
             return createGeneratedWithOptions();
         }
 
