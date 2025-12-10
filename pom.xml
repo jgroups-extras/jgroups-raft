@@ -29,7 +29,7 @@
         <jmh.version>1.37</jmh.version>
         <mashona.version>1.1.0</mashona.version>
         <hdrhistogram.version>2.2.2</hdrhistogram.version>
-        <protostream.version>6.0.0</protostream.version>
+        <protostream.version>15.0.13.Final</protostream.version>
 
         <!-- test properties -->
         <ansi.strip />
