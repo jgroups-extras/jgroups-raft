@@ -84,7 +84,7 @@
         <version.surefire-report.plugin>3.5.4</version.surefire-report.plugin>
         <version.dependency.plugin>3.9.0</version.dependency.plugin>
         <version.build-helper.plugin>3.6.1</version.build-helper.plugin>
-        <version.exec.plugin>3.6.2</version.exec.plugin>
+        <version.exec.plugin>3.6.3</version.exec.plugin>
         <version.asciidoctor.plugin>3.2.0</version.asciidoctor.plugin>
         <version.javadoc.plugin>3.12.0</version.javadoc.plugin>
         <version.gpg.plugin>3.2.8</version.gpg.plugin>
