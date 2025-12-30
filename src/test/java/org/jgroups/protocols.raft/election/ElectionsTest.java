@@ -103,10 +103,10 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         JChannel coord = findCoord(a, b, c);
         assertThat(coord).isNotNull();
 
-        System.out.printf("\n\n-- starting the voting process on %s:\n", coord.getAddress());
+        LOGGER.info("\n\n-- starting the voting process on {}", coord.getAddress());
         BaseElection el = election(coord);
 
-        System.out.printf("-- current status: %n%s%n", dumpLeaderAndTerms());
+        LOGGER.info("-- current status: %n{}", dumpLeaderAndTerms());
 
         // Wait the voting thread to stop.
         // The last step is stopping the voting thread. This means, nodes might receive the leader message,
@@ -143,10 +143,10 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         JChannel coord = findCoord(a, b, c);
         assertThat(coord).isNotNull();
 
-        System.out.printf("\n\n-- starting the voting process on %s:\n", coord.getAddress());
+        LOGGER.info("-- starting the voting process on {}", coord.getAddress());
         BaseElection el = election(coord);
 
-        System.out.printf("-- current status: %n%s%n", dumpLeaderAndTerms());
+        LOGGER.info("-- current status: {}", dumpLeaderAndTerms());
 
         // Wait the voting thread to stop.
         // The last step is stopping the voting thread. This means, nodes might receive the leader message,
@@ -158,7 +158,7 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         el.startVotingThread();
         waitUntilVotingThreadStops(5_000, 0, 1, 2);
 
-        System.out.printf("-- waiting for leader in %s", Arrays.toString(possibleElected));
+        LOGGER.info("-- waiting for leader in {}", Arrays.toString(possibleElected));
         Address leader = assertLeader(10_000, null, b, c);
         assertThat(possibleElected).contains(leader);
         assertThat(leader).isNotEqualTo(a.getAddress());
@@ -213,7 +213,7 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         assert leaders.size() == 1 : "leaders=" + leaders;
         Address leader = leaders.get(0);
         assert expected == null || leader.equals(expected) : String.format("elected %s instead of %s", leader, expected);
-        System.out.println("leader = " + leader);
+        LOGGER.info("leader = {}", leader);
         return leader;
     }
 

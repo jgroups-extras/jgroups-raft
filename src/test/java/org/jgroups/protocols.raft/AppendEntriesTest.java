@@ -33,7 +33,7 @@ import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
  * @author Bela Ban
  * @since  0.2
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true,testName = "org.jgroups.raft.AppendEntriesTest")
 public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachine<Integer, Integer>> {
 
     protected static final byte[]                     buf=new byte[10];
@@ -172,7 +172,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
 
         // Now start C again: entries 1-5 will have to get resent to C as its log was deleted above (otherwise only 3-5
         // would have to be resent)
-        System.out.println("-- starting C again, needs to catch up");
+        LOGGER.info("-- starting C again, needs to catch up");
         createCluster();
         JChannel c = channel(2);  // follower
 
@@ -214,8 +214,8 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         assertCommitIndex(10000, raft.lastAppended(), raft.lastAppended(), channel(0), channel(1));
         for(JChannel ch: Arrays.asList(channel(0), channel(1))) {
             raft=ch.getProtocolStack().findProtocol(RAFT.class);
-            String check = String.format("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
-            System.out.println(check);
+            String check = String.format("%s: last-applied=%d, commit-index=%d", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
+            LOGGER.info(check);
             assertThat(raft)
                     .as(check)
                     .returns(1L, RAFT::lastAppended)
@@ -240,7 +240,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                 .isTrue();
         assertThat(RaftTestUtils.isRaftLeader(channel(1))).isFalse();
 
-        System.out.println("--> disconnecting B");
+        LOGGER.info("--> disconnecting B");
 
         close(1); // stop B; it was only needed to make A the leader
         Util.waitUntil(5000, 100, () -> !RaftTestUtils.isRaftLeader(channel(0)));
@@ -255,7 +255,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         assertCommitIndex(10000, 0, 0, channel(0));
 
         // Now start B again, this gives us a majority and entry #1 should be able to be committed
-        System.out.println("--> restarting B");
+        LOGGER.info("--> restarting B");
 
         // A and B now have a majority and A is leader
         createCluster();
@@ -347,9 +347,9 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         // Force leader to send commit messages immediately
         init(true);
         leader().resendInterval(60_000).sendCommitsImmediately(true);
-        System.out.println("-- sending value");
+        LOGGER.info("-- sending value");
         stateMachine(0).put(1,1);
-        System.out.println("-- finished operation, waiting for broadcast");
+        LOGGER.info("-- finished operation, waiting for broadcast");
         assertStateMachineEventuallyMatch(0, 1, 2);
     }
 
@@ -586,7 +586,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         append(impl,  6, 4, new LogEntry(4, buf), leader, 1);
         append(impl,  7, 4, new LogEntry(4, buf), leader, 3);
 
-        System.out.printf("log entries of follower before fix:\n%s", printLog(log));
+        LOGGER.info("log entries of follower before fix:\n{}", printLog(log));
 
         AppendResult result=append(impl, 11, 6, new LogEntry(6, buf), leader, 10);
         assertThat(result)
@@ -614,7 +614,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                     .returns((long) i, AppendResult::commitIndex);
             assertLogIndices(log, i, i, terms[i]);
         }
-        System.out.printf("log entries of follower after fix:\n%s", printLog(log));
+        LOGGER.info("log entries of follower after fix:\n{}", printLog(log));
         for(int i=0; i < terms.length; i++) {
             LogEntry entry=log.get(i);
             if (i == 0) assertThat(entry).isNull();
@@ -636,7 +636,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         for(int i=1; i < incorrect_terms.length; i++)
             append(impl, i, incorrect_terms[i-1], new LogEntry(incorrect_terms[i], buf), leader, 3);
 
-        System.out.printf("log entries of follower before fix:\n%s", printLog(log));
+        LOGGER.info("log entries of follower before fix:\n{}", printLog(log));
 
         AppendResult result=append(impl, 10, 6, new LogEntry(6, buf), leader, 10);
         assertThat(result)
@@ -645,7 +645,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                 .returns(7L, AppendResult::index);
         assertLogIndices(log, 6, 3, 2);
 
-        System.out.printf("log entries of follower after first fix:\n%s", printLog(log));
+        LOGGER.info("log entries of follower after first fix:\n{}", printLog(log));
 
         result=append(impl, 7, 5, new LogEntry(5, buf), leader, 10);
         assertThat(result)
@@ -654,7 +654,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                 .returns(4L, AppendResult::index);
         assertLogIndices(log, 3, 3, 1);
 
-        System.out.printf("log entries of follower after second fix:\n%s", printLog(log));
+        LOGGER.info("log entries of follower after second fix:\n{}", printLog(log));
 
         // now append 4-10:
         for(int i=4; i <= 10; i++) {
@@ -666,7 +666,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                     .returns((long) i, AppendResult::commitIndex);
             assertLogIndices(log, i, i, terms[i]);
         }
-        System.out.printf("log entries of follower after final fix:\n%s", printLog(log));
+        LOGGER.info("log entries of follower after final fix:\n{}", printLog(log));
         for(int i=0; i < terms.length; i++) {
             LogEntry entry=log.get(i);
             if (i == 0) assertThat(entry).isNull();
@@ -684,9 +684,9 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                          .collect(Collectors.joining("\n")));
 
         if(verbose) {
-            System.out.println("A: is leader? -> " + RaftTestUtils.isRaftLeader(channel(0)));
-            System.out.println("B: is leader? -> " + RaftTestUtils.isRaftLeader(channel(1)));
-            System.out.println("C: is leader? -> " + RaftTestUtils.isRaftLeader(channel(2)));
+            LOGGER.info("A: is leader? -> {}", RaftTestUtils.isRaftLeader(channel(0)));
+            LOGGER.info("B: is leader? -> {}", RaftTestUtils.isRaftLeader(channel(1)));
+            LOGGER.info("C: is leader? -> {}", RaftTestUtils.isRaftLeader(channel(2)));
         }
 
         assertThat(RaftTestUtils.isRaftLeader(channel(0))).isTrue();
@@ -734,7 +734,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         for(JChannel ch: channels) {
             RAFT raft=raft(ch);
             String check = String.format("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
-            System.out.printf(check);
+            LOGGER.info(check);
             assertThat(raft)
                     .as(check)
                     .returns(expected_commit, RAFT::commitIndex)

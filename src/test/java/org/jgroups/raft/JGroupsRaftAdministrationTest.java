@@ -1,5 +1,8 @@
 package org.jgroups.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
 import org.jgroups.Global;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.raft.api.SimpleKVStateMachine;
@@ -11,16 +14,14 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class JGroupsRaftAdministrationTest {
 
-    private final JRaftTestCluster<SimpleKVStateMachine> cluster = JRaftTestCluster.create(SimpleKVStateMachine.Impl::new, SimpleKVStateMachine.class, 3);
+    private JRaftTestCluster<SimpleKVStateMachine> cluster;
 
     @BeforeClass
     protected void beforeClass() {
+        cluster = JRaftTestCluster.create(SimpleKVStateMachine.Impl::new, SimpleKVStateMachine.class, 3);
         cluster.waitUntilLeaderElected();
     }
 

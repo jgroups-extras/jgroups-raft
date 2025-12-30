@@ -4,8 +4,8 @@ import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.BaseElection;
-import org.jgroups.stack.Protocol;
 import org.jgroups.raft.DummyStateMachine;
+import org.jgroups.stack.Protocol;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -17,6 +17,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.ITestContext;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.AfterMethod;
@@ -88,10 +90,12 @@ import org.testng.annotations.BeforeMethod;
  */
 public abstract class AbstractRaftTest {
 
+    protected final Logger LOGGER = LogManager.getLogger(getClass());
+
     /**
      * Enable trace log level to all classes in the protocol stack.
      */
-    public static final String ENABLE_GLOBAL_TRACE = "org.jgrops.test.trace";
+    public static final String ENABLE_GLOBAL_TRACE = "org.jgroups.test.trace";
 
     /**
      * Enable trace log level to the specific list of classes given in FQN form and comma separated.

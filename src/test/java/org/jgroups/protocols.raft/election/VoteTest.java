@@ -48,7 +48,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         withClusterSize(4);
         createCluster();
 
-        System.out.println("-- closing channels");
+        LOGGER.info("-- closing channels");
         // close C and D
         close(2);
         close(3);
@@ -58,17 +58,17 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         RaftAssertion.assertLeaderlessOperationThrows(() -> raft(0).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS));
 
         // close B and create a new B'
-        System.out.printf("restarting %s\n", channel(1).name());
+        LOGGER.info("restarting {}", channel(1).name());
         close(1);
         createCluster(1);
 
         // Try the change again: we have votes from A and B from before the non-leader was restarted. Now B was
         // restarted, but it cannot vote again in the same term, so we still only have 2 votes!
-        System.out.println("-- trying replicate data");
+        LOGGER.info("-- trying replicate data");
         RaftAssertion.assertLeaderlessOperationThrows(() -> raft(0).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS));
 
         // now start C. as we have a majority now (A,B,C), the change should succeed
-        System.out.println("starting C");
+        LOGGER.info("starting C");
         createCluster(1);
 
         // wait until we have a leader (this may take a few ms)
@@ -78,7 +78,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         RAFT raft=leader();
         assertThat(raft).isNotNull();
 
-        System.out.printf("-- setting data with %s%n", raft);
+        LOGGER.info("-- setting data with {}", raft);
         // This time, we should succeed
         raft.set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS);
 
@@ -101,7 +101,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
 
         waitUntilLeaderElected(10_000, 0);
         Address leader=leaderAddress();
-        System.out.println("leader = " + leader);
+        LOGGER.info("leader = {}", leader);
         assertThat(leader).isNotNull();
         assertThat(leader).isEqualTo(channel(0).getAddress());
     }
@@ -115,8 +115,8 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         RAFT raft=leader();
         assertThat(raft).isNotNull();
 
-        System.out.printf("leader is %s\n", raft.raftId());
-        System.out.println("closing non-leaders:");
+        LOGGER.info("leader is {}", raft.raftId());
+        LOGGER.info("closing non-leaders:");
 
         JChannel[] channels = channels();
         for (int i = 0; i < channels.length; i++) {
@@ -140,7 +140,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
         // assert we have a leader
         waitUntilLeaderElected(10_000, 0, 1, 2, 3);
 
-        System.out.println("-- shutdown channels");
+        LOGGER.info("-- shutdown channels");
         // close C and D, now everybody should have a null leader
         close(3);
         close(2);
@@ -151,7 +151,7 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
                 .map(this::raft)
                 .allMatch((RAFT r) -> r.leader() == null);
         assertThat(eventually(bs, 10, TimeUnit.SECONDS)).as(this::dumpLeaderAndTerms).isTrue();
-        System.out.printf("channels:\n%s", dumpLeaderAndTerms());
+        LOGGER.info("channels: {}", dumpLeaderAndTerms());
     }
 
     protected RAFT raft(Address addr) {

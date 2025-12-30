@@ -1,21 +1,46 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<configuration>
-    <appenders>
-        <!-- follow=true doesn't work on Windows with jline/jansi -->
-        <Console name="STDOUT" target="SYSTEM_OUT" follow="false">
-            <PatternLayout pattern="%-7d{HH:mm:ss,SSS} [%p] [%t] (%c{1.}): %m%n"/>
-            <!--<PatternLayout pattern="%r [%p] %c{1}: %m%n"/>-->
-        </Console>
-    </appenders>
-    <loggers>
-        <root level="${env:LOG_LEVEL:-WARN}">
-            <appender-ref ref="STDOUT"/>
-        </root>
+<Configuration name="CommandLineConfig" packages="org.jgroups.raft.tests.listeners">
+    <Properties>
+        <Property name="jgroups.raft.log.path">target/functional</Property>
+    </Properties>
 
-        <!-- Utilize the STDOUT appender to find the JUnitXMLReporter. -->
-        <!-- Additivity false, otherwise we write to the root logger. -->
-        <logger name="org.jgroups" level="${env:LOG_LEVEL:-WARN}" additivity="false">
-            <appender-ref ref="STDOUT"/>
-        </logger>
-    </loggers>
-</configuration>
+    <Appenders>
+        <Console name="STDOUT">
+            <PatternLayout pattern="%d{HH:mm:ss,SSS} %-5p (%t) [%c{1.}] %m %throwable{10}%n"/>
+        </Console>
+
+        <Routing name="Routing">
+            <Routes pattern="$${testName:none}">
+                <!-- Default route, matches any test name -->
+                <Route>
+                    <File name="TestFile"
+                          fileName="${sys:jgroups.raft.log.path}/${testName:none}/test.log">
+                        <PatternLayout>
+                            <Pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} (%t:%x) %-5level %logger{36} - %m%n</Pattern>
+                        </PatternLayout>
+                    </File>
+                </Route>
+            </Routes>
+        </Routing>
+
+        <RandomAccessFile name="FailuresFile"
+                          fileName="${sys:jgroups.raft.log.path}/test-failures.log"
+                          append="true">
+            <PatternLayout pattern="%d{HH:mm:ss,SSS} %-5p [%c{1.}] %m%n"/>
+        </RandomAccessFile>
+    </Appenders>
+
+    <Loggers>
+        <Logger name="org.jgroups" level="${sys:jgroups.log.level:-INFO}" />
+        <Logger name="org.infinispan" level="WARN" />
+
+        <Logger name="org.jgroups.raft.tests.listeners.TestSuiteProgress">
+            <AppenderRef ref="FailuresFile" level="ERROR" />
+        </Logger>
+
+        <Root level="DEBUG">
+            <AppenderRef ref="STDOUT" level="FATAL" />
+            <AppenderRef ref="Routing" />
+        </Root>
+    </Loggers>
+</Configuration>

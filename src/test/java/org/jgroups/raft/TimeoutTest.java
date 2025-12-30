@@ -1,5 +1,8 @@
 package org.jgroups.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
@@ -13,9 +16,6 @@ import java.util.stream.IntStream;
 
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true)
 public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Integer, Integer>> {
@@ -51,13 +51,13 @@ public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Int
                 .isTrue();
 
         ReplicatedStateMachine<Integer,Integer> sm=null;
-        System.out.println("-- waiting for leader");
+        LOGGER.info("-- waiting for leader");
         for(int i=0; i < channels().length; i++) {
             RAFT raft=raft(i);
             assertThat(raft).isNotNull();
             if(raft.isLeader()) {
                 sm=stateMachine(i);
-                System.out.printf("-- found leader: %s\n", raft.leader());
+                LOGGER.info("-- found leader: {}", raft.leader());
                 break;
             }
         }
@@ -67,7 +67,7 @@ public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Int
             try {
                 sm.put(i, i);
             } catch(Exception ex) {
-                System.err.printf("put(%d): last-applied=%d, commit-index=%d\n", i, sm.lastApplied(), sm.commitIndex());
+                LOGGER.error("put({}): last-applied={}, commit-index={}", i, sm.lastApplied(), sm.commitIndex());
                 throw ex;
             }
         }
@@ -80,15 +80,15 @@ public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Int
         // We still have to use eventually so the message propagate to ALL nodes, not only majority.
         assertStateMachineEventuallyMatch(IntStream.range(0, num).toArray());
         long time=System.currentTimeMillis()-start;
-        System.out.printf("-- it took %d member(s) %d ms to get consistent caches\n", clusterSize, time);
+        LOGGER.info("-- it took {} member(s) {} ms to get consistent caches", clusterSize, time);
 
-        System.out.print("-- verifying contents of state machines:\n");
+        LOGGER.info("-- verifying contents of state machines");
         for (int i = 0; i < clusterSize; i++) {
             ReplicatedStateMachine<Integer, Integer> rsm = stateMachine(i);
-            System.out.printf("%s: ", rsm.channel().getName());
+            LOGGER.info(rsm.channel().getName());
             for(int j=1; j <= NUM; j++)
                 assert rsm.get(j) == j;
-            System.out.println("OK");
+            LOGGER.info("OK");
         }
     }
 

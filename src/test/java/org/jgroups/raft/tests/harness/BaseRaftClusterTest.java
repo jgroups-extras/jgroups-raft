@@ -50,11 +50,11 @@ public abstract class BaseRaftClusterTest<T extends MockRaftCluster> extends Abs
 
     @Override
     protected final void createCluster(int limit) throws Exception {
-        System.out.printf("-- Creating mock cluster %s with size %s limited to %d%n", clusterName(), clusterSize, limit);
+        LOGGER.info("-- Creating mock cluster {} with size {} limited to {}", clusterName(), clusterSize, limit);
 
         if (cluster == null) {
             if ((cluster = createNewMockCluster()) == null) {
-                System.out.println("-- No cluster instance created!");
+                LOGGER.info("-- No cluster instance created!");
                 return;
             }
         }
@@ -80,7 +80,7 @@ public abstract class BaseRaftClusterTest<T extends MockRaftCluster> extends Abs
     protected final void destroyCluster() throws Exception {
         beforeClusterDestroy();
 
-        System.out.printf("-- Destroying mock cluster %s named %s with size %d%n", cluster, clusterName(), clusterSize);
+        LOGGER.info("-- Destroying mock cluster {} named {} with size {}", cluster, clusterName(), clusterSize);
 
         if (nodes == null) return;
 

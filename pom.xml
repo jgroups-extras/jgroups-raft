@@ -36,7 +36,8 @@
         <jgroups.tests.parallel.threads>2</jgroups.tests.parallel.threads>
         <defaultTestNGGroups>functional</defaultTestNGGroups>
         <defaultExcludedTestNGGroups>broken</defaultExcludedTestNGGroups>
-        <testNGListeners>org.jgroups.raft.utils.JUnitXMLReporter</testNGListeners>
+        <testNGListeners>org.jgroups.raft.tests.listeners.TestNGTestListener</testNGListeners>
+        <jgroups.log.level>INFO</jgroups.log.level>
 
         <jgroups.bind_addr>localhost</jgroups.bind_addr>
         <jgroups.tcpping.initial_hosts>localhost[7800],localhost[7801]</jgroups.tcpping.initial_hosts>
@@ -55,7 +56,7 @@
             -Dlog4j.configurationFile=log4j2-test.xml
             -Djava.net.preferIPv4Stack=${jgroups.useIPv4}
             -Djava.net.preferIPv6Addresses=${jgroups.useIPv6}
-            -Dorg.jgrops.test.trace=${trace}
+            -Dorg.jgroups.test.trace=${trace}
             -Xms400M
             -Xmx800M
         </jgroups.tests.jvmargs>
@@ -186,6 +187,13 @@
             <version>${log4j.version}</version>
             <optional>true</optional>
         </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j-impl</artifactId>
+            <version>${log4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>net.jcip</groupId>
             <artifactId>jcip-annotations</artifactId>
@@ -487,6 +495,7 @@
                         <tcp.recv_buf_size>200000</tcp.recv_buf_size>
                         <tcp.send_buf_size>64000</tcp.send_buf_size>
                         <ansi.strip>${ansi.strip}</ansi.strip>
+                        <jgroups.log.level>${jgroups.log.level}</jgroups.log.level>
                     </systemPropertyVariables>
                     <trimStackTrace>false</trimStackTrace>
                     <properties>

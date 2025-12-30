@@ -73,18 +73,18 @@ public class DelayedElectedLeaderMessageTest extends BaseRaftElectionTest.Cluste
         cluster.handleView(v1);
 
         // Intercept the leader elected message.
-        System.out.println("-- wait command intercept");
+        LOGGER.info("-- wait command intercept");
         assertThat(eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
 
         // Install the new view while the LeaderElected is in-flight.
         // The new view does not have a majority.
-        System.out.println("-- install new view without majority");
+        LOGGER.info("-- install new view without majority");
         View v2 = createView(viewId++, 0, 1);
         cluster.handleView(v2);
 
         // Release the leader elected message.
         // The node should not install the new leader.
-        System.out.println("-- release leader elected message");
+        LOGGER.info("-- release leader elected message");
         interceptor.releaseNext();
         interceptor.assertNoBlockedMessages();
 

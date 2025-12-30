@@ -44,7 +44,7 @@ public class PartialConnectivityTest extends BaseRaftElectionTest.ClusterBased<P
         assertThat(leaders).hasSize(1);
         Address leader = leaders.get(0);
 
-        System.out.println("leader is " + leader);
+        LOGGER.info("leader is {}", leader);
 
         // Nodes D and E do not update their view.
         cluster.handleView(createView(id++, 0, 2));
@@ -68,7 +68,7 @@ public class PartialConnectivityTest extends BaseRaftElectionTest.ClusterBased<P
 
         // Node `E` is the new view coordinator.
         View after = createView(id++, 4, 3, 0, 1, 2);
-        System.out.println("after restored network: " + after);
+        LOGGER.info("after restored network: {}", after);
         cluster.handleView(after);
 
         boolean elected = Util.waitUntilTrue(3000, 200, () -> Stream.of(nodes()).allMatch(n -> n.raft().leader() != null));
@@ -76,7 +76,7 @@ public class PartialConnectivityTest extends BaseRaftElectionTest.ClusterBased<P
             assertThat(elected).as("leader was never elected again").isTrue();
             leaders = leaders();
             assertThat(leaders).hasSize(1);
-            System.out.println("Leader after restored network: " + leaders.get(0));
+            LOGGER.info("Leader after restored network: {}", leaders.get(0));
         } else {
             assertThat(elected).as("Leader was elected again").isFalse();
             assertThat(election(0)).isInstanceOf(ELECTION.class);

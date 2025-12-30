@@ -75,7 +75,7 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
         List<Address> leaders=leaders().stream().map(RAFT::getAddress).collect(Collectors.toList());
         assert leaders.isEmpty() : dumpLeaderAndTerms();
 
-        System.out.printf("-- channels before:\n%s\n", print(a,b,c,d,e));
+        LOGGER.info("-- channels before:%n{}", print(a,b,c,d,e));
 
         // now create overlapping views {A,B,C,D} and {E,D,C,B}
         v1=createView(++id, a,b,c,d);
@@ -85,7 +85,7 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
         new Thread(injecter1).start();
         new Thread(injecter2).start();
 
-        System.out.println("-- waiting election after merge");
+        LOGGER.info("-- waiting election after merge");
         // After the merge, either 'A' or 'E' will never have a leader.
         // We stop waiting after one node sees itself as leader.
         BooleanSupplier bs = () -> Arrays.stream(channels())
@@ -96,7 +96,7 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
                 .isTrue();
         stopVotingThread();
         assertNoMoreThanOneLeaderInSameTerm(a,b,c,d,e);
-        System.out.printf("\n-- channels after:\n%s\n", print(a,b,c,d,e));
+        LOGGER.info("-- channels after:%n{}", print(a,b,c,d,e));
     }
 
     protected void assertNoMoreThanOneLeaderInSameTerm(JChannel... channels) {
@@ -121,10 +121,10 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
         }
     }
 
-    protected static void assertView(View v, JChannel... channels) {
+    protected void assertView(View v, JChannel... channels) {
         for(JChannel ch: channels) {
             View ch_v=ch.getView();
-            System.out.printf("%s: %s\n", ch.getAddress(), ch.getView());
+            LOGGER.info("{}: {}", ch.getAddress(), ch.getView());
             assert ch_v.equals(v) : String.format("%s: %s", ch.getAddress(), ch.getView());
         }
     }

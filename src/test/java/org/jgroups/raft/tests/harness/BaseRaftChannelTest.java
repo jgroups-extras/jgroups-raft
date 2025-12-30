@@ -26,7 +26,7 @@ public class BaseRaftChannelTest extends AbstractRaftTest {
 
     @Override
     protected final void createCluster(int limit) throws Exception {
-        System.out.printf("%s: creating cluster '%s' with size %d (limited %d) %n", getClass(), clusterName(), clusterSize, limit);
+        LOGGER.info("{}: creating cluster '{}' with size {} (limited {})", getClass(), clusterName(), clusterSize, limit);
 
         if (this.channels == null) this.channels = new JChannel[clusterSize];
         if (this.channels.length < clusterSize) {
@@ -48,7 +48,7 @@ public class BaseRaftChannelTest extends AbstractRaftTest {
         }
 
         Util.waitUntilAllChannelsHaveSameView(10_000, 100, actualChannels());
-        System.out.printf("%s: current cluster %s of size %d view is:%n%s%n", getClass(), clusterName(), clusterSize, printCurrentCluster());
+        LOGGER.info("{}: current cluster {} of size {} view is:%n{}%n", getClass(), clusterName(), clusterSize, printCurrentCluster());
     }
 
     /**
@@ -97,7 +97,7 @@ public class BaseRaftChannelTest extends AbstractRaftTest {
     protected final void destroyCluster() throws Exception {
         beforeClusterDestroy();
 
-        System.out.printf("%s: destroying cluster %s with size %d%n", getClass(), clusterName(), clusterSize);
+        LOGGER.info("{}: destroying cluster {} with size %d{}", getClass(), clusterName(), clusterSize);
         if (channels != null) {
             for (int i = clusterSize - 1; i >= 0; i--) {
                 close(i);

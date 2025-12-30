@@ -77,7 +77,7 @@ public class ViewChangeElectionTest extends BaseRaftElectionTest.ClusterBased<Ra
 
         cluster.handleView(view);
 
-        System.out.println("-- wait command intercept");
+        LOGGER.info("-- wait command intercept");
         assertThat(RaftTestUtils.eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
 
         // While the message is in-flight, the elected leader leaves the cluster.
@@ -89,7 +89,7 @@ public class ViewChangeElectionTest extends BaseRaftElectionTest.ClusterBased<Ra
         interceptor.assertNoBlockedMessages();
 
         // Wait until either A or B is elected.
-        System.out.println("-- waiting for leader between A and B");
+        LOGGER.info("-- waiting for leader between A and B");
         RAFT[] rafts = new RAFT[] { raft(0), raft(1) };
         BaseRaftElectionTest.waitUntilLeaderElected(rafts, 10_000);
 
@@ -123,13 +123,13 @@ public class ViewChangeElectionTest extends BaseRaftElectionTest.ClusterBased<Ra
 
         cluster.handleView(view);
 
-        System.out.println("-- wait command intercept");
+        LOGGER.info("-- wait command intercept");
         assertThat(RaftTestUtils.eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
 
         // While the message is in-flight, the elected leader leaves the cluster.
         view = createView(view_id++, 1, 2);
 
-        System.out.printf("-- install new view %s%n", view);
+        LOGGER.info("-- install new view {}", view);
         cluster.handleView(view);
 
         // We can release the elected message.
@@ -137,7 +137,7 @@ public class ViewChangeElectionTest extends BaseRaftElectionTest.ClusterBased<Ra
         interceptor.assertNoBlockedMessages();
 
         // Wait until either A or B is elected.
-        System.out.println("-- waiting for leader between B and C");
+        LOGGER.info("-- waiting for leader between B and C");
         RAFT[] rafts = new RAFT[] { raft(1), raft(2) };
         BaseRaftElectionTest.waitUntilLeaderElected(rafts, 10_000);
 
@@ -154,7 +154,7 @@ public class ViewChangeElectionTest extends BaseRaftElectionTest.ClusterBased<Ra
 
         long termBeforeJoin = leader.currentTerm();
 
-        System.out.println("-- installing new view with previous coordinator back");
+        LOGGER.info("-- installing new view with previous coordinator back");
         // Include the previous coordinator again.
         cluster.add(address(0), node(0));
         cluster.handleView(createView(view_id++, 1, 2, 0));

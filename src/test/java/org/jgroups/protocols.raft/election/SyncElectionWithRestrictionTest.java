@@ -75,16 +75,16 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
      */
     public void testScenarioD(Class<?> ignore) throws Exception {
         createScenarioC();
-        System.out.printf("-- Initial:\n%s\n", printTerms());
+        LOGGER.info("-- Initial: %n{}", printTerms());
         close(0);
         makeLeader(4);
         View v=createView(view_id++, 4, 1, 2, 3);
         cluster.handleView(v);
-        System.out.printf("-- After killing S1 and making S5 leader:\n%s\n", printTerms());
+        LOGGER.info("-- After killing S1 and making S5 leader:%n{}", printTerms());
         assertTerms(null, new long[]{1,2}, new long[]{1,2}, new long[]{1}, new long[]{1,3});
         RAFT r5 = waitUntilNodeLeader(4);
         r5.flushCommitTable();
-        System.out.printf("-- After S1 resending messages:\n%s\n\n", printTerms());
+        LOGGER.info("-- After S1 resending messages:%n{}", printTerms());
         long[] expected={1,3};
         assertTerms(null, expected, expected, expected, expected);
     }
@@ -109,15 +109,15 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
 
         // append term 4 on S2 and S3:
         RAFT r1=waitUntilNodeLeader(0);
-        System.out.println("-- flushing tables");
+        LOGGER.info("-- flushing tables");
         r1.flushCommitTable(address(1));
         r1.flushCommitTable(address(2));
 
-        System.out.printf("-- Initial:\n%s\n", printTerms());
+        LOGGER.info("-- Initial:%n{}", printTerms());
         close(0);
         v=createView(view_id++, 1, 2, 3, 4);
         cluster.handleView(v);
-        System.out.printf("-- After killing S1:\n%s\n", printTerms());
+        LOGGER.info("-- After killing S1:%n{}", printTerms());
         assertTerms(null, new long[]{1,2,4}, new long[]{1,2,4}, new long[]{1}, new long[]{1,3});
 
         // start voting to find current leader:
@@ -127,7 +127,7 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         waitUntilLeaderElected(5_000, 1, 2, 3, 4);
 
         String leaderAndTerms = dumpLeaderAndTerms();
-        System.out.printf("-- After the voting phase (either S2 or S3 will be leader):\n%s\n", leaderAndTerms);
+        LOGGER.info("-- After the voting phase (either S2 or S3 will be leader):%n{}", leaderAndTerms);
         assertThat(leaders())
                 .as(leaderAndTerms)
                 .hasSize(1)
@@ -145,7 +145,7 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         long[] expected={1,2,4};
         waitUntilTerms(10000,1000, expected, leader_raft::flushCommitTable);
         assertTerms(null, expected, expected, expected, expected);
-        System.out.printf("-- final terms:\n%s\n", printTerms());
+        LOGGER.info("-- final terms:%n{}", printTerms());
     }
 
 

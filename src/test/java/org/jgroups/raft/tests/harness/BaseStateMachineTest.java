@@ -120,7 +120,7 @@ public class BaseStateMachineTest<T extends StateMachine> extends BaseRaftChanne
         assertThat(eventually(commitIndexVerify, matchTimeout, TimeUnit.MILLISECONDS))
                 .as(generateErrorMessage())
                 .isTrue();
-        System.out.println(dumpStateMachines(indexes));
+        LOGGER.info(dumpStateMachines(indexes));
 
         // Verify the state machines match.
         BooleanSupplier matchStateMachineVerify = () -> Arrays.stream(indexes)

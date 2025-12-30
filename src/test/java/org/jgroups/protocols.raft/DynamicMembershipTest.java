@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * @author Bela Ban
  * @since  0.2
  */
-@Test(groups=Global.FUNCTIONAL,singleThreaded=true)
+@Test(groups=Global.FUNCTIONAL,singleThreaded=true, testName = "org.jgroups.raft.DynamicMembershipTest")
 public class DynamicMembershipTest extends BaseRaftChannelTest {
 
     {
@@ -69,7 +69,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
 
         waitUntilAllRaftsHaveLeader(channels());
         Address leader=leaderAddress();
-        System.out.println("leader = " + leader);
+        LOGGER.info("leader = {}", leader);
         assertThat(leader).isNotNull();
         assertSameLeader(leader, channels());
         assertMembers(5000, getRaftMembers(), 2, channels());
@@ -80,7 +80,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
 
         // adding:
         for(String mbr: new_mbrs) {
-            System.out.printf("\nAdding %s\n", mbr);
+            LOGGER.info("Adding {}", mbr);
             raft.addServer(mbr);
             expected_mbrs.add(mbr);
             assertMembers(10000, expected_mbrs, expected_mbrs.size()/2+1, channels());
@@ -89,7 +89,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         // removing:
         for(int i=new_mbrs.size()-1; i >= 0; i--) {
             String mbr=new_mbrs.get(i);
-            System.out.printf("\nRemoving %s\n", mbr);
+            LOGGER.info("Removing {}", mbr);
             raft.removeServer(mbr);
             expected_mbrs.remove(mbr);
             assertMembers(10000, expected_mbrs, expected_mbrs.size()/2+1, channels());
@@ -116,7 +116,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         waitUntilAllRaftsHaveLeader(channels());
         Address leader=leaderAddress();
 
-        System.out.println("leader = " + leader);
+        LOGGER.info("leader = {}", leader);
         assertThat(leader).isNotNull();
 
         assertSameLeader(leader, channels());
@@ -132,7 +132,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         }
 
         String new_mbr="C";
-        System.out.printf("Adding [%s]\n", new_mbr);
+        LOGGER.info("Adding [{}]", new_mbr);
 
         withClusterSize(3);
         createCluster();
@@ -143,7 +143,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         raft.addServer(new_mbr).get(10, TimeUnit.SECONDS);
         assertMembers(10000, getRaftMembers(), 2, channels());
 
-        System.out.println("\nShutdown cluster");
+        LOGGER.info("\nShutdown cluster");
 
         JChannel[] channels = channels();
         for (int i = 0; i < channels.length; i++) {
@@ -155,7 +155,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         }
         destroyCluster();
 
-        System.out.println("\nRestarting cluster");
+        LOGGER.info("\nRestarting cluster");
 
         // We restart with only 2 nodes.
         withClusterSize(2);
@@ -191,7 +191,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         createCluster();
         waitUntilAllRaftsHaveLeader(channels());
         Address leader = leaderAddress();
-        System.out.println("leader = " + leader);
+        LOGGER.info("leader = {}", leader);
         assertThat(leader).isNotNull();
         assertSameLeader(leader, channels());
         assertMembers(5000, getRaftMembers(), getRaftMembers().size()/2+1, channels());
@@ -207,7 +207,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
                     addServerLatch.await();
                     CompletableFuture<byte[]> f=raft.addServer(newServer);
                     CompletableFutures.join(f);
-                    System.out.printf("[%d]: added %s successfully\n", Thread.currentThread().getId(), newServer);
+                    LOGGER.info("[{}]: added {} successfully", Thread.currentThread().getId(), newServer);
                 }
                 catch (Throwable t) {
                     t.printStackTrace();
@@ -231,7 +231,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
 
         waitUntilAllRaftsHaveLeader(channels());
         Address leader=leaderAddress();
-        System.out.println("leader = " + leader);
+        LOGGER.info("leader = {}", leader);
         assertThat(leader).isNotNull();
 
         // close non-leaders
@@ -249,11 +249,11 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
         createCluster();
         waitUntilAllRaftsHaveLeader(channels());
         leader=leaderAddress();
-        System.out.println("leader = " + leader);
+        LOGGER.info("leader = {}", leader);
         assertThat(leader).isNotNull();
         raft=raft(leader);
 
-        System.out.println("-- adding member C");
+        LOGGER.info("-- adding member C");
         CompletableFuture<byte[]> addC = raft.addServer("C"); // adding C should now succeed, as we have a valid leader again
 
         // Now create and connect C
@@ -307,7 +307,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
                 continue;
 
             RAFT raft=raft(ch);
-            System.out.printf("%s: members=%s, majority=%d\n", ch.getAddress(), raft.members(), raft.majority());
+            LOGGER.info("{}: members={}, majority={}", ch.getAddress(), raft.members(), raft.majority());
 
             assertThat(Set.of(raft.members()))
                     .as(() -> String.format("expected members=%s, actual members=%s", members, raft.members()))
@@ -336,7 +336,7 @@ public class DynamicMembershipTest extends BaseRaftChannelTest {
 
         for(JChannel ch: channels) {
             RAFT raft=raft(ch);
-            System.out.printf("%s: members=%s, last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.members(),
+            LOGGER.info("{}: members={}, last-applied={}, commit-index={}", ch.getAddress(), raft.members(),
                               raft.lastAppended(), raft.commitIndex());
 
             assertThat(raft.commitIndex())

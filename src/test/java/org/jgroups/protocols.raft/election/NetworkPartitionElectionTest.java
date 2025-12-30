@@ -53,7 +53,7 @@ public class NetworkPartitionElectionTest extends BaseRaftElectionTest.ClusterBa
 
         cluster.handleView(view);
 
-        System.out.println("-- wait command intercept");
+        LOGGER.info("-- wait command intercept");
         assertThat(RaftTestUtils.eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
 
         // While the message is in-flight, the cluster splits.
@@ -66,26 +66,26 @@ public class NetworkPartitionElectionTest extends BaseRaftElectionTest.ClusterBa
         interceptor.assertNoBlockedMessages();
 
         // Check in all instances that a new leader is elected.
-        System.out.println("-- waiting for leader in majority partition");
+        LOGGER.info("-- waiting for leader in majority partition");
         BaseRaftElectionTest.waitUntilLeaderElected(rafts(), 10_000);
 
         // Assert that A and B does not have a leader.
         assertThat(raft(0).leader()).isNull();
         assertThat(raft(1).leader()).isNull();
 
-        System.out.printf("-- elected during the split\n%s%n", dumpLeaderAndTerms());
+        LOGGER.info("-- elected during the split%n{}", dumpLeaderAndTerms());
         // Store who's the leader before merging.
         assertThat(leaders()).hasSize(1);
         RAFT leader = raft(leaders().get(0));
 
-        System.out.printf("-- merge partition, leader=%s%n", leader);
+        LOGGER.info("-- merge partition, leader={}", leader);
         // Join the partitions.
         // Note that the coordinator is different.
         cluster.handleView(createView(id++, 0, 1, 2, 3, 4));
 
         // Wait until A and B receive the leader information.
         BaseRaftElectionTest.waitUntilAllHaveLeaderElected(rafts(), 10_000);
-        System.out.printf("-- state after merge\n%s%n", dumpLeaderAndTerms());
+        LOGGER.info("-- state after merge%n{}", dumpLeaderAndTerms());
     }
 
     private RAFT raft(Address address) {

@@ -287,7 +287,7 @@ public class CounterTest extends BaseRaftChannelTest {
 
         long waitEnd = System.currentTimeMillis() - start;
 
-        System.out.printf("async perf: val=%d, loop time=%d ms, total time=%d\n", counter.get().toCompletableFuture().join(), loopEnd, waitEnd);
+        LOGGER.info("async perf: val={}, loop time={} ms, total time={}", counter.get().toCompletableFuture().join(), loopEnd, waitEnd);
         assertAsyncValues(counters, maxValue);
     }
 
@@ -302,7 +302,7 @@ public class CounterTest extends BaseRaftChannelTest {
         }
         long time = System.currentTimeMillis() - start;
 
-        System.out.printf("sync perf: val=%d, time=%d ms\n", counter.get(), time);
+        LOGGER.info("sync perf: val={}, time={} ms", counter.get(), time);
         assertValues(counters, maxValue);
     }
 
@@ -329,12 +329,12 @@ public class CounterTest extends BaseRaftChannelTest {
 
         long waitEnd = System.currentTimeMillis() - start;
 
-        System.out.printf("cas async perf: val=%d, loop time=%d ms, total time=%d\n", counters.get(0).get().toCompletableFuture().join(), loopEnd, waitEnd);
+        LOGGER.info("cas async perf: val={}, loop time={} ms, total time={}", counters.get(0).get().toCompletableFuture().join(), loopEnd, waitEnd);
         assertAsyncValues(counters, maxValue);
 
         long casCount = 0;
         for (int i = 0; i < successes.size(); ++i) {
-            System.out.printf("cas results for node %d: %d CAS succeed%n", i, successes.get(i).intValue());
+            LOGGER.info("cas results for node {}: {} CAS succeed", i, successes.get(i).intValue());
             casCount += successes.get(i).longValue();
         }
         assertEquals(maxValue, casCount);

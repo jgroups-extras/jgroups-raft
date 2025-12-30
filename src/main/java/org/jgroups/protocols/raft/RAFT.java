@@ -551,7 +551,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     public CompletableFuture<Void> snapshotAsync() {
         CompletableFuture<Void> f = new CompletableFuture<>();
-        new RuntimeException("Submit snapshot task").printStackTrace(System.err);
         offer(requestFactory.createCallableRequest(() -> {
             takeSnapshot();
             return null;

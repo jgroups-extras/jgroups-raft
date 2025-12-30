@@ -57,6 +57,7 @@ jobs:
           path: |
             target/site
             target/surefire-reports
+            target/functional
 
       - name: Display surefire-reports
         if: failure()

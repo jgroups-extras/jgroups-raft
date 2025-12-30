@@ -11,6 +11,8 @@ import java.util.function.BooleanSupplier;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.assertj.core.api.Assertions;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
@@ -19,6 +21,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 public final class RaftAssertion {
+
+    private static final Logger LOGGER = LogManager.getLogger(RaftAssertion.class);
 
     private RaftAssertion() { }
 
@@ -68,7 +72,7 @@ public final class RaftAssertion {
         for (JChannel ch : channels) {
             RAFT raft = converter.apply(ch);
             String check = String.format("%s: last-applied=%d, commit-index=%d\n", ch.getAddress(), raft.lastAppended(), raft.commitIndex());
-            System.out.printf(check);
+            LOGGER.info(check);
             assertThat(raft)
                     .as(check)
                     .returns(expected_commit, RAFT::commitIndex)

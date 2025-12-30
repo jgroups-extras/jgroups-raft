@@ -43,7 +43,7 @@ public class VotingThreadBreakdownTest extends BaseRaftElectionTest.ClusterBased
 
         // Install view with majority to trigger the election mechanism.
         View v1 = createView(viewId++, 0, 1, 2);
-        System.out.println("-- installing first view with all members");
+        LOGGER.info("-- installing first view with all members");
         CompletableFuture<Void> f1 = async(() -> cluster.handleView(v1));
 
         // New view starts the voting thread.
@@ -67,7 +67,7 @@ public class VotingThreadBreakdownTest extends BaseRaftElectionTest.ClusterBased
         //checkPoint.awaitStrict("A_STOP_METHOD_IN", 10, TimeUnit.SECONDS);
         View v3 = createView(viewId++, 0, 1, 2);
 
-        System.out.printf("-- installing complete view: %s%n", v3);
+        LOGGER.info("-- installing complete view: {}", v3);
         cluster.add(node(1).getAddress(), node(1));
         cluster.add(node(2).getAddress(), node(2));
         CompletableFuture<Void> f3 = async(() -> cluster.handleView(v3));

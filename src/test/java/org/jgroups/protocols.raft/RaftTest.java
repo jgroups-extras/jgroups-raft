@@ -257,7 +257,7 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
             if(i == 0)
                 assert la == null && lb == null;
             else {
-                System.out.printf("%d: A=%s, B=%s\n", i, la, lb);
+                LOGGER.info("{}: A={}, B={}", i, la, lb);
                 assert la.term() == lb.term();
             }
         }

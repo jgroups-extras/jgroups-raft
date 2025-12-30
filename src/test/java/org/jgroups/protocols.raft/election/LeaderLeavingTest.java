@@ -59,7 +59,7 @@ public class LeaderLeavingTest extends BaseRaftElectionTest.ClusterBased<RaftClu
         // Await until node A (the coordinator) tries to install the new elected leader.
         // We block the operation and change the view removing the elected leader.
         checkPoint.awaitStrict("A_ENTER_SET_LAT", 10, SECONDS);
-        System.out.println("-- installing second view without leader");
+        LOGGER.info("-- installing second view without leader");
         View v2 = createView(viewId++, 0, 2);
         CompletableFuture<Void> f2 = async(() -> cluster.handleView(v2));
 
@@ -68,7 +68,7 @@ public class LeaderLeavingTest extends BaseRaftElectionTest.ClusterBased<RaftClu
         // But since it left the cluster, the election keeps running.
         checkPoint.triggerForever("A_ENTER_SET_LAT_CONTINUE");
 
-        System.out.println("-- waiting leader to be elected between remaining nodes");
+        LOGGER.info("-- waiting leader to be elected between remaining nodes");
         // A new leader is elected.
         waitUntilLeaderElected(10_000, 0, 2);
 

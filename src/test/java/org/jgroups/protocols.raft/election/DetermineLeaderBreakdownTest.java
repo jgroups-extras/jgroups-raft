@@ -71,7 +71,7 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
         // Let the method return and install A as leader.
         checkPoint.trigger("A_DETERMINE_OUT_CONTINUE");
 
-        System.out.println("-- waiting leader to remain null without majority");
+        LOGGER.info("-- waiting leader to remain null without majority");
 
         // Utilize the eventually method to make sure the leader is always null in the next 3 seconds.
         assertThat(eventually(() -> !election(0).isVotingThreadRunning(), 5, TimeUnit.SECONDS)).isTrue();
@@ -120,7 +120,7 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
 
         // The coordinator identifies the view change and the leader is lost.
         // The voting thread should run again to try elect in the new view.
-        System.out.println("-- waiting new leader elected");
+        LOGGER.info("-- waiting new leader elected");
         waitUntilLeaderElected(10_000, 0, 1);
 
         // Assert the new leader is either A or B.

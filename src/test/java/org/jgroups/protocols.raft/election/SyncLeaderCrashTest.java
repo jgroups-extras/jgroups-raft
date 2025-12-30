@@ -59,7 +59,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
     public void testsLeaderCrash(Class<?> ignore) throws Exception {
         prepare();
 
-        System.out.println("-- Adding requests 5, 6 and 7 to A, B and C (not yet committing them); then crashing A");
+        LOGGER.info("-- Adding requests 5, 6 and 7 to A, B and C (not yet committing them); then crashing A");
         for(RAFT r: rafts()) {
             for(int i=5; i <= 7; i++) {
                 Log l=r.log();
@@ -73,20 +73,20 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         View v=createView(view_id++, 1, 2);
         cluster.handleView(v);
         waitUntilLeaderElected(5_000, 1, 2);
-        System.out.printf("\n-- Terms after leader A left:\n\n%s\n-- Indices:\n%s\n\n", printTerms(), printIndices(null));
+        LOGGER.info("-- Terms after leader A left:%n{}%n-- Indices:%n{}", printTerms(), printIndices(null));
         assertIndices(7, 4);
 
         RAFT leader=Stream.of(rafts()).filter(r -> r != null && r.isLeader()).findFirst().orElse(null);
-        System.out.printf("-- new leader: %s%n", leader);
+        LOGGER.info("-- new leader: {}", leader);
         assert leader != null;
-        System.out.printf("-- Leader: %s, commit-table:\n%s\n", leader.getAddress(), leader.commitTable());
+        LOGGER.info("-- Leader: {}, commit-table:%n{}", leader.getAddress(), leader.commitTable());
 
         leader.flushCommitTable();
         leader.flushCommitTable();
-        System.out.printf("-- Indices:\n%s\n\n", printIndices(null));
+        LOGGER.info("-- Indices:%n{}", printIndices(null));
         assertIndices(7, 7);
 
-        System.out.printf("-- State machines:\n%s\n", printStateMachines());
+        LOGGER.info("-- State machines:%n{}", printStateMachines());
         assert Arrays.stream(rafts())
                 .map(RAFT::stateMachine)
                 .map(sm -> (CounterStateMachine) sm)
@@ -97,7 +97,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         assert leader.requestTableSize() == 0 : String.format("req_table should be 0, but is %d", leader.requestTableSize());
 
         // restart A and see if indixes and state machines match
-        System.out.println("\n-- Restarting A");
+        LOGGER.info("-- Restarting A");
         createCluster();
         v=createView(view_id++, 1, 2, 0);
         cluster.handleView(v);
@@ -106,10 +106,10 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         leader.flushCommitTable();
         leader.flushCommitTable();
 
-        System.out.printf("\n-- Indices:\n%s\n\n", printIndices(null));
+        LOGGER.info("-- Indices:%n{}", printIndices(null));
         assertIndices(7, 7);
 
-        System.out.printf("-- State machines:\n%s\n", printStateMachines());
+        LOGGER.info("-- State machines:%n{}", printStateMachines());
         assert Arrays.stream(rafts())
                 .map(RAFT::stateMachine)
                 .map(sm -> (CounterStateMachine) sm)
@@ -141,11 +141,11 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         r.setLeaderAndTerm(leader, 7);
         r.set(DATA, 0, DATA.length, 5, TimeUnit.SECONDS);
 
-        System.out.printf("terms:\n%s\n", printTerms());
+        LOGGER.info("terms:%n{}", printTerms());
         assertTerms(terms, terms, terms);
 
         raft(0).flushCommitTable(); // updates the commit index
-        System.out.printf("-- Indices:\n%s\n", printIndices(null));
+        LOGGER.info("-- Indices:%n{}", printIndices(null));
         assertIndices(4, 4);
     }
 

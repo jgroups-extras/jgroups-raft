@@ -95,7 +95,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
                 .isTrue();
 
         assertOneLeader();
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         waitUntilVotingThreadHasStopped();
     }
 
@@ -109,16 +109,16 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         waitUntilLeaderElected(5_000, 0, 1);
 
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
 
-        System.out.println("Adding 3rd member:");
+        LOGGER.info("Adding 3rd member:");
 
         createCluster();
 
         view=createView(view_id++, 0, 1, 2);
         cluster.handleView(view);
         assertOneLeader();
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
     }
@@ -140,7 +140,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         waitUntilLeaderElected(5_000, 0, 1, 2);
 
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         assertOneLeader();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
@@ -156,7 +156,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         cluster.handleView(view);
         waitUntilLeaderElected(5_000, 0, 1, 2);
 
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         assertOneLeader();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
@@ -174,7 +174,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         waitUntilLeaderElected(5_000, 0, 1, 2);
 
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         assertOneLeader();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
@@ -191,7 +191,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         waitUntilStepDown(2_000, 0, 1, 2);
 
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
     }
@@ -210,7 +210,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         waitUntilLeaderElected(5_000, indexes);
         waitUntilVotingThreadStops(5_000, indexes);
 
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         assertOneLeader();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
@@ -233,7 +233,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         View view=createView(view_id++, 0, 1, 2);
         cluster.handleView(view);
         waitUntilLeaderElected(10_000, 0, 1, 2);
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         assertOneLeader();
 
         assertThat(raft(0).isLeader()).isFalse();
@@ -261,7 +261,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
             n.handleView(mv);
 
         waitUntilLeaderElected(5_000, 0, 1, 2);
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         assertOneLeader();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
@@ -282,14 +282,14 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         votes_a.reset(a,b,c);
         votes_b.reset(a,b,c);
 
-        System.out.println("-- A and B: sending VoteRequests to C");
+        LOGGER.info("-- A and B: sending VoteRequests to C");
         long term_a=raft(0).createNewTerm();
         long term_b=raft(1).createNewTerm();
         elections[0].down(new EmptyMessage(c).putHeader(elections[0].getId(), new VoteRequest(term_a)));
         elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
 
-        System.out.printf("A: vote responses in term %d: %s\n", term_a, votes_a);
-        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        LOGGER.info("A: vote responses in term {}: {}", term_a, votes_a);
+        LOGGER.info("B: vote responses in term {}: {}", term_b, votes_b);
         int total_rsps=votes_a.numberOfValidResponses() + votes_b.numberOfValidResponses();
         assertThat(total_rsps)
                 .as("A and B both received a vote response from C; this is invalid (Raft $3.4)")
@@ -297,9 +297,9 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         // VoteRequest(term=0): will be dropped by C as C's current_term is 1
         term_b--;
-        System.out.printf("-- B: sending VoteRequest to C (term=%d)\n", term_b);
+        LOGGER.info("-- B: sending VoteRequest to C (term={})", term_b);
         elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
-        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        LOGGER.info("B: vote responses in term {}: {}", term_b, votes_b);
         total_rsps=votes_b.numberOfValidResponses();
         assertThat(total_rsps)
                 .as("B should have received no vote response from C")
@@ -307,9 +307,9 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         // VoteRequest(term=1): will be dropped by C as C already voted (for A) in term 1
         term_b++;
-        System.out.printf("-- B: sending VoteRequest to C (term=%d)\n", term_b);
+        LOGGER.info("-- B: sending VoteRequest to C (term={})", term_b);
         elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
-        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        LOGGER.info("B: vote responses in term {}: {}", term_b, votes_b);
         total_rsps=votes_b.numberOfValidResponses();
         assertThat(total_rsps)
                 .as("B should have received no vote response from C")
@@ -317,9 +317,9 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         // VoteRequest(term=2): C will vote for B, as term=2 is new, and C hasn't yet voted for anyone in term 2
         term_b++;
-        System.out.printf("-- B: sending VoteRequest to C (term=%d)\n", term_b);
+        LOGGER.info("-- B: sending VoteRequest to C (term={})", term_b);
         elections[1].down(new EmptyMessage(c).putHeader(elections[1].getId(), new VoteRequest(term_b)));
-        System.out.printf("B: vote responses in term %d: %s\n", term_b, votes_b);
+        LOGGER.info("B: vote responses in term {}: {}", term_b, votes_b);
         total_rsps=votes_b.numberOfValidResponses();
         assertThat(total_rsps)
                 .as("B should have received a vote response from C")
@@ -334,7 +334,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
 
         waitUntilVotingThreadStops(5_000, 0, 1);
         assertOneLeader();
-        System.out.printf("%s\n", print());
+        LOGGER.info(print());
         waitUntilVotingThreadHasStopped();
 
         int idx = findFirst(true);
@@ -368,7 +368,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         // The election will proceed as usual, until we intercept the LeaderElected node.
         cluster.handleView(view);
 
-        System.out.println("-- wait command intercept");
+        LOGGER.info("-- wait command intercept");
         assertThat(RaftTestUtils.eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
 
         // At this point, the thread is blocked with the LeaderElected message.
@@ -378,7 +378,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         // Add the node again on the cluster. The first view install removed it.
         cluster.add(address(2), node(2));
 
-        System.out.println("-- install new view with node C");
+        LOGGER.info("-- install new view with node C");
         cluster.handleView(view);
 
         // View installed, we can release the previous intercepted command.
@@ -386,7 +386,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         interceptor.releaseNext();
 
         // The new node eventually receives the LeaderElected message.
-        System.out.println("-- wait node C receive leader elected");
+        LOGGER.info("-- wait node C receive leader elected");
         assertThat(RaftTestUtils.eventually(() -> raft(2).leader() != null, 10, TimeUnit.SECONDS))
                 .isTrue();
 
@@ -424,7 +424,7 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         // The election will proceed as usual, until we intercept the VoteResponse from node B.
         cluster.handleView(view);
 
-        System.out.println("-- wait command intercept");
+        LOGGER.info("-- wait command intercept");
         assertThat(RaftTestUtils.eventually(() -> interceptor.numberOfBlockedMessages() > 0, 10, TimeUnit.SECONDS)).isTrue();
 
         // This will cause the node to collect all the needed votes it would need to be elected leader.

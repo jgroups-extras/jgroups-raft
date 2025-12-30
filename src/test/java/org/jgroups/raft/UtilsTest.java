@@ -1,5 +1,10 @@
 package org.jgroups.raft;
 
+import static org.jgroups.raft.util.Utils.Majority.leader_lost;
+import static org.jgroups.raft.util.Utils.Majority.lost;
+import static org.jgroups.raft.util.Utils.Majority.no_change;
+import static org.jgroups.raft.util.Utils.Majority.reached;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
@@ -7,12 +12,9 @@ import org.jgroups.raft.util.Utils;
 import org.jgroups.raft.util.Utils.Majority;
 import org.jgroups.util.Util;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.Test;
-
-import static org.jgroups.raft.util.Utils.Majority.leader_lost;
-import static org.jgroups.raft.util.Utils.Majority.lost;
-import static org.jgroups.raft.util.Utils.Majority.no_change;
-import static org.jgroups.raft.util.Utils.Majority.reached;
 
 /**
  * @author Bela Ban
@@ -20,6 +22,8 @@ import static org.jgroups.raft.util.Utils.Majority.reached;
  */
 @Test(groups=Global.FUNCTIONAL)
 public class UtilsTest {
+    private static final Logger LOGGER = LogManager.getLogger(UtilsTest.class);
+
     protected static final Address a=Util.createRandomAddress("A"),
       b=Util.createRandomAddress("B"),c=Util.createRandomAddress("C"),
       d=Util.createRandomAddress("D"),e=Util.createRandomAddress("E");
@@ -125,14 +129,14 @@ public class UtilsTest {
 
     protected static void _test(View old, View new_view, Majority expected) {
         Majority result=Utils.computeMajority(old, new_view, MAJORITY, old != null? old.getCoord() : null);
-        System.out.printf("old: %s, new: %s, result: %s\n", old, new_view, result);
+        LOGGER.info("old: {}, new: {}, result: {}", old, new_view, result);
         assert result == expected;
     }
 
     protected static void _test(View old, View new_view, boolean majority_reached, boolean majority_lost) {
         boolean maj_reached=Utils.majorityReached(old, new_view, MAJORITY);
         boolean maj_lost=Utils.majorityLost(old, new_view, MAJORITY);
-        System.out.printf("old view: %s, new view: %s, majority reached: %b, majority lost: %b\n",
+        LOGGER.info("old view: {}, new view: {}, majority reached: {}, majority lost: {}",
                           old, new_view, maj_reached, maj_lost);
         assert maj_reached == majority_reached;
         assert maj_lost == majority_lost;

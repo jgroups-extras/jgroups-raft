@@ -8,6 +8,9 @@ import org.jgroups.protocols.raft.election.VoteResponse;
 import org.jgroups.raft.Options;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.annotations.Test;
 
 /**
@@ -16,6 +19,8 @@ import org.testng.annotations.Test;
  */
 @Test(groups=Global.FUNCTIONAL)
 public class RaftHeaderTest {
+
+    private static final Logger LOGGER = LogManager.getLogger(RaftHeaderTest.class);
 
     public void testVoteRequestHeader() throws Exception {
         VoteRequest hdr=new VoteRequest(22);
@@ -61,7 +66,7 @@ public class RaftHeaderTest {
         int size=hdr.serializedSize();
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(size);
         hdr.writeTo(out);
-        System.out.println(clazz.getSimpleName() + ": size=" + size);
+        LOGGER.info("{}: size={}", clazz.getSimpleName(), size);
         assert out.position() == size;
 
         RaftHeader hdr2=Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
@@ -74,7 +79,7 @@ public class RaftHeaderTest {
         int size=hdr.serializedSize();
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(size);
         hdr.writeTo(out);
-        System.out.println(clazz.getSimpleName() + ": size=" + size);
+        LOGGER.info("{}: size={}", clazz.getSimpleName(), size);
         assert out.position() == size;
 
         REDIRECT.RedirectHeader hdr2=Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());

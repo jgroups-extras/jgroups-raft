@@ -17,6 +17,9 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 /**
  * Behaves more or less like a map of {@link java.util.concurrent.Semaphore}s.
  * <p>
@@ -29,6 +32,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class CheckPoint {
 
+   private static final Logger LOGGER = LogManager.getLogger(CheckPoint.class);
    public static final int INFINITE = 999999999;
 
    private final String id;
@@ -91,7 +95,7 @@ public class CheckPoint {
    }
 
    private boolean await(String event, int count, long timeout, TimeUnit unit) throws InterruptedException {
-      System.out.printf("%sWaiting for event %s * %d%n", id, event, count);
+      LOGGER.info("{}: Waiting for event {} * {}", id, event, count);
       lock.lock();
       try {
          EventStatus status = events.computeIfAbsent(event, k -> new EventStatus());
@@ -105,14 +109,14 @@ public class CheckPoint {
          }
 
          if (waitNanos <= 0) {
-            System.err.printf("%sTimed out waiting for event %s * %d (available = %d, total = %d)%n",
+            LOGGER.error("{}: Timed out waiting for event {} * {} (available = {}, total = {})",
                        id, event, count, status.available, status.total);
             // let the triggering thread know that we timed out
             status.available = -1;
             return false;
          }
 
-         System.out.printf("%sReceived event %s * %d (available = %d, total = %d)%n", id, event, count, status.available, status.total);
+         LOGGER.info("{}: Received event {} * {} (available = {}, total = {})", id, event, count, status.available, status.total);
          return true;
       } finally {
          lock.unlock();
@@ -120,7 +124,7 @@ public class CheckPoint {
    }
 
    public String peek(long timeout, TimeUnit unit, String... expectedEvents) throws InterruptedException {
-      System.out.printf("%sWaiting for any one of events %s%n", id, Arrays.toString(expectedEvents));
+      LOGGER.info("{}: Waiting for any one of events {}", id, Arrays.toString(expectedEvents));
       String found = null;
       lock.lock();
       try {
@@ -140,12 +144,12 @@ public class CheckPoint {
          }
 
          if (waitNanos <= 0) {
-            System.out.printf("%sPeek did not receive any of %s%n", id, Arrays.toString(expectedEvents));
+            LOGGER.info("{}: Peek did not receive any of {}", id, Arrays.toString(expectedEvents));
             return null;
          }
 
          EventStatus status = events.get(found);
-         System.out.printf("%sReceived event %s (available = %d, total = %d)%n", id, found, status.available, status.total);
+         LOGGER.info("{}: Received event {} (available = {}, total = {})", id, found, status.available, status.total);
          return found;
       } finally {
          lock.unlock();
@@ -159,11 +163,11 @@ public class CheckPoint {
    public CompletableFuture<Void> future(String event, int count, long timeout, TimeUnit unit, Executor executor) {
       return future0(event, count)
               .orTimeout(timeout, unit)
-              .thenRunAsync(() -> System.out.printf("Received event %s * %d%n", event, count), executor);
+              .thenRunAsync(() -> LOGGER.info("Received event {} * {}", event, count), executor);
    }
 
    public CompletableFuture<Void> future0(String event, int count) {
-      System.out.printf("%sWaiting for event %s * %d%n", id, event, count);
+      LOGGER.info("{}: Waiting for event {} * {}", id, event, count);
       lock.lock();
       try {
          EventStatus status = events.computeIfAbsent(event, k -> new EventStatus());
@@ -204,7 +208,7 @@ public class CheckPoint {
          // If triggerForever is called more than once, it will cause an overflow and the waiters will fail.
          status.available = count != INFINITE ? status.available + count : INFINITE;
          status.total = count != INFINITE ? status.total + count : INFINITE;
-         System.out.printf("%sTriggering event %s * %d (available = %d, total = %d)%n", id, event, count,
+         LOGGER.info("{}: Triggering event {} * {} (available = {}, total = {})", id, event, count,
                     status.available, status.total);
          unblockCondition.signalAll();
          if (status.requests != null) {

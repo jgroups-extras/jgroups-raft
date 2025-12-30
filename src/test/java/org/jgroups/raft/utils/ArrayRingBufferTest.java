@@ -2,6 +2,9 @@ package org.jgroups.raft.utils;
 
 import org.jgroups.Global;
 import org.jgroups.raft.util.ArrayRingBuffer;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -10,6 +13,8 @@ import java.util.Map;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class ArrayRingBufferTest {
+
+   private static final Logger LOGGER = LogManager.getLogger(ArrayRingBufferTest.class);
 
    public void testShouldEnlargeItWithGaps() {
       ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(1);
@@ -178,7 +183,7 @@ public class ArrayRingBufferTest {
          assert false : "index 5 should not be found";
       }
       catch(IllegalArgumentException t) {
-         System.out.println("get(5) triggered an exception, as expected");
+         LOGGER.info("get(5) triggered an exception, as expected");
       }
       for(int i=1; i <= 4; i++)
          assert rb.get(i) == i;
@@ -196,7 +201,7 @@ public class ArrayRingBufferTest {
          assert false : "index 5 should not be found";
       }
       catch(IllegalArgumentException ex) {
-         System.out.println("get(5) triggered an exception, as expected");
+         LOGGER.info("get(5) triggered an exception, as expected");
       }
       for(int i=6; i <= 20; i++) {
          assert rb.get(i) == i;

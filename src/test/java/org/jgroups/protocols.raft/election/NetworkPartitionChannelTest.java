@@ -69,17 +69,17 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
             c.connect(clusterName());
         }
         assertEquals(coordIndex(leader), leader);
-        System.out.println("before partition: " + view(leader));
+        LOGGER.info("before partition: {}", view(leader));
 
         partition(stream(indexes).filter(t -> t != coord).toArray(), new int[]{coord});
         assertEquals(coordIndex(leader), leader);
         assertEquals(coordIndex(coord), coord);
-        System.out.println("partition1: " + view(leader));
-        System.out.println("partition2: " + view(coord));
+        LOGGER.info("partition1: {}", view(leader));
+        LOGGER.info("partition2: {}", view(coord));
 
         raft(leader).set("cmd".getBytes(), 0, 3);
         for (int i : indexes) {
-            System.out.println(address(i) + " lastAppended: " + raft(i).lastAppended());
+            LOGGER.info("{} lastAppended: {}", address(i), raft(i).lastAppended());
         }
 
         // block the new coordinator to advance the term in voting thread
@@ -89,7 +89,7 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
         Util.waitUntilAllChannelsHaveSameView(30_000, 1000, channels());
         assertEquals(coordIndex(leader), coord);
         assertEquals(coordIndex(coord), coord);
-        System.out.println("after merge: " + view(coord));
+        LOGGER.info("after merge: {}", view(coord));
 
         // since the term is not advanced yet, new coordinator has accepted the existing leader, and stopping the
         // voting runner, but voting thread is just interrupted, because the voting process almost uninterruptible,
@@ -97,7 +97,7 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
         // process goes wrong, e.g. waiting response timeout then it won't retry the voting process since the runner
         // has been stopped and the thread has been interrupted.
         waitUntilLeaderElected(3000, indexes);
-        System.out.println(dumpLeaderAndTerms());
+        LOGGER.info(dumpLeaderAndTerms());
 
         // slow down the responses, coordinator won't get majority vote responses after waiting timeout
         slowVoteResponses.set(3);
@@ -111,7 +111,7 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 
         // ELECTION may be timeout, ELECTION2 always pass.
         waitUntilLeaderElected(3000, indexes);
-        System.out.println(dumpLeaderAndTerms());
+        LOGGER.info(dumpLeaderAndTerms());
     }
 
     @Override
