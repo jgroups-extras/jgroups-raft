@@ -5,6 +5,15 @@ JGroups Raft follows the usual semantic versioning for releases.
 Patch releases should work out-of-the-box without further changes from the application's perspective.
 Major and minor might require some extra steps to continue working (migration scripts, public API updates, etc).
 
+=== 2.2.0
+
+For users migrating to 2.0.x.
+
+==== LevelDBLog was removed
+
+We removed the `LevelDBLog` implementation completely.
+You can see the migration guide between 1.0.x to 1.1.x to utilize the migration tool to move to the `FileBasedLog` implementation.
+
 === 1.1.0
 
 For users upgrading from 1.0.x to 1.1.x.

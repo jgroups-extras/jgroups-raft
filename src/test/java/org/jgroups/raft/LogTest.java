@@ -1,10 +1,13 @@
 package org.jgroups.raft;
 
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.InMemoryLog;
-import org.jgroups.protocols.raft.LevelDBLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
@@ -16,10 +19,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
 
 /**
  * Tests all {@link org.jgroups.protocols.raft.Log} implementations for correctness
@@ -34,7 +33,6 @@ public class LogTest {
 
     @DataProvider static Object[][] logProvider() {
         return new Object[][] {
-          {new LevelDBLog().useFsync(true)},
           {new InMemoryLog().useFsync(true)},
           {new FileBasedLog().useFsync(true)},
           // TODO The LogCache's constructor calls methods on the underlying log without calling init(..) first,

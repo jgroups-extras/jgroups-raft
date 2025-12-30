@@ -1,7 +1,7 @@
 package org.jgroups.raft.util;
 
 import org.jgroups.Address;
-import org.jgroups.protocols.raft.LevelDBLog;
+import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.PersistentState;
@@ -21,7 +21,7 @@ import java.util.function.Function;
  * @since  1.0.5
  */
 public class AnalyzeLog {
-    protected Class<? extends Log>       log_class=LevelDBLog.class;
+    protected Class<? extends Log>       log_class= FileBasedLog.class;
     protected Function<LogEntry,String>  reader=CounterService::dumpLogEntry;
     protected Function<DataInput,String> snapshot_reader=CounterService::readAndDumpSnapshot;
     protected PersistentState persistent_state;

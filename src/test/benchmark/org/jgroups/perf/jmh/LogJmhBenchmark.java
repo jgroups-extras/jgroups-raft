@@ -1,16 +1,32 @@
 package org.jgroups.perf.jmh;
 
-import org.jgroups.protocols.raft.*;
-import org.openjdk.jmh.annotations.*;
-import org.openjdk.jmh.runner.Runner;
-import org.openjdk.jmh.runner.RunnerException;
-import org.openjdk.jmh.runner.options.Options;
-import org.openjdk.jmh.runner.options.OptionsBuilder;
+import org.jgroups.protocols.raft.FileBasedLog;
+import org.jgroups.protocols.raft.Log;
+import org.jgroups.protocols.raft.LogEntries;
+import org.jgroups.protocols.raft.LogEntry;
 
 import java.io.File;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
+
+import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Measurement;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Param;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.annotations.Warmup;
+import org.openjdk.jmh.runner.Runner;
+import org.openjdk.jmh.runner.RunnerException;
+import org.openjdk.jmh.runner.options.Options;
+import org.openjdk.jmh.runner.options.OptionsBuilder;
 
 /**
  * @author Pedro Ruivo
@@ -61,9 +77,7 @@ public class LogJmhBenchmark {
          entries = new LogEntries();
          for(int i=0; i < batchSize; i++)
             entries.add(new LogEntry(1, data));
-         if ("leveldb".equals(logType)) {
-            log = new LevelDBLog();
-         } else if ("file".equals(logType)) {
+         if ("file".equals(logType)) {
             log = new FileBasedLog();
          } else {
             throw new IllegalArgumentException();
