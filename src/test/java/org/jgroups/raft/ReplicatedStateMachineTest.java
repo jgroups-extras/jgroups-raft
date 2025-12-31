@@ -1,5 +1,7 @@
 package org.jgroups.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
@@ -25,11 +27,11 @@ public class ReplicatedStateMachineTest {
             ReplicatedStateMachine<String, String> one = new ReplicatedStateMachine<>(channelA);
             ReplicatedStateMachine<String, String> other = new ReplicatedStateMachine<>(channelB);
 
-            assert one.equals(one);
-            assert one.equals(other);
-            assert other.equals(one);
-            assert !one.equals(null);
-            assert !one.equals(new Object());
+            assertThat(one).isEqualTo(one);
+            assertThat(one).isEqualTo(other);
+            assertThat(other).isEqualTo(one);
+            assertThat(one).isNotNull();
+            assertThat(one).isNotEqualTo(new Object());
         }
     }
 

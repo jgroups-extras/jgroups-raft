@@ -1,5 +1,7 @@
 package org.jgroups.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.raft.util.CommitTable;
@@ -29,13 +31,13 @@ public class CommitTableTest {
     public void testAddition() {
         CommitTable table=new CommitTable(Arrays.asList(a,b,c), 5);
         LOGGER.info("table = {}", table);
-        assert table.keys().size() == 3;
+        assertThat(table.keys()).hasSize(3);
 
         List<Address> mbrs=Arrays.asList(b, c, d, e);
         table.adjust(mbrs, 5);
         LOGGER.info("table = {}", table);
-        assert table.keys().size() == 4;
+        assertThat(table.keys()).hasSize(4);
         Set<Address> keys=table.keys();
-        assert keys.equals(new HashSet<>(mbrs));
+        assertThat(keys).isEqualTo(new HashSet<>(mbrs));
     }
 }

@@ -1,5 +1,7 @@
 package org.jgroups.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.jgroups.Global;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.util.Util;
@@ -22,46 +24,61 @@ public class RequestTableTest {
         RequestTable<String> table=new RequestTable<>();
         table.create(1, "A", future, majority);
         table.add(1, "A", majority);
-        assert !table.isCommitted(1);
+        assertThat(table.isCommitted(1)).isFalse();
+
         boolean done=table.add(1, "B", majority);
-        assert !done;
+        assertThat(done).isFalse();
+
         done=table.add(1, "C", majority);
-        assert done;
-        assert table.isCommitted(1);
+        assertThat(done).isTrue();
+        assertThat(table.isCommitted(1)).isTrue();
     }
 
     public void testSingleNode() {
         RequestTable<String> table=new RequestTable<>();
         table.create(1, "A", future, () -> 1);
-        assert table.isCommitted(1);
+        assertThat(table.isCommitted(1)).isTrue();
+
         boolean added=table.add(1, "A", () -> 1);
-        assert !added : "should only mark as committed once";
+        assertThat(added).as("should only mark as committed once").isFalse();
     }
 
     public void testAdd() {
         RequestTable<String> table=new RequestTable<>();
         table.create(3, "A", future, () -> 2);
-        assert table.isCommitted(1);
-        assert !table.isCommitted(3);
+        assertThat(table.isCommitted(1)).isTrue();
+        assertThat(table.isCommitted(3)).isFalse();
+
         table.add(3, "A", () -> 2);
-        assert !table.isCommitted(3);
+        assertThat(table.isCommitted(3)).isFalse();
+
         boolean commited=table.add(3, "B", () -> 2);
-        assert commited && table.isCommitted(3);
+        assertThat(commited).isTrue();
+        assertThat(table.isCommitted(3)).isTrue();
+
         for(int i=4; i <= 10; i++)
             table.create(i, "A", future, () -> 2);
+
         commited=table.add(10, "B", () -> 2);
-        assert commited;
+        assertThat(commited).isTrue();
+
         for(int i=4; i <= 10; i++)
-            assert table.isCommitted(10);
-        assert table.size() == 8;
+            assertThat(table.isCommitted(10)).isTrue();
+
+        assertThat(table.size()).isEqualTo(8);
     }
 
     public void testNotifyAndRemove() {
         RequestTable<String> table=new RequestTable<>();
         for(int i=1; i <= 5; i++)
             table.create(i, "A", future, () -> 1);
+
         IntStream.rangeClosed(1,5).parallel().forEach(i -> table.notifyAndRemove(i, "bb".getBytes()));
+
         Util.waitUntilTrue(5000, 200, () -> table.size() == 0);
-        assert table.size() == 0 : String.format("table size should be %d but is %d", 0, table.size());
+
+        assertThat(table.size())
+                .withFailMessage("table size should be %d but is %d", 0, table.size())
+                .isZero();
     }
 }

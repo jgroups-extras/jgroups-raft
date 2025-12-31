@@ -1,5 +1,8 @@
 package org.jgroups.protocols.raft.election;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -16,9 +19,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
  * Tests elections
@@ -210,10 +210,14 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
                 .toArray(RAFT[]::new);
         BaseRaftElectionTest.waitUntilLeaderElected(rafts, timeout);
         List<Address> leaders = leaders(channels);
-        assert leaders.size() == 1 : "leaders=" + leaders;
+        assertThat(leaders).hasSize(1);
         Address leader = leaders.get(0);
-        assert expected == null || leader.equals(expected) : String.format("elected %s instead of %s", leader, expected);
         LOGGER.info("leader = {}", leader);
+        if (expected != null) {
+            assertThat(leader)
+                    .withFailMessage(() -> String.format("elected %s instead of %s", leader, expected))
+                    .isEqualTo(expected);
+        }
         return leader;
     }
 

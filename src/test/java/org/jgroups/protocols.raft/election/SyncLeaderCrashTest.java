@@ -1,5 +1,8 @@
 package org.jgroups.protocols.raft.election;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
@@ -21,11 +24,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.assertj.core.api.SoftAssertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 
 /**
@@ -66,7 +68,10 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
                 long prev_term=l.get(i-1).term();
                 LogEntries entries=new LogEntries().add(new LogEntry(9, DATA));
                 AppendResult ar = r.impl().handleAppendEntriesRequest(entries, address(0),i-1, prev_term, 9, 4);
-                assert ar != null && ar.success() : String.format("%s failed on %d with %s", r.raftId(), i, ar);
+                assertThat(ar)
+                        .withFailMessage(String.format("%s failed on %d with %s", r.raftId(), i, ar))
+                        .isNotNull()
+                        .satisfies(v -> assertThat(v.success()).isTrue());
             }
         }
         close(0);
@@ -78,7 +83,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
 
         RAFT leader=Stream.of(rafts()).filter(r -> r != null && r.isLeader()).findFirst().orElse(null);
         LOGGER.info("-- new leader: {}", leader);
-        assert leader != null;
+        assertThat(leader).isNotNull();
         LOGGER.info("-- Leader: {}, commit-table:%n{}", leader.getAddress(), leader.commitTable());
 
         leader.flushCommitTable();
@@ -87,14 +92,13 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         assertIndices(7, 7);
 
         LOGGER.info("-- State machines:%n{}", printStateMachines());
-        assert Arrays.stream(rafts())
+        assertThat(Arrays.stream(rafts())
                 .map(RAFT::stateMachine)
                 .map(sm -> (CounterStateMachine) sm)
-                .filter(Objects::nonNull)
-                .allMatch(sm -> sm.counter() == 7)
-          : String.format("expected counter of 7, actual:\n%s\n", printStateMachines());
-
-        assert leader.requestTableSize() == 0 : String.format("req_table should be 0, but is %d", leader.requestTableSize());
+                .filter(Objects::nonNull))
+                .withFailMessage(() -> String.format("expected counter of 7, actual:\n%s\n", printStateMachines()))
+                .allMatch(sm -> sm.counter() == 7);
+        assertThat(leader.requestTableSize()).isZero();
 
         // restart A and see if indixes and state machines match
         LOGGER.info("-- Restarting A");
@@ -110,12 +114,12 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         assertIndices(7, 7);
 
         LOGGER.info("-- State machines:%n{}", printStateMachines());
-        assert Arrays.stream(rafts())
+        assertThat(Arrays.stream(rafts())
                 .map(RAFT::stateMachine)
                 .map(sm -> (CounterStateMachine) sm)
-                .filter(Objects::nonNull)
-                .allMatch(sm -> sm.counter() == 7)
-          : String.format("expected counter of 7, actual:\n%s\n", printStateMachines());
+                .filter(Objects::nonNull))
+                .withFailMessage(() -> String.format("expected counter of 7, actual:\n%s\n", printStateMachines()))
+                .allMatch(sm -> sm.counter() == 7);
     }
 
 
@@ -131,7 +135,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         long[] terms={2,5,5,7};
 
         RAFT r=raft(0);
-        assert r.isLeader() : dumpLeaderAndTerms();
+        assertThat(r.isLeader()).withFailMessage(this::dumpLeaderAndTerms).isTrue();
         Address leader = r.leader();
         r.setLeaderAndTerm(leader, 2);
         r.set(DATA, 0, DATA.length, 5, TimeUnit.SECONDS);
@@ -163,9 +167,11 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
             if(r == null && expected_terms == null)
                 continue;
             long[] actual_terms=terms(r);
-            assert Arrays.equals(expected_terms, actual_terms) :
-              String.format("%s: expected terms: %s, actual terms: %s", r.getAddress(),
-                            Arrays.toString(expected_terms), Arrays.toString(actual_terms));
+            assertThat(actual_terms)
+                    .withFailMessage(() -> String.format("%s: expected terms: %s, actual terms: %s", r.getAddress(),
+                            Arrays.toString(expected_terms), Arrays.toString(actual_terms)))
+                    .hasSize(expected_terms.length)
+                    .containsExactly(expected_terms);
         }
     }
 
@@ -174,9 +180,12 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
             if(r == null)
                 continue;
             Log l=r.log();
-            assert r.lastAppended() == expected_last_appended
-              && l.lastAppended() == expected_last_appended
-              && r.commitIndex() == expected_commit && l.commitIndex() == expected_commit : printIndices(r);
+            SoftAssertions sa = new SoftAssertions();
+            sa.assertThat(r.lastAppended()).withFailMessage(() -> printIndices(r)).isEqualTo(expected_last_appended);
+            sa.assertThat(l.lastAppended()).withFailMessage(() -> printIndices(r)).isEqualTo(expected_last_appended);
+            sa.assertThat(r.commitIndex()).withFailMessage(() -> printIndices(r)).isEqualTo(expected_commit);
+            sa.assertThat(l.commitIndex()).withFailMessage(() -> printIndices(r)).isEqualTo(expected_commit);
+            sa.assertAll();
         }
     }
 

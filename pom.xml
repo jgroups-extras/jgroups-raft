@@ -60,6 +60,7 @@
             -Xms400M
             -Xmx800M
         </jgroups.tests.jvmargs>
+        <argLine>${jgroups.tests.jvmargs} -Djdk.attach.allowAttachSelf=true</argLine>
 
         <!-- Utilized by Asciidoctor to set the generation date. -->
         <asciidoctorj.diagram.version>3.1.0</asciidoctorj.diagram.version>
@@ -176,25 +177,6 @@
         </dependency>
 
         <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-api</artifactId>
-            <version>${log4j.version}</version>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
-            <version>${log4j.version}</version>
-            <optional>true</optional>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-slf4j-impl</artifactId>
-            <version>${log4j.version}</version>
-            <scope>test</scope>
-        </dependency>
-
-        <dependency>
             <groupId>net.jcip</groupId>
             <artifactId>jcip-annotations</artifactId>
             <version>1.0</version>
@@ -236,6 +218,24 @@
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
             <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-api</artifactId>
+            <version>${log4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-core</artifactId>
+            <version>${log4j.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.logging.log4j</groupId>
+            <artifactId>log4j-slf4j2-impl</artifactId>
+            <version>${log4j.version}</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
@@ -502,7 +502,7 @@
                         <usedefaultlisteners>false</usedefaultlisteners>
                         <listener>${testNGListeners}</listener>
                     </properties>
-                    <argLine>${argLine} ${jgroups.tests.jvmargs} -Djdk.attach.allowAttachSelf=true</argLine>
+                    <argLine>${argLine}</argLine>
                     <!-- Use TCP for plugin <-> fork JVM communication -->
                     <forkNode implementation="org.apache.maven.plugin.surefire.extensions.SurefireForkNodeFactory" />
                     <!-- Disable modular classpath -->

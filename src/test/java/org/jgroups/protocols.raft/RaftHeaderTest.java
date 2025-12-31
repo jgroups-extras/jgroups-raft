@@ -1,5 +1,6 @@
 package org.jgroups.protocols.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_ENTRY_NOT_FOUND;
 
 import org.jgroups.Global;
@@ -67,11 +68,11 @@ public class RaftHeaderTest {
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(size);
         hdr.writeTo(out);
         LOGGER.info("{}: size={}", clazz.getSimpleName(), size);
-        assert out.position() == size;
+        assertThat(out.position()).isEqualTo(size);
 
         RaftHeader hdr2=Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
-        assert hdr2 != null;
-        assert hdr.currTerm() == hdr2.currTerm();
+        assertThat(hdr2).isNotNull();
+        assertThat(hdr.currTerm()).isEqualTo(hdr2.currTerm());
     }
 
 
@@ -80,10 +81,10 @@ public class RaftHeaderTest {
         ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(size);
         hdr.writeTo(out);
         LOGGER.info("{}: size={}", clazz.getSimpleName(), size);
-        assert out.position() == size;
+        assertThat(out.position()).isEqualTo(size);
 
         REDIRECT.RedirectHeader hdr2=Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
-        assert hdr2 != null;
-        assert hdr.serializedSize() == hdr2.serializedSize();
+        assertThat(hdr2).isNotNull();
+        assertThat(hdr.serializedSize()).isEqualTo(hdr.serializedSize());
     }
 }

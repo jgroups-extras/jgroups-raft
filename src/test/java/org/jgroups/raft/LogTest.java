@@ -1,8 +1,6 @@
 package org.jgroups.raft;
 
-import static org.testng.Assert.assertEquals;
-import static org.testng.Assert.assertNotNull;
-import static org.testng.Assert.assertNull;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
@@ -16,6 +14,7 @@ import org.jgroups.util.Util;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.assertj.core.api.SoftAssertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -56,26 +55,26 @@ public class LogTest {
         log.init(filename, null);
         log.currentTerm(22);
         long current_term=log.currentTerm();
-        assertEquals(current_term, 22);
+        assertThat(current_term).isEqualTo(22);
 
         log.votedFor(addr);
         Address voted_for=log.votedFor();
-        assertEquals(addr, voted_for);
+        assertThat(voted_for).isEqualTo(addr);
 
         log.close();
         log.init(filename, null);
         current_term=log.currentTerm();
-        assertEquals(current_term, 22);
+        assertThat(current_term).isEqualTo(22);
         voted_for=log.votedFor();
-        assertEquals(addr, voted_for);
+        assertThat(voted_for).isEqualTo(addr);
 
         log.close();
         log.delete();
         log.init(filename, null);
         current_term=log.currentTerm();
-        assertEquals(current_term, 0);
+        assertThat(current_term).isEqualTo(0);
         voted_for=log.votedFor();
-        assertNull(voted_for);
+        assertThat(voted_for).isNull();
     }
 
 
@@ -83,7 +82,7 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         assertIndices(0, 0, 0, 0);
-        assertNull(log.votedFor());
+        assertThat(log.votedFor()).isNull();
     }
 
     public void testNewLogAfterDelete(Log log) throws Exception {
@@ -96,7 +95,7 @@ public class LogTest {
         log.delete();
         log.init(filename, null);
         assertIndices(0,0,0,0);
-        assertNull(log.votedFor());
+        assertThat(log.votedFor()).isNull();
     }
 
     public void testMetadataInAReopenedLog(Log log) throws Exception {
@@ -109,7 +108,7 @@ public class LogTest {
         log.close();
         log.init(filename, null);
         assertIndices(0, 10, 10, 6);
-        assertEquals(log.votedFor().toString(), Util.createRandomAddress("A").toString());
+        assertThat(log.votedFor().toString()).isEqualTo(Util.createRandomAddress("A").toString());
     }
 
     public void testAppendOnLeader(Log log) throws Exception {
@@ -158,9 +157,9 @@ public class LogTest {
         assertIndices(0,5,5,2);
 
         for(int i=1; i <= 5; i++)
-            assertNotNull(log.get(i));
+            assertThat(log.get(i)).isNotNull();
         for(int i=6; i <= 11; i++)
-            assertNull(log.get(i));
+            assertThat(log.get(i)).isNull();
 
     }
 
@@ -175,7 +174,7 @@ public class LogTest {
         log.deleteAllEntriesStartingFrom(1);
         assertIndices(0,0,0,0);
         for(int i=1; i <= 11; i++)
-            assertNull(log.get(i));
+            assertThat(log.get(i)).isNull();
     }
 
     public void testDeleteEntriesFromLast(Log log) throws Exception {
@@ -188,8 +187,8 @@ public class LogTest {
         log.deleteAllEntriesStartingFrom(11);
         assertIndices(0, 10, 10, 3);
         for(int i=1; i <= 10; i++)
-            assertNotNull(log.get(i));
-        assertNull((log.get(11)));
+            assertThat(log.get(i)).isNotNull();
+        assertThat(log.get(11)).isNull();
     }
 
     public void testTruncateInTheMiddle(Log log) throws Exception {
@@ -202,9 +201,9 @@ public class LogTest {
         log.truncate(6);
         assertIndices(6, 11, 11, 3);
         for(int i=1; i <= 5; i++)
-            assertNull(log.get(i));
+            assertThat(log.get(i)).isNull();
         for(int i=6; i <= 11; i++)
-            assertNotNull(log.get(i));
+            assertThat(log.get(i)).isNotNull();
     }
 
     public void testTruncateFirst(Log log) throws Exception {
@@ -216,7 +215,7 @@ public class LogTest {
 
         log.truncate(1);
         assertIndices(1, 11, 11, 3);
-        assertNotNull(log.get(1));
+        assertThat(log.get(1)).isNotNull();
     }
 
     public void testTruncateLast(Log log) throws Exception {
@@ -229,10 +228,9 @@ public class LogTest {
         log.truncate(11);
         assertIndices(11, 11, 11, 3);
         for(int i=1; i <= 10; i++)
-            assertNull(log.get(i));
-        assertNotNull(log.get(11));
+            assertThat(log.get(i)).isNull();
+        assertThat(log.get(11)).isNotNull();
     }
-
 
     public void testTruncateAndReopen(Log log) throws Exception {
         this.log = log;
@@ -244,12 +242,12 @@ public class LogTest {
         log.truncate(4);
         log.close();
         log.init(filename, null);
-        assertEquals(log.firstAppended(), 4);
-        assertEquals(log.lastAppended(), 5);
+        assertThat(log.firstAppended()).isEqualTo(4);
+        assertThat(log.lastAppended()).isEqualTo(5);
         for(int i=1; i <= 3; i++)
-            assertNull(log.get(i));
+            assertThat(log.get(i)).isNull();
         for(int i=4; i <= 5; i++)
-            assertNotNull(log.get(i));
+            assertThat(log.get(i)).isNotNull();
     }
 
 
@@ -263,12 +261,14 @@ public class LogTest {
         log.truncate(log.commitIndex());
         log.close();
         log.init(filename, null);
-        assert log.firstAppended() == 10;
-        assert log.lastAppended() == 10;
-        assert log.commitIndex() == 10;
-        for(int i=1; i < 10; i++)
-            assert log.get(i) == null;
-        assert log.get(10) != null;
+        assertThat(log.firstAppended()).isEqualTo(10);
+        assertThat(log.lastAppended()).isEqualTo(10);
+        assertThat(log.commitIndex()).isEqualTo(10);
+        SoftAssertions.assertSoftly(softly -> {
+            for(int i=1; i < 10; i++)
+                softly.assertThat(log.get(i)).isNull();
+        });
+        assertThat(log.get(10)).isNotNull();
     }
 
     public void testTruncateTwice(Log log) throws Exception {
@@ -281,13 +281,13 @@ public class LogTest {
         log.append(1, le);
         log.commitIndex(6);
         log.truncate(4);
-        assertEquals(log.commitIndex(), 6);
-        assertEquals(log.firstAppended(), 4);
+        assertThat(log.commitIndex()).isEqualTo(6);
+        assertThat(log.firstAppended()).isEqualTo(4);
 
         log.commitIndex(10);
         log.truncate(8);
-        assertEquals(log.commitIndex(), 10);
-        assertEquals(log.firstAppended(), 8);
+        assertThat(log.commitIndex()).isEqualTo(10);
+        assertThat(log.firstAppended()).isEqualTo(8);
     }
 
     public void testTruncateOnlyCommitted(Log log) throws Exception {
@@ -301,8 +301,8 @@ public class LogTest {
 
         log.commitIndex(5);
         log.truncate(10);
-        assertEquals(log.commitIndex(), 5);
-        assertEquals(log.firstAppended(), 5);
+        assertThat(log.commitIndex()).isEqualTo(5);
+        assertThat(log.firstAppended()).isEqualTo(5);
     }
 
     public void testReinitializeTo(Log log) throws Exception {
@@ -316,10 +316,10 @@ public class LogTest {
         assertIndices(0, 10, 0, 5);
         log.reinitializeTo(5, new LogEntry(10, null));
         assertIndices(5, 5, 5, 10);
-        assert log.size() == 1;
+        assertThat(log.size()).isEqualTo(1);
         long last=log.append(6, LogEntries.create(new LogEntry(15, null)));
-        assert last == 6;
-        assert log.size() == 2;
+        assertThat(last).isEqualTo(6);
+        assertThat(log.size()).isEqualTo(2);
         assertIndices(5,6,5,15);
     }
 
@@ -336,63 +336,63 @@ public class LogTest {
 
         final AtomicInteger cnt=new AtomicInteger(0);
         log.forEach((entry,index) -> cnt.incrementAndGet());
-        assertEquals(cnt.get(), 10);
+        assertThat(cnt.get()).isEqualTo(10);
 
         cnt.set(0);
         log.truncate(8);
 
         append(log, 11, buf, 6,6,6, 7,7,7, 8,8,8,8);
         log.forEach((entry,index) -> cnt.incrementAndGet());
-        assertEquals(cnt.get(), 13);
+        assertThat(cnt.get()).isEqualTo(13);
 
         cnt.set(0);
         log.forEach((entry,index) -> cnt.incrementAndGet(), 0, 25);
-        assertEquals(cnt.get(), 13);
+        assertThat(cnt.get()).isEqualTo(13);
     }
 
     public void testSize(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
         byte[] buf=new byte[10];
-        assert log.size() == 0;
+        assertThat(log.size()).isEqualTo(0);
         LogEntries le=new LogEntries();
         le.add(new LogEntry(5, buf));
         log.append(1, le);
 
-        assert log.size() == 1;
+        assertThat(log.size()).isEqualTo(1);
         le.clear().add(new LogEntry(5, buf));
         log.append(2, le);
-        assert log.size() == 2;
+        assertThat(log.size()).isEqualTo(2);
 
         le.clear();
         for(int i=3; i <= 8; i++)
             le.add(new LogEntry(5, buf));
         log.append(3, le);
-        assert log.size() == 8;
+        assertThat(log.size()).isEqualTo(8);
         log.commitIndex(3);
         log.truncate(3); // excluding 3
-        assert log.size() == 6;
+        assertThat(log.size()).isEqualTo(6);
     }
 
     public void testSizeInBytes(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
-        assert log.sizeInBytes() == 0;
+        assertThat(log.sizeInBytes()).isEqualTo(0);
         byte[] buf=new byte[50];
         final int NUM=100;
         LogEntries le=new LogEntries();
         for(int i=0; i < NUM; i++)
             le.add(new LogEntry(1, buf));
         long last=log.append(1, le);
-        assert last == NUM;
+        assertThat(last).isEqualTo(NUM);
         long size_in_bytes=log.sizeInBytes();
-        assert size_in_bytes >= buf.length * NUM;
+        assertThat(size_in_bytes).isGreaterThanOrEqualTo(buf.length * NUM);
     }
 
     public void testInternalCommand(Log log) throws Exception {
         this.log=log;
         log.init(filename, null);
-        assert log.sizeInBytes() == 0;
+        assertThat(log.sizeInBytes()).isEqualTo(0);
         byte[] buf=new byte[10];
         LogEntries entries = new LogEntries();
 
@@ -402,10 +402,14 @@ public class LogTest {
         }
 
         long last = log.append(1, entries);
-        assert last == entries.size() : "Not stored all entries";
+        assertThat(last).isEqualTo(entries.size());
 
-        log.forEach((e, l) -> {
-            assert e.internal() == ((l & 1) == 0) : "Entry not internal anymore!";
+        SoftAssertions.assertSoftly(softly -> {
+            log.forEach((e, l) -> {
+                softly.assertThat(e.internal())
+                        .withFailMessage("Entry not internal anymore")
+                        .isEqualTo(((l & 1) == 0));
+            });
         });
     }
 
@@ -418,10 +422,12 @@ public class LogTest {
     }
 
     protected void assertIndices(int first_applied, int last_applied, int commit_index, int current_term) {
-        assertEquals(log.firstAppended(), first_applied, "Incorrect first appended");
-        assertEquals(log.lastAppended(),  last_applied, "Incorrect last appended");
-        assertEquals(log.commitIndex(),  commit_index, "Incorrect commit index");
-        assertEquals(log.currentTerm(),  current_term, "Incorrect current term");
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(log.firstAppended()).as("Incorrect first appended").isEqualTo(first_applied);
+            softly.assertThat(log.lastAppended()).as("Incorrect last appended").isEqualTo(last_applied);
+            softly.assertThat(log.commitIndex()).as("Incorrect commit index").isEqualTo(commit_index);
+            softly.assertThat(log.currentTerm()).as("Incorrect current term").isEqualTo(current_term);
+        });
     }
 
 }

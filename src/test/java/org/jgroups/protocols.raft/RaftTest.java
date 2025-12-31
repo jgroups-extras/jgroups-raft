@@ -26,6 +26,7 @@ import org.jgroups.util.Util;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
+import org.assertj.core.api.SoftAssertions;
 import org.testng.annotations.Test;
 
 /**
@@ -75,8 +76,8 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         RAFT raft_a=raft(0).setLeaderAndTerm(address(0));
         RAFT raft_b=raft(1).setLeaderAndTerm(address(0));
 
-        assert raft_a.isLeader();
-        assert !raft_b.isLeader();
+        assertThat(raft_a.isLeader()).isTrue();
+        assertThat(raft_b.isLeader()).isFalse();
     }
 
     public void testRegularAppend() throws Exception {
@@ -86,8 +87,8 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
 
         CounterStateMachine sma = stateMachine(0);
         CounterStateMachine smb = stateMachine(1);
-        assert sma.counter() == 1;
-        assert smb.counter() == 0; // resend_interval is big, so the commit index on B won't get updated
+        assertThat(sma.counter()).isEqualTo(1);
+        assertThat(smb.counter()).isZero(); // resend_interval is big, so the commit index on B won't get updated
 
         RAFT raft_a = raft(0);
         RAFT raft_b = raft(1);
@@ -96,34 +97,34 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         assertCommitTableIndeces(address(1), raft_a, 0, 1, 2);
 
         prev_value=add(rha, 2);
-        assert prev_value == 1;
-        assert sma.counter() == 3;
-        assert smb.counter() == 1; // previous value; B is always lagging one commit behind
+        assertThat(prev_value).isOne();
+        assertThat(sma.counter()).isEqualTo(3);
+        assertThat(smb.counter()).isEqualTo(prev_value); // previous value; B is always lagging one commit behind
         assertCommitTableIndeces(address(1), raft_a, 1, 2, 3);
 
         prev_value=add(rha, 3);
-        assert prev_value == 3;
-        assert sma.counter() == 6;
-        assert smb.counter() == 3; // previous value; B is always lagging one commit behind
+        assertThat(prev_value).isEqualTo(3);
+        assertThat(sma.counter()).isEqualTo(6);
+        assertThat(smb.counter()).isEqualTo(prev_value); // previous value; B is always lagging one commit behind
         assertIndices(3, 3, 0, raft_a);
         assertIndices(3, 2, 0, raft_b);
         assertCommitTableIndeces(address(1), raft_a, 2, 3, 4);
 
         prev_value=add(rha, -3);
-        assert prev_value == 6;
-        assert sma.counter() == 3;
-        assert smb.counter() == 6; // previous value; B is always lagging one commit behind
+        assertThat(prev_value).isEqualTo(6);
+        assertThat(sma.counter()).isEqualTo(3);
+        assertThat(smb.counter()).isEqualTo(prev_value); // previous value; B is always lagging one commit behind
         assertIndices(4, 4, 0, raft_a);
         assertIndices(4, 3, 0, raft_b);
         assertCommitTableIndeces(address(1), raft_a, 3, 4, 5);
 
         for(int i=1,prev=3; i <= 1000; i++) {
             prev_value=add(rha, 5);
-            assert prev_value == prev;
+            assertThat(prev_value).isEqualTo(prev);
             prev+=5;
         }
-        assert sma.counter() == 5000 + 3;
-        assert smb.counter() == sma.counter() - 5;
+        assertThat(sma.counter()).isEqualTo(5000 + 3);
+        assertThat(smb.counter()).isEqualTo(sma.counter() - 5);
 
         assertIndices(1004, 1004, 0, raft_a);
         assertIndices(1004, 1003, 0, raft_b);
@@ -135,8 +136,8 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         for(int i=1; i <= 7; i++)
             add(rha, 1);
 
-        assert sma.counter() == 5010;
-        assert smb.counter() == sma.counter() - 1;
+        assertThat(sma.counter()).isEqualTo(5010);
+        assertThat(smb.counter()).isEqualTo(sma.counter() - 1);
 
         assertIndices(1011, 1011, expected_term, raft_a);
         assertIndices(1011, 1010, expected_term, raft_b);
@@ -174,8 +175,8 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         assertIndices(5, 5, 20, raft_a);
         assertIndices(5, 5, 20, raft_b);
         assertCommitTableIndeces(address(1), raft_a, 5, 5, 6);
-        assert stateMachine(0).counter() == 5;
-        assert stateMachine(1).counter() == 5;
+        assertThat(stateMachine(0).counter()).isEqualTo(5);
+        assertThat(stateMachine(1).counter()).isEqualTo(5);
     }
 
     public void testAppendBeyondLast() throws Exception {
@@ -184,8 +185,8 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
 
         for(int i=1; i <= 5; i++)
             add(handle(0), 1);
-        assert stateMachine(0).counter() == 5;
-        assert stateMachine(1).counter() == 4; // resend_interval is big, so the commit index on B won't get updated
+        assertThat(stateMachine(0).counter()).isEqualTo(5);
+        assertThat(stateMachine(1).counter()).isEqualTo(4); // resend_interval is big, so the commit index on B won't get updated
         assertIndices(5, 5, 22, raft_a);
         assertIndices(5, 4, 22, raft(1));
         assertCommitTableIndeces(address(1), raft_a, 4, 5, 6);
@@ -214,7 +215,7 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         expect(15, sma.counter());
 
         CounterStateMachine smb = stateMachine(1);
-        assert smb.counter() == 14; // resend_interval is big, so the commit index on B won't get updated
+        assertThat(smb.counter()).isEqualTo(14); // resend_interval is big, so the commit index on B won't get updated
         assertIndices(15, 15, 25, raft_a);
         assertIndices(15, 14, 25, raft_b);
         assertCommitTableIndeces(address(1), raft_a, 14, 15, 16);
@@ -223,8 +224,8 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         for(int i=16; i <= 18; i++)
             sendAppendEntriesRequest(raft_a, i-1, 25, 25, 14);
         Util.waitUntil(5000, 100, () -> raft_b.lastAppended() == 18);
-        assert sma.counter() == 15;
-        assert smb.counter() == 14; // resend_interval is big, so the commit index on B won't get updated
+        assertThat(sma.counter()).isEqualTo(15);
+        assertThat(smb.counter()).isEqualTo(14); // resend_interval is big, so the commit index on B won't get updated
         assertIndices(15, 15, 25, raft_a);
         assertIndices(18, 14, 25, raft_b);
         assertCommitTableIndeces(address(1), raft_a, 14, 18, 19);
@@ -254,11 +255,12 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         // compare the log entries from 1-18
         for(int i=0; i <= raft_a.lastAppended(); i++) {
             LogEntry la=raft_a.log().get(i), lb=raft_b.log().get(i);
-            if(i == 0)
-                assert la == null && lb == null;
-            else {
+            if(i == 0) {
+                assertThat(la).isNull();
+                assertThat(lb).isNull();
+            } else {
                 LOGGER.info("{}: A={}, B={}", i, la, lb);
-                assert la.term() == lb.term();
+                assertThat(la.term()).isEqualTo(lb.term());
             }
         }
     }
@@ -269,12 +271,12 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
     public void testIncorrectAppend() throws Exception {
         RaftHandle rha = handle(0);
         int prev_value=add(rha, 1);
-        assert prev_value == 0;
+        assertThat(prev_value).isZero();
 
         CounterStateMachine sma = stateMachine(0);
         CounterStateMachine smb = stateMachine(1);
-        assert sma.counter() == 1;
-        assert smb.counter() == 0; // resend_interval is big, so the commit index on B won't get updated
+        assertThat(sma.counter()).isOne();
+        assertThat(smb.counter()).isZero(); // resend_interval is big, so the commit index on B won't get updated
 
         RAFT raft_a = raft(0);
         RAFT raft_b = raft(1);
@@ -284,11 +286,11 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
 
         raft_a.setLeaderAndTerm(address(0), 2);
         prev_value=add(rha, 1);
-        assert prev_value == 1;
+        assertThat(prev_value).isOne();
         prev_value=add(rha, 1);
-        assert prev_value == 2;
-        assert sma.counter() == 3;
-        assert smb.counter() == 2; // previous value; B is always lagging one commit behind
+        assertThat(prev_value).isEqualTo(2);
+        assertThat(sma.counter()).isEqualTo(3);
+        assertThat(smb.counter()).isEqualTo(2); // previous value; B is always lagging one commit behind
         assertCommitTableIndeces(address(1), raft_a, 2, 3, 4);
 
         raft_a.setLeaderAndTerm(address(0), 4);
@@ -306,13 +308,13 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         // 7
         LogEntries entries=new LogEntries().add(new LogEntry(5, val));
         AppendResult result=impl.handleAppendEntriesRequest(entries, address(0), index - 1, 4, 5, 1);
-        assert result.success();
+        assertThat(result.success()).isTrue();
         raft_b.currentTerm(5);
         index++;
 
         // 8
         result=impl.handleAppendEntriesRequest(entries, address(0), index-1, 5, 5, 1);
-        assert result.success();
+        assertThat(result.success()).isTrue();
         assertIndices(8, 5, 5, raft_b);
 
         raft_a.setLeaderAndTerm(address(0), 7);
@@ -320,8 +322,8 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
             add(rha, -1);
 
         // last_appended indices 7 and 8 need to be replaced with term=7
-        assert sma.counter() == 4;
-        assert smb.counter() == 5; // resend_interval is big, so the commit index on B won't get updated
+        assertThat(sma.counter()).isEqualTo(4);
+        assertThat(smb.counter()).isEqualTo(5); // resend_interval is big, so the commit index on B won't get updated
         assertIndices(8, 8, 7, raft_a);
         assertIndices(8, 7, 7, raft_b);
         assertCommitTableIndeces(address(1), raft_a, 7, 8, 9);
@@ -371,27 +373,27 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
     public void testSimpleAppendOnFollower() throws Exception {
         RaftHandle rhb = handle(1);
         CompletableFuture<byte[]> f=addAsync(rhb, 5);
-        assert f != null;
+        assertThat(f).isNotNull();
 
         CounterStateMachine sma = stateMachine(0);
         CounterStateMachine smb = stateMachine(1);
         int prev_value=Bits.readInt(f.get(), 0);
-        assert prev_value == 0;
-        assert sma.counter() == 5;
-        assert smb.counter() == 0; // not yet committed
+        assertThat(prev_value).isEqualTo(0);
+        assertThat(sma.counter()).isEqualTo(5);
+        assertThat(smb.counter()).isEqualTo(0); // not yet committed
 
         f=addAsync(rhb, 5);
         prev_value=Bits.readInt(f.get(), 0);
-        assert prev_value == 5;
-        assert sma.counter() == 10;
-        assert smb.counter() == 5; // not yet committed
+        assertThat(prev_value).isEqualTo(5);
+        assertThat(sma.counter()).isEqualTo(10);
+        assertThat(smb.counter()).isEqualTo(5); // not yet committed
 
         f=addAsync(rhb, 5, Options.create(true));
-        assert f != null;
+        assertThat(f).isNotNull();
         byte[] res=f.get();
-        assert res == null;
-        assert sma.counter() == 15;
-        assert smb.counter() == 10; // not yet committed
+        assertThat(res).isNull();
+        assertThat(sma.counter()).isEqualTo(15);
+        assertThat(smb.counter()).isEqualTo(10); // not yet committed
     }
 
 
@@ -409,35 +411,54 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
 
 
     protected static void assertIndices(long expected_last, long expected_commit, long expected_term, RAFT r) {
-        Util.waitUntilTrue(1000, 50, () -> r.lastAppended() == expected_last &&
-          r.commitIndex() == expected_commit && r.currentTerm() == expected_term &&
-          r.log().lastAppended() == expected_last && r.log().commitIndex() == expected_commit);
-        assert r.lastAppended() == expected_last
-          : String.format("RAFT.last_appended=%d, expected=%d", r.lastAppended(), expected_last);
-        assert r.log().lastAppended() == expected_last
-          : String.format("RAFT.log=%s, expected last=%d", r.log(), expected_last);
-
-        assert r.commitIndex() == expected_commit
-          : String.format("RAFT.commit=%d, expected=%d", r.commitIndex(), expected_commit);
-        assert r.log().commitIndex() == expected_commit
-          : String.format("RAFT.log.commit-index=%d, expected commit=%d", r.log().commitIndex(), expected_commit);
-
-        assert r.currentTerm() == expected_term
-          : String.format("RAFT.term=%d, expected=%d", r.currentTerm(), expected_term);
-        assert r.log().currentTerm() == expected_term
-          : String.format("RAFT.log=%s, expected term=%d", r.log(), expected_term);
+        Util.waitUntilTrue(1000, 50, () ->
+                r.lastAppended() == expected_last
+                        && r.commitIndex() == expected_commit
+                        && r.currentTerm() == expected_term
+                        && r.log().lastAppended() == expected_last
+                        && r.log().commitIndex() == expected_commit);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(r.lastAppended())
+                    .withFailMessage("RAFT.last_appended=%d, expected=%d", r.lastAppended(), expected_last)
+                    .isEqualTo(expected_last);
+            softly.assertThat(r.log().lastAppended())
+                    .withFailMessage("RAFT.log=%s, expected last=%d", r.log(), expected_last)
+                    .isEqualTo(expected_last);
+            softly.assertThat(r.commitIndex())
+                    .withFailMessage("RAFT.commit=%d, expected=%d", r.commitIndex(), expected_commit)
+                    .isEqualTo(expected_commit);
+            softly.assertThat(r.log().commitIndex())
+                    .withFailMessage("RAFT.log.commit-index=%d, expected commit=%d", r.log().commitIndex(), expected_commit)
+                    .isEqualTo(expected_commit);
+            softly.assertThat(r.currentTerm())
+                    .withFailMessage("RAFT.term=%d, expected=%d", r.currentTerm(), expected_term)
+                    .isEqualTo(expected_term);
+            softly.assertThat(r.log().currentTerm())
+                    .withFailMessage("RAFT.log=%s, expected term=%d", r.log(), expected_term)
+                    .isEqualTo(expected_term);
+        });
     }
 
     protected static void assertCommitTableIndeces(Address member, RAFT r, int commit_index, int match_index, int next_index) {
         CommitTable table=r.commitTable();
-        assert table != null;
+        assertThat(table).as("CommitTable should not be null").isNotNull();
         CommitTable.Entry e=table.get(member);
-        assert e != null;
+        assertThat(e).as("Entry for member %s should not be null", member).isNotNull();
         Util.waitUntilTrue(2000, 100,
                            () -> e.commitIndex() == commit_index && e.matchIndex() == match_index && e.nextIndex() == next_index);
-        assert e.commitIndex() == commit_index : String.format("expected commit_index=%d, entry=%s", commit_index, e);
-        assert e.matchIndex() == match_index : String.format("expected match_index=%d, entry=%s", match_index, e);
-        assert e.nextIndex() == next_index : String.format("expected next_index=%d, entry=%s", next_index, e);
+        SoftAssertions.assertSoftly(softly -> {
+            softly.assertThat(e.commitIndex())
+                    .withFailMessage("expected commit_index=%d, entry=%s", commit_index, e)
+                    .isEqualTo(commit_index);
+
+            softly.assertThat(e.matchIndex())
+                    .withFailMessage("expected match_index=%d, entry=%s", match_index, e)
+                    .isEqualTo(match_index);
+
+            softly.assertThat(e.nextIndex())
+                    .withFailMessage("expected next_index=%d, entry=%s", next_index, e)
+                    .isEqualTo(next_index);
+        });
     }
 
     protected static int add(RaftHandle rh, int delta) throws Exception {
@@ -465,6 +486,6 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
     }
 
     protected static void expect(int expected_value, int actual_value) {
-        assert actual_value == expected_value : String.format("expected=%d actual=%d", expected_value, actual_value);
+        assertThat(actual_value).isEqualTo(expected_value);
     }
 }

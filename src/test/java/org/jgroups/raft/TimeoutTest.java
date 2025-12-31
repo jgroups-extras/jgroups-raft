@@ -14,6 +14,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.IntStream;
 
+import org.assertj.core.api.SoftAssertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
 
@@ -62,7 +63,7 @@ public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Int
             }
         }
 
-        assert sm != null : "No leader found";
+        assertThat(sm).withFailMessage("No leader found").isNotNull();
         for(int i=1; i <= NUM; i++) {
             try {
                 sm.put(i, i);
@@ -74,7 +75,7 @@ public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Int
 
         long start=System.currentTimeMillis();
         sm.allowDirtyReads(false);
-        assert sm.get(NUM) == NUM;
+        assertThat(sm.get(NUM)).isEqualTo(NUM);
 
         // After reading correctly from the leader with a quorum read, every node should have the same state.
         // We still have to use eventually so the message propagate to ALL nodes, not only majority.
@@ -86,8 +87,10 @@ public class TimeoutTest extends BaseStateMachineTest<ReplicatedStateMachine<Int
         for (int i = 0; i < clusterSize; i++) {
             ReplicatedStateMachine<Integer, Integer> rsm = stateMachine(i);
             LOGGER.info(rsm.channel().getName());
-            for(int j=1; j <= NUM; j++)
-                assert rsm.get(j) == j;
+            SoftAssertions.assertSoftly(softly -> {
+                for(int j=1; j <= NUM; j++)
+                    softly.assertThat(j).isEqualTo(j);
+            });
             LOGGER.info("OK");
         }
     }

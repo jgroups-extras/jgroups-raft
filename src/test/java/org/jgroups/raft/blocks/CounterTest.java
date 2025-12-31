@@ -1,5 +1,8 @@
 package org.jgroups.raft.blocks;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+
 import org.jgroups.Global;
 import org.jgroups.blocks.atomic.AsyncCounter;
 import org.jgroups.blocks.atomic.CounterFunction;
@@ -34,13 +37,6 @@ import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.testng.AssertJUnit.assertEquals;
-import static org.testng.AssertJUnit.assertFalse;
-import static org.testng.AssertJUnit.assertNull;
-import static org.testng.AssertJUnit.assertTrue;
-
 /**
  * {@link  AsyncCounter} and {@link  SyncCounter} test.
  */
@@ -71,26 +67,26 @@ public class CounterTest extends BaseRaftChannelTest {
     public void testIncrement() {
         List<RaftSyncCounter> counters = createCounters("increment");
 
-        assertEquals(1, counters.get(0).incrementAndGet());
+        assertThat(counters.get(0).incrementAndGet()).isEqualTo(1);
         assertValues(counters, 1);
 
-        assertEquals(6, counters.get(1).addAndGet(5));
+        assertThat(counters.get(1).addAndGet(5)).isEqualTo(6);
         assertValues(counters, 6);
 
-        assertEquals(11, counters.get(2).addAndGet(5));
+        assertThat(counters.get(2).addAndGet(5)).isEqualTo(11);
         assertValues(counters, 11);
     }
 
     public void testDecrement() {
         List<RaftSyncCounter> counters = createCounters("decrement");
 
-        assertEquals(-1, counters.get(0).decrementAndGet());
+        assertThat(counters.get(0).decrementAndGet()).isEqualTo(-1);
         assertValues(counters, -1);
 
-        assertEquals(-8, counters.get(1).addAndGet(-7));
+        assertThat(counters.get(1).addAndGet(-7)).isEqualTo(-8);
         assertValues(counters, -8);
 
-        assertEquals(-9, counters.get(2).decrementAndGet());
+        assertThat(counters.get(2).decrementAndGet()).isEqualTo(-9);
         assertValues(counters, -9);
     }
 
@@ -110,26 +106,26 @@ public class CounterTest extends BaseRaftChannelTest {
     public void testCompareAndSet() {
         List<RaftSyncCounter> counters = createCounters("casb");
 
-        assertTrue(counters.get(0).compareAndSet(0, 2));
+        assertThat(counters.get(0).compareAndSet(0, 2)).isTrue();
         assertValues(counters, 2);
 
-        assertFalse(counters.get(1).compareAndSet(0, 3));
+        assertThat(counters.get(1).compareAndSet(0, 3)).isFalse();
         assertValues(counters, 2);
 
-        assertTrue(counters.get(2).compareAndSet(2, -2));
+        assertThat(counters.get(2).compareAndSet(2, -2)).isTrue();
         assertValues(counters, -2);
     }
 
     public void testCompareAndSwap() {
         List<RaftSyncCounter> counters = createCounters("casl");
 
-        assertEquals(0, counters.get(0).compareAndSwap(0, 2));
+        assertThat(counters.get(0).compareAndSwap(0, 2)).isEqualTo(0);
         assertValues(counters, 2);
 
-        assertEquals(2, counters.get(1).compareAndSwap(0, 3));
+        assertThat(counters.get(1).compareAndSwap(0, 3)).isEqualTo(2);
         assertValues(counters, 2);
 
-        assertEquals(2, counters.get(2).compareAndSwap(2, -2));
+        assertThat(counters.get(2).compareAndSwap(2, -2)).isEqualTo(2);
         assertValues(counters, -2);
     }
 
@@ -137,51 +133,51 @@ public class CounterTest extends BaseRaftChannelTest {
         List<RaftSyncCounter> counters=createCounters("ignore");
         RaftSyncCounter counter=counters.get(1);
         long ret=counter.incrementAndGet();
-        assert ret == 1;
+        assertThat(ret).isEqualTo(1);
 
         counter=counter.withOptions(Options.create(true));
         ret=counter.incrementAndGet();
-        assert ret == 0;
+        assertThat(ret).isEqualTo(0);
 
         ret=counter.addAndGet(10);
-        assert ret == 0;
+        assertThat(ret).isEqualTo(0);
         ret=counter.get();
-        assert ret == 12;
+        assertThat(ret).isEqualTo(12);
 
         final RaftSyncCounter rfc = counter;
         Util.waitUntil(5_000, 250, () -> rfc.getLocal() == 12);
         ret=counter.getLocal();
-        assert ret == 12;
+        assertThat(ret).isEqualTo(12);
 
         boolean rc=counter.compareAndSet(12, 15);
-        assert !rc;
+        assertThat(rc).isFalse();
 
         ret=counter.get();
-        assert ret == 15;
+        assertThat(ret).isEqualTo(15);
 
         counter.set(20);
         ret=counter.get();
-        assert ret == 20;
+        assertThat(ret).isEqualTo(20);
 
         RaftAsyncCounter ctr=counter.async();
         CompletionStage<Long> f=ctr.addAndGet(5);
         Long val=CompletableFutures.join(f);
-        assert val == null;
+        assertThat(val).isNull();
         f=ctr.get();
         ret=CompletableFutures.join(f);
-        assert ret == 25;
+        assertThat(ret).isEqualTo(25);
         Util.waitUntil(5_000, 250, () -> rfc.getLocal() == 25);
         ret=ctr.getLocal();
-        assert ret == 25;
+        assertThat(ret).isEqualTo(25);
         f=ctr.incrementAndGet();
         val=CompletableFutures.join(f);
-        assert val == null;
+        assertThat(val).isNull();
         ctr.set(30);
-        assert CompletableFutures.join(ctr.get()) == 30;
+        assertThat(CompletableFutures.join(ctr.get())).isEqualTo(30);
 
         counter=counter.withOptions(Options.create(false));
         ret=counter.decrementAndGet();
-        assert ret == 29;
+        assertThat(ret).isEqualTo(29);
     }
 
     public void testChainAddAndGet() {
@@ -189,7 +185,7 @@ public class CounterTest extends BaseRaftChannelTest {
 
         CompletionStage<Long> stage = counters.get(0).addAndGet(5)
                 .thenCompose(value -> counters.get(0).addAndGet(value));
-        stage.thenAccept(value -> assertEquals(10L, (long) value)).toCompletableFuture().join();
+        stage.thenAccept(value -> assertThat((long) value).isEqualTo(10L)).toCompletableFuture().join();
 
         List<CompletionStage<Boolean>> checkValueStage = new ArrayList<>(counters.size());
         Function<Long, Boolean> isTen = value -> value == 10;
@@ -197,7 +193,7 @@ public class CounterTest extends BaseRaftChannelTest {
             checkValueStage.add(c.get().thenApply(isTen));
         }
         for (CompletionStage<Boolean> c : checkValueStage) {
-            assertTrue(c.toCompletableFuture().join());
+            assertThat(c.toCompletableFuture().join()).isTrue();
         }
         assertAsyncValues(counters, 10);
     }
@@ -213,7 +209,7 @@ public class CounterTest extends BaseRaftChannelTest {
         CompletionStage<Long> stage2 = counters2.get(1).addAndGet(delta2);
 
         stage1.thenCombine(stage2, Math::max)
-                .thenAccept(value -> assertEquals(Math.max(delta1, delta2), (long) value))
+                .thenAccept(value -> assertThat((long) value).isEqualTo(Math.max(delta1, delta2)))
                 .toCompletableFuture().join();
 
         assertAsyncValues(counters1, delta1);
@@ -238,8 +234,8 @@ public class CounterTest extends BaseRaftChannelTest {
                 .toCompletableFuture()
                 .join();
 
-        assertTrue(result);
-        assertEquals(initialValue, rv.longValue());
+        assertThat(result).isTrue();
+        assertThat(rv.longValue()).isEqualTo(initialValue);
         assertAsyncValues(counters, finalValue);
     }
 
@@ -263,7 +259,7 @@ public class CounterTest extends BaseRaftChannelTest {
                 .toCompletableFuture()
                 .join();
 
-        assertTrue(result);
+        assertThat(result).isTrue();
         assertAsyncValues(counters, finalValue);
     }
 
@@ -337,16 +333,16 @@ public class CounterTest extends BaseRaftChannelTest {
             LOGGER.info("cas results for node {}: {} CAS succeed", i, successes.get(i).intValue());
             casCount += successes.get(i).longValue();
         }
-        assertEquals(maxValue, casCount);
+        assertThat(casCount).isEqualTo(maxValue);
     }
 
     public void testDelete() throws Exception {
         List<AsyncCounter> counters = createAsyncCounters("to-delete");
         for (AsyncCounter counter : counters) {
-            assertEquals(0, counter.sync().get());
+            assertThat(counter.sync().get()).isEqualTo(0);
         }
 
-        assert counters.size() == 3 && counters.stream().allMatch(Objects::nonNull);
+        assertThat(counters).hasSize(3).allMatch(Objects::nonNull);
 
         // We create the counter from each server, but the request is redirected to the leader.
         // In some occasions, with 3 nodes, we can end up committing only on the same 2 of the three in all requests.
@@ -380,42 +376,42 @@ public class CounterTest extends BaseRaftChannelTest {
                 Thread.sleep(1000);
             }
         }
-        assertTrue("Counter exists in " + raftMemberWithCounter, counterRemoved);
+        assertThat(counterRemoved).as("Counter exists in " + raftMemberWithCounter).isTrue();
     }
 
     public void testIncrementUsingFunction() {
         // copied from JGroups testsuite
         List<RaftSyncCounter> counters = createCounters("increment-function");
-        assertEquals(1, counters.get(0).incrementAndGet());
-        assertEquals(1, counters.get(1).update(new GetAndAddFunction(1)).getAsLong());
-        assertEquals(2, counters.get(1).update(new GetAndAddFunction(5)).getAsLong());
+        assertThat(counters.get(0).incrementAndGet()).isEqualTo(1);
+        assertThat(counters.get(1).update(new GetAndAddFunction(1)).getAsLong()).isEqualTo(1);
+        assertThat(counters.get(1).update(new GetAndAddFunction(5)).getAsLong()).isEqualTo(2);
         assertValues(counters, 7);
     }
 
     public void testComplexFunction() {
         List<RaftSyncCounter> counters = createCounters("complex-function");
-        assertEquals(0, counters.get(0).get());
+        assertThat(counters.get(0).get()).isEqualTo(0);
         AddWithLimitResult res = counters.get(1).update(new AddWithLimitFunction(2, 10));
-        assertEquals(2, res.result);
-        assertFalse(res.limitReached);
+        assertThat(res.result).isEqualTo(2);
+        assertThat(res.limitReached).isFalse();
         assertValues(counters, 2);
 
         res = counters.get(2).update(new AddWithLimitFunction(8, 10));
-        assertEquals(10, res.result);
-        assertFalse(res.limitReached);
+        assertThat(res.result).isEqualTo(10);
+        assertThat(res.limitReached).isFalse();
         assertValues(counters, 10);
 
         res = counters.get(2).update(new AddWithLimitFunction(1, 10));
-        assertEquals(10, res.result);
-        assertTrue(res.limitReached);
+        assertThat(res.result).isEqualTo(10);
+        assertThat(res.limitReached).isTrue();
         assertValues(counters, 10);
 
         counters.get(2).set(0);
         assertValues(counters, 0);
 
         res = counters.get(1).update(new AddWithLimitFunction(20, 10));
-        assertEquals(10, res.result);
-        assertTrue(res.limitReached);
+        assertThat(res.result).isEqualTo(10);
+        assertThat(res.limitReached).isTrue();
         assertValues(counters, 10);
     }
 
@@ -424,7 +420,7 @@ public class CounterTest extends BaseRaftChannelTest {
         AddWithLimitResult res = counters.get(1)
                 .withOptions(Options.create(true))
                 .update(new AddWithLimitFunction(2, 10));
-        assertNull(res);
+        assertThat(res).isNull();
         assertValues(counters, 2);
     }
 
@@ -442,12 +438,12 @@ public class CounterTest extends BaseRaftChannelTest {
     }
 
     private static void stageEquals(long value, CompletionStage<Long> stage) {
-        assertEquals(value, (long) stage.toCompletableFuture().join());
+        assertThat((long) stage.toCompletableFuture().join()).isEqualTo(value);
     }
 
     private static void assertValues(List<RaftSyncCounter> counters, long expectedValue) {
         for (SyncCounter counter : counters) {
-            assertEquals(expectedValue, counter.get());
+            assertThat(counter.get()).isEqualTo(expectedValue);
         }
     }
 

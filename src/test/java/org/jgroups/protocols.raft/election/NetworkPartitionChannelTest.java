@@ -1,5 +1,12 @@
 package org.jgroups.protocols.raft.election;
 
+import static java.util.Arrays.stream;
+import static java.util.stream.Collectors.toList;
+import static java.util.stream.Collectors.toMap;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.Header;
@@ -27,13 +34,6 @@ import java.util.concurrent.locks.LockSupport;
 import java.util.stream.IntStream;
 
 import org.testng.annotations.Test;
-
-import static java.util.Arrays.stream;
-import static java.util.stream.Collectors.toList;
-import static java.util.stream.Collectors.toMap;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
-import static org.testng.Assert.assertEquals;
 
 /**
  * @author Zhang Yifei
@@ -68,12 +68,12 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
             c.disconnect();
             c.connect(clusterName());
         }
-        assertEquals(coordIndex(leader), leader);
+        assertThat(coordIndex(leader)).isEqualTo(leader);
         LOGGER.info("before partition: {}", view(leader));
 
         partition(stream(indexes).filter(t -> t != coord).toArray(), new int[]{coord});
-        assertEquals(coordIndex(leader), leader);
-        assertEquals(coordIndex(coord), coord);
+        assertThat(coordIndex(leader)).isEqualTo(leader);
+        assertThat(coordIndex(coord)).isEqualTo(coord);
         LOGGER.info("partition1: {}", view(leader));
         LOGGER.info("partition2: {}", view(coord));
 
@@ -87,8 +87,8 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
 
         merge(leader, coord);
         Util.waitUntilAllChannelsHaveSameView(30_000, 1000, channels());
-        assertEquals(coordIndex(leader), coord);
-        assertEquals(coordIndex(coord), coord);
+        assertThat(coordIndex(leader)).isEqualTo(coord);
+        assertThat(coordIndex(coord)).isEqualTo(coord);
         LOGGER.info("after merge: {}", view(coord));
 
         // since the term is not advanced yet, new coordinator has accepted the existing leader, and stopping the

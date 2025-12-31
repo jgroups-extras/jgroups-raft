@@ -73,7 +73,7 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
         assertView(v3, e);
 
         List<Address> leaders=leaders().stream().map(RAFT::getAddress).collect(Collectors.toList());
-        assert leaders.isEmpty() : dumpLeaderAndTerms();
+        assertThat(leaders).withFailMessage(this::dumpLeaderAndTerms).isEmpty();
 
         LOGGER.info("-- channels before:%n{}", print(a,b,c,d,e));
 
@@ -117,7 +117,9 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
         }
         for(Map.Entry<Long,Set<Address>> e: m.entrySet()) {
             Set<Address> v=e.getValue();
-            assert v.size() == 1 : String.format("term %d had more than 1 leader: %s", e.getKey(), v);
+            assertThat(v)
+                    .withFailMessage(() -> String.format("term %d had more than 1 leader: %s", e.getKey(), v))
+                    .hasSize(1);
         }
     }
 
@@ -125,7 +127,7 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
         for(JChannel ch: channels) {
             View ch_v=ch.getView();
             LOGGER.info("{}: {}", ch.getAddress(), ch.getView());
-            assert ch_v.equals(v) : String.format("%s: %s", ch.getAddress(), ch.getView());
+            assertThat((Object) ch_v).withFailMessage(() -> String.format("%s: %s", ch.getAddress(), ch.getView())).isEqualTo(v);
         }
     }
 
