@@ -1,0 +1,211 @@
+== Installation & Setup
+
+The easiest way to get started is using our automated installer script.
+This script detects your environment, downloads the latest `raft` wrapper script, and configures your `PATH`.
+
+Run the following command in your terminal:
+
+[source,bash]
+----
+curl -sL https://raw.githubusercontent.com/jgroups-extras/jgroups-raft/main/bin/install.sh | bash
+----
+
+**What this does:**
+
+. Creates a hidden directory at `~/.jgroups-raft/`.
+. Downloads the `raft` executable wrapper to `~/.jgroups-raft/bin/`.
+. Updates your shell configuration (e.g., `.bashrc`, `.zshrc`) to include the CLI and autocompletion.
+
+After the installation completes, open a new terminal window (or source your profile) and run the following command to verify the installation:
+
+[source,bash]
+----
+raft -h
+----
+
+You should see the help menu listing available commands and options.
+This means the JGroups Raft CLI is installed and ready for use.
+
+=== Manual Installation
+
+If you prefer not to run the automated script, you can manually install the CLI by downloading the wrapper script directly from the repository.
+
+. **Download the script** from the official repository:
++
+[source,bash]
+----
+# Replace 'main' with a specific tag (e.g., 'jgroups-raft-2.0.0.Final') if needed
+curl -L -o raft https://raw.githubusercontent.com/jgroups-extras/jgroups-raft/main/bin/raft
+----
+
+. **Make it executable:**
++
+[source,bash]
+----
+chmod +x raft
+----
+
+. **Move to a location in your PATH:**
++
+You can move it to a standard system binary location or a user-specific folder.
++
+[source,bash]
+----
+mv raft /usr/local/bin/
+----
++
+Alternatively, if you keep it in a custom folder, ensure you add that folder to your `PATH` variable manually.
+
+=== Update
+
+To perform an in-place upgrade of the CLI, you can perform:
+
+. **In-place CLI upgrade**
++
+[source,bash]
+----
+raft selfupdate
+----
+
+The command will search for the latest tag in GitHub or fallback to main.
+
+=== Uninstallation
+
+To completely remove the CLI from your system if utilized the automated script:
+
+. **Remove the installation directory:**
++
+[source,bash]
+----
+rm -rf ~/.jgroups-raft
+----
+
+. **Clean up shell configuration:**
++
+Open your shell profile file (e.g., `~/.bashrc`, `~/.zshrc`, or `~/.profile`) in a text editor.
+Look for the line added by the installer and remove them, it looks like:
++
+[source,bash]
+----
+# JGroups Raft CLI
+[[ -s "$HOME/.jgroups-raft/bin/raft-init.sh" ]] && source "$HOME/.jgroups-raft/bin/raft-init.sh"
+----
+
+This completely removes the CLI from your system.
+
+== JGroups Raft CLI
+
+The JGroups Raft CLI bridges the gap between low-level network diagnostics and high-level Raft consensus operations.
+While JGroups provides generic probe tools, this CLI is "Raft-aware"—it understands terms, log indices, and leader/follower roles.
+
+=== Compatibility
+
+[cols="1,1", options="header"]
+|===
+| CLI Version | JGroups Raft Version
+| 2.0.0+      | 2.0.0+
+|===
+
+[NOTE]
+====
+The CLI communicates via standard http://jgroups.org/manual5/index.html#Probe[JGroups diagnostic protocols].
+Ensure your cluster members have diagnostics enabled (default: enabled).
+====
+
+=== Key Capabilities
+
+* **Cluster Health Monitoring:** Instantly verify if the cluster has a leader, if terms are consistent, and if followers are caught up.
+* **Performance Troubleshooting:** View detailed latency metrics for request processing and log replication to identify bottlenecks.
+* **Membership Management:** Safely add or remove voting members from the cluster configuration without downtime.
+* **Scripting & Automation:** Designed with automation in mind, allowing for easy integration into health-check scripts, Kubernetes liveness probes, or CI/CD pipelines.
+
+The tool works by sending lightweight diagnostic requests (http://jgroups.org/manual5/index.html#Probe[Probes]) to the running nodes.
+It does not require a sidecar agent or a dedicated management port; it reuses the existing JGroups diagnostic channel.
+The CLI operates by broadcasting requests to the cluster and aggregating the responses.
+Before diving into specific commands, it is important to understand how to control the output format and the network transport.
+
+
+=== Output Formats
+
+Every command supports multiple output formats via the `--format` (or `-f`) flag, allowing you to tailor the output for humans or machines.
+
+* **TABLE (Default):**
++
+Renders data in structured, ASCII tables with ANSI coloring.
+This is best for interactive use in a terminal, as it automatically aligns columns and highlights key information.
+
+* **JSON:**
++
+Outputs a raw, valid JSON array containing the full response payload from each cluster node.
+This format is intended for scripting.
+You can pipe this output into tools like `jq` to extract specific values or validate cluster state programmatically.
++
+.Example of outputting the response to JSON and querying a specific parameter.
+[source,bash]
+----
+raft status -f JSON | jq '.[].response.leader'
+----
+
+* **TEXT:**
++
+Outputs flat `key=value` pairs, separated by newlines.
+This is useful for simple shell processing using standard Unix tools like `grep`, `awk`, or `sed`.
+Ideally, you also can disable any ANSI colors.
+
+=== Continuous Monitoring (Watch Mode)
+
+Most monitoring commands support a "Watch Mode," effectively turning the CLI into a real-time dashboard.
+This allows you to observe leader elections, term changes, or latency spikes as they happen.
+
+* **Enable:** Pass the `-w` (or `--watch`) flag.
+* **Interval:** Use `-i <seconds>` to control the refresh rate.
+
+.An example of continuously monitoring the cluster status.
+[source,bash]
+----
+# Monitor cluster status, updating every 2 seconds
+raft status -w -i 2
+----
+
+**Visual Behavior:**
+
+* **Interactive Terminals:** If your terminal supports ANSI colors, the CLI will **clear the screen** before each update.
+This creates a stable view where values update in place, similar to the Unix `watch` command.
+
+* **Non-Interactive (Pipes/Logs):** If ANSI is disabled or the output is piped, the CLI appends each new update to the bottom of the stream with a timestamped separator, preserving the full history for analysis.
+
+=== Networking & Discovery
+
+Since the CLI is a standalone client, it needs to know how to reach your cluster.
+The following global options apply to all commands and control the network transport layer.
+All the commands that require submitting a command to the cluster builds on the http://jgroups.org/manual5/index.html#Probe[Probe] mechanism available in JGroups.
+
+.Default network options in the CLI commands.
+[cols="1,1,3", options="header"]
+|===
+| Option | Default | Description
+
+| `-addr`
+| `224.0.75.75`
+| The target address to probe. Use a multicast address to reach all nodes simultaneously, or a specific unicast IP to query a single node.
+
+| `-port`
+| `7500`
+| The diagnostic port configured in your JGroups stack.
+
+| `-bind-addr`
+| _(Auto)_
+| The local network interface IP to use for sending probes. This is crucial on multi-homed machines (e.g., separating VPN traffic from cluster traffic).
+
+| `-cluster`
+| _(None)_
+| Filters responses by the JGroups cluster name. **Highly Recommended:** If you have multiple clusters running on the same network (e.g., "dev" and "prod"), this ensures you only see data from the intended cluster.
+
+| `-tcp` / `-udp`
+| `-udp`
+| Selects the transport protocol. UDP is the standard for JGroups diagnostics, but TCP is supported if configured on the server side.
+
+| `-4` / `-6`
+| _(System)_
+| Forces the use of the IPv4 or IPv6 network stack, overriding the system default.
+|===

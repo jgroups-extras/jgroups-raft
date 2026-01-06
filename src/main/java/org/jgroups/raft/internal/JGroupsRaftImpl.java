@@ -22,6 +22,7 @@ import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.exceptions.JRaftException;
 import org.jgroups.raft.internal.metrics.JGroupsRaftMetricsCollector;
+import org.jgroups.raft.internal.probe.RaftProtocolProbe;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.serialization.Serializer;
 import org.jgroups.raft.internal.statemachine.StateMachineWrapper;
@@ -142,6 +143,11 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
             }
         };
         administration = JGroupsRaftAdministrationImpl.create(channel);
+
+        // Register all of our custom probe handlers.
+        // These implement the server side of our CLI commands.
+        RaftProtocolProbe rpp = new RaftProtocolProbe(raft, state, metrics);
+        parameters.channel().getProtocolStack().getTransport().registerProbeHandler(rpp);
 
         // Only connect in case the channel is still disconnected.
         // A provided JChannel might be already connected.

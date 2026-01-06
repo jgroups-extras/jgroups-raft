@@ -1,0 +1,33 @@
+= JGroups Raft CLI
+:author: Jose Bolina <jbolina@redhat.com>
+:toc2:
+:toclevels: 3
+:icons:
+:homepage: https://jgroups-extras.github.io/jgroups-raft/cli/index.html
+:source-highlighter: pygments
+:sectnums:
+
+
+This document is licensed under the
+http://creativecommons.org/licenses/by-sa/3.0/us/legalcode["Creative Commons Attribution-ShareAlike (CC-BY-SA) 3.0"]
+license.
+
+Welcome to the official documentation for the **JGroups Raft CLI**.
+
+This tool serves as the primary interface for operators and administrators to interact with JGroups Raft clusters.
+Unlike standard network diagnostic tools, this CLI is built with deep knowledge of the Raft consensus protocol, enabling precise monitoring of terms, log replication, and leadership states.
+
+This manual is organized into the following sections:
+
+* **Overview**: Covers installation options, network configuration, and the fundamental concepts of utilizing the CLI.
+* **Monitoring Commands**: Details the monitoring operations used to observe cluster health, leadership stability, and performance metrics.
+* **Management Commands**: Explains administrative actions for modifying cluster membership and executing advanced probe requests for low-level diagnostics.
+
+José Bolina, Brasil 2026
+
+
+include::./overview.adoc[Overview]
+
+include::./monitoring-commands.adoc[Monitoring commands]
+
+include::./management-commands.adoc[Management commands]

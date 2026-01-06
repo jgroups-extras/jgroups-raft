@@ -1,0 +1,164 @@
+#!/bin/bash
+
+set -e
+
+# JGroups Raft Project configuration.
+GROUP_ID="org.jgroups"
+ARTIFACT_ID="jgroups-raft"
+VERSION="2.0.0.Final-SNAPSHOT"
+CLASSIFIER="cli"
+JAR_NAME="${ARTIFACT_ID}-${VERSION}-${CLASSIFIER}.jar"
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+
+# ==========================================
+# Self-Update Logic
+# ==========================================
+if [[ "$1" == "selfupdate" ]]; then
+    echo " > Checking for updates..."
+
+    GITHUB_REPO="jgroups-extras/jgroups-raft"
+    WRAPPER_NAME="raft"
+
+    # 1. Resolve Latest Version from GitHub API
+    # We use a timeout to fail fast if offline
+    LATEST_TAG=$(curl --max-time 5 -s "https://api.github.com/repos/$GITHUB_REPO/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+    if [ -z "$LATEST_TAG" ]; then
+        echo " > Error: Could not fetch latest version info from GitHub." >&2
+        exit 1
+    fi
+
+    # 2. Construct Download URL
+    # We first try the specific release tag.
+    DOWNLOAD_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/${LATEST_TAG}/bin/${WRAPPER_NAME}"
+
+    # Check if the artifact actually exists at that tag (in case release is missing bin/)
+    if ! curl --output /dev/null --silent --head --fail "$DOWNLOAD_URL"; then
+        echo " > Warning: Wrapper not found in release ${LATEST_TAG}. Falling back to 'main' branch."
+        DOWNLOAD_URL="https://raw.githubusercontent.com/${GITHUB_REPO}/main/bin/${WRAPPER_NAME}"
+    fi
+
+    echo " > Downloading latest version from: $DOWNLOAD_URL"
+
+    # 3. Download and Replace
+    # We download to a temporary file first to ensure atomicity
+    TMP_UPDATE="/tmp/${WRAPPER_NAME}_update_$$"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL -o "$TMP_UPDATE" "$DOWNLOAD_URL"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$TMP_UPDATE" "$DOWNLOAD_URL"
+    else
+        echo "Error: Neither curl nor wget found." >&2
+        exit 1
+    fi
+
+    # Verify download wasn't empty
+    if [ ! -s "$TMP_UPDATE" ]; then
+        echo "Error: Downloaded file is empty. Update aborted." >&2
+        rm -f "$TMP_UPDATE"
+        exit 1
+    fi
+
+    # Apply Update
+    chmod +x "$TMP_UPDATE"
+    mv "$TMP_UPDATE" "$SCRIPT_PATH"
+
+    echo " > Update complete. You are now using the latest version."
+    exit 0
+fi
+
+# Default search places to find the CLI JAR.
+M2_JAR_PATH="$HOME/.m2/repository/${GROUP_ID//.//}/$ARTIFACT_ID/$VERSION/$JAR_NAME"
+TMP_JAR_PATH="/tmp/$JAR_NAME"
+
+# Locate the JAR in the system following a hierarchical approach.
+RESOLVED_JAR=""
+PATHS_TO_CHECK=(
+    "${JGROUPS_RAFT_CLI:-}"             # 1. User Override
+    "$PROJECT_ROOT/target/$JAR_NAME"    # 2. Local development build
+    "$M2_JAR_PATH"                      # 3. Local Maven Repo
+    "$TMP_JAR_PATH"                     # 4. Cached /tmp
+)
+
+RESOLVED_JAR=""
+for path in "${PATHS_TO_CHECK[@]}"; do
+    if [ -n "$path" ] && [ -f "$path" ]; then
+        RESOLVED_JAR="$path"
+        break
+    fi
+done
+
+# If the JAR was not found locally, we retrieve it.
+if [ -z "$RESOLVED_JAR" ]; then
+    echo " > CLI not found locally." >&2
+
+    # Try to download utilizing Maven. This will respect any configuration.
+    if command -v mvn >/dev/null 2>&1; then
+      echo " > Maven found. Attempting 'mvn dependency:get'" >&2
+
+      # We allow this to fail (set +e temporarily) in case of network issues
+      set +e
+      mvn org.apache.maven.plugins:maven-dependency-plugin:3.6.0:get \
+          -DgroupId="$GROUP_ID" \
+          -DartifactId="$ARTIFACT_ID" \
+          -Dversion="$VERSION" \
+          -Dclassifier="$CLASSIFIER" \
+          -Dpackaging=jar \
+          -Dtransitive=false \
+          -q # Quiet mode
+      MVN_EXIT_CODE=$?
+      set -e
+
+      if [ $MVN_EXIT_CODE -eq 0 ]; then
+          RESOLVED_JAR="$M2_JAR_PATH"
+          echo " > Downloaded to .m2 repository." >&2
+      else
+          echo " > Maven download failed. Falling back to direct download." >&2
+      fi
+    fi
+
+    # Fallback to a direct download in the tmp folder.
+    if [ -z "$RESOLVED_JAR" ]; then
+        echo " > Downloading CLI to /tmp" >&2
+
+        MAVEN_URL="https://repo1.maven.org/maven2/${GROUP_ID//.//}/$ARTIFACT_ID/$VERSION/$JAR_NAME"
+
+        if command -v curl >/dev/null 2>&1; then
+            curl -fL -o "$TMP_JAR_PATH" "$MAVEN_URL"
+        elif command -v wget >/dev/null 2>&1; then
+            wget -O "$TMP_JAR_PATH" "$MAVEN_URL"
+        else
+            echo "Error: Cannot download CLI. Maven, curl, and wget are all missing." >&2
+            exit 1
+        fi
+
+        RESOLVED_JAR="$TMP_JAR_PATH"
+        echo " > Download complete." >&2
+    fi
+fi
+
+# Suggest auto-completion for the CLI only once.
+# logic: If we are in the install dir, the init script handles sourcing, so we stay silent.
+SUGGESTION_MARKER="$HOME/.cache/raft/.completion_suggestion_shown"
+IS_INSTALLED=false
+
+if [[ "$SCRIPT_DIR" == *".jgroups-raft"* ]]; then
+    IS_INSTALLED=true
+fi
+
+if [ "$IS_INSTALLED" = false ] && [ -t 1 ] && [ ! -f "$SUGGESTION_MARKER" ]; then
+    mkdir -p "$(dirname "$SUGGESTION_MARKER")"
+    touch "$SUGGESTION_MARKER"
+
+    G="\033[0;32m"
+    N="\033[0m"
+    echo "" >&2
+    echo "  [Tip] Autocompletion is not enabled." >&2
+    echo -e "  To enable it, run: ${G}source <($0 completion)${N}" >&2
+    echo "" >&2
+fi
+
+exec java -jar "$RESOLVED_JAR" "$@"

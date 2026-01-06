@@ -11,7 +11,7 @@ public final class LatencyTracker implements LatencyMetrics {
     private final Histogram histogram;
 
     public LatencyTracker() {
-        this.histogram = new ConcurrentHistogram(TimeUnit.MINUTES.toNanos(5L), 5);
+        this.histogram = new ConcurrentHistogram(TimeUnit.MINUTES.toNanos(5L), 3);
     }
 
     public void recordLatency(long latencyNanos) {

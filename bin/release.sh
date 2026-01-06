@@ -1,99 +1,143 @@
 #!/bin/bash
 
-# A script to automate the release process.
-#
-# This script will:
-# 1.  Update the project version to the release version.
-# 2.  Commit the version change.
-# 3.  Build and install the project artifacts.
-# 4.  Deploy the artifacts to the configured repository.
-# 5.  Create a Git tag for the release.
-# 6.  Update the project version to the next development version.
-# 7.  Commit the new version change.
-# 8.  Push the commits and tags to the remote repository.
+# ==============================================================================
+# JGROUPS RAFT RELEASE AUTOMATION
+# ==============================================================================
+# This script automates the Maven release process:
+# 1. Sets release version (POMs + CLI Scripts) -> Commits
+# 2. Builds and Deploys to Maven Central
+# 3. Tags the release
+# 4. Sets next snapshot version (POMs only) -> Commits
+# 5. Pushes to remote
+# ==============================================================================
 
-# Exit immediately if a command exits with a non-zero status.
 set -e
 
-# --- Function to display script usage ---
+# --- Constants & Config ---
+CLI_WRAPPER="bin/raft"
+INSTALL_SCRIPT="bin/install.sh"
+
+# Colors for UI
+BLUE='\033[0;34m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+# --- Helper Functions ---
+
+log_info() { echo -e "${BLUE}[INFO] $1${NC}"; }
+log_step() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
+log_warn() { echo -e "${YELLOW}[WARN] $1${NC}"; }
+log_err()  { echo -e "${RED}[ERROR] $1${NC}"; }
+
 usage() {
   echo "Usage: $0 -releaseVersion <version> -nextVersion <version>"
-  echo "  -releaseVersion   The version to be released (e.g., 1.0.0)."
-  echo "  -nextVersion      The next development snapshot version (e.g., 1.1.0-SNAPSHOT)."
+  echo "  -releaseVersion   The version to be released (e.g., 2.0.0.Final, 2.0.0.Alpha1)."
+  echo "  -nextVersion      The next development snapshot version (e.g., 2.1.0-SNAPSHOT)."
   exit 1
 }
 
-# --- Parse Command Line Arguments ---
+# Updates the version strings inside the CLI shell scripts
+update_cli_scripts() {
+  local new_version="$1"
+  log_info "Updating CLI scripts to version: $new_version"
+
+  if [ -f "$CLI_WRAPPER" ]; then
+    sed -i "s/^VERSION=\".*\"/VERSION=\"$new_version\"/" "$CLI_WRAPPER"
+    echo " > Updated $CLI_WRAPPER"
+  else
+    log_warn "$CLI_WRAPPER not found."
+  fi
+
+  if [ -f "$INSTALL_SCRIPT" ]; then
+    sed -i "s/^DEFAULT_VERSION=\".*\"/DEFAULT_VERSION=\"$new_version\"/" "$INSTALL_SCRIPT"
+    echo " > Updated $INSTALL_SCRIPT"
+  else
+    log_warn "$INSTALL_SCRIPT not found."
+  fi
+}
+
+set_maven_version() {
+  local version="$1"
+  log_info "Updating POM versions to: $version"
+  mvn versions:set -DnewVersion="$version" -DprocessAllModules=true -DgenerateBackupPoms=false -q
+}
+
+git_commit() {
+  local message="$1"
+  shift
+  local files=("$@") # Remaining arguments are files to add
+
+  log_info "Committing changes..."
+  git add "${files[@]}"
+  git commit -m "$message" --no-verify
+}
+
+# --- Main Logic ---
+
+# 1. Parse Arguments
 while [[ $# -gt 0 ]]; do
   key="$1"
   case $key in
-  -releaseVersion)
-    releaseVersion="$2"
-    shift
-    shift
-    ;;
-  -nextVersion)
-    nextVersion="$2"
-    shift
-    shift
-    ;;
-  *) # unknown option
-    usage
-    ;;
+    -releaseVersion) releaseVersion="$2"; shift; shift ;;
+    -nextVersion)    nextVersion="$2";    shift; shift ;;
+    *) usage ;;
   esac
 done
 
 if [ -z "$releaseVersion" ] || [ -z "$nextVersion" ]; then
-  echo "Error: Both -releaseVersion and -nextVersion are required."
+  log_err "Both -releaseVersion and -nextVersion are required."
   usage
 fi
 
+# 2. Confirmation
 echo "--------------------------------------------------------"
-echo " Maven Release Script"
+echo " Maven Release Configuration"
 echo "--------------------------------------------------------"
-echo "Releasing version:   $releaseVersion"
-echo "Next dev version:    $nextVersion"
+echo " Release Version:  $releaseVersion"
+echo " Next Dev Version: $nextVersion"
 echo "--------------------------------------------------------"
-
 read -p "Do you want to continue with the release? [y/N] " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo "Release cancelled by user."
+  log_info "Release cancelled by user."
   exit 0
 fi
 
-echo "Updating POM files to release version: $releaseVersion"
-mvn versions:set -DnewVersion="$releaseVersion" -DprocessAllModules=true -DgenerateBackupPoms=false
+# 3. Prepare Release (POMs + Scripts)
+log_step "Step 1/5: Setting Release Version"
+set_maven_version "$releaseVersion"
+update_cli_scripts "$releaseVersion"
 
-echo "Committing release version $releaseVersion"
-git add 'pom.xml'
-git commit -m "Releasing version $releaseVersion" --no-verify
+# Commit POMs AND Binaries (so the tag contains the correct CLI version)
+git_commit "Releasing version $releaseVersion" "pom.xml" "$CLI_WRAPPER" "$INSTALL_SCRIPT"
 
-echo "Building project artifacts for $releaseVersion"
-mvn -DskipTests clean install -Prelease
+# 4. Build and Deploy
+log_step "Step 2/5: Building and Deploying"
+log_info "Building and deploying artifacts..."
+mvn -DskipTests clean install deploy -Prelease
 
-echo "Starting deployment of $releaseVersion"
-mvn -DskipTests deploy -Prelease
-echo "Deployment finished successfully."
-
+# 5. Tagging
+log_step "Step 3/5: Tagging Release"
 prefix=$(mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout)
-echo "Creating Git tag as $prefix-$releaseVersion"
-git tag "$prefix-$releaseVersion"
-echo "Tag '$prefix-$releaseVersion' created."
+TAG_NAME="$prefix-$releaseVersion"
+git tag "$TAG_NAME"
+log_info "Created git tag: $TAG_NAME"
 
-echo "Updating POM files to next development version: $nextVersion..."
-mvn versions:set -DnewVersion="$nextVersion" -DprocessAllModules=true -DgenerateBackupPoms=false
+# 6. Prepare Next Snapshot (POMs ONLY)
+log_step "Step 4/5: Setting Next Development Version"
+set_maven_version "$nextVersion"
+# NOTE: We DO NOT update CLI scripts here. They remain pinned to the stable release.
 
-echo "Committing next development version to $nextVersion"
-git add 'pom.xml'
-git commit -m "Next version $nextVersion" --no-verify
+# Commit ONLY POMs
+git_commit "Next version $nextVersion" "pom.xml"
 
-echo "Pushing commits and tags to remote repository"
+# 7. Push
+log_step "Step 5/5: Pushing to Remote"
 git push
 git push --tags
 
-echo "--------------------------------------------------------"
-echo " Release process completed successfully!"
-echo " You have released: $releaseVersion"
-echo " Next development iteration in: $nextVersion"
-echo "--------------------------------------------------------"
+log_step "Release Process Completed Successfully!"
+echo " > Released: $releaseVersion"
+echo " > Next Dev: $nextVersion"

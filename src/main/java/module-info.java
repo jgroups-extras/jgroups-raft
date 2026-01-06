@@ -12,6 +12,12 @@ module org.jgroups.raft {
     // Optional dependency to collect metrics.
     requires static HdrHistogram;
 
+    // Optional dependency utilized only by the CLI JAR that shades Picocli
+    requires static info.picocli;
+    opens org.jgroups.raft.cli to info.picocli;
+    opens org.jgroups.raft.cli.commands to info.picocli;
+    opens org.jgroups.raft.cli.exceptions to info.picocli;
+
     // Core clustering part of JGroups Raft.
     requires org.jgroups;
 

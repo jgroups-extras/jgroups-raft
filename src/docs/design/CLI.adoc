@@ -1,0 +1,98 @@
+= JGroups Raft CLI Design
+:author: José Bolina <jbolina@redhat.com>
+:description: The design document of the JGroups Raft CLI.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
+
+== Motivation & Problem Statement
+
+Operating a distributed consensus system is inherently complex.
+While JGroups provides a generic diagnostics mechanism (`Probe`), it lacks context awareness for the Raft protocol.
+Operators managing a JGroups Raft cluster currently face significant visibility gaps:
+
+* They cannot easily correlate **Terms** with **Leader** identity.
+* Identifying "lagging" followers requires parsing JMX metrics manually.
+* Cluster management include risky manual operations without proper tooling validation.
+
+**Goal:**
+The JGroups Raft CLI aims to provide a unified, command-line interface for **monitoring**, **managing**, and **troubleshooting** Raft clusters.
+The CLI removes the complex work of network configuration, parsing, and collection node data into human-readable status reports and safe administrative actions.
+A critical system utilizing Raft cannot be considered "production-ready" without tooling that allows an operator to confidently answer: _"Is the cluster healthy, who is the leader, and are all logs replicated?"_
+
+== CLI Distribution & Packaging
+
+To ensure the CLI is accessible to both developers and system administrators, we aim to streamline the distribution and installation process.
+
+=== The CLI Artifact
+
+The CLI is packaged as a standalone executable JAR.
+
+* **Artifact:** `jgroups-raft-cli-<version>.jar`, we create a JAR with the `cli` classifier.
+* **Packaging Strategy:** We utilize the **Maven Shade Plugin** to create a "fat JAR" with all dependencies.
+** **Isolation:** This is crucial. The CLI package is **not** part of the public API and is **not** exposed via JPMS (`module-info.java`). This allows us to update internal dependencies without affecting the application utilizing the JGroups Raft library.
+
+=== Wrapper & Installation Scripts
+
+To further abstract the Java execution model, we provide shell wrappers.
+
+* **The Wrapper (`bin/raft`):**
+** Serves as the CLI entry point.
+** **Intelligence:** It checks for the existence of the CLI JAR. If missing, it downloads the correct version matching the script's version.
+** **Execution:** It constructs the `java -jar` command, passing all arguments and system properties transparently.
+
+* **The Installer (`install.sh`):**
+** A "curl-to-bash" style script to allow installing the CLI with a single command.
+** Downloads the wrapper script to `~/.jgroups-raft/bin`.
+** Configures the CLI for autocompletion.
+** _Benefit:_ Enables a quick and simple installation experience (similar to SDKMAN <<sdkman-installation>>), allowing operators to install the tool in seconds.
+
+== Communication Mechanism (Probe)
+
+The CLI communicates with the cluster using the existing **JGroups Probe** mechanism <<jgroups-probe>>.
+
+* **Transport:** UDP Multicast (default) or TCP, utilizing the standard diagnostics port (`7500`).
+* **Protocol:** The CLI acts as a Probe Client, sending strictly typed requests (e.g., `raft-status`, `raft-log`) to the cluster.
+* **Serialization:** Responses are sent as JSON strings.
+** _Why JSON?_ It decouples the CLI version from the Server version. As long as the JSON schema is backward-compatible, a newer CLI can manage an older cluster.
+
+== Functional Scope & Capabilities
+
+To satisfy enterprise requirements, the CLI commands are categorized into three pillars: Monitoring, Management, and Troubleshooting.
+
+=== Monitoring
+_Focus: Real-time visibility into cluster health and performance._
+
+* **`status`**: High-level view of Leader, Term, and Commit Index. Provides an easy look over the Raft state.
+* **`metrics`**: Latency and throughput stats for processing and replication.
+* **`replication status`**: Provides a detailed matrix of the Leader's view of all followers.
+** _Why:_ Crucial for identifying which specific follower is slowing down the commit pipeline (e.g., `matchIndex` vs `nextIndex`).
+* **`leader history`**: Displays a timeline of recent leadership changes.
+** _Why:_ Helps diagnose elections rounds where leadership bounces between nodes due to unstable networks.
+
+=== Management
+_Focus: Changing cluster state and configuration._
+
+* **`member`**: `add` / `remove` / `list` voting members.
+* **`leader stepdown`**: Forces the current leader to resign and trigger a new election.
+** _Why:_ Useful for rolling restarts. Operators can step down a leader _before_ shutting it down to minimize write downtime.
+* **`leader transfer`**: Gracefully hands over leadership to a specific target node.
+** _Why:_ A safer alternative to `stepdown` when you want a specific node (e.g., one in a specific availability zone) to take over.
+
+=== Troubleshooting
+_Focus: Low-level debugging and data inspection._
+
+* **`probe`**: Raw access to standard JGroups diagnostic keys.
+* **`log snapshot`**: Manually triggers log compaction/snapshotting.
+** _Why:_ Frees up disk space and reduces startup time if the log has grown too large.
+* **`log tail` / `log get`**: inspects the actual entries in the Raft log.
+** _Why:_ Allows developers to verify if a specific application command was actually committed or identifying corrupted/invalid entries.
+* **`diagnose`**: Runs a suite of automated health checks (network partition check, disk latency check).
+** _Why:_ Automates the checklist for on-call engineers when inspecting a cluster.
+* **`debug dump`**: Exports the complete internal state of a node.
+** _Why:_ Essential for attaching to bug reports when the system behaves unexpectedly.
+
+[bibliography]
+== References
+
+* [[[jgroups-probe,1]]] JGroups Manual. (2026). http://jgroups.org/manual5/index.html#Probe[JGroups Probe]
+* [[[sdkman-installation,2]]] SDKMAN! (2026). https://sdkman.io/install/[SDKMAN! Installation]

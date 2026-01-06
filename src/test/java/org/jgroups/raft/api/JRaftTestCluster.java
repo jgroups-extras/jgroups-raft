@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
@@ -23,16 +24,21 @@ public final class JRaftTestCluster<T> {
 
     private final JRaftTest<T> delegate;
 
-    private JRaftTestCluster(Supplier<T> stateMachineFactory, Class<T> clazz, int size) {
+    private JRaftTestCluster(Supplier<T> stateMachineFactory, Class<T> clazz, int size, Consumer<JGroupsRaft.Builder<T>> builderCustomizer) {
         try {
-            this.delegate = new JRaftTest<>(stateMachineFactory, clazz, size);
+            this.delegate = new JRaftTest<>(stateMachineFactory, clazz, size, builderCustomizer);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
     public static <T> JRaftTestCluster<T> create(Supplier<T> stateMachineFactory, Class<T> clazz, int size) {
-        return new JRaftTestCluster<>(stateMachineFactory, clazz, size);
+        return new JRaftTestCluster<>(stateMachineFactory, clazz, size, b -> { });
+    }
+
+    public static <T> JRaftTestCluster<T> create(Supplier<T> stateMachineFactory, Class<T> clazz, int size,
+                                                  Consumer<JGroupsRaft.Builder<T>> builderCustomizer) {
+        return new JRaftTestCluster<>(stateMachineFactory, clazz, size, builderCustomizer);
     }
 
     public JGroupsRaft<T> raft(int index) {
@@ -102,7 +108,7 @@ public final class JRaftTestCluster<T> {
         private final String clusterName;
 
         @SuppressWarnings("unchecked")
-        JRaftTest(Supplier<T> stateMachineFactory, Class<T> clazz, int size) throws Exception {
+        JRaftTest(Supplier<T> stateMachineFactory, Class<T> clazz, int size, Consumer<JGroupsRaft.Builder<T>> builderCustomizer) throws Exception {
             this.clusterSize = size;
             this.clazz = clazz;
             this.clusterName = "cluster-test-" + CLUSTER_ID.getAndIncrement();
@@ -120,14 +126,16 @@ public final class JRaftTestCluster<T> {
             for (int i = 0; i < size; i++) {
                 T sm = stateMachineFactory.get();
                 channels[i] = channel(i);
-                JGroupsRaft<T> raft = JGroupsRaft.builder(sm, clazz)
+                JGroupsRaft.Builder<T> builder = JGroupsRaft.builder(sm, clazz)
                         .withJChannel(channels[i])
                         .configureRaft()
                             .withRaftId(Character.toString('A' + i))
                             .withMembers(participants)
                             .withLogClass(InMemoryLog.class)
-                            .and()
-                        .build();
+                            .and();
+
+                builderCustomizer.accept(builder);
+                JGroupsRaft<T> raft = builder.build();
 
                 raft.start();
                 this.rafts[i] = raft;

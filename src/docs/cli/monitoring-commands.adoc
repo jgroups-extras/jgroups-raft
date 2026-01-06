@@ -1,0 +1,209 @@
+== Monitoring Commands
+
+Monitoring commands are designed to provide real-time visibility into the operational state and health of your Raft cluster.
+Unlike generic network probes, these commands understand the Raft consensus protocol, allowing you to verify leadership stability, log consistency, and replication performance.
+
+Throughout this section, examples will utilize the **JSON** output format (`-f JSON`) combined with the `jq` command-line processor.
+This is the recommended approach for building automated health checks and monitoring scripts.
+
+[TIP]
+====
+**Real-time Dashboard:**
+All commands in this section support **Watch Mode** (`-w`). Use it to create a live dashboard during outages or performance tests.
+For example, `raft status -w -i 2 --format JSON` query the cluster status every 2 seconds in JSON.
+====
+
+=== Status
+
+The `status` command performs a comprehensive health check of the cluster.
+It queries every reachable node to report its internal view of the consensus state.
+This is the primary command for diagnosing "split-brain" scenarios, stuck elections, or nodes falling behind.
+
+.Utilizing the `status` command.
+**Usage:**
+[source,bash]
+----
+raft status [OPTIONS]
+----
+
+**Options:**
+
+* `-raft-id <ID>`: Filter the response to show only a specific node. Useful for large clusters where you only care about a specific node.
+
+**Sample Output:**
+
+.Sample JSON output of the `status` command. The output is a JSON array containing the response of each node. This example contains only a single response for simplification.
+[source,json]
+----
+[
+  {
+    "address":"192.168.100.106:43750",
+    "raft-id":"A",
+    "response":{
+      "last-applied":351,
+      "node":"A",
+      "leader":"A",
+      "role":"Leader",
+      "commit-index":351,
+      "members":[
+        "A",
+        "B",
+        "C"
+      ],
+      "term":1
+    }
+  }
+]
+----
+
+**Key Output Fields:**
+
+* `raft-id`: The unique identifier of the node.
+* `role`: The current Raft role (`Leader`, `Follower`, or `Candidate`). A healthy cluster has exactly one Leader.
+* `term`: The current election term. All nodes should theoretically be on the same term; a divergence indicates a partition or election in progress.
+* `leader`: The Raft ID of the node that this member believes is the current leader.
+* `commit-index`: The index of the last log entry committed to the state machine.
+* `last-applied`: The index of the last log entry actually applied to the state machine.
+
+**Examples:**
+
+. **Verify Cluster Leadership:**
++
+Ensure that exactly one node is currently acting as the Leader.
++
+[source,bash]
+----
+# Count the number of leaders (Target: 1)
+raft status --format JSON | jq '[.[] | select(.response.role == "Leader")] | length'
+----
+
+. **Check for Term Consistency:**
++
+List all distinct terms seen in the cluster. If multiple terms are returned, the cluster views are divergent.
++
+[source,bash]
+----
+# Should return a single number (e.g., [5])
+raft status --format JSON | jq '[.[].response.term] | unique'
+----
+
+. **Identify Lagging Followers:**
++
+Compare the `commit-index` across nodes to see if any follower is significantly behind the leader.
++
+[source,bash]
+----
+# Display ID and Commit Index for all nodes
+raft status --format JSON | jq '.[] | {id: .["raft-id"], commit: .response["commit-index"]}'
+----
+
+**Interpreting the Data:**
+
+[cols="1,3"]
+|===
+| Scenario | What to look for
+
+| **Healthy Cluster**
+| Exactly **one** node has `role: Leader`. All nodes show the same `term`. `commit-index` is identical (or very close) across all nodes.
+
+| **Split Brain**
+| You see **multiple nodes** with `role: Leader` (usually with different `term` values). This indicates a network partition.
+
+| **Lagging Follower**
+| One node shows a `commit-index` significantly lower than the leader. This node is catching up (or stuck) and might delay reaching quorum.
+
+| **Stuck State Machine**
+| `commit-index` is increasing, but `last-applied` is stuck at a lower number. This means the application logic is blocking or failing to process updates.
+|===
+
+=== Metrics
+
+The `metrics` command provides deep insight into the performance characteristics of the Raft protocol.
+It exposes internal counters and timers that are critical for identifying bottlenecks in disk I/O, network latency, or state machine application.
+
+.Utilizing the `metrics` command.
+**Usage:**
+[source,bash]
+----
+raft metrics [OPTIONS]
+----
+
+**Sample Output:**
+
+.Sample JSON output of the `metrics` command. The output is a JSON array containing the response of each node. This example contains only a single response for simplification.
+[source,json]
+----
+[
+  {
+    "address":"192.168.100.106:43750",
+    "raft-id":"A",
+    "response":{
+      "total-nodes":3,
+      "processing-metrics":{
+        "p99":"4.19ms",
+        "max-latency":"10.11ms",
+        "avg-latency":"2.31ms",
+        "p95":"3.45ms",
+        "total-sample":351
+      },
+      "replication-metrics":{
+        "p99":"4.12ms",
+        "max-latency":"9.77ms",
+        "avg-latency":"2.22ms",
+        "p95":"3.35ms",
+        "total-sample":351
+      },
+      "election-metrics":{
+        "leader-time-last-change":"PT8M16.15S",
+        "leader-election-time":"2026-01-31T22:12:55.004327532Z",
+        "leader-raft-id":"A"
+      },
+      "active-nodes":3
+    }
+  }
+]
+----
+
+**Metric Categories:**
+
+You can filter the output using `-category <name>` to focus on specific areas:
+
+* `processing-metrics`: Measures the time taken to process a user request from submission until applied in the state machine. High values here often heavy state machine load.
+* `replication-metrics`: Measures the time taken to replicate log entries to followers until committed. High values usually indicate network latency or slow disk I/O.
+* `election-metrics`: Provides data on the last leader election, including timestamps and the current leader's ID.
+
+**Examples:**
+
+. **Monitor Replication Latency:**
++
+Check the 99th percentile (p99) latency for log replication. This helps ensure that followers are acknowledging entries quickly enough for high-throughput commits.
++
+[source,bash]
+----
+# Extract p99 replication latency for the active Leader
+# (Nodes with 0 samples are followers who don't replicate to others)
+raft metrics -category replication-metrics --format JSON | \
+  jq '.[] | select(.response["replication-metrics"]["total-sample"] > 0) | {id: .["raft-id"], p99: .response["replication-metrics"].p99}'
+----
+
+. **Analyze Processing Delays:**
++
+If the cluster feels sluggish, check the average local processing time.
++
+[source,bash]
+----
+# Show average latency for all nodes
+raft metrics -category processing-metrics --format JSON | \
+  jq '.[] | {id: .["raft-id"], avg: .response["processing-metrics"]["avg-latency"]}'
+----
+
+. **Verify Last Leader Election:**
++
+See when the current leader was elected to determine if the cluster has been stable or flapping.
++
+[source,bash]
+----
+# Get the timestamp of the last election
+raft metrics -category election-metrics --format JSON | \
+  jq '.[0].response["election-metrics"]["leader-election-time"]'
+----

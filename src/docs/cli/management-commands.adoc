@@ -1,0 +1,142 @@
+== Management Commands
+
+Management commands are powerful tools designed to alter the state and configuration of your Raft cluster.
+Unlike monitoring commands, which simply observe, these operations execute administrative actions that affect how the cluster functions—such as changing the voting membership or invoking low-level diagnostic operations.
+
+While these commands are designed to be scriptable for automation (e.g., auto-scaling groups), they must be used with caution.
+Incorrect usage can impact the cluster's availability or consensus stability.
+
+=== Interactive Safety
+To prevent accidental outages, state-changing commands (specifically membership changes) are **interactive by default**.
+The CLI will display the proposed change and wait for user confirmation (`y/N`) before proceeding.
+
+For automated scripts where no user is present, you can bypass this safety check using the `--force` flag.
+
+.Example of bypassing the command interactive confirmation.
+[source,bash]
+----
+# Example: Bypassing the prompt for automation
+raft member remove node-1 --force
+----
+
+=== Membership Management
+
+The `member` command manages the **Raft Voting Configuration**.
+
+In a Raft cluster, membership is distinct from simple network connectivity.
+A node can be connected to the cluster (JGroups View) but be a "Learner" that replicates logs without having the right to vote.
+The `member` command controls who has the right to vote.
+
+**How it works:**
+JGroups Raft implements **single-shot membership changes**.
+This means you can only add or remove **one node at a time**.
+This safety constraint ensures that the cluster does not enter an unstable state where a majority cannot be established during the transition.
+
+[WARNING]
+====
+**Danger Zone:**
+Modifying membership changes the size of the **Quorum** (the majority required to commit logs).
+
+* **Removing nodes:** Removing a member reduces the replication factor. If you remove too many nodes (e.g., going from 3 nodes to 2), you may lose the ability to tolerate node failures, as the remaining nodes must all be online to form a quorum.
+* **Adding nodes:** Adding a node increases the quorum requirement. Ensure the new node is healthy and caught up before adding it, otherwise, you might stall the cluster and lose availability.
+====
+
+==== List Members (`list`)
+Displays the current configuration of **Voting Members**.
+These are the nodes that actively participate in elections and log replication.
+
+[source,bash]
+----
+raft member list
+----
+
+*Note: Nodes visible in `raft status` but missing from this list are Learners (non-voting members).*
+
+==== Add Member (`add`)
+Promotes a specific node to a Voting Member.
+
+Use this command when scaling up the cluster or replacing a permanently failed node.
+Once added, the node will immediately count towards the quorum calculation.
+
+[source,bash]
+----
+# Syntax: raft member add <RAFT_ID>
+raft member add Node-C
+----
+
+[WARNING]
+====
+Be careful adding a fresh node to the cluster.
+A fresh node needs to catch up all replicated entries before accepting new operations.
+Failures could lead to loss of availability even with a quorum running until the nodes catch up.
+====
+
+
+[TIP]
+====
+.Raft ID vs Address
+Ensure you use the **Raft ID** (e.g., "A", "Node-1") and not the IP address. You can find the correct ID by running `raft status`.
+The **Raft ID** must be unique across the cluster.
+====
+
+==== Remove Member (`remove`)
+Removes a node from the voting configuration, demoting it or acknowledging its departure.
+
+Use this command to decommission a server or to restore quorum size after a node has permanently failed.
+
+[source,bash]
+----
+# Syntax: raft member remove <RAFT_ID>
+raft member remove Node-A
+----
+
+==== Verifying Changes
+After adding or removing a node, it is good practice to verify the new configuration and cluster health:
+
+[source,bash]
+----
+# 1. Check the voting list
+raft member list
+
+# 2. Check that a Leader still exists and terms are stable
+raft status
+----
+
+=== Raw Probe (`probe`)
+
+The `probe` command acts as a bridge to the underlying **JGroups Probe** functionality.
+It allows you to send raw diagnostic requests directly to the cluster, bypassing the higher-level CLI logic.
+
+This is useful for invoking standard JGroups diagnostic handlers or custom operations registered by your application.
+For a full list of capabilities, refer to the http://jgroups.org/manual5/index.html#Probe[JGroups Probe Documentation].
+
+**Usage:**
+Use the `--` separator to pass the raw request string correctly.
+
+[source,bash]
+----
+raft probe -- <REQUEST>
+----
+
+**Common Probe Requests:**
+
+* **`jmx`**: Dumps JMX attributes from the nodes. Useful for inspecting thread pools, memory usage, or internal protocol stats without a JMX connection.
++
+[source,bash]
+----
+raft probe -- jmx=UDP.oob,thread_pool
+----
+
+* **`props`**: Returns the configuration properties of the running JGroups protocols (e.g., thread pool sizes, timeout settings).
++
+[source,bash]
+----
+raft probe -- props
+----
+
+* **`op`**: Invokes a JMX operation on a managed bean.
++
+[source,bash]
+----
+raft probe -- op=UDP.dumpTimerTasks
+----

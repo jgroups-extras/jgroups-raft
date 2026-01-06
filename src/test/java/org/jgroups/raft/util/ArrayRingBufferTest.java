@@ -5,17 +5,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.jgroups.Global;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.testng.annotations.Test;
-
 import java.util.HashMap;
 import java.util.Map;
 
+import org.testng.annotations.Test;
+
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class ArrayRingBufferTest {
-
-    private static final Logger LOGGER = LogManager.getLogger(ArrayRingBufferTest.class);
 
     public void testShouldEnlargeItWithGaps() {
         ArrayRingBuffer<Integer> rb = new ArrayRingBuffer<>(1);
