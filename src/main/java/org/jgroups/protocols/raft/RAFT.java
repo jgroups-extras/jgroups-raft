@@ -352,6 +352,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             ((LogCache)log_impl).resetStats();
         drained_total.reset(); drained_avg.clear(); drained_down.reset(); drained_up.reset();
         avg_append_entries_batch_size.clear();
+        systemMetricsTracker = stats ? new SystemMetricsTracker() : null;
     }
 
     @Property(description="Max size of the log cache (0 disables the log cache)",type=AttributeType.BYTES)

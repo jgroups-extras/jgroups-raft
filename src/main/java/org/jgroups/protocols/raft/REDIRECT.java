@@ -124,8 +124,13 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     public void start() throws Exception {
         super.start();
 
-        if (stats && systemMetricsTracker == null)
+        if (raft.statsEnabled() && systemMetricsTracker == null)
             systemMetricsTracker = new SystemMetricsTracker();
+    }
+
+    @Override
+    public void resetStats() {
+        systemMetricsTracker = raft.statsEnabled() ? new SystemMetricsTracker() : null;
     }
 
     @Override
@@ -338,7 +343,8 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
         public RedirectRequest() {
             this.cf = new CompletableFuture<>();
-           USER_START_NANOS.set(this, raft.timeService().nanos());
+            if (systemMetricsTracker != null)
+                USER_START_NANOS.set(this, raft.timeService().nanos());
         }
 
         public void accept(Message msg, RedirectHeader hdr) {

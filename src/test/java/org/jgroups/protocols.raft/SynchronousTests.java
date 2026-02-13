@@ -68,6 +68,7 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
     protected Protocol[] baseProtocolStackForNode(String name) throws Exception {
         return new Protocol[] {
                 createNewRaft(name),
+                createRedirect()
         };
     }
 

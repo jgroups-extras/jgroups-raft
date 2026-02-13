@@ -3,6 +3,7 @@ package org.jgroups.raft.tests.harness;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.DummyStateMachine;
 import org.jgroups.stack.Protocol;
@@ -307,7 +308,14 @@ public abstract class AbstractRaftTest {
                 .logClass(getRaftLogClass())
                 .stateMachine(new DummyStateMachine())
                 .logPrefix(String.format("%s-%s", raftId, clusterName()));
+        r.enableStats(false);
         amendRAFTConfiguration(r);
+        return r;
+    }
+
+    protected final REDIRECT createRedirect() {
+        REDIRECT r = new REDIRECT();
+        r.enableStats(false);
         return r;
     }
 

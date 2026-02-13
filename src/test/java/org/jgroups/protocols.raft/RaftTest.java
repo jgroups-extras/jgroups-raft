@@ -60,7 +60,7 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
                 new GMS().setJoinTimeout(1000),
                 new FRAG2(),
                 createNewRaft(name),
-                new REDIRECT()
+                createRedirect()
         };
     }
 

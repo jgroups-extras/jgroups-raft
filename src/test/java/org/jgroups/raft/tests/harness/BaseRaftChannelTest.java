@@ -166,7 +166,7 @@ public class BaseRaftChannelTest extends AbstractRaftTest {
      */
     @Override
     protected Protocol[] baseProtocolStackForNode(String name) throws Exception {
-        return Util.getTestStack(createNewElectionAndDecorate(), createNewRaft(name), new REDIRECT());
+        return Util.getTestStack(createNewElectionAndDecorate(), createNewRaft(name), createRedirect());
     }
 
     /**

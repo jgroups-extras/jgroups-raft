@@ -111,6 +111,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         metrics = metricsEnabled
                 ? new JGroupsRaftMetricsCollector(raft, election)
                 : JGroupsRaftMetrics.disabled();
+        raft.enableStats(metricsEnabled);
 
         // The state is just a view over the RAFT protocol.
         // None of the values should be writable from the outside.
