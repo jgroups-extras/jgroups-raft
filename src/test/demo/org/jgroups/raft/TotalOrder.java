@@ -3,6 +3,8 @@ package org.jgroups.raft;
 import org.jgroups.JChannel;
 import org.jgroups.Receiver;
 import org.jgroups.View;
+import org.jgroups.jmx.JmxConfigurator;
+import org.jgroups.raft.configuration.RuntimeProperties;
 import org.jgroups.util.Util;
 
 import java.awt.BorderLayout;
@@ -23,8 +25,12 @@ import java.awt.Panel;
 import java.awt.Point;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.nio.ByteBuffer;
+import java.util.Map;
+
+import javax.management.MBeanServer;
 
 import org.infinispan.protostream.SerializationContextInitializer;
 import org.infinispan.protostream.annotations.Proto;
@@ -187,6 +193,7 @@ public class TotalOrder extends Frame {
                     .withJChannel(channel)
                     .withClusterName("total-order")
                     .registerSerializationContextInitializer(new TotalOrderSerializationInitializerImpl())
+                    .withRuntimeProperties(RuntimeProperties.from(Map.of(JGroupsRaftMetrics.METRICS_ENABLED.name(), "true")))
                     .registerMarshaller(new JGroupsRaftCustomMarshaller<int[][]>() {
                         @Override
                         public Class<? extends int[][]> javaClass() {
@@ -228,6 +235,9 @@ public class TotalOrder extends Frame {
                     })
                     .build();
             raft.start();
+
+            MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+            JmxConfigurator.registerChannel(channel, server, "jgroups", channel.getClusterName(), true);
         } catch(Exception e) {
             e.printStackTrace(System.err);
             System.exit(-1);

@@ -206,9 +206,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @Property(description="Max size in items the processing queue can have",type=AttributeType.SCALAR)
     protected int                       processing_queue_max_size=9182;
 
-    @Property(description = "Collect system metrics")
-    protected boolean                   collect_system_metrics = false;
-
 
     /** All requests are added to this queue; a single thread processes this queue - hence no synchronization issues */
     protected BlockingQueue<BaseRequest>    processing_queue;
@@ -398,13 +395,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return log_impl instanceof LogCache? ((LogCache)log_impl).hitRatio() : 0;
     }
 
-    @ManagedAttribute(description = "Mean latency of replication in nanoseconds")
+    @ManagedAttribute(description = "Mean latency of replication in nanoseconds", type = AttributeType.TIME, unit = TimeUnit.NANOSECONDS)
     public double replicationMeanLatency() {
         if (systemMetricsTracker == null) return -1;
         return systemMetricsTracker.getReplicationLatency().getAvgLatency();
     }
 
-    @ManagedAttribute(description = "Mean latency of user operations in nanoseconds")
+    @ManagedAttribute(description = "Mean latency of user operations in nanoseconds", type = AttributeType.TIME, unit = TimeUnit.NANOSECONDS)
     public double userOperationMeanLatency() {
         if (systemMetricsTracker == null) return -1;
         return systemMetricsTracker.getCommandProcessingLatency().getAvgLatency();
@@ -640,7 +637,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             log_impl.init(log_name, args);
         }
 
-        if (collect_system_metrics && systemMetricsTracker == null)
+        if (stats && systemMetricsTracker == null)
             systemMetricsTracker = new SystemMetricsTracker();
         if (timeService == null)
             timeService = TimeService.create(systemMetricsTracker != null);
@@ -696,7 +693,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             if(synchronous)
                 handleUpRequest(msg, hdr);
             else
-                add(new UpRequest(msg, hdr));
+                add(requestFactory.createUpRequest(msg, hdr));
             return null;
         }
         return up_prot.up(msg);
@@ -711,7 +708,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 if(synchronous)
                     handleUpRequest(msg, hdr);
                 else
-                    add(new UpRequest(msg, hdr));
+                    add(requestFactory.createUpRequest(msg, hdr));
             }
         }
         if(!batch.isEmpty())
