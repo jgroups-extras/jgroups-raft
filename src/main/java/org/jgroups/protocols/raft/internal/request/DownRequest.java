@@ -51,14 +51,19 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
     }
 
     @Override
-    public boolean complete(byte[] result) {
+    public final boolean complete(byte[] result) {
         completeTrackingOperations();
         super.complete(result);
         return future.complete(result);
     }
 
     @Override
-    public boolean failed(Throwable t) {
+    public final boolean completeExceptionally(Throwable ex) {
+        return failed(ex);
+    }
+
+    @Override
+    public final boolean failed(Throwable t) {
         completeTrackingOperations();
         super.completeExceptionally(t);
         return future.completeExceptionally(t);

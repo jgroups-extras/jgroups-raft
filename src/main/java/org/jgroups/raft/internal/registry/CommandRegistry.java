@@ -1,13 +1,5 @@
 package org.jgroups.raft.internal.registry;
 
-import java.lang.reflect.Method;
-import java.lang.reflect.Type;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-
 import org.jgroups.raft.JGroupsRaftStateMachine;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.StateMachineRead;
@@ -15,6 +7,14 @@ import org.jgroups.raft.StateMachineWrite;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.JRaftReadCommand;
 import org.jgroups.raft.internal.command.JRaftWriteCommand;
+
+import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registry of commands that can be executed on a {@link StateMachine}.

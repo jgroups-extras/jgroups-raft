@@ -46,6 +46,10 @@ public final class RaftCommand {
         return input;
     }
 
+    public boolean isRead() {
+        return command.isRead();
+    }
+
     @ProtoField(number = 2, name = "input", collectionImplementation = ArrayList.class)
     List<ObjectWrapper<Object>> inputWrapper() {
         if (input == null || input.length == 0) {

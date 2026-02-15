@@ -1,9 +1,9 @@
 package org.jgroups.raft.internal.registry;
 
+import org.jgroups.raft.internal.command.JRaftCommand;
+
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
-
-import org.jgroups.raft.internal.command.JRaftCommand;
 
 record CommandMetadata(long id, int version, Method method, CommandSchema inputSchema, CommandSchema outputSchema) {
 
@@ -12,8 +12,10 @@ record CommandMetadata(long id, int version, Method method, CommandSchema inputS
 
         if (response == null) return null;
 
-        if (!outputSchema.isAcceptable(response))
-            throw new IllegalStateException("Invalid output type: " + response.getClass());
+        if (!outputSchema.isTypeAllowed(response)) {
+            String m = String.format("%s:(id=%d, v=%d)", method.getName(), id, version);
+            throw new IllegalStateException(String.format("Invalid response format for method %s. Expected: %s but got %s", m, outputSchema.type().getTypeName(), response.getClass().getName()));
+        }
 
         @SuppressWarnings("unchecked")
         O output = (O) response;
@@ -21,8 +23,11 @@ record CommandMetadata(long id, int version, Method method, CommandSchema inputS
     }
 
     void validate(Method method, JRaftCommand command) {
+        if (id != command.id()) {
+            throw new IllegalStateException(String.format("Command id mismatch. Expected: %s but got %s", this, command));
+        }
         if (version != command.version())
-            throw new IllegalArgumentException(String.format("Command version does not match: %d is not %d", command.version(), version));
+            throw new IllegalStateException(String.format("Command version mismatch. Expected: %s but got %s", this, command));
 
         // TODO: ensure input and output types match the schema
         /*if (!inputSchema.isTypeAcceptable(command.inputType()))
