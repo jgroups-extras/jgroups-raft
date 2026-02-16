@@ -13,8 +13,8 @@ import java.util.Objects;
  * <p>
  * This record encapsulates the reflection {@link Type} of a method's parameter or return value of method with the
  * {@link org.jgroups.raft.internal.command.JRaftWriteCommand} or {@link org.jgroups.raft.internal.command.JRaftReadCommand}
- * annotations. It provides validation mechanisms utilized both during runtime to ensure data complies with the API
- * contract, and during system restart to verify compatibility between the persisted schema and the current Java definitions.
+ * annotations. It provides validation mechanisms utilized during system restart to verify compatibility between the persisted
+ * schema and the current Java definitions.
  * </p>
  *
  * @since 2.0
@@ -24,28 +24,12 @@ import java.util.Objects;
 record CommandSchema(Type type) {
 
     /**
-     * Checks whether the provided object is an acceptable instance of this schema's type.
-     *
-     * <p>
-     * This evaluation accounts for inheritance and generic bounds (e.g., allowing subclasses or interface implementations).
-     * This is utilized during runtime to assert that the request payload or the response of the state machine complies
-     * with the defined contract in the state machine API.
-     * </p>
-     *
-     * @param obj The object to validate against the schema.
-     * @return {@code true} if the object is of an acceptable type, {@code false} otherwise.
-     */
-    public boolean isTypeAllowed(Object obj) {
-        return isObjectOfType(obj, type);
-    }
-
-    /**
      * Verifies if the provided class is an exact type match to this schema.
      *
      * <p>
-     * Unlike {@link #isTypeAllowed(Object)}, this strictly checks for type equivalence rather than assignability.
-     * This is utilized after a system restart to validate that the state machine schema stored on disk perfectly matches
-     * the current Java class, verifying backwards compatibility.
+     * This method strictly checks for type equivalence rather than assignability. This is utilized after a system restart
+     * to validate that the state machine schema stored on disk perfectly matches the current Java class, verifying
+     * backwards compatibility.
      * </p>
      *
      * @param other The class to compare against this schema's type.
@@ -117,108 +101,6 @@ record CommandSchema(Type type) {
             return isPrimitiveMatch(a, b);
 
         return false;
-    }
-
-    /**
-     * Recursively evaluates if an instantiated object is assignable to a specific reflection type.
-     *
-     * @param obj  The object to evaluate.
-     * @param type The target reflection type.
-     * @return {@code true} if the object is an instance of the type or satisfies its bounds.
-     */
-    private static boolean isObjectOfType(Object obj, Type type) {
-        if (type instanceof Class<?> clazz) {
-            if (clazz.isPrimitive())
-                return isPrimitiveMatch(obj, clazz);
-
-            return clazz.isInstance(obj);
-        }
-
-        if (type instanceof ParameterizedType param) {
-            Class<?> rawType = (Class<?>) param.getRawType();
-            return rawType.isInstance(obj);
-        }
-
-        if (type instanceof GenericArrayType arrType) {
-            if (obj == null || !obj.getClass().isArray())
-                return false;
-
-            Type componentType = arrType.getGenericComponentType();
-            Class<?> arrComponentClass = obj.getClass().getComponentType();
-            return isClassAssignable(arrComponentClass, componentType);
-        }
-
-        if (type instanceof TypeVariable<?> generic) {
-            for (Type bound : generic.getBounds()) {
-                if (!isObjectOfType(obj, bound))
-                    return false;
-            }
-            return true;
-        }
-
-        if (type instanceof WildcardType wildcard) {
-            for (Type bound : wildcard.getUpperBounds()) {
-                if (!isObjectOfType(obj, bound))
-                    return false;
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Recursively evaluates if a class is an assignable subclass of a reflection type.
-     *
-     * <p>
-     * This is specifically utilized for array evaluation where a concrete object instance
-     * of the array's component is not available.
-     * </p>
-     *
-     * @param clazz The class to evaluate (e.g., an array's component type).
-     * @param type  The target reflection type bounds.
-     * @return {@code true} if the class satisfies the bounds.
-     */
-    private static boolean isClassAssignable(Class<?> clazz, Type type) {
-        if (type instanceof Class<?> c)
-            return c.isAssignableFrom(clazz);
-
-        if (type instanceof ParameterizedType p)
-            return isClassAssignable(clazz, p.getRawType());
-
-        if (type instanceof TypeVariable<?> generic) {
-            for (Type bound : generic.getBounds()) {
-                if (!isClassAssignable(clazz, bound))
-                    return false;
-            }
-            return true;
-        }
-
-        if (type instanceof WildcardType wildcard) {
-            for (Type bound : wildcard.getUpperBounds()) {
-                if (!isClassAssignable(clazz, bound))
-                    return false;
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Checks if an object matches a primitive class, accounting for auto-boxing.
-     *
-     * @param obj           The object to check.
-     * @param primitiveType The primitive class (e.g., int.class).
-     * @return {@code true} if the object matches the primitive type.
-     */
-    private static boolean isPrimitiveMatch(Object obj, Class<?> primitiveType) {
-        if (obj == null) return primitiveType == void.class || primitiveType == Void.class;
-
-        Class<?> objClass = obj.getClass();
-
-        // Map primitive types to their wrapper classes
-        return isPrimitiveMatch(objClass, primitiveType);
     }
 
     /**

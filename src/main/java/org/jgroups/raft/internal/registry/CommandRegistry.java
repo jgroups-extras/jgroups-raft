@@ -109,12 +109,12 @@ public class CommandRegistry<T> {
         metadata.validate(null, command);
     }
 
-    public <O> ReplicatedMethodWrapper<O> getCommand(long id) {
+    public ReplicatedMethodWrapper getCommand(long id) {
         CommandMetadata metadata = registry.get(id);
         if (metadata == null)
             throw new IllegalStateException("Unknown command id: " + id);
 
-        return in -> metadata.submit(stateMachine, in);
+        return metadata;
     }
 
     private JRaftCommand createWriteCommand(StateMachineWrite write) {
@@ -133,7 +133,7 @@ public class CommandRegistry<T> {
         Type[] parameterTypes = method.getGenericParameterTypes();
         Type inputType = parameterTypes.length > 0 ? parameterTypes[0] : null;
         Type outputType = method.getGenericReturnType();
-        return new CommandMetadata(id, version, method, createCommandSchema(inputType), createCommandSchema(outputType));
+        return new CommandMetadata(stateMachine, id, version, method, createCommandSchema(inputType), createCommandSchema(outputType));
     }
 
     private CommandSchema createCommandSchema(Type type) {

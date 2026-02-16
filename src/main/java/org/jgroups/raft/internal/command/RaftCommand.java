@@ -60,6 +60,16 @@ public final class RaftCommand {
             return null;
         }
 
+        // Let's try and handle some common cases with 1 and two elements.
+        // Otherwise, we just create a stream and wrap everything.
+        if (input.length == 1) {
+            return List.of(ObjectWrapper.create(input[0]));
+        }
+
+        if (input.length == 2) {
+            return List.of(ObjectWrapper.create(input[0]), ObjectWrapper.create(input[1]));
+        }
+
         return Stream.of(input)
                 .map(ObjectWrapper::create)
                 .toList();

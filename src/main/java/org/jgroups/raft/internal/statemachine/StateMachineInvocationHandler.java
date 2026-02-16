@@ -94,7 +94,7 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
         // If a read does not require strict Raft consensus, execute it immediately on the local state machine.
         if (wrapper.isRead()) {
             if (options instanceof JGroupsRaftReadCommandOptions opts && !opts.linearizable()) {
-                ReplicatedMethodWrapper<?> rmw = registry.getCommand(command.id());
+                ReplicatedMethodWrapper rmw = registry.getCommand(command.id());
                 Object res;
 
                 // CRITICAL: Synchronize on the concrete implementation's intrinsic lock.

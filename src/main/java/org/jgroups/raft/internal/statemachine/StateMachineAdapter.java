@@ -64,7 +64,7 @@ final class StateMachineAdapter<T> implements StateMachine {
         if (command == null)
             throw new IllegalStateException("command cannot be null");
 
-        ReplicatedMethodWrapper<?> method = registry.getCommand(command.id());
+        ReplicatedMethodWrapper method = registry.getCommand(command.id());
         Object res;
 
         // CRITICAL: Synchronize over the concrete implementation of the state machine.

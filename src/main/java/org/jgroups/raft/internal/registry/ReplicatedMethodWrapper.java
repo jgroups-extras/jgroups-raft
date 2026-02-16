@@ -5,12 +5,11 @@ import java.lang.reflect.InvocationTargetException;
 /**
  * Wraps a method invocation to be executed in the {@link org.jgroups.raft.StateMachine}.
  *
- * @param <O> The output type of the method.
  * @since 2.0
  * @author José Bolina
  */
 @FunctionalInterface
-public interface ReplicatedMethodWrapper<O> {
+public interface ReplicatedMethodWrapper {
 
     /**
      * Invokes the method in the {@link org.jgroups.raft.StateMachine} annotated with {@link org.jgroups.raft.StateMachineRead}
@@ -25,6 +24,7 @@ public interface ReplicatedMethodWrapper<O> {
      * @return The output of the method execution.
      * @throws InvocationTargetException If is failed to invoke the method through reflection.
      * @throws IllegalAccessException If the method is not accessible.
+     * @param <O> The output type of the method.
      */
-    O submit(Object ... input) throws InvocationTargetException, IllegalAccessException;
+    <O> O submit(Object ... input) throws InvocationTargetException, IllegalAccessException;
 }
