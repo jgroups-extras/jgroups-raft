@@ -58,7 +58,7 @@ public sealed interface JGroupsRaftCommandOptions permits JGroupsRaftReadCommand
      */
     final class ReadBuilder {
         private boolean ignoreReturnValue;
-        private boolean linearizable;
+        private boolean linearizable = true;
 
         /**
          * Sets whether to ignore the return value of the read operation.

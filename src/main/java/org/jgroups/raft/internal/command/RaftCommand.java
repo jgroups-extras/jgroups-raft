@@ -50,6 +50,10 @@ public final class RaftCommand {
         return command.isRead();
     }
 
+    public JGroupsRaftCommandOptions options() {
+        return options;
+    }
+
     @ProtoField(number = 2, name = "input", collectionImplementation = ArrayList.class)
     List<ObjectWrapper<Object>> inputWrapper() {
         if (input == null || input.length == 0) {

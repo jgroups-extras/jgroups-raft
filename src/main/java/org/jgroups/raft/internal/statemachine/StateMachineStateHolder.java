@@ -11,6 +11,18 @@ import org.infinispan.protostream.annotations.ProtoFactory;
 import org.infinispan.protostream.annotations.ProtoField;
 import org.infinispan.protostream.annotations.ProtoTypeId;
 
+/**
+ * Hold the internal state of a Raft state machine during snapshot operations for serialization and deserialization.
+ *
+ * <p>
+ * This class encapsulates a mapping between a field's unique {@link org.jgroups.raft.StateMachineField#order()} and its
+ * actual runtime value. By leveraging {@link ObjectWrapper}, it safely handles the serialization of polymorphic objects
+ * before delegating to ProtoStream.
+ * </p>
+ *
+ * @since 2.0
+ * @author José Bolina
+ */
 @ProtoTypeId(ProtoStreamTypes.STATE_MACHINE_STATE_HOLDER)
 public final class StateMachineStateHolder {
 
@@ -27,6 +39,12 @@ public final class StateMachineStateHolder {
         this.state = state;
     }
 
+    /**
+     * Exposes the state map to ProtoStream for serialization, automatically wrapping the raw objects into
+     * {@link ObjectWrapper} instances to ensure complex or polymorphic types are properly encoded.
+     *
+     * @return A map of order IDs to wrapped objects.
+     */
     @SuppressWarnings("rawtypes")
     @ProtoField(number = 1, name = "state", mapImplementation = HashMap.class)
     Map<Integer, ObjectWrapper> internalState() {

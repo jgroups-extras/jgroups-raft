@@ -1,18 +1,46 @@
 package org.jgroups.raft.internal.statemachine;
 
+import org.jgroups.raft.StateMachineField;
+import org.jgroups.raft.internal.serialization.Serializer;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
 import java.util.Map;
 
-import org.jgroups.raft.StateMachineField;
-import org.jgroups.raft.internal.serialization.Serializer;
-
+/**
+ * Automates the extraction and restoration of a state machine's internal state for automatic Raft snapshots.
+ *
+ * <p>
+ * This utility relies on Java Reflection to scan the concrete state machine instance for fields annotated with
+ * {@link StateMachineField}. It maps these fields based on their defined order and provides mechanisms to easily serialize
+ * the current state into a byte array, or deserialize a byte array to overwrite the current fields.
+ *
+ * @since 2.0
+ * @author José Bolina
+ * @see StateMachineField
+ * @param <T> The type of the concrete state machine instance.
+ */
 final class StateMachineSnapshotter<T> {
     private final T concrete;
     private final Snapshotter snapshotter;
     private final Serializer serializer;
 
+    /**
+     * Constructs the snapshotter and pre-computes the reflection metadata.
+     *
+     * <p>
+     * During instantiation, this validates the state machine's structure, ensuring that:
+     * <ul>
+     *   <li>No two annotated fields share the same order ID.</li>
+     *   <li>No annotated field is declared as {@code final}, as they must be mutable during restoration.</li>
+     * </ul>
+     * </p>
+     *
+     * @param concrete   The concrete state machine instance.
+     * @param serializer The serializer used to encode/decode the {@link StateMachineStateHolder}.
+     * @throws IllegalStateException If duplicate order IDs or final fields are detected.
+     */
     StateMachineSnapshotter(T concrete, Serializer serializer) {
         this.concrete = concrete;
         this.serializer = serializer;
@@ -38,16 +66,39 @@ final class StateMachineSnapshotter<T> {
         this.snapshotter = new Snapshotter(fields);
     }
 
+    /**
+     * Serializes the state machine snapshot.
+     *
+     * <p>
+     * Extracts the annotated fields from the concrete state machine and packages them into a {@link StateMachineStateHolder},
+     * and serializes the result into a byte array.
+     * </p>
+     *
+     * @return A byte array representing the serialized snapshot of the state machine.
+     */
     byte[] writeSnapshot() {
         StateMachineStateHolder holder = snapshotter.write();
         return serializer.serialize(holder);
     }
 
+    /**
+     * Restores the state machine from a snapshot.
+     *
+     * <p>
+     * Deserializes a snapshot byte array into a {@link StateMachineStateHolder} and uses reflection to overwrite the
+     * annotated fields of the concrete state machine with the loaded values.
+     * </p>
+     *
+     * @param snapshot The byte array containing the serialized state.
+     */
     void readSnapshot(byte[] snapshot) {
         StateMachineStateHolder holder = serializer.deserialize(snapshot);
         snapshotter.read(holder);
     }
 
+    /**
+     * Internal helper class responsible for the direct reflection operations on the state machine instance.
+     */
     private final class Snapshotter {
         private final Map<Integer, Field> fields;
 
@@ -55,6 +106,11 @@ final class StateMachineSnapshotter<T> {
             this.fields = fields;
         }
 
+        /**
+         * Reads the current values of all mapped fields via reflection.
+         *
+         * @return A holder containing the mapped field orders and their current values.
+         */
         private StateMachineStateHolder write() {
             Map<Integer, Object> state = new HashMap<>();
             for (Map.Entry<Integer, Field> entry : fields.entrySet()) {
@@ -70,6 +126,11 @@ final class StateMachineSnapshotter<T> {
             return new StateMachineStateHolder(state);
         }
 
+        /**
+         * Writes the provided values into the mapped fields via reflection.
+         *
+         * @param holder The holder containing the snapshot data to restore.
+         */
         private void read(StateMachineStateHolder holder) {
             for (Map.Entry<Integer, Field> entry : fields.entrySet()) {
                 Field field = entry.getValue();
