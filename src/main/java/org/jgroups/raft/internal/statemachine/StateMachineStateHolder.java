@@ -30,9 +30,12 @@ public final class StateMachineStateHolder {
 
     @ProtoFactory
     static StateMachineStateHolder factory(Map<Integer, ObjectWrapper<Object>> internalState) {
-        Map<Integer, Object> map = internalState.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> ObjectWrapper.unwrap(e.getValue())));
-        return new StateMachineStateHolder(map);
+        // Utilize a HashMap to accept null values.
+        Map<Integer, Object> state = new HashMap<>();
+        for (Map.Entry<Integer, ObjectWrapper<Object>> entry : internalState.entrySet()) {
+            state.put(entry.getKey(), ObjectWrapper.unwrap(entry.getValue()));
+        }
+        return new StateMachineStateHolder(state);
     }
 
     public StateMachineStateHolder(Map<Integer, Object> state) {

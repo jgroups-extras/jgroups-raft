@@ -47,20 +47,32 @@ final class StateMachineSnapshotter<T> {
 
         Class<?> clazz = concrete.getClass();
         Map<Integer, Field> fields = new HashMap<>();
-        for (Field field : clazz.getDeclaredFields()) {
-            StateMachineField state = field.getAnnotation(StateMachineField.class);
-            if (state == null) continue;
 
-            Field prev = fields.put(state.order(), field);
-            if (prev != null) {
-                throw new IllegalStateException(String.format("State machine %s has multiple fields with order %d: %s and %s",
-                        clazz.getName(), state.order(), prev.getName(), field.getName()));
+        // Traverse the full hierarchy up to the Object.class to get all annotated fields.
+        while (clazz != null && clazz != Object.class) {
+            for (Field field : clazz.getDeclaredFields()) {
+                StateMachineField state = field.getAnnotation(StateMachineField.class);
+                if (state == null) continue;
+
+                Field prev = fields.put(state.order(), field);
+                if (prev != null) {
+                    throw new IllegalStateException(String.format("State machine %s has multiple fields with order %d: %s and %s",
+                            clazz.getName(), state.order(), prev.getName(), field.getName()));
+                }
+
+                int modifier = field.getModifiers();
+                String fullFieldName = String.format("%s#%s", clazz.getName(), field.getName());
+                if (Modifier.isFinal(modifier)) {
+                    throw new IllegalStateException(String.format("State machine %s has field %s with final modifier. The modifier is not allowed to load snapshots",
+                            concrete.getClass().getName(), fullFieldName));
+                }
+
+                if (Modifier.isStatic(modifier)) {
+                    throw new IllegalStateException(String.format("State machine %s has field %s with static modifier. The modifier is not allowed to load snapshots",
+                            concrete.getClass().getName(), fullFieldName));
+                }
             }
-
-            int modifier = field.getModifiers();
-            if (Modifier.isFinal(modifier))
-                throw new IllegalStateException(String.format("State machine %s field %s is final, which is not allowed to load snapshots",
-                        clazz.getName(), field.getName()));
+            clazz = clazz.getSuperclass();
         }
 
         this.snapshotter = new Snapshotter(fields);
