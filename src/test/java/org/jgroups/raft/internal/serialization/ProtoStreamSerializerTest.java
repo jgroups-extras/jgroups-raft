@@ -1,5 +1,8 @@
 package org.jgroups.raft.internal.serialization;
 
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
+
 import org.jgroups.Global;
 import org.jgroups.raft.JGroupsRaftCustomMarshaller;
 import org.jgroups.raft.internal.registry.SerializationRegistry;
@@ -9,13 +12,15 @@ import org.jgroups.raft.serialization.TestSerializationInitializerImpl;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class ProtoStreamSerializerTest {
@@ -37,6 +42,45 @@ public class ProtoStreamSerializerTest {
     public void testSerializingObjects() {
         TestDataHolderProto holder = new TestDataHolderProto("hello", 0, 42, new byte[16]);
         assertSerialization(holder);
+    }
+
+    @Test
+    public void testUnregisteredClassThrowsException() {
+        // Create an arbitrary class that has no ProtoStream schema or Custom Marshaller
+        class UnregisteredDummy {
+            private final String data = "secret";
+        }
+
+        UnregisteredDummy unregistered = new UnregisteredDummy();
+
+        assertThatThrownBy(() -> serializer.serialize(unregistered))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("is not serializable.");
+    }
+
+    @Test
+    public void testDeserializeNullAndEmptyBuffers() {
+        Object fromNull = serializer.deserialize(null);
+        assertThat(fromNull).isNull();
+
+        Object fromEmpty = serializer.deserialize(new byte[0]);
+        assertThat(fromEmpty).isNull();
+
+        Object toNull = serializer.deserialize(null);
+        assertThat(toNull).isNull();
+    }
+
+    @Test
+    public void testCollectionsSerialization() {
+        List<String> list = new ArrayList<>(List.of("node1", "node2", "node3"));
+        assertSerialization(list);
+
+        // See ProtoStream#514
+//        Map<String, Integer> map = Map.of("term", 5, "index", 100);
+//        assertSerialization(map);
+
+        Set<Double> set = new HashSet<>(Set.of(1.5, 2.5, 3.5));
+        assertSerialization(set);
     }
 
     public void testCustomSerializer() {
@@ -105,6 +149,12 @@ public class ProtoStreamSerializerTest {
                 { "String" },
                 { 3.1415F },
                 { 3.1415D },
+                { true },
+                { (byte) 0x0A },
+                { (short) 256 },
+                { 'R' },
+                { java.time.Instant.now() },
+                { new java.util.Date() },
                 { UUID.randomUUID() },
                 { new byte[] { 1, 2, 3, 4 } },
         };
