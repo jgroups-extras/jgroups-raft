@@ -172,15 +172,14 @@ public final class StateMachineWrapper<T> implements StateMachine {
      * @param length The length of the data
      * @param serialize_response If true, serialize and return the response, else return null
      * @return The state machine response.
-     * @throws Exception if failed to handle the command.
      */
     @Override
-    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
         return delegate.apply(data, offset, length, serialize_response);
     }
 
     @Override
-    public void readContentFrom(DataInput in) throws Exception {
+    public void readContentFrom(DataInput in) {
         delegate.readContentFrom(in);
     }
 

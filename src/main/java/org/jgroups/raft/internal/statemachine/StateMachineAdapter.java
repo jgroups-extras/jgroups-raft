@@ -1,15 +1,20 @@
 package org.jgroups.raft.internal.statemachine;
 
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.RaftCommand;
+import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.registry.ReplicatedMethodWrapper;
 import org.jgroups.raft.internal.serialization.Serializer;
 
 import java.io.DataInput;
 import java.io.DataOutput;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 
 /**
  * The internal state machine that applies successfully committed Raft operations to the concrete state machine implementation.
@@ -30,6 +35,8 @@ import java.io.DataOutput;
  * @param <T> The type of the concrete state machine implementation.
  */
 final class StateMachineAdapter<T> implements StateMachine {
+    private static final Log LOG = LogFactory.getLog(StateMachineAdapter.class);
+
     private final T delegate;
     private final CommandRegistry<T> registry;
     private final Serializer serializer;
@@ -57,7 +64,7 @@ final class StateMachineAdapter<T> implements StateMachine {
      * @return The serialized result of the local method execution, or null.
      */
     @Override
-    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
         RaftCommand rc = serializer.deserialize(data);
         JRaftCommand command = rc.command();
 
@@ -65,15 +72,15 @@ final class StateMachineAdapter<T> implements StateMachine {
             throw new IllegalStateException("command cannot be null");
 
         ReplicatedMethodWrapper method = registry.getCommand(command.id());
-        Object res;
+        RaftResponse res = null;
 
-        // CRITICAL: Synchronize over the concrete implementation of the state machine.
-        // Raft guarantees that committed commands passed to apply() are executed sequentially.
-        // However, non-linearizable read operations (handled in StateMachineInvocationHandler) bypass the Raft log and
-        // execute concurrently on the state machine.
-        // This lock ensures thread-safety between ordered write mutations and fast dirty reads.
-        synchronized (delegate) {
-            res = method.submit(rc.input());
+        try {
+            Object r = submit(rc, method);
+            if (r != null) {
+                res = RaftResponse.success(r);
+            }
+        }  catch (InvocationTargetException | IllegalAccessException e) {
+            res = RaftResponse.failure(e);
         }
 
         if (res == null)
@@ -85,12 +92,29 @@ final class StateMachineAdapter<T> implements StateMachine {
                 : null;
     }
 
+    private Object submit(RaftCommand rc, ReplicatedMethodWrapper method) throws InvocationTargetException, IllegalAccessException {
+        // CRITICAL: Synchronize over the concrete implementation of the state machine.
+        // Raft guarantees that committed commands passed to apply() are executed sequentially.
+        // However, non-linearizable read operations (handled in StateMachineInvocationHandler) bypass the Raft log and
+        // execute concurrently on the state machine.
+        // This lock ensures thread-safety between ordered write mutations and fast dirty reads.
+        synchronized (delegate) {
+            return method.submit(rc.input());
+        }
+    }
+
     @Override
-    public void readContentFrom(DataInput in) throws Exception {
-        int length = in.readInt();
-        byte[] snapshot = new byte[length];
-        in.readFully(snapshot);
-        snapshotter.readSnapshot(snapshot);
+    public void readContentFrom(DataInput in) {
+        byte[] buf;
+        try {
+            int length = in.readInt();
+            buf = new byte[length];
+            in.readFully(buf);
+        } catch (IOException e) {
+            LOG.warn("Failed to restore state machine from snapshot. Not updating state.", e);
+            return;
+        }
+        snapshotter.readSnapshot(buf);
     }
 
     @Override

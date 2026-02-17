@@ -21,39 +21,47 @@ public class ReplStateMachine<K,V> implements StateMachine {
     public static final int REMOVE = 2;
 
     @Override
-    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(data, offset, length);
-        byte command=in.readByte();
-        switch(command) {
-            case PUT:
-                K key=Util.objectFromStream(in);
-                V val=Util.objectFromStream(in);
-                V old_val;
-                synchronized(map) {
-                    old_val=map.put(key, val);
-                }
-                return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
-            case REMOVE:
-                key=Util.objectFromStream(in);
-                synchronized(map) {
-                    old_val=map.remove(key);
-                }
-                return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
-            default:
-                throw new IllegalArgumentException("command " + command + " is unknown");
+        try {
+            byte command=in.readByte();
+            switch(command) {
+                case PUT:
+                    K key=Util.objectFromStream(in);
+                    V val=Util.objectFromStream(in);
+                    V old_val;
+                    synchronized(map) {
+                        old_val=map.put(key, val);
+                    }
+                    return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
+                case REMOVE:
+                    key=Util.objectFromStream(in);
+                    synchronized(map) {
+                        old_val=map.remove(key);
+                    }
+                    return old_val == null? null : serialize_response? Util.objectToByteBuffer(old_val) : null;
+                default:
+                    throw new IllegalArgumentException("command " + command + " is unknown");
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 
-    @Override public void readContentFrom(DataInput in) throws Exception {
-        int size=Bits.readIntCompressed(in);
-        Map<K,V> tmp=new HashMap<>(size);
-        for(int i=0; i < size; i++) {
-            K key=Util.objectFromStream(in);
-            V val=Util.objectFromStream(in);
-            tmp.put(key, val);
-        }
-        synchronized(map) {
-            map.putAll(tmp);
+    @Override public void readContentFrom(DataInput in) {
+        try {
+            int size=Bits.readIntCompressed(in);
+            Map<K,V> tmp=new HashMap<>(size);
+            for(int i=0; i < size; i++) {
+                K key=Util.objectFromStream(in);
+                V val=Util.objectFromStream(in);
+                tmp.put(key, val);
+            }
+            synchronized(map) {
+                map.putAll(tmp);
+            }
+        } catch(Exception e) {
+            throw new RuntimeException(e);
         }
     }
 

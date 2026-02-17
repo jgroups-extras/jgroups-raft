@@ -4,12 +4,9 @@ import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.raft.JGroupsRaft;
 import org.jgroups.raft.JGroupsRaftRole;
 import org.jgroups.raft.JGroupsRaftStateMachine;
-import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.StateMachineWrite;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -138,7 +135,7 @@ public class NewApiReplicationBenchmark {
     }
 
     @JGroupsRaftStateMachine
-    public interface BenchmarkStateMachine extends StateMachine {
+    public interface BenchmarkStateMachine {
 
         @StateMachineWrite(id = 1)
         byte[] replicate(byte[] data);
@@ -146,12 +143,6 @@ public class NewApiReplicationBenchmark {
 
     private record EmptyStateMachine(int dataSize) implements BenchmarkStateMachine {
         private static final byte[] RESPONSE = new byte[0];
-
-        @Override
-        public void readContentFrom(DataInput in) { }
-
-        @Override
-        public void writeContentTo(DataOutput out) { }
 
         @Override
         public byte[] replicate(byte[] data) {

@@ -22,7 +22,7 @@ public class CounterStateMachine implements StateMachine {
     public int additions()    {return additions.get();}
     public int subtractions() {return subtractions.get();}
 
-    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
         int val=Bits.readInt(data, offset);
         if(val < 0)
             subtractions.incrementAndGet();
@@ -54,9 +54,11 @@ public class CounterStateMachine implements StateMachine {
         return String.valueOf(val);
     }
 
-    public void readContentFrom(DataInput in) throws Exception {
-        int val=in.readInt();
-        counter.set(val);
+    public void readContentFrom(DataInput in) {
+        try {
+            int val=in.readInt();
+            counter.set(val);
+        } catch(Exception ignore) { }
     }
 
     public void writeContentTo(DataOutput out) throws Exception {

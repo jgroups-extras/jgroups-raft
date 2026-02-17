@@ -121,43 +121,52 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
 
 
     @Override
-    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
+        try {
+            Object retval = actualApply(data, offset, length);
+            return serialize(retval, serialize_response);
+        } catch (Exception e) {
+            return serialize(e, serialize_response);
+        }
+    }
+
+    private Object actualApply(byte[] data, int offset, int length) throws Exception {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(data, offset, length);
         Command command=Command.values()[in.readByte()];
         String name=Bits.readAsciiString(in).toString();
         long val;
-        Object retval=null;
-        switch(command) {
+        return switch(command) {
             case create:
                 val=Bits.readLongCompressed(in);
-                retval=_create(name, val);
-                break;
+                yield _create(name, val);
             case delete:
                 _delete(name);
-                break;
+                yield null;
             case get:
-                retval=_get(name);
-                break;
+                yield _get(name);
             case set:
                 val=Bits.readLongCompressed(in);
                 _set(name, val);
-                break;
+                yield null;
             case addAndGet:
                 val=Bits.readLongCompressed(in);
-                retval=_add(name, val);
-                break;
+                yield _add(name, val);
             case compareAndSwap:
-                retval=_compareAndSwap(name, Bits.readLongCompressed(in), Bits.readLongCompressed(in));
-                break;
+                yield _compareAndSwap(name, Bits.readLongCompressed(in), Bits.readLongCompressed(in));
             case updateFunction:
-                retval=_update(name, Util.readGenericStreamable(in));
-                break;
-            default:
-                throw new IllegalArgumentException("command " + command + " is unknown");
-        }
-        return serialize_response? Util.objectToByteBuffer(retval) : null;
+                yield _update(name, Util.readGenericStreamable(in));
+        };
     }
 
+    private byte[] serialize(Object res, boolean serializeResponse) {
+        try {
+            return serializeResponse
+                    ? Util.objectToByteBuffer(res)
+                    : null;
+        } catch (IOException e) {
+            return null;
+        }
+    }
 
     @Override
     public void writeContentTo(DataOutput out) throws Exception {
@@ -174,15 +183,22 @@ public class CounterService implements StateMachine, RAFT.RoleChange {
     }
 
     @Override
-    public void readContentFrom(DataInput in) throws Exception {
-        synchronized (counters) {
-            counters.clear();
+    public void readContentFrom(DataInput in) {
+        Map<String, Long> restored = new HashMap<>();
+        try {
             int size = in.readInt();
             for (int i = 0; i < size; i++) {
                 AsciiString name = Bits.readAsciiString(in);
                 Long value = Bits.readLongCompressed(in);
-                counters.put(name.toString(), value);
+                restored.put(name.toString(), value);
             }
+        } catch (IOException e) {
+            return;
+        }
+
+        synchronized (counters) {
+            counters.clear();
+            counters.putAll(restored);
         }
     }
 

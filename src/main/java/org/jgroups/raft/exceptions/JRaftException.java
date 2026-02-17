@@ -27,4 +27,8 @@ public class JRaftException extends RuntimeException {
     public JRaftException(String msg, Throwable cause, boolean enableSuppression, boolean writableStackTrace) {
         super(msg, cause, enableSuppression, writableStackTrace);
     }
+
+    public static JRaftException stackless(String message) {
+        return new JRaftException(message, null, false, false);
+    }
 }

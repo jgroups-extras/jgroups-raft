@@ -1,11 +1,13 @@
 package org.jgroups.raft.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.JGroupsRaft;
 import org.jgroups.raft.JGroupsRaftRole;
-import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.tests.harness.BaseRaftChannelTest;
 
 import java.util.ArrayList;
@@ -15,10 +17,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-
-public final class JRaftTestCluster<T extends StateMachine> {
+public final class JRaftTestCluster<T> {
 
     private static final AtomicInteger CLUSTER_ID = new AtomicInteger(0);
 
@@ -32,7 +31,7 @@ public final class JRaftTestCluster<T extends StateMachine> {
         }
     }
 
-    public static <T extends StateMachine> JRaftTestCluster<T> create(Supplier<T> stateMachineFactory, Class<T> clazz, int size) {
+    public static <T> JRaftTestCluster<T> create(Supplier<T> stateMachineFactory, Class<T> clazz, int size) {
         return new JRaftTestCluster<>(stateMachineFactory, clazz, size);
     }
 
@@ -94,7 +93,7 @@ public final class JRaftTestCluster<T extends StateMachine> {
         delegate.destroy();
     }
 
-    private static final class JRaftTest<T extends StateMachine> extends BaseRaftChannelTest {
+    private static final class JRaftTest<T> extends BaseRaftChannelTest {
 
         private final T[] stateMachines;
         private final JChannel[] channels;
@@ -109,7 +108,7 @@ public final class JRaftTestCluster<T extends StateMachine> {
             this.clusterName = "cluster-test-" + CLUSTER_ID.getAndIncrement();
             createCluster(size);
 
-            stateMachines = (T[]) new StateMachine[size];
+            stateMachines = (T[]) new Object[size];
             rafts = new JGroupsRaft[size];
             channels = new JChannel[size];
 

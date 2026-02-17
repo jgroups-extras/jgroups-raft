@@ -243,7 +243,15 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
     /// ////////////////////////////////////// StateMachine callbacks /////////////////////////////////////
 
     @Override
-    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+    public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
+        try {
+            return actualApply(data, offset, length, serialize_response);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed applying operation", e);
+        }
+    }
+
+    private byte[] actualApply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
         ByteArrayDataInputStream in = new ByteArrayDataInputStream(data, offset, length);
         byte command = in.readByte();
         switch (command) {
@@ -276,17 +284,21 @@ public class ReplicatedStateMachine<K, V> implements StateMachine {
     }
 
     @Override
-    public void readContentFrom(DataInput in) throws Exception {
-        int size = Bits.readIntCompressed(in);
-        Map<K, V> tmp = new HashMap<>(size);
-        for (int i = 0; i < size; i++) {
-            K key = Util.objectFromStream(in, class_loader);
-            V val = Util.objectFromStream(in, class_loader);
-            tmp.put(key, val);
-        }
-        synchronized (map) {
-            map.clear();
-            map.putAll(tmp);
+    public void readContentFrom(DataInput in) {
+        try {
+            int size = Bits.readIntCompressed(in);
+            Map<K, V> tmp = new HashMap<>(size);
+            for (int i = 0; i < size; i++) {
+                K key = Util.objectFromStream(in, class_loader);
+                V val = Util.objectFromStream(in, class_loader);
+                tmp.put(key, val);
+            }
+            synchronized (map) {
+                map.clear();
+                map.putAll(tmp);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 

@@ -8,6 +8,7 @@ import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.exceptions.JRaftException;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.RaftCommand;
+import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.registry.ReplicatedMethodWrapper;
 import org.jgroups.raft.internal.serialization.Serializer;
@@ -17,6 +18,7 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Future;
 import java.util.function.Function;
@@ -153,7 +155,7 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
     private <O> CompletableFuture<O> submit(RaftCommand command, JGroupsRaftCommandOptions options) {
         boolean deserialize = options == null || !options.ignoreReturnValue();
         Function<byte[], O> mapper = deserialize
-                ? serializer::deserialize
+                ? this::toResponse
                 : StateMachineInvocationHandler::toNull;
         byte[] buf = serializer.serialize(command);
 
@@ -169,6 +171,21 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
         } catch (Exception e) {
             return CompletableFuture.failedFuture(e);
         }
+    }
+
+    private <R> R toResponse(byte[] buf) {
+        RaftResponse response = serializer.deserialize(buf);
+        if (response == null) {
+            return null;
+        }
+
+        if (response.isSuccess()) {
+            @SuppressWarnings("unchecked")
+            R r = (R) response.response();
+            return r;
+        }
+
+        throw new CompletionException(response.exception());
     }
 
     private static <R> R toNull(Object ignore) {

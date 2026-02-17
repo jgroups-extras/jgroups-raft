@@ -4,14 +4,11 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import org.jgroups.Global;
-import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.StateMachineField;
 import org.jgroups.raft.internal.registry.SerializationRegistry;
 import org.jgroups.raft.internal.serialization.Serializer;
 import org.jgroups.raft.serialization.TestSerializationInitializerImpl;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -197,12 +194,5 @@ public class StateMachineSnapshotterTest {
         assertThat(sm.list).isEqualTo(List.of(1, 2, 3));
     }
 
-    private interface SnapshotStateMachine extends StateMachine {
-
-        @Override
-        default void writeContentTo(DataOutput out) throws Exception { }
-
-        @Override
-        default void readContentFrom(DataInput in) throws Exception { }
-    }
+    private interface SnapshotStateMachine { }
 }

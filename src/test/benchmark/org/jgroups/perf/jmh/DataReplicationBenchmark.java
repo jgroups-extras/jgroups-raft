@@ -147,7 +147,7 @@ public class DataReplicationBenchmark {
         }
 
         @Override
-        public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+        public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
             if (data.length != dataSize)
                 throw new IllegalArgumentException(String.format("Data size does not match: %d != %d", data.length, dataSize));
 
@@ -155,7 +155,7 @@ public class DataReplicationBenchmark {
         }
 
         @Override
-        public void readContentFrom(DataInput in) throws Exception { }
+        public void readContentFrom(DataInput in) { }
 
         @Override
         public void writeContentTo(DataOutput out) throws Exception { }

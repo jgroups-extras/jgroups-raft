@@ -4,6 +4,7 @@ import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.RaftCommand;
+import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.serialization.adapter.ClassAdapter;
 import org.jgroups.raft.internal.statemachine.StateMachineStateHolder;
 
@@ -16,6 +17,7 @@ import org.infinispan.protostream.annotations.ProtoSyntax;
         includeClasses = {
                 ObjectWrapper.class,
                 RaftCommand.class,
+                RaftResponse.class,
                 JRaftCommand.UserCommand.class,
                 JGroupsRaftWriteCommandOptions.WriteImpl.class,
                 JGroupsRaftReadCommandOptions.ReadImpl.class,

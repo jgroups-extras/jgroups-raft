@@ -1,24 +1,21 @@
 package org.jgroups.raft.internal.statemachine;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.jgroups.Global;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.JGroupsRaft;
 import org.jgroups.raft.JGroupsRaftStateMachine;
-import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.StateMachineField;
 import org.jgroups.raft.StateMachineRead;
 import org.jgroups.raft.StateMachineWrite;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.util.Util;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.lang.reflect.Field;
 import java.util.function.Consumer;
 
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class JGroupsRaftSnapshotTest {
@@ -59,19 +56,13 @@ public class JGroupsRaftSnapshotTest {
     }
 
     @JGroupsRaftStateMachine
-    private interface StateMachineTest extends StateMachine {
+    private interface StateMachineTest {
 
         @StateMachineWrite(id = 1)
         void add(int value);
 
         @StateMachineRead(id = 2)
         int get();
-
-        @Override
-        default void readContentFrom(DataInput in) throws Exception { }
-
-        @Override
-        default void writeContentTo(DataOutput out) throws Exception { }
     }
 
     private final class StateMachineTestImpl implements StateMachineTest {

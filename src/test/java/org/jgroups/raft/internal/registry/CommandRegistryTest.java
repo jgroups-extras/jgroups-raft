@@ -5,12 +5,9 @@ import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import org.jgroups.Global;
 import org.jgroups.raft.JGroupsRaftStateMachine;
-import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.StateMachineRead;
 import org.jgroups.raft.StateMachineWrite;
 
-import java.io.DataInput;
-import java.io.DataOutput;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -275,12 +272,5 @@ public class CommandRegistryTest {
     }
 
     @JGroupsRaftStateMachine
-    public interface TestStateMachine extends StateMachine {
-
-        @Override
-        default void readContentFrom(DataInput in) throws Exception { }
-
-        @Override
-        default void writeContentTo(DataOutput out) throws Exception { }
-    }
+    public interface TestStateMachine { }
 }

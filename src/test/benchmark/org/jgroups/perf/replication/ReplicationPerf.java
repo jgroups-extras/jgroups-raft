@@ -1,8 +1,8 @@
 package org.jgroups.perf.replication;
 
 import org.jgroups.annotations.Property;
-import org.jgroups.perf.harness.AbstractRaftBenchmark;
 import org.jgroups.perf.CommandLineOptions;
+import org.jgroups.perf.harness.AbstractRaftBenchmark;
 import org.jgroups.perf.harness.RaftBenchmark;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.RaftHandle;
@@ -115,13 +115,13 @@ public class ReplicationPerf extends AbstractRaftBenchmark {
 
 
         @Override
-        public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) throws Exception {
+        public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
             updates++;
             return null;
         }
 
         @Override
-        public void readContentFrom(DataInput in) throws Exception { }
+        public void readContentFrom(DataInput in) { }
 
         @Override
         public void writeContentTo(DataOutput out) throws Exception { }
