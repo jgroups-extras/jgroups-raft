@@ -1,0 +1,549 @@
+= Binary Serialization Design
+:author: José Bolina
+:description: The design and implementation of the custom binary serialization system.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
+
+This document describes the custom binary serialization system introduced in jgroups-raft 2.0.
+
+== Context
+
+=== Why Custom Binary Serialization?
+
+Prior to version 2.0, jgroups-raft did not provide any automatic serialization mechanism.
+Users were responsible for serialization.
+
+In version 2.0, we introduced a new high-level API and needed an internal serialization mechanism for Raft protocol messages and user-defined state machine data.
+We evaluated https://github.com/infinispan/protostream[ProtoStream] during development, but determined that a custom binary format better suited our needs:
+
+**Performance Requirements**::
+For a distributed consensus system where latency is critical, serialization overhead directly impacts cluster performance.
+Benchmarking showed that a custom format optimized for our use case would significantly outperform general-purpose frameworks.
+
+**Java-Specific Optimizations**::
+jgroups-raft is a Java-only library.
+A custom binary format allows us to leverage Java-specific optimizations (object pooling, direct byte buffer access, JVM intrinsics, fast-path type checks) that cross-language frameworks cannot utilize.
+
+**Full Control**::
+Owning the serialization format gives us complete control over wire format evolution, optimization strategies, and compatibility guarantees without depending on external framework decisions.
+
+=== Design Goals
+
+The custom binary serialization system was designed with the following goals:
+
+. **Performance**: Minimize serialization overhead for low-latency message exchange
+. **Compatibility**: Support forward and backward compatibility for rolling upgrades
+. **Simplicity**: Provide a simple API for users to register custom serializers
+. **Control**: Full control over the wire format for optimization
+. **Type Safety**: Preserve Java type information during serialization
+
+== Wire Format
+
+The binary serialization uses two different wire formats optimized for different type categories:
+
+=== Fast-Path Format (Primitive Types)
+
+Primitive types (type IDs 0-31) use an optimized format without version and length fields:
+
+[source]
+----
+Wire format for primitives:
+[type-id: int][data]
+
+Wire format for null:
+[type-id: int = -1]
+----
+
+Fast-path types include: `Byte`, `Short`, `Integer`, `Long`, `Float`, `Double`, `Boolean`, `Character`, `String`, and `byte[]`.
+
+These types are fixed-size or self-describing (String includes its own length prefix), so version and length fields would be redundant overhead.
+
+=== Full Format (Complex Types)
+
+Complex types (type IDs 32+) use the full wire format with version and length for forward compatibility:
+
+[source]
+----
+Wire format for complex objects:
+[type-id: int][version: byte][length: int][data]
+----
+
+**Type ID (4 bytes)**::
+A unique integer identifying the type being serialized.
+Type IDs 0-31 are reserved for fast-path primitives.
+Type IDs 32+ are for complex types.
+`-1` represents null.
+
+**Version (1 byte)**::
+The serializer version (complex types only).
+Allows a single type to evolve its serialization format over time.
+Readers can handle multiple versions of the same type.
+
+**Length (4 bytes)**::
+The byte length of the serialized data (complex types only).
+This enables forward compatibility—old code can skip unknown bytes when reading data from a newer version.
+
+**Data (variable length)**::
+The serialized object data.
+Format is determined by the `SingleBinarySerializer` implementation or fast-path logic.
+
+=== Example Serialization
+
+**Primitive type** (fast-path) - `String` value `"hello"`:
+
+[source]
+----
+Type ID:  00 00 00 08     (STRING_TYPE_ID = 8, fast-path)
+Length:   00 05           (2-byte length prefix)
+Data:     68 65 6C 6C 6F  (UTF-8: "hello")
+
+Total: 11 bytes
+----
+
+**Complex type** - `ArrayList<String>` with `["a", "b"]`:
+
+[source]
+----
+Type ID:  00 00 00 27     (ARRAY_LIST_TYPE_ID = 39)
+Version:  00              (version 0)
+Length:   00 00 00 16     (22 bytes of data)
+Data:     00 00 00 02     (size: 2)
+          00 00 00 08 00 01 61  (String "a" via fast-path)
+          00 00 00 08 00 01 62  (String "b" via fast-path)
+
+Total: 35 bytes
+----
+
+== Architecture
+
+The serialization system consists of several key components:
+
+=== Core Interfaces
+
+**SingleBinarySerializer<T>**::
+The primary interface for type-specific serializers.
+Users implement this interface to serialize custom types:
++
+[source,java]
+----
+public interface SingleBinarySerializer<T> {
+    void write(SerializationContextWrite ctx, T target);
+    T read(SerializationContextRead ctx, byte version);
+    Class<T> javaClass();
+    int type();
+    byte version();
+}
+----
+
+**SerializationContextWrite / SerializationContextRead**::
+Split interfaces for writing and reading data.
+Provide methods for primitives (`writeInt`, `readUTF`), objects (`writeObject`, `readObject`), and custom types.
++
+The contexts handle:
+* Type ID lookup and registration
+* Version management
+* Length-prefix writing/reading
+* Polymorphic object serialization
++
+Two write implementations share wire format logic via `AbstractSerializationContextWrite`:
++
+* `DefaultSerializationContext`: Buffer-based (normal operations)
+* `ByteArrayDataOutputSerializationContextWrite`: Stream-based (zero-copy snapshots)
+
+**BinarySerializationRegistry**::
+Maps type IDs to serializers using a hybrid lookup strategy:
+* Array-based lookup for built-in types (IDs 0-31)
+* HashMap fallback for framework and user types (IDs 32+)
++
+Validates uniqueness of type IDs and class registrations.
+
+**Serializer**::
+Top-level API for serializing/deserializing objects:
++
+[source,java]
+----
+// Standard path (buffer-based)
+byte[] bytes = serializer.serialize(object);
+MyType obj = serializer.deserialize(bytes, MyType.class);
+
+// Zero-copy path (stream-based, for large objects)
+ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(initialSize);
+serializer.serialize(out, largeSnapshot);
+----
+
+=== Component Interaction
+
+The following diagram illustrates the serialization flow:
+
+[ditaa]
+----
+  User Code
+      |
+      | serialize(object)
+      v
+  Serializer
+      |
+      | create context
+      v
+  SerializationContextWrite
+      |
+      | lookup type ID
+      v
+  BinarySerializationRegistry
+      |
+      | get serializer
+      v
+  SingleBinarySerializer<T>
+      |
+      | write(ctx, object)
+      v
+  CustomByteBuffer
+      |
+      v
+  byte[] result
+----
+
+Deserialization follows a similar flow, using `SerializationContextRead` to read the type ID, version, and length, then delegating to the appropriate `SingleBinarySerializer` to read the data.
+
+== Built-in Serializers
+
+The system provides built-in serializers for common Java types, eliminating the need for users to implement serializers for standard types.
+
+=== Primitive Types
+
+**NumberSerializer**::
+Handles boxed primitives: `Byte`, `Short`, `Integer`, `Long`, `Float`, `Double`.
+Uses `AbstractNumberSerializer` base class with optimized read/write operations.
+
+**CharSequenceSerializer**::
+Serializes `String` using UTF-8 encoding with a 2-byte length prefix.
+Maximum string length: 32KB.
+
+**PrimitiveArraySerializer**::
+Handles all primitive arrays: `byte[]`, `short[]`, `int[]`, `long[]`, `float[]`, `double[]`, `boolean[]`, `char[]`.
+`byte[]` uses bulk operations for efficiency.
+
+=== Collections
+
+**CollectionSerializer**::
+Serializes mutable collections: `ArrayList`, `LinkedList`, `HashSet`, `LinkedHashSet`, `TreeSet`.
+Format: `[size: int][element1][element2]...[elementN]`
+
+**ImmutableCollectionSerializer**::
+Handles JDK immutable collections:
+* `Collections.emptyList()`, `Collections.emptySet()`
+* `Collections.singletonList()`, `Collections.singleton()`
+* `Collections.unmodifiableList()`, `Collections.unmodifiableSet()`
+* `List.of()`, `Set.of()` (handles internal classes `List12`, `ListN`, `Set12`, `SetN`)
+
+**MapSerializer**::
+Serializes mutable maps: `HashMap`, `LinkedHashMap`, `TreeMap`.
+Format: `[size: int]([key1][value1])([key2][value2])...([keyN][valueN])`
+
+**ImmutableMapSerializer**::
+Handles JDK immutable maps:
+* `Collections.emptyMap()`
+* `Collections.singletonMap()`
+* `Collections.unmodifiableMap()`
+* `Map.of()`, `Map.ofEntries()` (handles internal classes `Map1`, `MapN`)
+
+All collection serializers preserve the original collection type and immutability on deserialization.
+
+=== Raft Internal Types
+
+The following Raft protocol objects have custom serializers registered in `BinarySerializer.INTERNAL_SERIALIZERS`:
+
+**RaftCommand**::
+Represents a state machine command.
+Serializes the command term, type, and polymorphic payload.
+
+**RaftResponse**::
+Encapsulates the result of applying a command.
+Serializes either a success value or a failure exception message.
+
+**StateMachineStateHolder**::
+Holds a snapshot of the state machine state.
+Serializes the snapshot index, term, and polymorphic state object.
+
+**JRaftCommand.UserCommand**::
+Wraps user-defined read/write commands.
+Serializes the command type and polymorphic command object.
+
+**JGroupsRaftReadCommandOptions.ReadImpl**::
+Options for read commands (local vs. linearizable reads).
+
+**JGroupsRaftWriteCommandOptions.WriteImpl**::
+Options for write commands (timeout, retry policy).
+
+== User-Facing API
+
+Users register custom serializers by implementing the `JGroupsRaftCustomMarshaller<T>` interface and registering with the builder:
+
+[source,java]
+----
+public class MyTypeMarshaller implements JGroupsRaftCustomMarshaller<MyType> {
+    @Override
+    public void write(SerializationContextWrite ctx, MyType target) {
+        ctx.writeUTF(target.getName());
+        ctx.writeInt(target.getValue());
+    }
+
+    @Override
+    public MyType read(SerializationContextRead ctx, byte version) {
+        String name = ctx.readUTF();
+        int value = ctx.readInt();
+        return new MyType(name, value);
+    }
+
+    @Override
+    public Class<MyType> javaClass() {
+        return MyType.class;
+    }
+
+    @Override
+    public int type() {
+        return JGroupsRaftCustomMarshaller.MINIMUM_TYPE_ID + 1;
+    }
+
+    @Override
+    public byte version() {
+        return 0;
+    }
+}
+
+// Register with builder
+JGroupsRaft<MyAPI> raft = JGroupsRaft.builder(stateMachine, MyAPI.class)
+    .registerMarshaller(new MyTypeMarshaller())
+    .build();
+----
+
+The `JGroupsRaftCustomMarshaller<T>` interface extends `SingleBinarySerializer<T>` and provides the user-facing serialization API.
+User type IDs must start from `JGroupsRaftCustomMarshaller.MINIMUM_TYPE_ID` to avoid conflicts with internal types.
+
+== Versioning and Compatibility
+
+The serialization system supports forward and backward compatibility through versioning and length-prefixed data.
+
+=== Version Evolution
+
+Each serializer declares a `version()` which is written to the wire format.
+When deserializing, the `read(ctx, byte version)` method receives the version byte, allowing the deserializer to handle multiple versions:
+
+[source,java]
+----
+@Override
+public MyType read(SerializationContextRead ctx, byte version) {
+    String field1 = ctx.readUTF();
+    int field2 = ctx.readInt();
+
+    if (version >= 1) {
+        // New field added in version 1
+        String field3 = ctx.readUTF();
+        return new MyType(field1, field2, field3);
+    }
+
+    return new MyType(field1, field2, null);
+}
+----
+
+=== Forward Compatibility
+
+The length field enables old code to skip unknown data when reading from a newer version.
+After reading known fields, the old deserializer can skip the remaining bytes:
+
+[source,java]
+----
+// Old deserializer reads only field1 and field2
+String field1 = ctx.readUTF();
+int field2 = ctx.readInt();
+
+// Length-prefix allows skipping any new fields added in newer versions
+----
+
+The `DefaultSerializationContext` automatically handles length tracking and skipping, so serializers don't need to manually calculate offsets.
+
+=== Compatibility Testing
+
+The `SerializationCompatibilityTest` ensures the binary format remains stable across code changes.
+It stores expected byte arrays for all internal serializers and verifies:
+
+. Serialization produces the exact same byte output
+. Deserialization correctly reconstructs the original object
+
+This prevents accidental breaking changes to the wire format.
+
+== CustomByteBuffer
+
+The `CustomByteBuffer` class provides an efficient byte buffer abstraction for serialization operations.
+It implements the `RandomAccessOutput` interface, enabling position manipulation for length field patching.
+
+=== Features
+
+**Automatic Growth**::
+The buffer automatically expands when more space is needed.
+Growth strategy: double the current capacity or allocate exactly the required space, whichever is larger.
+
+**Position Tracking**::
+Tracks the maximum position written, allowing correct `flip()` behavior when the buffer is rewound and partially overwritten.
+Supports `position(int)` for patching previously written data (e.g., length fields).
+
+**Primitive Operations**::
+Direct methods for reading/writing primitives: `writeInt`, `readLong`, `writeUTF`, etc.
+
+**Bulk Operations**::
+Efficient bulk read/write for byte arrays: `writeBytes(byte[])`, `readBytes(int length)`.
+
+**Adaptive Initial Size**::
+Works with `SerializationSizeCache` to allocate appropriately sized buffers based on learned object sizes, reducing resize overhead.
+
+=== Usage Pattern
+
+[source,java]
+----
+// Writing
+CustomByteBuffer buffer = CustomByteBuffer.allocate(512);
+buffer.writeInt(42);
+buffer.writeUTF("hello");
+byte[] result = buffer.toByteArray();
+
+// Reading
+CustomByteBuffer buffer = CustomByteBuffer.wrap(bytes);
+int value = buffer.readInt();
+String text = buffer.readUTF();
+----
+
+The `BinarySerializer` uses `CustomByteBuffer` internally, but users implementing `SingleBinarySerializer` interact with the `SerializationContext` API, which abstracts the buffer operations.
+
+== Buffer Pooling
+
+To reduce allocation overhead, the serialization system uses a thread-local buffer pool.
+
+=== CustomByteBufferPool
+
+The `CustomByteBufferPool` is a non-thread-safe pool designed for single-threaded use with `ThreadLocal`.
+Each thread maintains a small cache (default: 4 buffers, max 64KB each) to handle nested or sequential serialization calls.
+
+[source,java]
+----
+// Thread-local pool (one pool per thread)
+private static final ThreadLocal<CustomByteBufferPool> BUFFER_POOL =
+    ThreadLocal.withInitial(CustomByteBufferPool::new);
+
+public byte[] serialize(Object object) {
+    CustomByteBufferPool pool = BUFFER_POOL.get();
+    CustomByteBuffer buffer = pool.acquire(512);
+
+    try {
+        // Serialize
+        return buffer.toByteArray();
+    } finally {
+        pool.release(buffer);
+    }
+}
+----
+
+**Memory usage per thread:**
+* Default: 4 buffers × 64KB max = 256KB max per thread
+* Platform threads (10-100): ~2.5-25 MB total
+* Virtual threads (10,000): ~250 MB - 2.5 GB total (but most allocate only 1-2 buffers)
+
+=== Performance Characteristics
+
+**ThreadLocal<CustomByteBufferPool>:**
+* Single thread: ~301M ops/s
+* 16 threads: ~2.6B ops/s
+* Zero contention, linear scaling with thread count
+
+**Alternative: ConcurrentCustomByteBufferPool:**
+
+A lock-free concurrent pool using `AtomicReferenceArray` and CAS operations was also implemented for comparison.
+However, benchmarks showed significant performance degradation under contention:
+
+* Single thread: ~60M ops/s (5x slower than ThreadLocal)
+* 16 threads: ~2.6M ops/s (1000x slower than ThreadLocal)
+
+The concurrent pool suffers from:
+* CAS failures and retry loops under contention
+* Cache line bouncing across CPU cores
+* Volatile reads on every slot access
+
+**Conclusion:** The ThreadLocal approach is the default due to vastly superior performance.
+The concurrent pool may only be beneficial in scenarios with tens of thousands of active virtual threads and memory pressure from thread-local allocations.
+
+== Performance Optimizations
+
+The custom binary serialization was designed with performance in mind:
+
+**Fast-Path for Primitives**::
+Primitive types (Byte, Short, Integer, Long, Float, Double, Boolean, Character, String, byte[]) bypass the registry lookup and use direct `instanceof` checks.
+This eliminates Map lookup overhead and reduces wire format size by omitting version and length fields.
+Primitives save 5 bytes per value (no version byte, no 4-byte length field).
+
+**Compact Wire Format**::
+Fixed-width type IDs minimize overhead.
+No field tags or wire type encoding like Protobuf.
+Fast-path primitives use only `[type-id][data]` format.
+
+**Direct Byte Operations**::
+`CustomByteBuffer` wraps `java.nio.ByteBuffer` for efficient read/write operations with minimal copying.
+
+**Buffer Pooling**::
+Thread-local buffer pools eliminate allocation overhead.
+Benchmarks show 2.6B ops/s with 16 threads using ThreadLocal pools.
+
+**Hybrid Type ID Lookup**::
+`BinarySerializationRegistry` uses a hybrid lookup strategy optimized for the common case:
++
+* **Array fast-path**: Direct array indexing for built-in types. O(1) lookup with no hash computation.
+* **HashMap fallback**: `ConcurrentHashMap` for framework and user types.
++
+
+**Adaptive Buffer Sizing**::
+The `SerializationSizeCache` learns optimal buffer sizes from actual serialization operations:
++
+* Thread-local cache (8 entries) tracks serialized size by object type
+* **Eager increase**: If actual size exceeds cached, immediately update to `actual + 10%`
+* **Slow decrease**: If actual size is smaller, converge gradually (`90% old + 10% new`)
+* Eliminates buffer resize overhead for typical payloads
++
+This pragmatic approach is faster than pre-calculating sizes via double-traversal.
+
+**Zero-Copy Snapshot Serialization**::
+For large objects (snapshots), the `ByteArrayDataOutputSerializationContextWrite` eliminates intermediate buffering:
++
+[source]
+----
+Standard path (double allocation):
+  CustomByteBuffer buffer = pool.acquire(100MB);
+  serialize(buffer);
+  byte[] copy = buffer.toByteArray();  // Allocate + copy
+  out.write(copy);
+  Total: 200MB allocated
+
+Zero-copy path (single allocation):
+  ByteArrayDataOutputSerializationContextWrite ctx = new(..., out);
+  ctx.writeObject(snapshot);  // Write directly to stream
+  Total: ~100MB allocated
+----
++
+The `RandomAccessOutput` abstraction enables both paths to share wire format logic in `AbstractSerializationContextWrite`, ensuring identical output regardless of backend.
+
+**Polymorphic Serialization**::
+The `writeObject`/`readObject` methods handle polymorphic types by writing the type ID and delegating to the appropriate serializer, avoiding reflection-based lookups during serialization.
+
+== Conclusion
+
+The custom binary serialization system provides jgroups-raft with:
+
+* **Better Performance**: Compact wire format and optimized byte operations
+* **Full Control**: Custom format tailored to Java and Raft protocol needs
+* **Simplicity**: Single interface (`SingleBinarySerializer`) for all serialization
+* **Compatibility**: Versioning and length-prefixed format for schema evolution
+* **Reduced Dependencies**: No external serialization frameworks
+
+The system supports all common Java types out-of-the-box and provides a straightforward API for users to serialize custom state machine types.
+
+[bibliography]
+== References
+
+* [[[raft,1]]] Ongaro, D., &amp; Ousterhout, J. (2014). In search of an understandable consensus algorithm. USENIX Annual Technical Conference.

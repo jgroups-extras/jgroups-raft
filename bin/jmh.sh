@@ -14,6 +14,7 @@ function list_benchmarks() {
   printf "\tLogJmhBenchmark\n"
   printf "\tStorageAppenderBenchmark\n"
   printf "\tNewApiReplicationBenchmark\n"
+  printf "\tSnapshotWriteReadBenchmark\n"
   help;
 }
 

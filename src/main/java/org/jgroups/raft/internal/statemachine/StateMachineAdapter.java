@@ -10,6 +10,7 @@ import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.registry.ReplicatedMethodWrapper;
 import org.jgroups.raft.internal.serialization.Serializer;
+import org.jgroups.util.ByteArrayDataInputStream;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -65,7 +66,7 @@ final class StateMachineAdapter<T> implements StateMachine {
      */
     @Override
     public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
-        RaftCommand rc = serializer.deserialize(data);
+        RaftCommand rc = serializer.deserialize(data, RaftCommand.class);
         JRaftCommand command = rc.command();
 
         if (command == null)
@@ -107,7 +108,8 @@ final class StateMachineAdapter<T> implements StateMachine {
     public void readContentFrom(DataInput in) {
         byte[] buf;
         try {
-            int length = in.readInt();
+            ByteArrayDataInputStream badis = (ByteArrayDataInputStream) in;
+            int length = badis.available();
             buf = new byte[length];
             in.readFully(buf);
         } catch (IOException e) {
@@ -118,9 +120,7 @@ final class StateMachineAdapter<T> implements StateMachine {
     }
 
     @Override
-    public void writeContentTo(DataOutput out) throws Exception {
-        byte[] snapshot = snapshotter.writeSnapshot();
-        out.writeInt(snapshot.length);
-        out.write(snapshot);
+    public void writeContentTo(DataOutput out) {
+        snapshotter.writeSnapshot(out);
     }
 }

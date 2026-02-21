@@ -29,7 +29,6 @@
         <jmh.version>1.37</jmh.version>
         <mashona.version>1.1.0</mashona.version>
         <hdrhistogram.version>2.2.2</hdrhistogram.version>
-        <protostream.version>6.0.4</protostream.version>
 
         <!-- test properties -->
         <ansi.strip />
@@ -162,18 +161,6 @@
             <groupId>org.jgroups</groupId>
             <artifactId>jgroups</artifactId>
             <version>${jgroups.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.infinispan.protostream</groupId>
-            <artifactId>protostream</artifactId>
-            <version>${protostream.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.infinispan.protostream</groupId>
-            <artifactId>protostream-types</artifactId>
-            <version>${protostream.version}</version>
         </dependency>
 
         <dependency>
@@ -375,12 +362,6 @@
 
                     <!-- Annotation processors -->
                     <annotationProcessorPaths>
-                        <annotationProcessorPath>
-                            <groupId>org.infinispan.protostream</groupId>
-                            <artifactId>protostream-processor</artifactId>
-                            <version>${protostream.version}</version>
-                        </annotationProcessorPath>
-
                         <path>
                             <groupId>org.openjdk.jmh</groupId>
                             <artifactId>jmh-generator-annprocess</artifactId>

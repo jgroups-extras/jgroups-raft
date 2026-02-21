@@ -2,13 +2,12 @@ package org.jgroups.raft.internal.command;
 
 import org.jgroups.raft.JGroupsRaft;
 import org.jgroups.raft.StateMachine;
-import org.jgroups.raft.internal.serialization.ProtoStreamTypes;
+import org.jgroups.raft.internal.serialization.RaftTypeIds;
+import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
+import org.jgroups.raft.serialization.SerializationContextRead;
+import org.jgroups.raft.serialization.SerializationContextWrite;
 
 import java.util.Objects;
-
-import org.infinispan.protostream.annotations.ProtoFactory;
-import org.infinispan.protostream.annotations.ProtoField;
-import org.infinispan.protostream.annotations.ProtoTypeId;
 
 /**
  * JRaftCommand is a factory to create commands to submit in {@link JGroupsRaft}.
@@ -69,31 +68,29 @@ public sealed interface JRaftCommand permits JRaftCommand.UserCommand, JRaftRead
      */
     int version();
 
-    @ProtoTypeId(ProtoStreamTypes.USER_COMMAND)
     final class UserCommand implements JRaftCommand, JRaftReadCommand, JRaftWriteCommand {
+        public static final SingleBinarySerializer<UserCommand> SERIALIZER = UserCommandSerializer.INSTANCE;
 
         private final long id;
         private final int version;
         private final boolean read;
 
-        @ProtoFactory
         UserCommand(long id, int version, boolean read) {
             this.id = id;
             this.version = version;
             this.read = read;
         }
 
-        @ProtoField(number = 1, defaultValue = "0")
+        @Override
         public long id() {
             return id;
         }
 
-        @ProtoField(number = 2, defaultValue = "0")
+        @Override
         public int version() {
             return version;
         }
 
-        @ProtoField(number = 3, defaultValue = "false")
         public boolean isRead() {
             return read;
         }
@@ -117,6 +114,42 @@ public sealed interface JRaftCommand permits JRaftCommand.UserCommand, JRaftRead
                     "id=" + id +
                     ", version=" + version +
                     '}';
+        }
+
+        private static final class UserCommandSerializer implements SingleBinarySerializer<UserCommand> {
+            private static final UserCommandSerializer INSTANCE = new UserCommandSerializer();
+
+            private UserCommandSerializer() { }
+
+            @Override
+            public void write(SerializationContextWrite ctx, UserCommand target) {
+                ctx.writeLong(target.id);
+                ctx.writeInt(target.version);
+                ctx.writeBoolean(target.isRead());
+            }
+
+            @Override
+            public UserCommand read(SerializationContextRead ctx, byte ignore) {
+                long id = ctx.readLong();
+                int version = ctx.readInt();
+                boolean read = ctx.readBoolean();
+                return new UserCommand(id, version, read);
+            }
+
+            @Override
+            public Class<UserCommand> javaClass() {
+                return UserCommand.class;
+            }
+
+            @Override
+            public int type() {
+                return RaftTypeIds.USER_COMMAND;
+            }
+
+            @Override
+            public byte version() {
+                return 0;
+            }
         }
     }
 }

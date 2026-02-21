@@ -9,8 +9,9 @@ import org.jgroups.raft.configuration.RuntimeProperties;
 import org.jgroups.raft.exceptions.JRaftException;
 import org.jgroups.raft.internal.JGroupsRaftFactory;
 import org.jgroups.raft.internal.command.JRaftCommand;
-import org.jgroups.raft.internal.registry.SerializationRegistry;
+import org.jgroups.raft.internal.serialization.binary.SerializationRegistry;
 import org.jgroups.raft.logger.JRaftEventLogger;
+import org.jgroups.raft.serialization.JGroupsRaftCustomMarshaller;
 
 import java.io.InputStream;
 import java.util.Objects;
@@ -20,7 +21,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 
 import net.jcip.annotations.ThreadSafe;
-import org.infinispan.protostream.SerializationContextInitializer;
 
 /**
  * Entry point for the JGroups Raft API.
@@ -236,21 +236,6 @@ public interface JGroupsRaft<T> {
          */
         public Builder<T> withJChannel(JChannel channel) {
             this.channel = channel;
-            return this;
-        }
-
-        /**
-         * Register a new serialization context initializer to serialize commands.
-         *
-         * <p>
-         * The context is registered and is utilized for command and data serialization.
-         * </p>
-         *
-         * @param sci the serialization context initializer to be registered.
-         * @return the builder instance.
-         */
-        public Builder<T> registerSerializationContextInitializer(SerializationContextInitializer sci) {
-            registry.register(sci);
             return this;
         }
 

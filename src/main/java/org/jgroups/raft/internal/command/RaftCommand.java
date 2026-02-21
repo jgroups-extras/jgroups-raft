@@ -2,21 +2,16 @@ package org.jgroups.raft.internal.command;
 
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
 import org.jgroups.raft.internal.command.JRaftCommand.UserCommand;
-import org.jgroups.raft.internal.serialization.ObjectWrapper;
-import org.jgroups.raft.internal.serialization.ProtoStreamTypes;
+import org.jgroups.raft.internal.serialization.RaftTypeIds;
+import org.jgroups.raft.serialization.SerializationContextRead;
+import org.jgroups.raft.serialization.SerializationContextWrite;
+import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Objects;
-import java.util.stream.Stream;
 
-import org.infinispan.protostream.annotations.ProtoFactory;
-import org.infinispan.protostream.annotations.ProtoField;
-import org.infinispan.protostream.annotations.ProtoTypeId;
-
-@ProtoTypeId(ProtoStreamTypes.RAFT_COMMAND)
 public final class RaftCommand {
+    public static final SingleBinarySerializer<RaftCommand> SERIALIZER =  RaftCommandSerializer.INSTANCE;
 
     private final UserCommand command;
     private final Object[] input;
@@ -28,17 +23,7 @@ public final class RaftCommand {
         this.options = options;
     }
 
-    @ProtoFactory
-    RaftCommand(UserCommand userCommand, List<ObjectWrapper<Object>> inputWrapper, ObjectWrapper<JGroupsRaftCommandOptions> optionsWrapper) {
-        this(userCommand, inputWrapper.stream().map(ObjectWrapper::unwrap).toArray(), ObjectWrapper.unwrap(optionsWrapper));
-    }
-
     public JRaftCommand command() {
-        return command;
-    }
-
-    @ProtoField(number = 1, name = "command")
-    UserCommand userCommand() {
         return command;
     }
 
@@ -52,32 +37,6 @@ public final class RaftCommand {
 
     public JGroupsRaftCommandOptions options() {
         return options;
-    }
-
-    @ProtoField(number = 2, name = "input", collectionImplementation = ArrayList.class)
-    List<ObjectWrapper<Object>> inputWrapper() {
-        if (input == null || input.length == 0) {
-            return null;
-        }
-
-        // Let's try and handle some common cases with 1 and two elements.
-        // Otherwise, we just create a stream and wrap everything.
-        if (input.length == 1) {
-            return List.of(ObjectWrapper.create(input[0]));
-        }
-
-        if (input.length == 2) {
-            return List.of(ObjectWrapper.create(input[0]), ObjectWrapper.create(input[1]));
-        }
-
-        return Stream.of(input)
-                .map(ObjectWrapper::create)
-                .toList();
-    }
-
-    @ProtoField(number = 3, name = "options")
-    ObjectWrapper<JGroupsRaftCommandOptions> optionsWrapper() {
-        return ObjectWrapper.create(options);
     }
 
     @Override
@@ -101,5 +60,57 @@ public final class RaftCommand {
                 ", input=" + Arrays.toString(input) +
                 ", options=" + options +
                 '}';
+    }
+
+    private static final class RaftCommandSerializer implements SingleBinarySerializer<RaftCommand> {
+        private static final RaftCommandSerializer INSTANCE = new RaftCommandSerializer();
+
+        private RaftCommandSerializer() { }
+
+        @Override
+        public void write(SerializationContextWrite ctx, RaftCommand target) {
+            ctx.writeObject(target.command);
+
+            if (target.input == null) {
+                ctx.writeInt(-1);
+            } else {
+                ctx.writeInt(target.input.length);
+                for (Object o : target.input) {
+                    ctx.writeObject(o);
+                }
+            }
+
+            ctx.writeObject(target.options);
+        }
+
+        @Override
+        public RaftCommand read(SerializationContextRead ctx, byte ignore) {
+            UserCommand command = ctx.readObject();
+            int length = ctx.readInt();
+            Object[] input = null;
+            if (length >= 0) {
+                input = new Object[length];
+                for (int i = 0; i < length; i++) {
+                    input[i] = ctx.readObject();
+                }
+            }
+            JGroupsRaftCommandOptions options = ctx.readObject();
+            return new  RaftCommand(command, input, options);
+        }
+
+        @Override
+        public Class<RaftCommand> javaClass() {
+            return RaftCommand.class;
+        }
+
+        @Override
+        public int type() {
+            return RaftTypeIds.RAFT_COMMAND;
+        }
+
+        @Override
+        public byte version() {
+            return 0;
+        }
     }
 }

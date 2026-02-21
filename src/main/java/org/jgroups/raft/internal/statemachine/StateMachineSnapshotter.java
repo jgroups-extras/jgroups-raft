@@ -3,6 +3,7 @@ package org.jgroups.raft.internal.statemachine;
 import org.jgroups.raft.StateMachineField;
 import org.jgroups.raft.internal.serialization.Serializer;
 
+import java.io.DataOutput;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.HashMap;
@@ -88,9 +89,9 @@ final class StateMachineSnapshotter<T> {
      *
      * @return A byte array representing the serialized snapshot of the state machine.
      */
-    byte[] writeSnapshot() {
+    void writeSnapshot(DataOutput output) {
         StateMachineStateHolder holder = snapshotter.write();
-        return serializer.serialize(holder);
+        serializer.serialize(output, holder);
     }
 
     /**
@@ -104,7 +105,7 @@ final class StateMachineSnapshotter<T> {
      * @param snapshot The byte array containing the serialized state.
      */
     void readSnapshot(byte[] snapshot) {
-        StateMachineStateHolder holder = serializer.deserialize(snapshot);
+        StateMachineStateHolder holder = serializer.deserialize(snapshot, StateMachineStateHolder.class);
         snapshotter.read(holder);
     }
 

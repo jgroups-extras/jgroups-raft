@@ -1270,7 +1270,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(state_machine == null)
             throw new IllegalStateException("state machine is null");
 
-        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(128, true);
+        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(1 << 20, true);
         internal_state.writeTo(out);
         state_machine.writeContentTo(out);
         ByteBuffer buf=ByteBuffer.wrap(out.buffer(), 0, out.position());

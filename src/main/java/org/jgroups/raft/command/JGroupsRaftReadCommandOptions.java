@@ -1,11 +1,11 @@
 package org.jgroups.raft.command;
 
-import java.util.Objects;
+import org.jgroups.raft.internal.serialization.RaftTypeIds;
+import org.jgroups.raft.serialization.JGroupsRaftCustomMarshaller;
+import org.jgroups.raft.serialization.SerializationContextRead;
+import org.jgroups.raft.serialization.SerializationContextWrite;
 
-import org.infinispan.protostream.annotations.ProtoFactory;
-import org.infinispan.protostream.annotations.ProtoField;
-import org.infinispan.protostream.annotations.ProtoTypeId;
-import org.jgroups.raft.internal.serialization.ProtoStreamTypes;
+import java.util.Objects;
 
 /**
  * Command options for read operations.
@@ -42,24 +42,22 @@ public sealed interface JGroupsRaftReadCommandOptions extends JGroupsRaftCommand
      */
     boolean linearizable();
 
-    @ProtoTypeId(ProtoStreamTypes.READ_COMMAND_OPTIONS)
     final class ReadImpl implements JGroupsRaftReadCommandOptions {
+        public static final JGroupsRaftCustomMarshaller<?> SERIALIZER = ReadImplSerializer.INSTANCE;
+
         private final boolean linearizable;
         private final boolean ignoreReturnValue;
 
-        @ProtoFactory
         ReadImpl(boolean linearizable, boolean ignoreReturnValue) {
             this.linearizable = linearizable;
             this.ignoreReturnValue = ignoreReturnValue;
         }
 
-        @ProtoField(number = 1, defaultValue = "true")
         @Override
         public boolean linearizable() {
             return linearizable;
         }
 
-        @ProtoField(number = 2, defaultValue = "false")
         @Override
         public boolean ignoreReturnValue() {
             return ignoreReturnValue;
@@ -76,6 +74,43 @@ public sealed interface JGroupsRaftReadCommandOptions extends JGroupsRaftCommand
         @Override
         public int hashCode() {
             return Objects.hash(linearizable, ignoreReturnValue);
+        }
+
+        private static final class ReadImplSerializer implements JGroupsRaftCustomMarshaller<ReadImpl> {
+            private static final ReadImplSerializer INSTANCE = new ReadImplSerializer();
+
+            private ReadImplSerializer() { }
+
+            @Override
+            public void write(SerializationContextWrite ctx, ReadImpl target) {
+                ctx.writeBoolean(target.linearizable());
+                ctx.writeBoolean(target.ignoreReturnValue());
+            }
+
+            @Override
+            public ReadImpl read(SerializationContextRead ctx, byte version) {
+                boolean linearizable = ctx.readBoolean();
+                boolean ignoreReturnValue = ctx.readBoolean();
+                return (ReadImpl) JGroupsRaftReadCommandOptions.options()
+                        .linearizable(linearizable)
+                        .ignoreReturnValue(ignoreReturnValue)
+                        .build();
+            }
+
+            @Override
+            public Class<ReadImpl> javaClass() {
+                return ReadImpl.class;
+            }
+
+            @Override
+            public int type() {
+                return RaftTypeIds.READ_COMMAND_OPTIONS;
+            }
+
+            @Override
+            public byte version() {
+                return 0;
+            }
         }
     }
 }

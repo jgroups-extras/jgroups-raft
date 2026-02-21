@@ -1,24 +1,17 @@
 package org.jgroups.raft.internal.command;
 
 import org.jgroups.raft.exceptions.JRaftException;
-import org.jgroups.raft.internal.serialization.ObjectWrapper;
-import org.jgroups.raft.internal.serialization.ProtoStreamTypes;
+import org.jgroups.raft.internal.serialization.RaftTypeIds;
+import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
+import org.jgroups.raft.serialization.SerializationContextRead;
+import org.jgroups.raft.serialization.SerializationContextWrite;
 
-import org.infinispan.protostream.annotations.ProtoFactory;
-import org.infinispan.protostream.annotations.ProtoField;
-import org.infinispan.protostream.annotations.ProtoTypeId;
-
-@ProtoTypeId(ProtoStreamTypes.RAFT_RESPONSE)
 public final class RaftResponse {
+
+    public static final SingleBinarySerializer<RaftResponse> SERIALIZER = RaftResponseSerializer.INSTANCE;
 
     private final Object response;
     private final Throwable exception;
-
-    @ProtoFactory
-    RaftResponse(ObjectWrapper<Object> response, String exception) {
-        this.response = ObjectWrapper.unwrap(response);
-        this.exception = exception != null ? JRaftException.stackless(String.format("Failed apply command, see remote for stack trace: %s", exception)) : null;
-    }
 
     private RaftResponse(Object response, Throwable exception) {
         this.response = response;
@@ -33,14 +26,8 @@ public final class RaftResponse {
         return new RaftResponse(null, exception);
     }
 
-    @ProtoField(number = 1)
-    ObjectWrapper<Object> getResponse() {
-        return ObjectWrapper.create(response);
-    }
-
-    @ProtoField(number = 2)
-    String getException() {
-        return exception != null ? exception.getMessage() : null;
+    private static RaftResponse failure(String exception) {
+        return RaftResponse.failure(JRaftException.stackless(String.format("Failed apply command, see remote for stack trace: %s", exception)));
     }
 
     public boolean isSuccess() {
@@ -53,5 +40,44 @@ public final class RaftResponse {
 
     public Throwable exception() {
         return exception;
+    }
+
+    private static final class RaftResponseSerializer implements SingleBinarySerializer<RaftResponse> {
+        private static final RaftResponseSerializer INSTANCE = new RaftResponseSerializer();
+
+        @Override
+        public void write(SerializationContextWrite ctx, RaftResponse target) {
+            boolean success = target.isSuccess();
+            ctx.writeBoolean(success);
+            if (success) {
+                ctx.writeObject(target.response);
+            } else {
+                ctx.writeUTF(target.exception.getMessage());
+            }
+        }
+
+        @Override
+        public RaftResponse read(SerializationContextRead ctx, byte version) {
+            boolean success = ctx.readBoolean();
+            if (success) {
+                return RaftResponse.success(ctx.readObject());
+            }
+            return RaftResponse.failure(ctx.readUTF());
+        }
+
+        @Override
+        public Class<RaftResponse> javaClass() {
+            return RaftResponse.class;
+        }
+
+        @Override
+        public int type() {
+            return RaftTypeIds.RAFT_RESPONSE;
+        }
+
+        @Override
+        public byte version() {
+            return 0;
+        }
     }
 }

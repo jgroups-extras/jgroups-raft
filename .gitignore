@@ -36,3 +36,4 @@ pom.xml.versionsBackup
 ai/
 AGENTS.md
 CLAUDE.md
+ai/*

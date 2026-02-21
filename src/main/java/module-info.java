@@ -14,8 +14,6 @@ module org.jgroups.raft {
 
     // Core clustering part of JGroups Raft.
     requires org.jgroups;
-    requires org.infinispan.protostream.core;
-    requires org.infinispan.protostream.types;
 
     exports org.jgroups.raft;
     exports org.jgroups.raft.command;
@@ -27,6 +25,7 @@ module org.jgroups.raft {
     exports org.jgroups.raft.testfwk;
     exports org.jgroups.raft.util;
     exports org.jgroups.protocols.raft;
+    exports org.jgroups.raft.serialization;
 
     // Optional dependencies utilized by demonstrations in test folder.
     requires static java.desktop;

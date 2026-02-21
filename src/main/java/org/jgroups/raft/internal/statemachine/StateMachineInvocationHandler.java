@@ -174,7 +174,7 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
     }
 
     private <R> R toResponse(byte[] buf) {
-        RaftResponse response = serializer.deserialize(buf);
+        RaftResponse response = serializer.deserialize(buf, RaftResponse.class);
         if (response == null) {
             return null;
         }

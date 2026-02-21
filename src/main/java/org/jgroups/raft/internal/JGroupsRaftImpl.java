@@ -60,7 +60,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         this.parameters = parameters;
         this.attachedChannel = !parameters.channel().isConnected();
         this.registry = new CommandRegistry<>(parameters.sm(), parameters.api());
-        Serializer serializer = Serializer.protoStream(parameters.registry());
+        Serializer serializer = Serializer.create(parameters.registry());
         this.wrapper = new StateMachineWrapper<>(parameters.sm(), parameters.api(), registry, serializer);
         this.role = JGroupsRaftRole.NONE;
     }

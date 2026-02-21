@@ -1,11 +1,11 @@
 package org.jgroups.raft.command;
 
-import java.util.Objects;
+import org.jgroups.raft.internal.serialization.RaftTypeIds;
+import org.jgroups.raft.serialization.JGroupsRaftCustomMarshaller;
+import org.jgroups.raft.serialization.SerializationContextRead;
+import org.jgroups.raft.serialization.SerializationContextWrite;
 
-import org.infinispan.protostream.annotations.ProtoFactory;
-import org.infinispan.protostream.annotations.ProtoField;
-import org.infinispan.protostream.annotations.ProtoTypeId;
-import org.jgroups.raft.internal.serialization.ProtoStreamTypes;
+import java.util.Objects;
 
 /**
  * Command options for write operations.
@@ -25,16 +25,14 @@ public sealed interface JGroupsRaftWriteCommandOptions extends JGroupsRaftComman
         return JGroupsRaftCommandOptions.writeOptions();
     }
 
-    @ProtoTypeId(ProtoStreamTypes.WRITE_COMMAND_OPTIONS)
     final class WriteImpl implements JGroupsRaftWriteCommandOptions {
+        public static final JGroupsRaftCustomMarshaller<?> SERIALIZER = ReadImplSerializer.INSTANCE;
         private final boolean ignoreReturnValue;
 
-        @ProtoFactory
         WriteImpl(boolean ignoreReturnValue) {
             this.ignoreReturnValue = ignoreReturnValue;
         }
 
-        @ProtoField(number = 1, defaultValue = "false")
         @Override
         public boolean ignoreReturnValue() {
             return ignoreReturnValue;
@@ -50,6 +48,41 @@ public sealed interface JGroupsRaftWriteCommandOptions extends JGroupsRaftComman
         @Override
         public int hashCode() {
             return Objects.hashCode(ignoreReturnValue);
+        }
+
+        private static final class ReadImplSerializer implements JGroupsRaftCustomMarshaller<WriteImpl> {
+
+            private static final ReadImplSerializer INSTANCE = new ReadImplSerializer();
+
+            private ReadImplSerializer() { }
+
+            @Override
+            public void write(SerializationContextWrite ctx, WriteImpl target) {
+                ctx.writeBoolean(target.ignoreReturnValue());
+            }
+
+            @Override
+            public WriteImpl read(SerializationContextRead ctx, byte version) {
+                boolean ignoreReturnValue = ctx.readBoolean();
+                return (WriteImpl) JGroupsRaftWriteCommandOptions.options()
+                        .ignoreReturnValue(ignoreReturnValue)
+                        .build();
+            }
+
+            @Override
+            public Class<WriteImpl> javaClass() {
+                return WriteImpl.class;
+            }
+
+            @Override
+            public int type() {
+                return RaftTypeIds.WRITE_COMMAND_OPTIONS;
+            }
+
+            @Override
+            public byte version() {
+                return 0;
+            }
         }
     }
 }

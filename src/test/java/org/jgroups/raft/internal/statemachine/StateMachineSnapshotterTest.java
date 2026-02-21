@@ -5,15 +5,14 @@ import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import org.jgroups.Global;
 import org.jgroups.raft.StateMachineField;
-import org.jgroups.raft.internal.registry.SerializationRegistry;
 import org.jgroups.raft.internal.serialization.Serializer;
-import org.jgroups.raft.serialization.TestSerializationInitializerImpl;
+import org.jgroups.raft.internal.serialization.binary.SerializationRegistry;
+import org.jgroups.util.ByteArrayDataOutputStream;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import org.infinispan.protostream.types.java.CommonContainerTypesSchema;
 import org.testng.annotations.Test;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
@@ -38,12 +37,13 @@ public class StateMachineSnapshotterTest {
         }
         Impl sm = new Impl();
         SerializationRegistry registry = SerializationRegistry.create();
-        registry.register(new TestSerializationInitializerImpl());
-        Serializer serializer = Serializer.protoStream(registry);
+        Serializer serializer = Serializer.create(registry);
 
         StateMachineSnapshotter<SnapshotStateMachine> snapshotter = new StateMachineSnapshotter<>(sm, serializer);
 
-        byte[] datum = snapshotter.writeSnapshot();
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream();
+        snapshotter.writeSnapshot(out);
+        byte[] datum = out.buffer();
 
         sm.counter = 0; // Reset the state machine to ensure the snapshot is read correctly
 
@@ -73,12 +73,13 @@ public class StateMachineSnapshotterTest {
         }
         Impl sm = new Impl();
         SerializationRegistry registry = SerializationRegistry.create();
-        registry.register(new TestSerializationInitializerImpl());
-        Serializer serializer = Serializer.protoStream(registry);
+        Serializer serializer = Serializer.create(registry);
 
         StateMachineSnapshotter<SnapshotStateMachine> snapshotter = new StateMachineSnapshotter<>(sm, serializer);
 
-        byte[] datum = snapshotter.writeSnapshot();
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream();
+        snapshotter.writeSnapshot(out);
+        byte[] datum = out.buffer();
 
         sm.counter = 0; // Reset the state machine to ensure the snapshot is read correctly
         sm.name = null;
@@ -95,8 +96,7 @@ public class StateMachineSnapshotterTest {
         }
         Impl sm = new Impl();
         SerializationRegistry registry = SerializationRegistry.create();
-        registry.register(new TestSerializationInitializerImpl());
-        Serializer serializer = Serializer.protoStream(registry);
+        Serializer serializer = Serializer.create(registry);
 
         assertThatThrownBy(() -> new StateMachineSnapshotter<>(sm, serializer))
             .isInstanceOf(IllegalStateException.class)
@@ -113,8 +113,7 @@ public class StateMachineSnapshotterTest {
         }
         Impl sm = new Impl();
         SerializationRegistry registry = SerializationRegistry.create();
-        registry.register(new TestSerializationInitializerImpl());
-        Serializer serializer = Serializer.protoStream(registry);
+        Serializer serializer = Serializer.create(registry);
 
         assertThatThrownBy(() -> new StateMachineSnapshotter<>(sm, serializer))
                 .isInstanceOf(IllegalStateException.class)
@@ -134,12 +133,13 @@ public class StateMachineSnapshotterTest {
 
         ChildMachine sm = new ChildMachine();
         SerializationRegistry registry = SerializationRegistry.create();
-        registry.register(new TestSerializationInitializerImpl());
-        Serializer serializer = Serializer.protoStream(registry);
+        Serializer serializer = Serializer.create(registry);
 
         StateMachineSnapshotter<SnapshotStateMachine> snapshotter = new StateMachineSnapshotter<>(sm, serializer);
 
-        byte[] datum = snapshotter.writeSnapshot();
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream();
+        snapshotter.writeSnapshot(out);
+        byte[] datum = out.buffer();
 
         sm.baseCounter = 0;
         sm.childName = null;
@@ -156,8 +156,7 @@ public class StateMachineSnapshotterTest {
         }
         Impl sm = new Impl();
         SerializationRegistry registry = SerializationRegistry.create();
-        registry.register(new TestSerializationInitializerImpl());
-        Serializer serializer = Serializer.protoStream(registry);
+        Serializer serializer = Serializer.create(registry);
 
         assertThatThrownBy(() -> new StateMachineSnapshotter<>(sm, serializer))
                 .isInstanceOf(IllegalStateException.class)
@@ -179,12 +178,12 @@ public class StateMachineSnapshotterTest {
         sm.nullField = null;
 
         SerializationRegistry registry = SerializationRegistry.create();
-        registry.register(new TestSerializationInitializerImpl());
-        registry.register(new CommonContainerTypesSchema());
-        Serializer serializer = Serializer.protoStream(registry);
+        Serializer serializer = Serializer.create(registry);
 
         StateMachineSnapshotter<SnapshotStateMachine> snapshotter = new StateMachineSnapshotter<>(sm, serializer);
-        byte[] datum = snapshotter.writeSnapshot();
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream();
+        snapshotter.writeSnapshot(out);
+        byte[] datum = out.buffer();
 
         sm.nullField = "changed";
         sm.list = new ArrayList<>(List.of(9, 9, 9));

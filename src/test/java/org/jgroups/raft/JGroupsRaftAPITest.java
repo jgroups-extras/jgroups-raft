@@ -1,11 +1,14 @@
 package org.jgroups.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+
 import org.jgroups.Global;
-import org.jgroups.raft.command.JGroupsRaftCommandOptions;
-import org.jgroups.raft.exceptions.JRaftException;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.raft.api.SimpleKVStateMachine;
-import org.jgroups.raft.api.TestSerializationInitializerImpl;
+import org.jgroups.raft.command.JGroupsRaftCommandOptions;
+import org.jgroups.raft.exceptions.JRaftException;
 
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
@@ -14,10 +17,6 @@ import java.util.function.Function;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class JGroupsRaftAPITest {
@@ -40,8 +39,7 @@ public class JGroupsRaftAPITest {
     public void testDirectClientValidatesRestriction() throws Exception {
         JGroupsRaft.Builder<SimpleKVStateMachine> builder = JGroupsRaft.builder(new SimpleKVStateMachine.Impl(), SimpleKVStateMachine.class)
               .withJGroupsConfig("test-raft.xml")
-              .withClusterName("direct-client-test")
-              .registerSerializationContextInitializer(new TestSerializationInitializerImpl());
+              .withClusterName("direct-client-test");
         builder.configureRaft()
               .withRaftId("single_node")
               .withMembers(Collections.singletonList("single_node"));
@@ -68,8 +66,7 @@ public class JGroupsRaftAPITest {
     public void testInstanceLifecycle() {
         JGroupsRaft.Builder<SimpleKVStateMachine> builder = JGroupsRaft.builder(new SimpleKVStateMachine.Impl(), SimpleKVStateMachine.class)
                 .withJGroupsConfig("test-raft.xml")
-                .withClusterName("lifecycle-test")
-                .registerSerializationContextInitializer(new TestSerializationInitializerImpl());
+                .withClusterName("lifecycle-test");
         builder.configureRaft()
                 .withRaftId("single_node")
                 .withMembers(Collections.singletonList("single_node"));
@@ -106,8 +103,7 @@ public class JGroupsRaftAPITest {
     public void testSuccessiveLifecycleCalls() {
         JGroupsRaft.Builder<SimpleKVStateMachine> builder = JGroupsRaft.builder(new SimpleKVStateMachine.Impl(), SimpleKVStateMachine.class)
                 .withJGroupsConfig("test-raft.xml")
-                .withClusterName("lifecycle-successive-test")
-                .registerSerializationContextInitializer(new TestSerializationInitializerImpl());
+                .withClusterName("lifecycle-successive-test");
         builder.configureRaft()
                 .withRaftId("single_node")
                 .withMembers(Collections.singletonList("single_node"));

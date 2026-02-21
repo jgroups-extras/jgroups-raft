@@ -2,6 +2,9 @@ package org.jgroups.raft;
 
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
+import org.jgroups.raft.serialization.JGroupsRaftCustomMarshaller;
+import org.jgroups.raft.serialization.SerializationContextRead;
+import org.jgroups.raft.serialization.SerializationContextWrite;
 
 import java.util.Collections;
 import java.util.HashMap;
@@ -9,11 +12,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Function;
-
-import org.infinispan.protostream.SerializationContextInitializer;
-import org.infinispan.protostream.annotations.Proto;
-import org.infinispan.protostream.annotations.ProtoSchema;
-import org.infinispan.protostream.annotations.ProtoSyntax;
 
 public class ReplicatedHashMapExample {
 
@@ -31,8 +29,8 @@ public class ReplicatedHashMapExample {
                 // The name of the cluster the nodes we'll connect to.
                 .withClusterName("replicated-hash-map")
 
-                // Register the serialization context so ProtoStream can serialize the objects.
-                .registerSerializationContextInitializer(new ReplicatedHashMapSerializationContextImpl())
+                // Register a custom marshaller for the custom UserInformation type.
+                .registerMarshaller(new UserInformationMarshaller())
 
                 // We use a custom configuration to set the raft ID and members.
                 .configureRaft()
@@ -139,22 +137,38 @@ public class ReplicatedHashMapExample {
      * @param name The user's name
      * @param age The user's age.
      */
-    @Proto
     public record UserInformation(String name, int age) {}
 
-    /**
-     * Creates the serialization context for ProtoStream.
-     */
-    @ProtoSchema(
-            allowNullFields = true,
-            includeClasses = {
-                    ReplicatedHashMapExample.UserInformation.class,
-            },
-            schemaFileName = "replicated_hash_map.proto",
-            schemaFilePath = "proto/generated",
-            schemaPackageName = "org.jgroups.tests.examples.hash",
-            service = false,
-            syntax = ProtoSyntax.PROTO3
-    )
-    public interface ReplicatedHashMapSerializationContext extends SerializationContextInitializer { }
+    public static final int USER_INFORMATION_TYPE = JGroupsRaftCustomMarshaller.MINIMUM_TYPE_ID + 1;
+
+    public static final class UserInformationMarshaller implements JGroupsRaftCustomMarshaller<UserInformation> {
+
+        @Override
+        public void write(SerializationContextWrite ctx, UserInformation target) {
+            ctx.writeUTF(target.name());
+            ctx.writeInt(target.age());
+        }
+
+        @Override
+        public UserInformation read(SerializationContextRead ctx, byte version) {
+            String name = ctx.readUTF();
+            int age = ctx.readInt();
+            return new UserInformation(name, age);
+        }
+
+        @Override
+        public Class<UserInformation> javaClass() {
+            return UserInformation.class;
+        }
+
+        @Override
+        public int type() {
+            return USER_INFORMATION_TYPE;
+        }
+
+        @Override
+        public byte version() {
+            return 0;
+        }
+    }
 }

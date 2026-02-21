@@ -5,6 +5,9 @@ import org.jgroups.Receiver;
 import org.jgroups.View;
 import org.jgroups.jmx.JmxConfigurator;
 import org.jgroups.raft.configuration.RuntimeProperties;
+import org.jgroups.raft.serialization.JGroupsRaftCustomMarshaller;
+import org.jgroups.raft.serialization.SerializationContextRead;
+import org.jgroups.raft.serialization.SerializationContextWrite;
 import org.jgroups.util.Util;
 
 import java.awt.BorderLayout;
@@ -27,16 +30,9 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
-import java.nio.ByteBuffer;
 import java.util.Map;
 
 import javax.management.MBeanServer;
-
-import org.infinispan.protostream.SerializationContextInitializer;
-import org.infinispan.protostream.annotations.Proto;
-import org.infinispan.protostream.annotations.ProtoField;
-import org.infinispan.protostream.annotations.ProtoSchema;
-import org.infinispan.protostream.annotations.ProtoSyntax;
 
 public class TotalOrder extends Frame {
     private static final Font def_font=new Font("Helvetica", Font.BOLD, 12);
@@ -192,47 +188,9 @@ public class TotalOrder extends Frame {
             raft = JGroupsRaft.builder(canvas, CanvasStateMachine.class)
                     .withJChannel(channel)
                     .withClusterName("total-order")
-                    .registerSerializationContextInitializer(new TotalOrderSerializationInitializerImpl())
                     .withRuntimeProperties(RuntimeProperties.from(Map.of(JGroupsRaftMetrics.METRICS_ENABLED.name(), "true")))
-                    .registerMarshaller(new JGroupsRaftCustomMarshaller<int[][]>() {
-                        @Override
-                        public Class<? extends int[][]> javaClass() {
-                            return int[][].class;
-                        }
-
-                        @Override
-                        public byte[] write(int[][] obj) {
-                            int size = Integer.BYTES * obj.length;
-                            for (int[] ints : obj) {
-                                size += Integer.BYTES + Integer.BYTES * ints.length;
-                            }
-                            byte[] datum = new byte[size];
-                            ByteBuffer buffer = ByteBuffer.wrap(datum);
-                            buffer.putInt(obj.length);
-                            for (int[] ints : obj) {
-                                buffer.putInt(ints.length);
-                                for (int i : ints) {
-                                    buffer.putInt(i);
-                                }
-                            }
-                            return datum;
-                        }
-
-                        @Override
-                        public int[][] read(byte[] datum) {
-                            ByteBuffer buffer = ByteBuffer.wrap(datum);
-                            int outer = buffer.getInt();
-                            int[][] output = new int[outer][];
-                            for (int i = 0; i < outer; i++) {
-                                int inner = buffer.getInt();
-                                output[i] = new int[inner];
-                                for (int j = 0; j < inner; j++) {
-                                    output[i][j] = buffer.getInt();
-                                }
-                            }
-                            return output;
-                        }
-                    })
+                    .registerMarshaller(new TotOrderRequestMarshaller())
+                    .registerMarshaller(new IntMatrixMarshaller())
                     .build();
             raft.start();
 
@@ -528,11 +486,7 @@ public class TotalOrder extends Frame {
         }
     }
 
-    @Proto
-    record TotOrderRequest(@ProtoField(number = 1, defaultValue = "0") byte type,
-                           @ProtoField(number = 2, defaultValue = "0") int x,
-                           @ProtoField(number = 3, defaultValue = "0") int y,
-                           @ProtoField(number = 4, defaultValue = "0") int val) {
+    public record TotOrderRequest(byte type, int x, int y, int val) {
 
         public static final byte ADDITION = 1;
         public static final byte SUBTRACTION = 2;
@@ -554,14 +508,80 @@ public class TotalOrder extends Frame {
         }
     }
 
+    public static final class TotOrderRequestMarshaller implements JGroupsRaftCustomMarshaller<TotOrderRequest> {
 
-    @ProtoSchema(
-            includeClasses = TotOrderRequest.class,
-            schemaFileName = "total-order.proto",
-            schemaFilePath = "proto/generated",
-            schemaPackageName = "org.jgroups.demo",
-            service = false,
-            syntax = ProtoSyntax.PROTO3
-    )
-    public interface TotalOrderSerializationInitializer extends SerializationContextInitializer { }
+        @Override
+        public void write(SerializationContextWrite ctx, TotOrderRequest target) {
+            ctx.writeByte(target.type());
+            ctx.writeInt(target.x());
+            ctx.writeInt(target.y());
+            ctx.writeInt(target.val());
+        }
+
+        @Override
+        public TotOrderRequest read(SerializationContextRead ctx, byte version) {
+            byte type = ctx.readByte();
+            int x = ctx.readInt();
+            int y = ctx.readInt();
+            int val = ctx.readInt();
+            return new TotOrderRequest(type, x, y, val);
+        }
+
+        @Override
+        public Class<TotOrderRequest> javaClass() {
+            return TotOrderRequest.class;
+        }
+
+        @Override
+        public int type() {
+            return JGroupsRaftCustomMarshaller.MINIMUM_TYPE_ID + 1;
+        }
+
+        @Override
+        public byte version() {
+            return 0;
+        }
+    }
+
+    public static final class IntMatrixMarshaller implements JGroupsRaftCustomMarshaller<int[][]> {
+        @Override
+        public void write(SerializationContextWrite ctx, int[][] target) {
+            ctx.writeInt(target.length);
+            for (int[] ints : target) {
+                ctx.writeInt(ints.length);
+                for (int i : ints) {
+                    ctx.writeInt(i);
+                }
+            }
+        }
+
+        @Override
+        public int[][] read(SerializationContextRead ctx, byte version) {
+            int outer = ctx.readInt();
+            int[][] output = new int[outer][];
+            for (int i = 0; i < outer; i++) {
+                int inner = ctx.readInt();
+                output[i] = new int[inner];
+                for (int j = 0; j < inner; j++) {
+                    output[i][j] = ctx.readInt();
+                }
+            }
+            return output;
+        }
+
+        @Override
+        public Class<int[][]> javaClass() {
+            return int[][].class;
+        }
+
+        @Override
+        public int type() {
+            return JGroupsRaftCustomMarshaller.MINIMUM_TYPE_ID + 2;
+        }
+
+        @Override
+        public byte version() {
+            return 0;
+        }
+    }
 }

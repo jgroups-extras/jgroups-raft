@@ -3,7 +3,7 @@ package org.jgroups.raft.internal;
 import org.jgroups.JChannel;
 import org.jgroups.raft.JGroupsRaft;
 import org.jgroups.raft.configuration.RuntimeProperties;
-import org.jgroups.raft.internal.registry.SerializationRegistry;
+import org.jgroups.raft.internal.serialization.binary.SerializationRegistry;
 import org.jgroups.raft.logger.JRaftEventLogger;
 
 public final class JGroupsRaftFactory {
