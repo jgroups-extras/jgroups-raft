@@ -41,7 +41,7 @@ jobs:
       - name: Build with Maven
         timeout-minutes: 10
         id: test_runner
-        run: mvn --batch-mode --no-transfer-progress package -Dgroups=functional
+        run: mvn --batch-mode --no-transfer-progress package -Dgroups=functional -Djgroups.tests.parallel.threads=2
 
       - name: Generate reports
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17
