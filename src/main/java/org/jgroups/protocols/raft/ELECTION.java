@@ -3,8 +3,8 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.View;
 import org.jgroups.annotations.MBean;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.raft.election.BaseElection;
+import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.raft.util.Utils.Majority;
 
@@ -40,10 +40,10 @@ import java.util.List;
  */
 @MBean(description="Protocol performing leader election according to the RAFT paper")
 public class ELECTION extends BaseElection {
-    protected static final short ELECTION_ID    = 520;
+    public static final short ELECTION_ID    = 520;
 
     static {
-        ClassConfigurator.addProtocol(ELECTION_ID, ELECTION.class);
+        RaftClassConfigurator.initialize();
     }
 
     @Override

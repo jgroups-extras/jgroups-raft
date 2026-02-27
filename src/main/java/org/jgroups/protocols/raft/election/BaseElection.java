@@ -1,5 +1,8 @@
 package org.jgroups.protocols.raft.election;
 
+import static org.jgroups.Message.Flag.OOB;
+import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
+
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Event;
@@ -9,11 +12,11 @@ import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.RaftHeader;
+import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
@@ -29,9 +32,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
-import static org.jgroups.Message.Flag.OOB;
-import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
-
 /**
  * Abstract leader election algorithm functionalities.
  * <p>
@@ -44,16 +44,14 @@ import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
  */
 public abstract class BaseElection extends Protocol {
 
-    protected static final short VOTE_REQ       = 3000;
-    static final short VOTE_RSP                 = 3001;
-    static final short LEADER_ELECTED           = 3005;
-    protected static final short PRE_VOTE_REQ   = 3006;
-    protected static final short PRE_VOTE_RSP   = 3007;
+    public static final short VOTE_REQ       = 3000;
+    public static final short VOTE_RSP                 = 3001;
+    public static final short LEADER_ELECTED           = 3005;
+    public static final short PRE_VOTE_REQ   = 3006;
+    public static final short PRE_VOTE_RSP   = 3007;
 
     static {
-        ClassConfigurator.add(VOTE_REQ,       VoteRequest.class);
-        ClassConfigurator.add(VOTE_RSP,       VoteResponse.class);
-        ClassConfigurator.add(LEADER_ELECTED, LeaderElected.class);
+        RaftClassConfigurator.initialize();
     }
 
     protected RAFT raft;

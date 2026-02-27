@@ -10,10 +10,10 @@ import org.jgroups.View;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.conf.AttributeType;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.internal.metrics.SystemMetricsTracker;
+import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
 import org.jgroups.util.MessageBatch;
@@ -45,14 +45,13 @@ import java.util.function.Supplier;
 @MBean(description = "Redirects requests to current leader")
 public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     // When moving to JGroups -> add to jg-protocol-ids.xml
-    protected static final short REDIRECT_ID = 522;
+    public static final short REDIRECT_ID = 522;
 
     // When moving to JGroups -> add to jg-magic-map.xml
-    protected static final short REDIRECT_HDR = 4000;
+    public static final short REDIRECT_HDR = 4000;
 
     static {
-        ClassConfigurator.addProtocol(REDIRECT_ID, REDIRECT.class);
-        ClassConfigurator.add(REDIRECT_HDR, RedirectHeader.class);
+        RaftClassConfigurator.initialize();
     }
 
     protected final AtomicInteger request_ids = new AtomicInteger(1);

@@ -4,8 +4,8 @@ import org.jgroups.Global;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.raft.Settable;
+import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Util;
@@ -34,13 +34,13 @@ import java.util.function.BiConsumer;
  */
 @MBean(description="Listens on a socket for client requests, forwards them to the leader and send responses")
 public class CLIENT extends Protocol implements Runnable {
-    protected static final short  CLIENT_ID = 523;
+    public static final short  CLIENT_ID = 523;
     protected static final byte[] BUF={};
 
     public enum RequestType {set_req, add_server, remove_server, type, rsp, get_req}
 
     static {
-        ClassConfigurator.addProtocol(CLIENT_ID, CLIENT.class);
+        RaftClassConfigurator.initialize();
     }
 
     @Property(name="bind_addr",

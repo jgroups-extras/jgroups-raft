@@ -13,7 +13,6 @@ import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.protocols.raft.internal.request.BaseRequest;
 import org.jgroups.protocols.raft.internal.request.CallableDownRequest;
@@ -27,6 +26,7 @@ import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.internal.metrics.SystemMetricsTracker;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
+import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.raft.util.ReadOnlyRequestRepository;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.raft.util.TimeService;
@@ -89,12 +89,12 @@ import java.util.regex.Pattern;
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol implements Settable, DynamicMembership {
     public static final byte[]    raft_id_key          = Util.stringToBytes("raft-id");
-    protected static final short  RAFT_ID              = 521;
-    protected static final short  APPEND_ENTRIES_REQ   = 2000;
-    protected static final short  APPEND_ENTRIES_RSP   = 2001;
-    protected static final short  APPEND_RESULT        = 2002;
-    protected static final short  INSTALL_SNAPSHOT_REQ = 2003;
-    protected static final short  LOG_ENTRIES          = 2004;
+    public static final short  RAFT_ID              = 521;
+    public static final short  APPEND_ENTRIES_REQ   = 2000;
+    public static final short  APPEND_ENTRIES_RSP   = 2001;
+    public static final short  APPEND_RESULT        = 2002;
+    public static final short  INSTALL_SNAPSHOT_REQ = 2003;
+    public static final short  LOG_ENTRIES          = 2004;
 
     public static final Function<ExtendedUUID,String> print_function=uuid -> {
         byte[] val=uuid.get(raft_id_key);
@@ -102,12 +102,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     };
 
     static {
-        ClassConfigurator.addProtocol(RAFT_ID, RAFT.class);
-        ClassConfigurator.add(APPEND_ENTRIES_REQ,   AppendEntriesRequest.class);
-        ClassConfigurator.add(APPEND_ENTRIES_RSP,   AppendEntriesResponse.class);
-        ClassConfigurator.add(APPEND_RESULT,        AppendResult.class);
-        ClassConfigurator.add(INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
-        ClassConfigurator.add(LOG_ENTRIES,          LogEntries.class);
+        RaftClassConfigurator.initialize();
     }
 
     @Property(description="The identifier of this node. Needs to be unique and an element of members. Must not be null",

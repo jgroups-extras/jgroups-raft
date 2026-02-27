@@ -1,15 +1,17 @@
 package org.jgroups.protocols.raft;
 
+import static org.jgroups.Message.Flag.OOB;
+
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Message;
 import org.jgroups.View;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
-import org.jgroups.conf.ClassConfigurator;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.protocols.raft.election.PreVoteRequest;
 import org.jgroups.protocols.raft.election.PreVoteResponse;
+import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.raft.util.Utils.Majority;
 import org.jgroups.util.ResponseCollector;
@@ -17,8 +19,6 @@ import org.jgroups.util.ResponseCollector;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import static org.jgroups.Message.Flag.OOB;
 
 /**
  * A leader election protocol.
@@ -53,12 +53,10 @@ import static org.jgroups.Message.Flag.OOB;
 @MBean(description = "Performs leader election with a pre-voting phase.")
 public class ELECTION2 extends BaseElection {
 
-    protected static final short ELECTION_ID    = 524;
+    public static final short ELECTION_ID    = 524;
 
     static {
-        ClassConfigurator.addProtocol(ELECTION_ID, ELECTION2.class);
-        ClassConfigurator.add(PRE_VOTE_REQ, PreVoteRequest.class);
-        ClassConfigurator.add(PRE_VOTE_RSP, PreVoteResponse.class);
+        RaftClassConfigurator.initialize();
     }
 
     private final PreVotingMechanism preVotingMechanism = new PreVotingMechanism();
