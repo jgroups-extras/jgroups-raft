@@ -63,7 +63,7 @@
         <argLine>${jgroups.tests.jvmargs} -Djdk.attach.allowAttachSelf=true</argLine>
 
         <!-- Utilized by Asciidoctor to set the generation date. -->
-        <asciidoctorj.diagram.version>3.1.0</asciidoctorj.diagram.version>
+        <asciidoctorj.diagram.version>3.2.0</asciidoctorj.diagram.version>
         <asciidoctorj.diita.version>1.0.3</asciidoctorj.diita.version>
         <maven.build.timestamp.format>yyyy-MM-dd HH</maven.build.timestamp.format>
 
