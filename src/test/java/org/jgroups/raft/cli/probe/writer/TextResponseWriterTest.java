@@ -73,7 +73,7 @@ l[0]=1
 l[1]=2
 l[2]=3
 
-""";
+""".replace("\n", System.lineSeparator());
         assertThat(output).isEqualTo(expected);
     }
 }
