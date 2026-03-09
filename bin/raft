@@ -5,7 +5,7 @@ set -e
 # JGroups Raft Project configuration.
 GROUP_ID="org.jgroups"
 ARTIFACT_ID="jgroups-raft"
-VERSION="2.0.0.Final-SNAPSHOT"
+VERSION="2.0.0.Alpha1"
 CLASSIFIER="cli"
 JAR_NAME="${ARTIFACT_ID}-${VERSION}-${CLASSIFIER}.jar"
 
