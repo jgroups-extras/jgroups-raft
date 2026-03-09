@@ -76,13 +76,13 @@ public interface StateMachine {
      * each of which can be passed to {@link #apply(byte[], int, int, boolean)}.
      * </p>
      *
-     * <h3>Synchronous Execution & Event Loop Blocking</h3>
+     * <h3>Synchronous Execution &amp; Event Loop Blocking</h3>
      * <p>
      * This method is invoked <b>synchronously</b> by the main Raft event loop. While this method is executing, the core Raft
      * protocol is entirely blocked. The node will not process incoming client requests until the restoration is fully complete.
      * </p>
      *
-     * <h3>Buffer Ownership & Determinism</h3>
+     * <h3>Buffer Ownership &amp; Determinism</h3>
      * <p>
      * The framework owns the provided {@link DataInput} buffer, and this ownership is released the moment this method finishes.
      * The implementation must <b>completely read the buffer and restore its internal state deterministically</b> before
@@ -113,14 +113,14 @@ public interface StateMachine {
      * data needed to completely recover the state machine should be written to the buffer.
      * </p>
      *
-     * <h3>Synchronous Execution & Event Loop Blocking</h3>
+     * <h3>Synchronous Execution &amp; Event Loop Blocking</h3>
      * <p>
      * This method is invoked <b>synchronously</b> by the main Raft event loop. While this method is executing, the core Raft
      * protocol is entirely blocked. Updates to the state machine may need to be put on hold while the state is written to the
      * output stream. Otherwise, it is not possible to guarantee a consistent view of the state machine.
      * </p>
      *
-     * <h3>Buffer Ownership & Determinism</h3>
+     * <h3>Buffer Ownership &amp; Determinism</h3>
      * <p>
      * The framework owns the {@link DataOutput} stream. The implementation must deterministically and <b>completely write
      * its current state</b> to the stream before returning, as the buffer is flushed and released immediately after the method
