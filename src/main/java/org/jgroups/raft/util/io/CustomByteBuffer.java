@@ -366,7 +366,7 @@ public final class CustomByteBuffer implements RandomAccessOutput {
 
         // Calculate new capacity
         int currentCapacity = buffer.capacity();
-        int neededCapacity = currentCapacity + (minWritableBytes - writableBytes);
+        int neededCapacity = currentCapacity + minWritableBytes - writableBytes;
         int newCapacity = Math.max(currentCapacity * 2, neededCapacity);
 
         // Create new buffer and copy existing data

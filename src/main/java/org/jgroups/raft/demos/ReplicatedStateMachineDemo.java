@@ -23,6 +23,7 @@ import java.util.Objects;
  * @author Bela Ban
  * @since  0.1
  */
+@SuppressWarnings("PMD.AvoidUsingHardCodedIP")
 public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receiver, RAFT.RoleChange {
     protected JChannel                              ch;
     protected ReplicatedStateMachine<String,Object> rsm;

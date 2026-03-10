@@ -104,7 +104,7 @@ public final class JGroupsRaftExceptionHandler implements CommandLine.IExecution
      * @return {@code true} if {@code -v} or {@code --verbose} was matched; {@code false} otherwise.
      */
     private boolean isVerbose(CommandLine.ParseResult result) {
-        return (result.hasMatchedOption('v') || result.hasMatchedOption("verbose"))
+        return result.hasMatchedOption('v') || result.hasMatchedOption("verbose")
                 || (result.hasSubcommand() && isVerbose(result.subcommand()));
     }
 }

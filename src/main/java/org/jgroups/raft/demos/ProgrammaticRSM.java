@@ -51,6 +51,7 @@ import java.util.stream.Stream;
  * @author Bela Ban
  * @since  1.0.0
  */
+@SuppressWarnings("PMD.AvoidUsingHardCodedIP")
 public class ProgrammaticRSM {
     protected static final JChannel                              ch;
     protected static final ReplicatedStateMachine<String,Object> rsm;

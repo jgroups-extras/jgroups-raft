@@ -108,7 +108,7 @@ public class ProbeCommandTest {
         if (expected.cluster != null) {
             assertThat(actual.request())
                     .as("Request string should contain cluster filter")
-                    .isEqualTo(String.format("%s -cluster %s ", TEST_PROBE_REQUEST, expected.cluster));
+                    .isEqualTo(String.format("%s cluster=%s ", TEST_PROBE_REQUEST, expected.cluster));
         } else {
             assertThat(actual.request()).isEqualTo(TEST_PROBE_REQUEST);
         }
@@ -248,7 +248,7 @@ public class ProbeCommandTest {
         assertThat(captured.get()).isNotNull();
         assertThat(captured.get().request())
                 .as("Cluster filter should be appended to probe request")
-                .isEqualTo(TEST_PROBE_REQUEST + " -cluster myCluster ");
+                .isEqualTo(TEST_PROBE_REQUEST + " cluster=myCluster ");
     }
 
     @Test

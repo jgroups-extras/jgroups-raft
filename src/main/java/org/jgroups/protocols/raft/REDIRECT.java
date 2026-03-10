@@ -338,6 +338,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         private static final AtomicLongFieldUpdater<RedirectRequest> USER_START_NANOS = AtomicLongFieldUpdater.newUpdater(RedirectRequest.class, "userStartNanos");
         private final CompletableFuture<byte[]> cf;
 
+        @SuppressWarnings("PMD.UnusedPrivateField")
         private volatile long userStartNanos;
 
         public RedirectRequest() {

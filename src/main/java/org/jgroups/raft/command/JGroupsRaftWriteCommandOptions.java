@@ -64,7 +64,7 @@ public sealed interface JGroupsRaftWriteCommandOptions extends JGroupsRaftComman
             @Override
             public WriteImpl read(SerializationContextRead ctx, byte version) {
                 boolean ignoreReturnValue = ctx.readBoolean();
-                return (WriteImpl) JGroupsRaftWriteCommandOptions.options()
+                return (WriteImpl) options()
                         .ignoreReturnValue(ignoreReturnValue)
                         .build();
             }

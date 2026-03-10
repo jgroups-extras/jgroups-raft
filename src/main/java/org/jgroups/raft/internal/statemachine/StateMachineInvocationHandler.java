@@ -94,19 +94,17 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
 
         // 3. Handle Non-Linearizable (Dirty) Reads
         // If a read does not require strict Raft consensus, execute it immediately on the local state machine.
-        if (wrapper.isRead()) {
-            if (options instanceof JGroupsRaftReadCommandOptions opts && !opts.linearizable()) {
-                ReplicatedMethodWrapper rmw = registry.getCommand(command.id());
-                Object res;
+        if (wrapper.isRead() && options instanceof JGroupsRaftReadCommandOptions opts && !opts.linearizable()) {
+            ReplicatedMethodWrapper rmw = registry.getCommand(command.id());
+            Object res;
 
-                // CRITICAL: Synchronize on the concrete implementation's intrinsic lock.
-                // This prevents dirty reads from colliding with the StateMachineAdapter which is concurrently applying
-                // committed writes to the same instance.
-                synchronized (delegate) {
-                    res = rmw.submit(args);
-                }
-                return opts.ignoreReturnValue() ? null : res;
+            // CRITICAL: Synchronize on the concrete implementation's intrinsic lock.
+            // This prevents dirty reads from colliding with the StateMachineAdapter which is concurrently applying
+            // committed writes to the same instance.
+            synchronized (delegate) {
+                res = rmw.submit(args);
             }
+            return opts.ignoreReturnValue() ? null : res;
         }
 
         // 4. Submit to Raft Cluster
@@ -188,7 +186,7 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
         throw new CompletionException(response.exception());
     }
 
-    private static <R> R toNull(Object ignore) {
+    private static <R> R toNull(Object ignored) {
         return null;
     }
 }

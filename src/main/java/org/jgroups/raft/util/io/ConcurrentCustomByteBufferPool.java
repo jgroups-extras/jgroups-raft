@@ -118,12 +118,9 @@ public class ConcurrentCustomByteBufferPool {
 
         // First pass: try to find an empty slot
         for (int i = 0; i < length; i++) {
-            if (slots.get(i) == null) {
-                if (slots.compareAndSet(i, null, buffer)) {
-                    // Successfully cached in empty slot
-                    return;
-                }
-                // CAS failed - slot filled by another thread, continue
+            if (slots.compareAndSet(i, null, buffer)) {
+                // Successfully cached in empty slot
+                return;
             }
         }
 
@@ -131,12 +128,9 @@ public class ConcurrentCustomByteBufferPool {
         for (int i = 0; i < length; i++) {
             CustomByteBuffer existing = slots.get(i);
 
-            if (existing != null && existing.capacity() < capacity) {
-                if (slots.compareAndSet(i, existing, buffer)) {
-                    // Successfully replaced smaller buffer
-                    return;
-                }
-                // CAS failed - slot changed by another thread, continue
+            if (existing != null && existing.capacity() < capacity && slots.compareAndSet(i, existing, buffer)) {
+                // Successfully replaced smaller buffer
+                return;
             }
         }
 
@@ -148,11 +142,11 @@ public class ConcurrentCustomByteBufferPool {
         for (int i = 0; i < length; i++) {
             CustomByteBuffer buffer = slots.get(i);
 
-            if (buffer != null && buffer.capacity() >= requestedSize) {
-                if (slots.compareAndSet(i, buffer, null)) {
-                    buffer.clear();
-                    return buffer;
-                }
+            if (buffer != null
+                    && buffer.capacity() >= requestedSize
+                    && slots.compareAndSet(i, buffer, null)) {
+                buffer.clear();
+                return buffer;
             }
         }
         return null;

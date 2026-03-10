@@ -44,7 +44,7 @@ public class Utils {
     }
 
     public static boolean isMajorityLost(Collection<String> oldMembers, Collection<String> newMembers, int majority) {
-        return (oldMembers != null && oldMembers.size() >= majority) && newMembers.size() < majority;
+        return oldMembers != null && oldMembers.size() >= majority && newMembers.size() < majority;
     }
 
     public static Majority computeMajority(View oldView, View newView, RAFT raft) {

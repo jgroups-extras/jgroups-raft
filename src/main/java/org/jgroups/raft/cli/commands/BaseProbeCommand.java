@@ -160,7 +160,7 @@ abstract class BaseProbeCommand extends BaseRaftCLICommand {
 
         String request = probeRequest();
         if (cluster != null && !cluster.isBlank())
-            request += String.format(" -cluster %s ", cluster);
+            request += String.format(" cluster=%s ", cluster);
 
         builder
                 .withPort(port)

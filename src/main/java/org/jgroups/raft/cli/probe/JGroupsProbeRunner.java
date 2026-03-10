@@ -163,7 +163,7 @@ final class JGroupsProbeRunner implements ProbeRunner {
                 ByteBuffer content;
                 if (splitIndex != -1 && splitIndex + 1 < offset + length) {
                     int contentStart = splitIndex + 1;
-                    content = ByteBuffer.wrap(datum, contentStart, (offset + length) - contentStart);
+                    content = ByteBuffer.wrap(datum, contentStart, offset + length - contentStart);
                 } else {
                     content = EMPTY_BUFFER;
                 }

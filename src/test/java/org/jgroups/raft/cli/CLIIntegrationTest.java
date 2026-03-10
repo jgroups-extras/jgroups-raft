@@ -83,7 +83,9 @@ public class CLIIntegrationTest {
                 .map(n -> (Map<String, Object>) n.get("response"))
                 .filter(r -> "Leader".equals(r.get("role")))
                 .count();
-        assertThat(leaderCount).isOne();
+        assertThat(leaderCount)
+                .withFailMessage("Response was: " + json)
+                .isOne();
 
         // All nodes agree on who the leader is.
         JGroupsRaftState leaderState = cluster.leader().state();
@@ -116,8 +118,12 @@ public class CLIIntegrationTest {
             Map<String, Object> data = (Map<String, Object>) node.get("response");
             assertThat(data).containsKeys("total-nodes", "active-nodes",
                     "election-metrics", "processing-metrics", "replication-metrics");
-            assertThat(((Number) data.get("total-nodes")).intValue()).isEqualTo(CLUSTER_SIZE);
-            assertThat(((Number) data.get("active-nodes")).intValue()).isEqualTo(CLUSTER_SIZE);
+            assertThat(((Number) data.get("total-nodes")).intValue())
+                    .withFailMessage("Response was: " + json)
+                    .isEqualTo(CLUSTER_SIZE);
+            assertThat(((Number) data.get("active-nodes")).intValue())
+                    .withFailMessage("Response was: " + json)
+                    .isEqualTo(CLUSTER_SIZE);
         }
     }
 

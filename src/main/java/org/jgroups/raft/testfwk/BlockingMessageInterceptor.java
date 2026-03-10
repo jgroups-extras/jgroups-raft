@@ -169,7 +169,7 @@ public final class BlockingMessageInterceptor {
                 cf.get(60, TimeUnit.SECONDS);
             } catch (InterruptedException | TimeoutException e) {
                 throw new RuntimeException(String.format("Operation never released: %s", message), e);
-            } catch (ExecutionException ignore) { }
+            } catch (ExecutionException ignored) { }
 
             return CompletableFutures.completedNull();
         }

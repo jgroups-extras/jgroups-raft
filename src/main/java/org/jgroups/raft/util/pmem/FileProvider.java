@@ -22,9 +22,7 @@ public class FileProvider {
          Class.forName("io.mashona.logwriting.PmemUtil");
          // use persistent memory if available, otherwise fallback to regular file.
          attemptPmem = true;
-      } catch (ClassNotFoundException e) {
-         //no op
-      }
+      } catch (ClassNotFoundException ignored) { }
       ATTEMPT_PMEM = attemptPmem;
    }
 

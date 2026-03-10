@@ -58,7 +58,7 @@ public class CounterStateMachine implements StateMachine {
         try {
             int val=in.readInt();
             counter.set(val);
-        } catch(Exception ignore) { }
+        } catch(Exception ignored) { }
     }
 
     public void writeContentTo(DataOutput out) throws Exception {

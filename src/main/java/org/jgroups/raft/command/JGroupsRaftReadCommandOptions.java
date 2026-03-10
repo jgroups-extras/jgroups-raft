@@ -91,7 +91,7 @@ public sealed interface JGroupsRaftReadCommandOptions extends JGroupsRaftCommand
             public ReadImpl read(SerializationContextRead ctx, byte version) {
                 boolean linearizable = ctx.readBoolean();
                 boolean ignoreReturnValue = ctx.readBoolean();
-                return (ReadImpl) JGroupsRaftReadCommandOptions.options()
+                return (ReadImpl) options()
                         .linearizable(linearizable)
                         .ignoreReturnValue(ignoreReturnValue)
                         .build();

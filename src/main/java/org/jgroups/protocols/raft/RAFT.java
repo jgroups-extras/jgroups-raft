@@ -1066,7 +1066,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 // If it is the leader, it should step down and trigger a new election.
                 if (isLeader()) {
                     log.trace("%s: leader stepping down and starting election", local_addr);
-                    BaseElection be = RAFT.findProtocol(BaseElection.class, this, true);
+                    BaseElection be = findProtocol(BaseElection.class, this, true);
                     setLeaderAndTerm(null);
                     if (be != null)
                         be.startVotingThread();

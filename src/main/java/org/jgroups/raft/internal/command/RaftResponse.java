@@ -27,7 +27,7 @@ public final class RaftResponse {
     }
 
     private static RaftResponse failure(String exception) {
-        return RaftResponse.failure(JRaftException.stackless(String.format("Failed apply command, see remote for stack trace: %s", exception)));
+        return failure(JRaftException.stackless(String.format("Failed apply command, see remote for stack trace: %s", exception)));
     }
 
     public boolean isSuccess() {
@@ -60,9 +60,9 @@ public final class RaftResponse {
         public RaftResponse read(SerializationContextRead ctx, byte version) {
             boolean success = ctx.readBoolean();
             if (success) {
-                return RaftResponse.success(ctx.readObject());
+                return success(ctx.readObject());
             }
-            return RaftResponse.failure(ctx.readUTF());
+            return failure(ctx.readUTF());
         }
 
         @Override

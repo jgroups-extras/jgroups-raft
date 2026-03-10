@@ -318,6 +318,9 @@
                     <minimumTokens>100</minimumTokens>
                     <outputDirectory>${project.build.directory}/pmd</outputDirectory>
                     <format>net.sourceforge.pmd.renderers.SarifRenderer</format>
+                    <rulesets>
+                        <ruleset>etc/pmd-rules.xml</ruleset>
+                    </rulesets>
                 </configuration>
             </plugin>
 

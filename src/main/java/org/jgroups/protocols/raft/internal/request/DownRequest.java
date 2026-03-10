@@ -101,6 +101,7 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         public void completeReplication() { }
     }
 
+    @SuppressWarnings("PMD.UnusedPrivateField")
     private static final class Tracked extends DownRequest {
         private static final AtomicLongFieldUpdater<Tracked> USER_START_NANOS_UPDATER = AtomicLongFieldUpdater.newUpdater(Tracked.class, "userStartNanos");
         private static final AtomicLongFieldUpdater<Tracked> PROCESSING_START_NANOS_UPDATER = AtomicLongFieldUpdater.newUpdater(Tracked.class, "processingStartNanos");
