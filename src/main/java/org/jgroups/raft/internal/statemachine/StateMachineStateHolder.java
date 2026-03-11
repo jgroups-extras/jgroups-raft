@@ -20,7 +20,7 @@ import java.util.Map;
  * @author José Bolina
  * @since 2.0
  */
-public record StateMachineStateHolder(Map<Integer, Object> state) {
+record StateMachineStateHolder(Map<Integer, Object> state) {
     public static final SingleBinarySerializer<StateMachineStateHolder> SERIALIZER = StateMachineStateHolderSerializer.INSTANCE;
 
     private static final class StateMachineStateHolderSerializer implements SingleBinarySerializer<StateMachineStateHolder> {

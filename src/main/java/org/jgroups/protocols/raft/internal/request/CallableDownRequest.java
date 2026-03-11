@@ -3,7 +3,14 @@ package org.jgroups.protocols.raft.internal.request;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 
-public record CallableDownRequest<T>(Callable<T> callable, CompletableFuture<T> future) implements BaseRequest {
+public final class CallableDownRequest<T> implements BaseRequest {
+    private final Callable<T> callable;
+    private final CompletableFuture<T> future;
+
+    public CallableDownRequest(Callable<T> callable, CompletableFuture<T> future) {
+        this.callable = callable;
+        this.future = future;
+    }
 
     @Override
     public boolean failed(Throwable t) {
@@ -31,4 +38,11 @@ public record CallableDownRequest<T>(Callable<T> callable, CompletableFuture<T> 
 
     @Override
     public void completeReplication() { }
+
+    @Override
+    public String toString() {
+        return "CallableDownRequest[" +
+                "callable=" + callable + ", " +
+                "future=" + future + ']';
+    }
 }

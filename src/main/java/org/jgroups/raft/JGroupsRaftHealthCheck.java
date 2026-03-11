@@ -2,6 +2,7 @@ package org.jgroups.raft;
 
 import java.time.Instant;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Map;
 
 /**
@@ -28,13 +29,23 @@ public interface JGroupsRaftHealthCheck {
         FAILURE,
     }
 
-    record NodeHealthDetail(String raftId, ClusterHealth health, Instant lastCheck, Collection<HealthIssue> issues) {}
+    record NodeHealthDetail(String raftId, ClusterHealth health, Instant lastCheck, Collection<HealthIssue> issues) {
+        @Override
+        public Collection<HealthIssue> issues() {
+            return Collections.unmodifiableCollection(issues);
+        }
+    }
 
     record HealthIssue(String issueId, String description, Severity severity, Instant detectedAt, Map<String, String> extras) {
         enum Severity {
             WARNING,
             ERROR,
             CRITICAL,
+        }
+
+        @Override
+        public Map<String, String> extras() {
+            return Collections.unmodifiableMap(extras);
         }
     }
 }

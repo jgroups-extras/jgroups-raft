@@ -327,18 +327,18 @@ public interface RuntimeProperties {
      *         {@code defaultValueSupplier} reference is null, or there is a key-value pair in the configuration but the value
      *         could not be parsed as a boolean value
      */
-    default Boolean getBoolean(String key, BooleanSupplier defaultValueSupplier) {
+    default boolean getBoolean(String key, BooleanSupplier defaultValueSupplier) {
         String value = getString(key);
         if (value != null) {
             value = value.trim().toLowerCase();
-            if (Boolean.valueOf(value)) {
-                return Boolean.TRUE;
+            if (Boolean.parseBoolean(value)) {
+                return true;
             }
             if (value.equals("false")) {
                 return false;
             }
         }
-        return defaultValueSupplier != null ? defaultValueSupplier.getAsBoolean() : null;
+        return defaultValueSupplier != null && defaultValueSupplier.getAsBoolean();
     }
 
     /**

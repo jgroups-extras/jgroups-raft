@@ -7,7 +7,6 @@ import org.jgroups.raft.command.JGroupsRaftCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.exceptions.JRaftException;
 import org.jgroups.raft.internal.command.JRaftCommand;
-import org.jgroups.raft.internal.command.RaftCommand;
 import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.registry.ReplicatedMethodWrapper;

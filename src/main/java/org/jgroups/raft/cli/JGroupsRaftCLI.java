@@ -54,7 +54,7 @@ public class JGroupsRaftCLI implements Runnable {
 
         // Register all subcommands dynamically from the command registry.
         // Commands must be included in the registry to be available for users.
-        for (Class<?> command : JGroupsRaftCLICommands.CLI_COMMANDS) {
+        for (Class<?> command : JGroupsRaftCLICommands.cliCommands()) {
             cli.addSubcommand(command);
         }
 

@@ -1,5 +1,6 @@
 package org.jgroups.raft.cli.commands;
 
+import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
 import picocli.CommandLine;
@@ -82,7 +83,7 @@ abstract class ConfirmationPromptCommand extends BaseProbeCommand {
 
         // Utilizing Scanner like this allows user to pipe the answer in:
         // echo y | ./bin/raft ...
-        Scanner scanner = new Scanner(System.in);
+        Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8);
         if (scanner.hasNextLine()) {
             String input = scanner.nextLine().trim();
             return input.equalsIgnoreCase("y") || input.equalsIgnoreCase("yes");

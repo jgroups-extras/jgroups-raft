@@ -24,10 +24,10 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
     protected TcpClient        client;
     protected volatile boolean running=true, verbose=false;
 
-    protected static final byte[] SHOW_ALL_CMD={(byte)Command.SHOW_ALL.ordinal()};
-    protected static final byte[] DUMP_CMD={(byte)Command.DUMP_LOG.ordinal()};
-    protected static final byte[] SNAPSHOT_CMD={(byte)Command.SNAPSHOT.ordinal()};
-    protected static final byte[] GET_VIEW_CMD={(byte)Command.GET_VIEW.ordinal()};
+    private static final byte[] SHOW_ALL_CMD={(byte)Command.SHOW_ALL.ordinal()};
+    private static final byte[] DUMP_CMD={(byte)Command.DUMP_LOG.ordinal()};
+    private static final byte[] SNAPSHOT_CMD={(byte)Command.SNAPSHOT.ordinal()};
+    private static final byte[] GET_VIEW_CMD={(byte)Command.GET_VIEW.ordinal()};
 
 
     public ReplicatedStateMachineClient(boolean verbose) {

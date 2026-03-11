@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
  * @see MockRaftCluster
  */
 public abstract class BaseRaftClusterTest<T extends MockRaftCluster> extends AbstractRaftTest {
+    private static final byte[] raft_id_key = Util.stringToBytes("raft-id");
 
     /**
      * Keep track of the cluster members.
@@ -286,7 +287,7 @@ public abstract class BaseRaftClusterTest<T extends MockRaftCluster> extends Abs
 
     private Address createAddress(String name) {
         ExtendedUUID.setPrintFunction(RAFT.print_function);
-        return ExtendedUUID.randomUUID(name).put(RAFT.raft_id_key, Util.stringToBytes(name));
+        return ExtendedUUID.randomUUID(name).put(raft_id_key, Util.stringToBytes(name));
     }
 
     @SuppressWarnings("unchecked")

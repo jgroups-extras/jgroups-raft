@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- AT_* concurrency warnings: RAFT protocol uses single-threaded event loop -->
+    <Match>
+        <Bug pattern="AT_NONATOMIC_64BIT_PRIMITIVE,AT_STALE_THREAD_WRITE_OF_PRIMITIVE,AT_NONATOMIC_OPERATIONS_ON_SHARED_VARIABLE"/>
+        <Or>
+            <Class name="org.jgroups.protocols.raft.RAFT"/>
+            <Class name="org.jgroups.protocols.raft.CLIENT"/>
+            <Class name="org.jgroups.protocols.raft.InMemoryLog"/>
+            <Class name="org.jgroups.protocols.raft.election.BaseElection"/>
+            <Class name="org.jgroups.raft.blocks.CounterService"/>
+            <Class name="org.jgroups.raft.blocks.ReplicatedStateMachine"/>
+            <Class name="org.jgroups.raft.client.ClientStub"/>
+        </Or>
+    </Match>
+
+    <!-- EI_EXPOSE_REP/REP2: internal representation exposure in protocol and internal classes -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Or>
+            <Class name="org.jgroups.protocols.raft.CLIENT"/>
+            <Class name="org.jgroups.protocols.raft.CLIENT$RequestHandler"/>
+            <Class name="org.jgroups.protocols.raft.CLIENT$RequestHandler$CompletionHandler"/>
+            <Class name="org.jgroups.protocols.raft.LogEntry"/>
+            <Class name="org.jgroups.protocols.raft.RAFT"/>
+            <Class name="org.jgroups.protocols.raft.REDIRECT"/>
+            <Class name="org.jgroups.protocols.raft.REDIRECT$RedirectHeader"/>
+            <Class name="org.jgroups.protocols.raft.RaftImpl"/>
+            <Class name="org.jgroups.protocols.raft.AppendEntriesResponse"/>
+            <Class name="org.jgroups.protocols.raft.InMemoryLog"/>
+            <Class name="org.jgroups.protocols.raft.election.BaseElection"/>
+            <Class name="org.jgroups.protocols.raft.state.RaftState"/>
+            <Class name="org.jgroups.raft.JGroupsRaft$Builder"/>
+            <Class name="org.jgroups.raft.JGroupsRaftHealthCheck$NodeHealthDetail"/>
+            <Class name="org.jgroups.raft.JGroupsRaftHealthCheck$HealthIssue"/>
+            <Class name="org.jgroups.raft.RaftHandle"/>
+            <Class name="org.jgroups.raft.blocks.AsyncCounterImpl"/>
+            <Class name="org.jgroups.raft.blocks.ReplicatedStateMachine"/>
+            <Class name="org.jgroups.raft.cli.probe.ProbeArguments$ProbeArgumentsBuilder"/>
+            <Class name="org.jgroups.raft.cli.probe.ProbeResponseWriter$ProbeResponse"/>
+            <Class name="org.jgroups.raft.client.ClientStub"/>
+            <Class name="org.jgroups.raft.filelog.FileStorage"/>
+            <Class name="org.jgroups.raft.logger.JRaftEventLogger$ClusterEvent"/>
+            <Class name="org.jgroups.raft.logger.JRaftEventLogger$SearchCriteria"/>
+            <Class name="org.jgroups.raft.testfwk.RaftNode"/>
+            <Class name="org.jgroups.raft.util.LogCache"/>
+            <Class name="org.jgroups.raft.util.RequestTable"/>
+            <Class name="org.jgroups.raft.util.RequestTable$Entry"/>
+        </Or>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="org.jgroups.raft.cli.probe.ProbeArguments"/>
+        <Method name="bindAddress"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="org.jgroups.raft.internal.command.RaftResponse"/>
+        <Method name="exception"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="org.jgroups.protocols.raft.internal.request.DownRequest"/>
+        <Or>
+            <Method name="buffer"/>
+            <Method name="options"/>
+        </Or>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+        <Class name="org.jgroups.protocols.raft.internal.request.UpRequest"/>
+        <Or>
+            <Method name="&lt;init&gt;"/>
+            <Method name="message"/>
+            <Method name="header"/>
+        </Or>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Or>
+            <Class name="org.jgroups.protocols.raft.internal.request.CallableDownRequest"/>
+            <Class name="org.jgroups.raft.internal.metrics.JGroupsRaftMetricsCollector"/>
+            <Class name="org.jgroups.raft.internal.probe.RaftProtocolProbe"/>
+        </Or>
+        <Method name="&lt;init&gt;"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+        <Class name="org.jgroups.raft.internal.statemachine.StateMachineWrapper"/>
+        <Method name="initialize"/>
+    </Match>
+
+    <!-- CT_CONSTRUCTOR_THROW: constructors that throw are acceptable in these classes -->
+    <Match>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+        <Or>
+            <Class name="org.jgroups.raft.RaftHandle"/>
+            <Class name="org.jgroups.raft.blocks.AsyncCounterImpl"/>
+            <Class name="org.jgroups.raft.filelog.FilePositionCache"/>
+            <Class name="org.jgroups.raft.testfwk.RaftNode"/>
+            <Class name="org.jgroups.raft.util.io.ConcurrentCustomByteBufferPool"/>
+            <Class name="org.jgroups.raft.util.io.CustomByteBufferPool"/>
+        </Or>
+    </Match>
+
+    <!-- DE_MIGHT_IGNORE: intentionally ignored exceptions -->
+    <Match>
+        <Bug pattern="DE_MIGHT_IGNORE"/>
+        <Or>
+            <Class name="org.jgroups.raft.util.CounterStateMachine"/>
+            <Class name="org.jgroups.raft.util.pmem.FileProvider"/>
+        </Or>
+    </Match>
+</FindBugsFilter>

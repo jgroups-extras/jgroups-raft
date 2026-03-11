@@ -88,11 +88,11 @@ public class NO_DUPES extends Protocol {
     }
 
     protected static boolean contains(View v, ExtendedUUID joiner) {
-        byte[] raft_id=joiner.get(RAFT.raft_id_key);
+        byte[] raft_id=RAFT.extractRaftId(joiner);
         for(Address addr: v) {
             if(addr instanceof ExtendedUUID) {
                 ExtendedUUID uuid=(ExtendedUUID)addr;
-                byte[] tmp=uuid.get(RAFT.raft_id_key);
+                byte[] tmp=RAFT.extractRaftId(uuid);
                 // compare byte[] buffers to avoid the cost of deserialization
                 if(Arrays.equals(raft_id, tmp))
                     return true;

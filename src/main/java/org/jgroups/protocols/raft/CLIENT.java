@@ -165,6 +165,7 @@ public class CLIENT extends Protocol implements Runnable {
                         break;
                     case get_req:
                         settable.getAsync(buffer, 0, buffer.length, null).whenComplete(completion_handler);
+                        break;
                     case add_server:
                         dyn_membership.addServer(Util.bytesToString(buffer)).whenComplete(completion_handler);
                         break;

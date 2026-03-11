@@ -9,12 +9,10 @@ import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.JRaftReadCommand;
 import org.jgroups.raft.internal.command.JRaftWriteCommand;
-import org.jgroups.raft.internal.command.RaftCommand;
 import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.serialization.Serializer;
 import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
 import org.jgroups.raft.internal.serialization.binary.serializers.InternalSerializers;
-import org.jgroups.raft.internal.statemachine.StateMachineStateHolder;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -411,21 +409,6 @@ public class SerializationCompatibilityTest {
                         JGroupsRaftWriteCommandOptions.options().ignoreReturnValue(true).build(),
                         hexToBytes("00 00 00 45 00 00 00 00 01 01"),
                         "WriteCommandOptions: ignoreReturnValue=true"},
-
-                {RaftCommand.class,
-                        new RaftCommand(
-                                JRaftReadCommand.create(1L, 1),
-                                new Object[]{"arg1", 42},
-                                JGroupsRaftReadCommandOptions.options().linearizable(true).build()
-                        ),
-                        // RaftCommand with UserCommand, two arguments, and options
-                        hexToBytes("00 00 00 41 00 00 00 00 37 00 00 00 43 00 00 00 00 0D 00 00 00 00 00 00 00 01 00 00 00 01 01 00 00 00 02 00 00 00 08 00 04 61 72 67 31 00 00 00 02 00 00 00 2A 00 00 00 44 00 00 00 00 02 01 00"),
-                        "RaftCommand: with arguments and options"},
-
-                {StateMachineStateHolder.class,
-                        new StateMachineStateHolder(Map.of(1, "value1")),
-                        hexToBytes("00 00 00 46 00 00 00 00 14 00 00 00 01 00 00 00 01 00 00 00 08 00 06 76 61 6C 75 65 31"),
-                        "StateMachineStateHolder: with state map"},
 
                 // ========== Null ==========
                 {Object.class, null,

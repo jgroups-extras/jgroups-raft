@@ -152,7 +152,7 @@ final class JGroupsProbeRunner implements ProbeRunner {
                 String header = new String(datum, offset, headerLength - offset, StandardCharsets.UTF_8).trim();
                 Matcher matcher = HEADER_PATTERN.matcher(header);
                 if (!matcher.find()) {
-                    String response = new String(datum, offset, length);
+                    String response = new String(datum, offset, length, StandardCharsets.UTF_8);
                     throw new IllegalStateException("Invalid probe response: " + response);
                 }
 

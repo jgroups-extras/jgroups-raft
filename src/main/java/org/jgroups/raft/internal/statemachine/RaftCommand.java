@@ -1,6 +1,7 @@
-package org.jgroups.raft.internal.command;
+package org.jgroups.raft.internal.statemachine;
 
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
+import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.JRaftCommand.UserCommand;
 import org.jgroups.raft.internal.serialization.RaftTypeIds;
 import org.jgroups.raft.serialization.SerializationContextRead;
@@ -10,7 +11,7 @@ import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
 import java.util.Arrays;
 import java.util.Objects;
 
-public final class RaftCommand {
+final class RaftCommand {
     public static final SingleBinarySerializer<RaftCommand> SERIALIZER =  RaftCommandSerializer.INSTANCE;
 
     private final UserCommand command;

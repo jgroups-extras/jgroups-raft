@@ -1,5 +1,7 @@
 package org.jgroups.raft.cli.commands;
 
+import java.util.List;
+
 import picocli.CommandLine;
 
 /**
@@ -31,7 +33,7 @@ public final class JGroupsRaftCLICommands {
      * </ul>
      * </p>
      */
-    public static final Class<?>[] CLI_COMMANDS = new Class[] {
+    private static final Class<?>[] CLI_COMMANDS = new Class[] {
             CommandLine.HelpCommand.class,
             Completion.class,
             Status.class,
@@ -39,4 +41,8 @@ public final class JGroupsRaftCLICommands {
             Metrics.class,
             RawProbeCommand.class,
     };
+
+    public static List<Class<?>> cliCommands() {
+        return List.of(CLI_COMMANDS);
+    }
 }

@@ -4,8 +4,6 @@ import org.jgroups.Address;
 import org.jgroups.View;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.testfwk.RaftTestUtils;
-import org.jgroups.util.ExtendedUUID;
-import org.jgroups.util.Util;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -113,10 +111,6 @@ public class Utils {
     }
 
     public static String extractRaftId(Address address) {
-        if (!(address instanceof ExtendedUUID))
-            throw new IllegalStateException("Address is not ExtendedUUID");
-
-        ExtendedUUID uuid = (ExtendedUUID) address;
-        return Util.bytesToString(uuid.get(RAFT.raft_id_key));
+        return RAFT.extractRaftId(address);
     }
 }

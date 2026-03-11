@@ -298,6 +298,7 @@
                 <artifactId>spotbugs-maven-plugin</artifactId>
                 <version>${version.spotbugs.plugin}</version>
                 <configuration>
+                    <excludeFilterFile>etc/spotbugs-rules.xml</excludeFilterFile>
                     <outputDirectory>${project.build.directory}/spotbugs</outputDirectory>
                     <spotbugsXmlOutputDirectory>${project.build.directory}/spotbugs</spotbugsXmlOutputDirectory>
                     <xmlOutput>false</xmlOutput>

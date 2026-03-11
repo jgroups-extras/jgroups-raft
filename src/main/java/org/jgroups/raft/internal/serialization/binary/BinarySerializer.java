@@ -3,12 +3,11 @@ package org.jgroups.raft.internal.serialization.binary;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.internal.command.JRaftCommand;
-import org.jgroups.raft.internal.command.RaftCommand;
 import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.serialization.Serializer;
 import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
 import org.jgroups.raft.internal.serialization.binary.serializers.InternalSerializers;
-import org.jgroups.raft.internal.statemachine.StateMachineStateHolder;
+import org.jgroups.raft.internal.statemachine.StateMachineSerializer;
 import org.jgroups.raft.util.ClassUtil;
 import org.jgroups.raft.util.io.CustomByteBuffer;
 import org.jgroups.raft.util.io.CustomByteBufferPool;
@@ -47,9 +46,7 @@ public final class BinarySerializer implements Serializer {
             InheritableThreadLocal.withInitial(SerializationSizeCache::new);
 
     static final SingleBinarySerializer<?>[] INTERNAL_SERIALIZERS = {
-            RaftCommand.SERIALIZER,
             RaftResponse.SERIALIZER,
-            StateMachineStateHolder.SERIALIZER,
             JRaftCommand.UserCommand.SERIALIZER,
             JGroupsRaftReadCommandOptions.ReadImpl.SERIALIZER,
             JGroupsRaftWriteCommandOptions.WriteImpl.SERIALIZER,
@@ -64,6 +61,10 @@ public final class BinarySerializer implements Serializer {
 
     static void registerInternalSerializers(BinarySerializationRegistry registry) {
         for (SingleBinarySerializer<?> serializer : INTERNAL_SERIALIZERS) {
+            registry.registerSerializer(serializer);
+        }
+
+        for (SingleBinarySerializer<?> serializer : StateMachineSerializer.serializers()) {
             registry.registerSerializer(serializer);
         }
     }

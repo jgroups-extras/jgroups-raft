@@ -6,6 +6,7 @@ import org.jgroups.raft.util.internal.Json;
 
 import java.io.PrintWriter;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -63,6 +64,11 @@ public interface ProbeResponseWriter {
      * @param response The structured data payload returned by the node.
      */
     record ProbeResponse(String raftId, Address source, Map<String, Object> response) {
+
+        @Override
+        public Map<String, Object> response() {
+            return Collections.unmodifiableMap(response);
+        }
 
         /**
          * Helper to serialize this single response entry back to JSON.

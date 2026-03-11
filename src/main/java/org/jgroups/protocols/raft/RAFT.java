@@ -88,7 +88,7 @@ import java.util.regex.Pattern;
  */
 @MBean(description="Implementation of the RAFT consensus protocol")
 public class RAFT extends Protocol implements Settable, DynamicMembership {
-    public static final byte[]    raft_id_key          = Util.stringToBytes("raft-id");
+    private static final byte[] raft_id_key         = Util.stringToBytes("raft-id");
     public static final short  RAFT_ID              = 521;
     public static final short  APPEND_ENTRIES_REQ   = 2000;
     public static final short  APPEND_ENTRIES_RSP   = 2001;
@@ -317,6 +317,17 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return this;
     }
 
+    public static String extractRaftId(Address address) {
+        if (!(address instanceof ExtendedUUID uuid))
+            throw new IllegalStateException("Address is not ExtendedUUID");
+
+        return Util.bytesToString(extractRaftId(uuid));
+    }
+
+    public static byte[] extractRaftId(ExtendedUUID uuid) {
+        return uuid.get(raft_id_key);
+    }
+
     public TimeService timeService() {
         return timeService;
     }
@@ -382,7 +393,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     @ManagedAttribute(description="Number of times the cache has been accessed",type=AttributeType.SCALAR)
-    public int LogCacheNumAccesses() {
+    public int logCacheNumAccesses() {
         return log_impl instanceof LogCache? ((LogCache)log_impl).numAccesses() : 0;
     }
 

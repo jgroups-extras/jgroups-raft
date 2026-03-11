@@ -1,8 +1,9 @@
 package org.jgroups.raft.logger;
 
 import java.time.Instant;
-import java.util.EnumSet;
+import java.util.Collections;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
 
@@ -92,7 +93,12 @@ public interface JRaftEventLogger {
         return create(UUID.randomUUID().toString(), type, Instant.now(), details);
     }
 
-    record ClusterEvent(String eventId, EventType type, Instant timestamp, Map<String, String> details) { }
+    record ClusterEvent(String eventId, EventType type, Instant timestamp, Map<String, String> details) {
+        @Override
+        public Map<String, String> details() {
+            return Collections.unmodifiableMap(details);
+        }
+    }
 
     /**
      * Represents the type of event that can be logged.
@@ -117,7 +123,12 @@ public interface JRaftEventLogger {
         ROLE_CHANGE,
     }
 
-    record SearchCriteria(Instant start, Instant end, EnumSet<EventType> types, String raftId) { }
+    record SearchCriteria(Instant start, Instant end, Set<EventType> types, String raftId) {
+        @Override
+        public Set<EventType> types() {
+            return Collections.unmodifiableSet(types);
+        }
+    }
 
     static JRaftEventLogger disabled() {
         return new DisabledEventLogger();
