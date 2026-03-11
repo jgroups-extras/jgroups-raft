@@ -21,7 +21,7 @@ import org.jgroups.raft.metrics.LatencyMetrics;
  * @since 2.0
  * @author José Bolina
  */
-public sealed abstract class ProtocolMetricTracker permits RaftProtocolMetrics, RedirectProtocolMetrics {
+public sealed abstract class ProtocolMetricTracker permits ElectionProtocolMetrics, RaftProtocolMetrics, RedirectProtocolMetrics {
 
     /**
      * Creates a thread-safe latency tracker backed by {@code ConcurrentHistogram}.

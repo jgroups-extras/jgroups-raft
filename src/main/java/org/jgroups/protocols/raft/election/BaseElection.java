@@ -16,7 +16,9 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.RaftHeader;
+import org.jgroups.raft.internal.metrics.ElectionProtocolMetrics;
 import org.jgroups.raft.util.RaftClassConfigurator;
+import org.jgroups.raft.util.TimeService;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
@@ -30,6 +32,7 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -44,11 +47,11 @@ import java.util.stream.Collectors;
  */
 public abstract class BaseElection extends Protocol {
 
-    public static final short VOTE_REQ       = 3000;
-    public static final short VOTE_RSP                 = 3001;
-    public static final short LEADER_ELECTED           = 3005;
-    public static final short PRE_VOTE_REQ   = 3006;
-    public static final short PRE_VOTE_RSP   = 3007;
+    public static final short VOTE_REQ = 3000;
+    public static final short VOTE_RSP = 3001;
+    public static final short LEADER_ELECTED = 3005;
+    public static final short PRE_VOTE_REQ = 3006;
+    public static final short PRE_VOTE_RSP = 3007;
 
     static {
         RaftClassConfigurator.initialize();
@@ -56,12 +59,20 @@ public abstract class BaseElection extends Protocol {
 
     protected RAFT raft;
 
-    private final Runner voting_thread=new Runner("voting-thread", this::runVotingProcess, null);
-    private final ResponseCollector<VoteResponse> votes=new ResponseCollector<>();
+    private final Runner voting_thread = new Runner("voting-thread", this::runVotingProcess, null);
+    private final ResponseCollector<VoteResponse> votes = new ResponseCollector<>();
     private volatile boolean stopVoting;
 
+    private ElectionProtocolMetrics metrics;
+    private volatile long electionStartNanos;
     private volatile Instant electionStart;
     private volatile Instant electionEnd;
+
+    @Property(description = "Max time (ms) to wait for vote responses", type = AttributeType.TIME)
+    protected long vote_timeout = 600;
+
+    @ManagedAttribute(description = "Number of voting rounds initiated by the coordinator")
+    protected int num_voting_rounds;
 
     protected volatile View view;
 
@@ -83,22 +94,27 @@ public abstract class BaseElection extends Protocol {
         return this;
     }
 
-    public RAFT                            raft()        {return raft;}
-    public BaseElection                    raft(RAFT r)  {raft=r; return this;}
-    public ResponseCollector<VoteResponse> getVotes()    {return votes;} // use for testing only!
+    public RAFT raft() {
+        return raft;
+    }
 
-    @Property(description="Max time (ms) to wait for vote responses",type= AttributeType.TIME)
-    protected long               vote_timeout=600;
+    public BaseElection raft(RAFT r) {
+        raft = r;
+        return this;
+    }
 
-    @ManagedAttribute(description="Number of voting rounds initiated by the coordinator")
-    protected int                num_voting_rounds;
+    public ResponseCollector<VoteResponse> getVotes() {
+        return votes;
+    } // use for testing only!
 
-    @ManagedAttribute(description="Is the voting thread (only on the coordinator) running?")
-    public synchronized boolean isVotingThreadRunning() {return voting_thread.isRunning();}
+    @ManagedAttribute(description = "Is the voting thread (only on the coordinator) running?")
+    public synchronized boolean isVotingThreadRunning() {
+        return voting_thread.isRunning();
+    }
 
-    @ManagedOperation(description="Trigger the voting process (only on the coordinator)")
+    @ManagedOperation(description = "Trigger the voting process (only on the coordinator)")
     public boolean runVotingThread() {
-        if(isViewCoordinator()) {
+        if (isViewCoordinator()) {
             startVotingThread();
             return isVotingThreadRunning();
         }
@@ -123,17 +139,34 @@ public abstract class BaseElection extends Protocol {
         return Duration.between(electionEnd, raft.timeService().now()).toMillis();
     }
 
+    @ManagedAttribute(description = "Mean latency for leader election in nanoseconds", type = AttributeType.TIME, unit = TimeUnit.NANOSECONDS)
+    public double electionMeanLatency() {
+        if (metrics == null)
+            return -1;
+
+        return metrics.election().getAvgLatency();
+    }
+
     protected abstract void handleView(View v);
 
+    @Override
     public void resetStats() {
         super.resetStats();
-        num_voting_rounds=0;
+        num_voting_rounds = 0;
+        metrics = (raft != null && raft.statsEnabled()) || statsEnabled() ? new ElectionProtocolMetrics() : null;
     }
 
     @Override
     public void init() throws Exception {
         super.init();
-        raft=RAFT.findProtocol(RAFT.class, this, false);
+        raft = RAFT.findProtocol(RAFT.class, this, false);
+    }
+
+    @Override
+    public void start() throws Exception {
+        super.start();
+        if ((raft != null && raft.statsEnabled()) || statsEnabled())
+            metrics = new ElectionProtocolMetrics();
     }
 
     @Override
@@ -145,7 +178,7 @@ public abstract class BaseElection extends Protocol {
 
     @Override
     public Object down(Event evt) {
-        switch(evt.getType()) {
+        switch (evt.getType()) {
             case Event.DISCONNECT:
                 raft.setLeaderAndTerm(null);
                 break;
@@ -160,15 +193,15 @@ public abstract class BaseElection extends Protocol {
 
     @Override
     public Object up(Event evt) {
-        if(evt.getType() == Event.VIEW_CHANGE)
+        if (evt.getType() == Event.VIEW_CHANGE)
             handleView(evt.getArg());
         return up_prot.up(evt);
     }
 
     @Override
     public Object up(Message msg) {
-        RaftHeader hdr=msg.getHeader(id);
-        if(hdr != null) {
+        RaftHeader hdr = msg.getHeader(id);
+        if (hdr != null) {
             handleMessage(msg, hdr);
             return null;
         }
@@ -177,15 +210,15 @@ public abstract class BaseElection extends Protocol {
 
     @Override
     public void up(MessageBatch batch) {
-        for(Iterator<Message> it = batch.iterator(); it.hasNext();) {
-            Message msg=it.next();
-            RaftHeader hdr=msg.getHeader(id);
-            if(hdr != null) {
+        for (Iterator<Message> it = batch.iterator(); it.hasNext(); ) {
+            Message msg = it.next();
+            RaftHeader hdr = msg.getHeader(id);
+            if (hdr != null) {
                 it.remove();
                 handleMessage(msg, hdr);
             }
         }
-        if(!batch.isEmpty())
+        if (!batch.isEmpty())
             up_prot.up(batch);
     }
 
@@ -210,8 +243,8 @@ public abstract class BaseElection extends Protocol {
     }
 
     private void handleLeaderElected(Message msg, LeaderElected hdr) {
-        long term=hdr.currTerm();
-        Address leader=hdr.leader();
+        long term = hdr.currTerm();
+        Address leader = hdr.leader();
         View v = this.view;
         // Only receive messages with null view when running tests with mock cluster.
         // Otherwise, need to make sure the leader is the current view and there's still a majority.
@@ -241,11 +274,11 @@ public abstract class BaseElection extends Protocol {
     private void handleVoteRequest(Message msg, VoteRequest hdr) {
         Address sender = msg.src();
         long new_term = hdr.currTerm();
-        if(log.isTraceEnabled())
+        if (log.isTraceEnabled())
             log.trace("%s <- %s: VoteRequest(term=%d)", local_addr, sender, new_term);
 
-        int result=raft.currentTerm(new_term);
-        switch(result) {
+        int result = raft.currentTerm(new_term);
+        switch (result) {
             case -1: // new_term < current_term
                 log.trace("%s: received vote request from %s with term=%d (current_term=%d); dropping vote response",
                         local_addr, sender, new_term, raft.currentTerm());
@@ -261,8 +294,8 @@ public abstract class BaseElection extends Protocol {
                 throw new IllegalStateException("Unknown term result: " + result);
         }
 
-        Address voted_for=raft.votedFor();
-        if(voted_for != null && !voted_for.equals(sender)) {
+        Address voted_for = raft.votedFor();
+        if (voted_for != null && !voted_for.equals(sender)) {
             log.trace("%s: already voted (for %s) in term %d; dropping vote request from %s",
                     local_addr, voted_for, new_term, sender);
             return;
@@ -274,13 +307,13 @@ public abstract class BaseElection extends Protocol {
             return;
         }
 
-        Log log_impl=raft.log();
-        if(log_impl == null)
+        Log log_impl = raft.log();
+        if (log_impl == null)
             return;
         raft.votedFor(sender);
-        long my_last_index=log_impl.lastAppended();
-        LogEntry entry=log_impl.get(my_last_index);
-        long my_last_term=entry != null? entry.term() : 0;
+        long my_last_index = log_impl.lastAppended();
+        LogEntry entry = log_impl.get(my_last_index);
+        long my_last_term = entry != null ? entry.term() : 0;
         sendVoteResponse(sender, new_term, my_last_term, my_last_index);
     }
 
@@ -289,12 +322,12 @@ public abstract class BaseElection extends Protocol {
     }
 
     protected Address determineLeader() {
-        Address leader=null;
+        Address leader = null;
         VoteResponse higher = null;
-        Map<Address,VoteResponse> results=votes.getResults();
-        for(Address mbr: view.getMembersRaw()) {
-            VoteResponse rsp=results.get(mbr);
-            if(rsp == null)
+        Map<Address, VoteResponse> results = votes.getResults();
+        for (Address mbr : view.getMembersRaw()) {
+            VoteResponse rsp = results.get(mbr);
+            if (rsp == null)
                 continue;
             if (isHigher(higher, rsp)) {
                 leader = mbr;
@@ -315,7 +348,7 @@ public abstract class BaseElection extends Protocol {
      * This verification ensures the decided leader has the longest log.
      * </p>
      *
-     * @param one The base to check against.
+     * @param one   The base to check against.
      * @param other The candidate response to check.
      * @return <code>true</code> if {@param other} is higher than {@param one}. <code>false</code>, otherwise.
      */
@@ -360,21 +393,23 @@ public abstract class BaseElection extends Protocol {
         }
 
         View electionView = this.view;
-        long new_term=raft.createNewTerm();
+        long new_term = raft.createNewTerm();
         votes.reset(filterToRaftMembers(electionView.getMembersRaw()));
         num_voting_rounds++;
-        long start=System.currentTimeMillis();
+
+        TimeService time = raft.timeService();
+        long start = time.nanos();
         sendVoteRequest(new_term);
 
         // wait for responses from all members or for vote_timeout ms, whichever happens first:
         votes.waitForAllResponses(vote_timeout);
-        long time=System.currentTimeMillis()-start;
+        long duration = TimeUnit.NANOSECONDS.toMillis(time.interval(start));
 
-        int majority=raft.majority();
-        if(votes.numberOfValidResponses() >= majority) {
-            Address leader=determineLeader();
+        int majority = raft.majority();
+        if (votes.numberOfValidResponses() >= majority) {
+            Address leader = determineLeader();
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
-                    local_addr, votes.getResults(), time, majority, leader, new_term);
+                    local_addr, votes.getResults(), duration, majority, leader, new_term);
 
             // Set as leader locally before sending the message.
             // This should avoid any concurrent joiners. See: https://github.com/jgroups-extras/jgroups-raft/issues/253
@@ -408,10 +443,10 @@ public abstract class BaseElection extends Protocol {
             stopVoting = false;
         } else if (log.isTraceEnabled())
             log.trace("%s: collected votes from %s in %d ms (majority=%d); starting another voting round",
-                    local_addr, votes.getValidResults(), time, majority);
+                    local_addr, votes.getValidResults(), duration, majority);
     }
 
-    private Collection<Address> filterToRaftMembers(Address ... allMembers) {
+    private Collection<Address> filterToRaftMembers(Address... allMembers) {
         Collection<String> raftMembers = raft.members();
         return Arrays.stream(allMembers)
                 .filter(address -> raftMembers.contains(Utils.extractRaftId(address)))
@@ -431,9 +466,11 @@ public abstract class BaseElection extends Protocol {
     }
 
     public synchronized BaseElection startVotingThread() {
-        if(!isVotingThreadRunning()) {
+        if (!isVotingThreadRunning()) {
             log.debug("%s: starting the voting thread", local_addr);
-            electionStart = raft.timeService().now();
+            TimeService time = raft.timeService();
+            electionStart = time.now();
+            electionStartNanos = time.nanos();
             stopVoting = false;
             voting_thread.start();
         }
@@ -441,35 +478,38 @@ public abstract class BaseElection extends Protocol {
     }
 
     protected void sendVoteRequest(long new_term) {
-        VoteRequest req=new VoteRequest(new_term);
+        VoteRequest req = new VoteRequest(new_term);
         log.trace("%s -> all: %s", local_addr, req);
-        Message vote_req=new EmptyMessage(null).putHeader(id, req).setFlag(OOB);
+        Message vote_req = new EmptyMessage(null).putHeader(id, req).setFlag(OOB);
         down_prot.down(vote_req);
     }
 
     // sent reliably, so if a newly joined member drops it, it will get retransmitted
     protected void sendLeaderElectedMessage(Address leader, long term) {
-        RaftHeader hdr=new LeaderElected(leader).currTerm(term);
-        Message msg=new EmptyMessage(null).putHeader(id, hdr).setFlag(DONT_LOOPBACK);
+        RaftHeader hdr = new LeaderElected(leader).currTerm(term);
+        Message msg = new EmptyMessage(null).putHeader(id, hdr).setFlag(DONT_LOOPBACK);
         log.trace("%s -> all (-self): %s", local_addr, hdr);
         down_prot.down(msg);
+
+        // Record election latency.
         if (electionStart != null) {
-            electionEnd = raft.timeService().now();
-//            if (electionEnd != null && raft.systemMetricsTracker() != null) {
-//                raft.systemMetricsTracker().recordElectionLatency(Duration.between(electionStart, electionEnd).toNanos());
-//            }
+            TimeService time = raft.timeService();
+            electionEnd = time.now();
+            if (metrics != null) {
+                metrics.recordElectionLatency(time.interval(electionStartNanos));
+            }
         }
     }
 
     protected void sendVoteResponse(Address dest, long term, long last_log_term, long last_log_index) {
-        VoteResponse rsp=new VoteResponse(term, last_log_term, last_log_index);
-        Message vote_rsp=new EmptyMessage(dest).putHeader(id, rsp).setFlag(OOB);
+        VoteResponse rsp = new VoteResponse(term, last_log_term, last_log_index);
+        Message vote_rsp = new EmptyMessage(dest).putHeader(id, rsp).setFlag(OOB);
         log.trace("%s -> %s: %s", local_addr, dest, rsp);
         down_prot.down(vote_rsp);
     }
 
     public synchronized BaseElection stopVotingThread() {
-        if(isVotingThreadRunning()) {
+        if (isVotingThreadRunning()) {
             log.debug("%s: mark the voting thread to stop", local_addr);
             stopVoting = true;
         }

@@ -2,6 +2,8 @@ package org.jgroups.raft.internal.metrics;
 
 import org.jgroups.raft.metrics.LatencyMetrics;
 
+import net.jcip.annotations.ThreadSafe;
+
 /**
  * Metric tracker for the {@link org.jgroups.protocols.raft.REDIRECT} protocol.
  *
@@ -17,6 +19,7 @@ import org.jgroups.raft.metrics.LatencyMetrics;
  * @since 2.0
  * @author José Bolina
  */
+@ThreadSafe
 public final class RedirectProtocolMetrics extends ProtocolMetricTracker {
     private final LatencyTracker redirectTracker;
 

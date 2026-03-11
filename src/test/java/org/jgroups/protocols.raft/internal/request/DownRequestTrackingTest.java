@@ -1,7 +1,6 @@
 package org.jgroups.protocols.raft.internal.request;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.within;
 import static org.assertj.core.api.Assertions.withinPercentage;
 
 import org.jgroups.Global;

@@ -99,10 +99,11 @@ public class RedirectMetricsTest extends BaseStateMachineTest<CounterStateMachin
     /**
      * resetStats() clears redirect metrics.
      */
-    public void testResetStatsClearsRedirectMetrics() throws Exception {
+    public void testResetStatsClearsRedirectMetrics() {
         RedirectProtocolMetrics before = redirectMetrics(1);
 
-        addValue(handle(1), 1);
+        // Record directly — wiring is verified by testFollowerRedirectRecordsMeasurement.
+        before.recordRedirectLatency(1_000_000);
         assertThat(before.redirect().getTotalMeasurements()).isEqualTo(1);
 
         REDIRECT redirect = redirect(1);

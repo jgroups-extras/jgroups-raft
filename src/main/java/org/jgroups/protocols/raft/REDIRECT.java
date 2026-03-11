@@ -123,13 +123,13 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     public void start() throws Exception {
         super.start();
 
-        if (raft.statsEnabled() && metrics == null)
+        if ((raft.statsEnabled() || statsEnabled()) && metrics == null)
             metrics = new RedirectProtocolMetrics();
     }
 
     @Override
     public void resetStats() {
-        metrics = raft.statsEnabled() ? new RedirectProtocolMetrics() : null;
+        metrics = raft.statsEnabled() || statsEnabled() ? new RedirectProtocolMetrics() : null;
     }
 
     @Override
