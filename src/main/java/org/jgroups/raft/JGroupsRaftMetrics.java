@@ -1,5 +1,7 @@
 package org.jgroups.raft;
 
+import static org.jgroups.raft.configuration.RuntimeProperties.PROPERTY_PREFIX;
+
 import org.jgroups.raft.configuration.Property;
 import org.jgroups.raft.metrics.ElectionMetrics;
 import org.jgroups.raft.metrics.LatencyMetrics;
@@ -8,8 +10,6 @@ import org.jgroups.raft.metrics.PerformanceMetrics;
 
 import java.time.Duration;
 import java.time.Instant;
-
-import static org.jgroups.raft.configuration.RuntimeProperties.PROPERTY_PREFIX;
 
 /**
  * Entry point for metrics in the raft system.
@@ -84,37 +84,7 @@ public interface JGroupsRaftMetrics {
                 return -1;
             }
         };
-        private static final LatencyMetrics LATENCY_METRICS = new LatencyMetrics() {
-            @Override
-            public double getAvgLatency() {
-                return -1;
-            }
-
-            @Override
-            public double getP99Latency() {
-                return -1;
-            }
-
-            @Override
-            public double getP95Latency() {
-                return -1;
-            }
-
-            @Override
-            public double getMaxLatency() {
-                return -1;
-            }
-
-            @Override
-            public double getPercentile(double p) {
-                return -1;
-            }
-
-            @Override
-            public long getTotalMeasurements() {
-                return -1;
-            }
-        };
+        private static final LatencyMetrics LATENCY_METRICS = LatencyMetrics.disabled();
         private static final PerformanceMetrics PERFORMANCE_METRICS = new PerformanceMetrics() {
             @Override
             public LatencyMetrics getCommandProcessingLatency() {

@@ -1,13 +1,25 @@
 package org.jgroups.protocols.raft.internal.request;
 
 import org.jgroups.raft.Options;
-import org.jgroups.raft.internal.metrics.SystemMetricsTracker;
+import org.jgroups.raft.internal.metrics.RaftProtocolMetrics;
 import org.jgroups.raft.util.TimeService;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
 
-public abstract sealed class DownRequest extends CompletableFuture<byte[]> implements BaseRequest {
+/**
+ * A user-submitted request flowing down the protocol stack.
+ *
+ * <p>
+ * Carries the request data and a {@link CompletableFuture} that resolves when the
+ * operation completes or fails. When metrics are enabled, latency is recorded for
+ * both the user operation and replication spans; otherwise, tracking is a no-op.
+ * </p>
+ *
+ * @author José Bolina
+ * @since 2.0
+ */
+public abstract sealed class DownRequest extends CompletableFuture<byte[]> implements BaseRequest permits DownRequest.Tracked, DownRequest.Untracked {
     private final CompletableFuture<byte[]> future;
     private final byte[] buffer;
     private final int offset;
@@ -26,30 +38,52 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         this.readOnly = readOnly;
     }
 
+    /**
+     * @return the options associated with the request, or {@code null} if none.
+     */
     public Options options() {
         return options;
     }
 
+    /**
+     * @return the serialized request payload.
+     */
     public byte[] buffer() {
         return buffer;
     }
 
+    /**
+     * @return the starting offset within the {@link #buffer()}.
+     */
     public int offset() {
         return offset;
     }
 
+    /**
+     * @return the number of bytes to read from {@link #buffer()} starting at {@link #offset()}.
+     */
     public int length() {
         return length;
     }
 
+    /**
+     * @return {@code true} if this is an internal protocol operation (e.g., membership change).
+     */
     public boolean isInternal() {
         return internal;
     }
 
+    /**
+     * @return {@code true} if this is a read-only request that does not modify the log.
+     */
     public boolean isReadOnly() {
         return readOnly;
     }
 
+    /**
+     * Completes the request successfully, recording the user operation latency
+     * and resolving the user-facing future.
+     */
     @Override
     public final boolean complete(byte[] result) {
         completeTrackingOperations();
@@ -62,6 +96,10 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         return failed(ex);
     }
 
+    /**
+     * Fails the request, recording the user operation latency and completing
+     * the user-facing future exceptionally.
+     */
     @Override
     public final boolean failed(Throwable t) {
         completeTrackingOperations();
@@ -71,15 +109,18 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
 
     private void completeTrackingOperations() {
         completeUserOperation();
-        completeReplication();
     }
 
+    /**
+     * Creates a {@link DownRequest} with or without latency tracking depending on whether
+     * metrics and time service are available.
+     */
     static DownRequest create(CompletableFuture<byte[]> future, byte[] buffer, int offset, int length, boolean internal, Options options,
-                              boolean readOnly, SystemMetricsTracker tracker, TimeService timeService) {
-        if (tracker == null || timeService == null) {
+                              boolean readOnly, RaftProtocolMetrics metrics, TimeService timeService) {
+        if (metrics == null || timeService == null) {
             return new Untracked(future, buffer, offset, length, internal, options, readOnly);
         }
-        return new Tracked(future, buffer, offset, length, internal, options, readOnly, tracker, timeService);
+        return new Tracked(future, buffer, offset, length, internal, options, readOnly, metrics, timeService);
     }
 
     private static final class Untracked extends DownRequest {
@@ -106,16 +147,16 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         private static final AtomicLongFieldUpdater<Tracked> USER_START_NANOS_UPDATER = AtomicLongFieldUpdater.newUpdater(Tracked.class, "userStartNanos");
         private static final AtomicLongFieldUpdater<Tracked> PROCESSING_START_NANOS_UPDATER = AtomicLongFieldUpdater.newUpdater(Tracked.class, "processingStartNanos");
 
-        private final SystemMetricsTracker tracker;
+        private final RaftProtocolMetrics metrics;
         private final TimeService timeService;
 
         private volatile long userStartNanos;
         private volatile long processingStartNanos;
 
         Tracked(CompletableFuture<byte[]> future, byte[] buffer, int offset, int length, boolean internal, Options options,
-                boolean readOnly, SystemMetricsTracker tracker, TimeService timeService) {
+                boolean readOnly, RaftProtocolMetrics metrics, TimeService timeService) {
             super(future, buffer, offset, length, internal, options, readOnly);
-            this.tracker = tracker;
+            this.metrics = metrics;
             this.timeService = timeService;
         }
 
@@ -127,7 +168,7 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         @Override
         public void completeUserOperation() {
             long diff = timeService.interval(USER_START_NANOS_UPDATER.get(this));
-            tracker.recordCommandProcessingLatency(diff);
+            metrics.recordTotalLatency(diff);
         }
 
         @Override
@@ -138,7 +179,7 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         @Override
         public void completeReplication() {
             long diff = timeService.interval(PROCESSING_START_NANOS_UPDATER.get(this));
-            tracker.recordReplicationLatency(diff);
+            metrics.recordProcessingLatency(diff);
         }
     }
 }

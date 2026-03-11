@@ -455,9 +455,9 @@ public abstract class BaseElection extends Protocol {
         down_prot.down(msg);
         if (electionStart != null) {
             electionEnd = raft.timeService().now();
-            if (electionEnd != null && raft.systemMetricsTracker() != null) {
-                raft.systemMetricsTracker().recordElectionLatency(Duration.between(electionStart, electionEnd).toNanos());
-            }
+//            if (electionEnd != null && raft.systemMetricsTracker() != null) {
+//                raft.systemMetricsTracker().recordElectionLatency(Duration.between(electionStart, electionEnd).toNanos());
+//            }
         }
     }
 

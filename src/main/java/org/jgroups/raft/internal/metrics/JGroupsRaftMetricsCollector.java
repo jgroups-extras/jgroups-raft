@@ -16,9 +16,7 @@ public class JGroupsRaftMetricsCollector implements JGroupsRaftMetrics {
     public JGroupsRaftMetricsCollector(RAFT raft, BaseElection election) {
         this.raft = raft;
         this.electionMetrics = new ElectionMetricsCollector(election);
-        SystemMetricsTracker smt = new SystemMetricsTracker();
-        raft.systemMetricsTracker(smt);
-        this.performanceMetrics = smt;
+        this.performanceMetrics = null;
     }
 
     @Override

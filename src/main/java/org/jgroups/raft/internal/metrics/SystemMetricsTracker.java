@@ -5,9 +5,9 @@ import org.jgroups.raft.metrics.PerformanceMetrics;
 
 public final class SystemMetricsTracker implements PerformanceMetrics {
 
-    private final LatencyTracker commandProcessingTracker = new LatencyTracker();
-    private final LatencyTracker replicationTracker = new LatencyTracker();
-    private final LatencyTracker electionTracker = new LatencyTracker();
+    private final LatencyTracker commandProcessingTracker = new LatencyTracker(true);
+    private final LatencyTracker replicationTracker = new LatencyTracker(true);
+    private final LatencyTracker electionTracker = new LatencyTracker(true);
 
     public void recordCommandProcessingLatency(long latencyNanos) {
         commandProcessingTracker.recordLatency(latencyNanos);

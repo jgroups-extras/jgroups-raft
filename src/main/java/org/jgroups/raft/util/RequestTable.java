@@ -1,6 +1,7 @@
 package org.jgroups.raft.util;
 
 
+import org.jgroups.protocols.raft.internal.request.DownRequest;
 import org.jgroups.raft.Options;
 
 import java.util.HashSet;
@@ -149,7 +150,10 @@ public class RequestTable<T> {
         public Options options() {return opts;}
 
         public boolean add(T vote, final Supplier<Integer> majority) {
-            return votes.add(vote) && votes.size() >= majority.get() && commit();
+            boolean committed = votes.add(vote) && votes.size() >= majority.get() && commit();
+            if (committed && client_future instanceof DownRequest dr)
+                dr.completeReplication();
+            return committed;
         }
 
         public void notify(byte[] result) {

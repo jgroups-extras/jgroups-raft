@@ -7,11 +7,13 @@ import java.util.concurrent.TimeUnit;
 import org.HdrHistogram.ConcurrentHistogram;
 import org.HdrHistogram.Histogram;
 
-public final class LatencyTracker implements LatencyMetrics {
+final class LatencyTracker implements LatencyMetrics {
     private final Histogram histogram;
 
-    public LatencyTracker() {
-        this.histogram = new ConcurrentHistogram(TimeUnit.MINUTES.toNanos(5L), 3);
+    public LatencyTracker(boolean concurrent) {
+        this.histogram = concurrent
+                ? new ConcurrentHistogram(TimeUnit.MINUTES.toNanos(5L), 3)
+                : new Histogram(TimeUnit.MINUTES.toNanos(5L), 3);
     }
 
     public void recordLatency(long latencyNanos) {

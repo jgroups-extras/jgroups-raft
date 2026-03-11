@@ -23,7 +23,7 @@ import org.jgroups.protocols.raft.state.RaftState;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.StateMachine;
-import org.jgroups.raft.internal.metrics.SystemMetricsTracker;
+import org.jgroups.raft.internal.metrics.RaftProtocolMetrics;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RaftClassConfigurator;
@@ -219,7 +219,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     private TimeService timeService = null;
     private RequestFactory requestFactory = null;
-    private SystemMetricsTracker systemMetricsTracker = null;
+    private RaftProtocolMetrics metrics = null;
 
     /* ============================== EXPERIMENTAL - most of these metrics will be removed again ================== */
 
@@ -332,15 +332,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return timeService;
     }
 
-    public RAFT systemMetricsTracker(SystemMetricsTracker systemMetricsTracker) {
-        this.systemMetricsTracker = systemMetricsTracker;
-        return this;
-    }
-
-    public SystemMetricsTracker systemMetricsTracker() {
-        return systemMetricsTracker;
-    }
-
     public RAFT logDir(String logDir) {
         this.log_dir = logDir;
         return this;
@@ -358,7 +349,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             ((LogCache)log_impl).resetStats();
         drained_total.reset(); drained_avg.clear(); drained_down.reset(); drained_up.reset();
         avg_append_entries_batch_size.clear();
-        systemMetricsTracker = stats ? new SystemMetricsTracker() : null;
+        metrics = stats ? new RaftProtocolMetrics() : null;
     }
 
     @Property(description="Max size of the log cache (0 disables the log cache)",type=AttributeType.BYTES)
@@ -404,14 +395,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description = "Mean latency of replication in nanoseconds", type = AttributeType.TIME, unit = TimeUnit.NANOSECONDS)
     public double replicationMeanLatency() {
-        if (systemMetricsTracker == null) return -1;
-        return systemMetricsTracker.getReplicationLatency().getAvgLatency();
+        if (metrics == null) return -1;
+        return metrics.processing().getAvgLatency();
     }
 
     @ManagedAttribute(description = "Mean latency of user operations in nanoseconds", type = AttributeType.TIME, unit = TimeUnit.NANOSECONDS)
     public double userOperationMeanLatency() {
-        if (systemMetricsTracker == null) return -1;
-        return systemMetricsTracker.getCommandProcessingLatency().getAvgLatency();
+        if (metrics == null) return -1;
+        return metrics.total().getAvgLatency();
     }
 
     @Property(description="List of members (logical names); majority is computed from it")
@@ -644,11 +635,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             log_impl.init(log_name, args);
         }
 
-        if (stats && systemMetricsTracker == null)
-            systemMetricsTracker = new SystemMetricsTracker();
+        if (stats && metrics == null)
+            metrics = new RaftProtocolMetrics();
         if (timeService == null)
-            timeService = TimeService.create(systemMetricsTracker != null);
-        requestFactory = new RequestFactory(timeService, systemMetricsTracker);
+            timeService = TimeService.create(metrics != null);
+        requestFactory = new RequestFactory(timeService, metrics);
 
         if(!(local_addr instanceof ExtendedUUID))
             throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
@@ -1231,6 +1222,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         for (DownRequest dr : requests) {
             Options opts = dr.options();
             boolean serializeResponse = opts == null || !opts.ignoreReturnValue();
+            dr.completeReplication();
 
             try {
                 byte[] resp = state_machine.apply(dr.buffer(), dr.offset(), dr.length(), serializeResponse);

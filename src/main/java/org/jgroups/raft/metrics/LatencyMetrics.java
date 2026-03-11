@@ -10,6 +10,40 @@ package org.jgroups.raft.metrics;
  */
 public interface LatencyMetrics {
 
+    static LatencyMetrics disabled() {
+        return new LatencyMetrics() {
+            @Override
+            public double getAvgLatency() {
+                return -1;
+            }
+
+            @Override
+            public double getP99Latency() {
+                return -1;
+            }
+
+            @Override
+            public double getP95Latency() {
+                return -1;
+            }
+
+            @Override
+            public double getMaxLatency() {
+                return -1;
+            }
+
+            @Override
+            public double getPercentile(double p) {
+                return -1;
+            }
+
+            @Override
+            public long getTotalMeasurements() {
+                return -1;
+            }
+        };
+    }
+
     double getAvgLatency();
 
     double getP99Latency();
