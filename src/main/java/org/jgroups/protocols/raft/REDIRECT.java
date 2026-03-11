@@ -12,7 +12,7 @@ import org.jgroups.annotations.ManagedAttribute;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
-import org.jgroups.raft.internal.metrics.SystemMetricsTracker;
+import org.jgroups.raft.internal.metrics.RedirectProtocolMetrics;
 import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
@@ -58,15 +58,15 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     // used to correlate redirect requests and responses: keys are request-ids and values futures
     protected final Map<Integer, RedirectRequest> requests = new HashMap<>();
     protected RAFT raft;
-    private SystemMetricsTracker systemMetricsTracker;
+    private RedirectProtocolMetrics metrics;
     protected volatile View view;
 
     @ManagedAttribute(description = "Mean latency for redirecting request in nanoseconds", type = AttributeType.TIME, unit = TimeUnit.NANOSECONDS)
     public double redirectionOperationMeanLatency() {
-        if (systemMetricsTracker == null)
+        if (metrics == null)
             return -1;
 
-        return systemMetricsTracker.getCommandProcessingLatency().getAvgLatency();
+        return metrics.redirect().getAvgLatency();
     }
 
     @Override
@@ -123,13 +123,13 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     public void start() throws Exception {
         super.start();
 
-        if (raft.statsEnabled() && systemMetricsTracker == null)
-            systemMetricsTracker = new SystemMetricsTracker();
+        if (raft.statsEnabled() && metrics == null)
+            metrics = new RedirectProtocolMetrics();
     }
 
     @Override
     public void resetStats() {
-        systemMetricsTracker = raft.statsEnabled() ? new SystemMetricsTracker() : null;
+        metrics = raft.statsEnabled() ? new RedirectProtocolMetrics() : null;
     }
 
     @Override
@@ -343,14 +343,14 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
         public RedirectRequest() {
             this.cf = new CompletableFuture<>();
-            if (systemMetricsTracker != null)
+            if (metrics != null)
                 USER_START_NANOS.set(this, raft.timeService().nanos());
         }
 
         public void accept(Message msg, RedirectHeader hdr) {
-            if (systemMetricsTracker != null) {
+            if (metrics != null) {
                 long diff = raft.timeService().interval(USER_START_NANOS.get(this));
-                systemMetricsTracker.recordCommandProcessingLatency(diff);
+                metrics.recordRedirectLatency(diff);
             }
 
             if (hdr.exception) {

@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicLongFieldUpdater;
  * @author José Bolina
  * @since 2.0
  */
-public abstract sealed class DownRequest extends CompletableFuture<byte[]> implements BaseRequest permits DownRequest.Tracked, DownRequest.Untracked {
+public abstract sealed class DownRequest extends CompletableFuture<byte[]> implements BaseRequest {
     private final CompletableFuture<byte[]> future;
     private final byte[] buffer;
     private final int offset;
