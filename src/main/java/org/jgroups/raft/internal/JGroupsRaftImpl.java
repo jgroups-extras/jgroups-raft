@@ -7,6 +7,7 @@ import org.jgroups.protocols.raft.Follower;
 import org.jgroups.protocols.raft.Leader;
 import org.jgroups.protocols.raft.Learner;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.Role;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.JGroupsRaft;
@@ -109,8 +110,9 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
 
         // Only instantiate metric collection if it was enabled during startup.
         boolean metricsEnabled = parameters.runtimeProperties().getBoolean(JGroupsRaftMetrics.METRICS_ENABLED);
+        REDIRECT redirect = RAFT.findProtocol(REDIRECT.class, raft, false);
         metrics = metricsEnabled
-                ? new JGroupsRaftMetricsCollector(raft, election)
+                ? new JGroupsRaftMetricsCollector(raft, election, redirect)
                 : JGroupsRaftMetrics.disabled();
         raft.enableStats(metricsEnabled);
 

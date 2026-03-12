@@ -70,17 +70,23 @@ public class RaftProtocolProbe implements DiagnosticsHandler.ProbeHandler {
         electionMetrics.put("leader-election-time", String.valueOf(metrics.leaderMetrics().getLeaderElectionTime()));
         electionMetrics.put("leader-time-last-change", String.valueOf(metrics.leaderMetrics().getTimeSinceLastLeaderChange()));
 
-        Map<String, Object> commandsMetrics = new HashMap<>();
-        LatencyMetrics processingMetrics = metrics.performanceMetrics().getCommandProcessingLatency();
-        populateLatencyMetrics(commandsMetrics, processingMetrics);
+        Map<String, Object> totalMetrics = new HashMap<>();
+        populateLatencyMetrics(totalMetrics, metrics.performanceMetrics().getTotalLatency());
 
-        Map<String, Object> replicationMetrics = new HashMap<>();
-        LatencyMetrics replicationValues = metrics.performanceMetrics().getReplicationLatency();
-        populateLatencyMetrics(replicationMetrics, replicationValues);
+        Map<String, Object> processingMetrics = new HashMap<>();
+        populateLatencyMetrics(processingMetrics, metrics.performanceMetrics().getProcessingLatency());
+
+        Map<String, Object> electionLatencyMetrics = new HashMap<>();
+        populateLatencyMetrics(electionLatencyMetrics, metrics.performanceMetrics().getLeaderElectionLatency());
+
+        Map<String, Object> redirectMetrics = new HashMap<>();
+        populateLatencyMetrics(redirectMetrics, metrics.performanceMetrics().getRedirectLatency());
 
         response.put("election-metrics", electionMetrics);
-        response.put("processing-metrics", commandsMetrics);
-        response.put("replication-metrics", replicationMetrics);
+        response.put("total-latency", totalMetrics);
+        response.put("processing-latency", processingMetrics);
+        response.put("election-latency", electionLatencyMetrics);
+        response.put("redirect-latency", redirectMetrics);
         return response;
     }
 

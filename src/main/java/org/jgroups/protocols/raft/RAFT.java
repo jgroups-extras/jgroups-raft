@@ -24,6 +24,7 @@ import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.internal.metrics.RaftProtocolMetrics;
+import org.jgroups.raft.metrics.LatencyMetrics;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.raft.util.RaftClassConfigurator;
@@ -249,6 +250,19 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
     /* ============================================================================================================ */
 
+    /**
+     * @return end-to-end operation latency metrics, or disabled metrics if stats are off.
+     */
+    public LatencyMetrics totalLatencyMetrics() {
+        return metrics != null ? metrics.total() : LatencyMetrics.disabled();
+    }
+
+    /**
+     * @return consensus processing latency metrics, or disabled metrics if stats are off.
+     */
+    public LatencyMetrics processingLatency() {
+        return metrics != null ? metrics.processing() : LatencyMetrics.disabled();
+    }
 
     public String       raftId()                      {return raft_id;}
     public RAFT         raftId(String id)             {if(id != null) this.raft_id=id; return this;}
@@ -797,7 +811,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     protected void offer(BaseRequest r) {
-        r.startUserOperation();
+        r.startTotal();
         if (!processing_queue.offer(r)) {
             r.failed(new IllegalStateException("processing queue is full"));
         }
@@ -943,7 +957,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         for(BaseRequest r: q) {
             try {
-                r.startReplication();
+                r.startProcessing();
                 if(r instanceof UpRequest up) {
                     handleUpRequest(up.message(), up.header());
                 }
@@ -1222,7 +1236,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         for (DownRequest dr : requests) {
             Options opts = dr.options();
             boolean serializeResponse = opts == null || !opts.ignoreReturnValue();
-            dr.completeReplication();
+            dr.completeProcessing();
 
             try {
                 byte[] resp = state_machine.apply(dr.buffer(), dr.offset(), dr.length(), serializeResponse);

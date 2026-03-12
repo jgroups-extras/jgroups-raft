@@ -6,8 +6,8 @@ package org.jgroups.protocols.raft.internal.request;
  * <p>
  * Defines lifecycle hooks for latency tracking at two granularities:
  * <ul>
- *   <li><b>User operation</b> — end-to-end from submission to completion (includes queue wait).</li>
- *   <li><b>Replication</b> — from event loop processing to commit (majority reached).</li>
+ *   <li><b>Total</b> — end-to-end from submission to completion.</li>
+ *   <li><b>Processing</b> — from event loop processing to commit (majority reached).</li>
  * </ul>
  * </p>
  *
@@ -17,24 +17,24 @@ package org.jgroups.protocols.raft.internal.request;
 public sealed interface BaseRequest permits DownRequest, UntrackedRequest {
 
     /**
-     * Marks the start of the user operation span, before the request enters the event loop queue.
+     * Marks the start of the total span, before the request enters the event loop queue.
      */
-    void startUserOperation();
+    void startTotal();
 
     /**
-     * Marks the end of the user operation span, after the request completes or fails.
+     * Marks the end of the total span, after the request completes or fails.
      */
-    void completeUserOperation();
+    void completeTotal();
 
     /**
-     * Marks the start of the replication span, when the event loop begins processing.
+     * Marks the start of the processing span, when the event loop begins processing.
      */
-    void startReplication();
+    void startProcessing();
 
     /**
-     * Marks the end of the replication span, when a majority commits the entry.
+     * Marks the end of the processing span, when a majority commits the entry.
      */
-    void completeReplication();
+    void completeProcessing();
 
     /**
      * Signals that the request has failed.

@@ -81,7 +81,7 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
     }
 
     /**
-     * Completes the request successfully, recording the user operation latency
+     * Completes the request successfully, recording the total latency
      * and resolving the user-facing future.
      */
     @Override
@@ -97,7 +97,7 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
     }
 
     /**
-     * Fails the request, recording the user operation latency and completing
+     * Fails the request, recording the total latency and completing
      * the user-facing future exceptionally.
      */
     @Override
@@ -108,7 +108,7 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
     }
 
     private void completeTrackingOperations() {
-        completeUserOperation();
+        completeTotal();
     }
 
     /**
@@ -130,27 +130,27 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         }
 
         @Override
-        public void startUserOperation() { }
+        public void startTotal() { }
 
         @Override
-        public void completeUserOperation() { }
+        public void completeTotal() { }
 
         @Override
-        public void startReplication() { }
+        public void startProcessing() { }
 
         @Override
-        public void completeReplication() { }
+        public void completeProcessing() { }
     }
 
     @SuppressWarnings("PMD.UnusedPrivateField")
     private static final class Tracked extends DownRequest {
-        private static final AtomicLongFieldUpdater<Tracked> USER_START_NANOS_UPDATER = AtomicLongFieldUpdater.newUpdater(Tracked.class, "userStartNanos");
+        private static final AtomicLongFieldUpdater<Tracked> TOTAL_START_NANOS_UPDATER = AtomicLongFieldUpdater.newUpdater(Tracked.class, "totalStartNanos");
         private static final AtomicLongFieldUpdater<Tracked> PROCESSING_START_NANOS_UPDATER = AtomicLongFieldUpdater.newUpdater(Tracked.class, "processingStartNanos");
 
         private final RaftProtocolMetrics metrics;
         private final TimeService timeService;
 
-        private volatile long userStartNanos;
+        private volatile long totalStartNanos;
         private volatile long processingStartNanos;
 
         Tracked(CompletableFuture<byte[]> future, byte[] buffer, int offset, int length, boolean internal, Options options,
@@ -161,23 +161,23 @@ public abstract sealed class DownRequest extends CompletableFuture<byte[]> imple
         }
 
         @Override
-        public void startUserOperation() {
-            USER_START_NANOS_UPDATER.set(this, timeService.nanos());
+        public void startTotal() {
+            TOTAL_START_NANOS_UPDATER.set(this, timeService.nanos());
         }
 
         @Override
-        public void completeUserOperation() {
-            long diff = timeService.interval(USER_START_NANOS_UPDATER.get(this));
+        public void completeTotal() {
+            long diff = timeService.interval(TOTAL_START_NANOS_UPDATER.get(this));
             metrics.recordTotalLatency(diff);
         }
 
         @Override
-        public void startReplication() {
+        public void startProcessing() {
             PROCESSING_START_NANOS_UPDATER.set(this, timeService.nanos());
         }
 
         @Override
-        public void completeReplication() {
+        public void completeProcessing() {
             long diff = timeService.interval(PROCESSING_START_NANOS_UPDATER.get(this));
             metrics.recordProcessingLatency(diff);
         }

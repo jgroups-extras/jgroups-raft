@@ -13,14 +13,14 @@ package org.jgroups.protocols.raft.internal.request;
 abstract sealed class UntrackedRequest implements BaseRequest permits CallableDownRequest, UpRequest {
 
     @Override
-    public final void startUserOperation() { }
+    public final void startTotal() { }
 
     @Override
-    public final void completeUserOperation() { }
+    public final void completeTotal() { }
 
     @Override
-    public final void startReplication() { }
+    public final void startProcessing() { }
 
     @Override
-    public final void completeReplication() { }
+    public final void completeProcessing() { }
 }

@@ -13,6 +13,7 @@ import org.jgroups.conf.AttributeType;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.internal.metrics.RedirectProtocolMetrics;
+import org.jgroups.raft.metrics.LatencyMetrics;
 import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
@@ -161,6 +162,13 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         }
         if (!batch.isEmpty())
             up_prot.up(batch);
+    }
+
+    /**
+     * @return redirect round-trip latency metrics, or disabled metrics if stats are off.
+     */
+    public LatencyMetrics redirectLatency() {
+        return metrics != null ? metrics.redirect() : LatencyMetrics.disabled();
     }
 
     protected void handleEvent(Message msg, RedirectHeader hdr) {

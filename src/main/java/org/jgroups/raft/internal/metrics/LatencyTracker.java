@@ -1,5 +1,7 @@
 package org.jgroups.raft.internal.metrics;
 
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
 import org.jgroups.raft.metrics.LatencyMetrics;
 
 import java.util.concurrent.TimeUnit;
@@ -8,6 +10,7 @@ import org.HdrHistogram.ConcurrentHistogram;
 import org.HdrHistogram.Histogram;
 
 final class LatencyTracker implements LatencyMetrics {
+    private static final Log LOG = LogFactory.getLog(LatencyTracker.class);
     private final Histogram histogram;
 
     public LatencyTracker(boolean concurrent) {
@@ -20,7 +23,7 @@ final class LatencyTracker implements LatencyMetrics {
         try {
             histogram.recordValue(latencyNanos);
         } catch (Throwable t) {
-            t.printStackTrace(System.err);
+            LOG.error("Failed recording value %d, ignoring it", latencyNanos, t);
         }
     }
 

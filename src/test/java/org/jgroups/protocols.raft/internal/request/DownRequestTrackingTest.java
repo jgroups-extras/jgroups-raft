@@ -19,8 +19,8 @@ import org.testng.annotations.Test;
  * <p>
  * Verifies that:
  * <ul>
- *   <li>Total latency records the interval from {@code startUserOperation()} to {@code complete()}.</li>
- *   <li>Processing latency records the interval from {@code startReplication()} to {@code completeReplication()}.</li>
+ *   <li>Total latency records the interval from {@code startTotal()} to {@code complete()}.</li>
+ *   <li>Processing latency records the interval from {@code startProcessing()} to {@code completeProcessing()}.</li>
  *   <li>The two metrics are independent and recorded at different completion points.</li>
  *   <li>Untracked requests (metrics disabled) produce no recordings.</li>
  * </ul>
@@ -55,19 +55,19 @@ public class DownRequestTrackingTest {
     }
 
     /**
-     * Total latency: startUserOperation → complete.
-     * Processing latency: startReplication → completeReplication.
+     * Total latency: startTotal → complete.
+     * Processing latency: startProcessing → completeProcessing.
      *
      * <p>
      * Simulates the real flow:
      * <ol>
-     *   <li>offer() calls startUserOperation (t=0)</li>
+     *   <li>offer() calls startTotal (t=0)</li>
      *   <li>Time advances 10ms (queue wait)</li>
-     *   <li>process() calls startReplication (t=10ms)</li>
+     *   <li>process() calls startProcessing (t=10ms)</li>
      *   <li>Time advances 5ms (log append + replication)</li>
-     *   <li>RequestTable.Entry.add() reaches majority → completeReplication (t=15ms)</li>
+     *   <li>RequestTable.Entry.add() reaches majority → completeProcessing (t=15ms)</li>
      *   <li>Time advances 2ms (state machine apply)</li>
-     *   <li>complete() → completeUserOperation (t=17ms)</li>
+     *   <li>complete() → completeTotal (t=17ms)</li>
      * </ol>
      * Expected: total = 17ms, processing = 5ms.
      * </p>
@@ -75,25 +75,25 @@ public class DownRequestTrackingTest {
     public void testFullLifecycle() {
         DownRequest dr = createTracked();
 
-        // offer() → startUserOperation at t=0
-        dr.startUserOperation();
+        // offer() → startTotal at t=0
+        dr.startTotal();
 
         // Queue wait: 10ms
         timeService.advance(10_000_000);
 
-        // process() → startReplication at t=10ms
-        dr.startReplication();
+        // process() → startProcessing at t=10ms
+        dr.startProcessing();
 
         // Log append + replication: 5ms
         timeService.advance(5_000_000);
 
-        // Majority reached → completeReplication at t=15ms
-        dr.completeReplication();
+        // Majority reached → completeProcessing at t=15ms
+        dr.completeProcessing();
 
         // State machine apply: 2ms
         timeService.advance(2_000_000);
 
-        // complete() → completeUserOperation at t=17ms
+        // complete() → completeTotal at t=17ms
         dr.complete(new byte[0]);
 
         LatencyMetrics total = metrics.total();
@@ -116,19 +116,19 @@ public class DownRequestTrackingTest {
 
     /**
      * Processing latency ends before total latency.
-     * completeReplication() is called independently from complete().
+     * completeProcessing() is called independently from complete().
      */
     public void testProcessingCompletesBeforeTotal() {
         DownRequest dr = createTracked();
 
-        dr.startUserOperation();
+        dr.startTotal();
         timeService.advance(1_000_000);
 
-        dr.startReplication();
+        dr.startProcessing();
         timeService.advance(3_000_000);
 
         // Processing completes at t=4ms.
-        dr.completeReplication();
+        dr.completeProcessing();
 
         // Verify processing is recorded immediately.
         assertThat(metrics.processing().getTotalMeasurements()).isEqualTo(1);
@@ -152,13 +152,13 @@ public class DownRequestTrackingTest {
     public void testFailedRequestRecordsTotalLatency() {
         DownRequest dr = createTracked();
 
-        dr.startUserOperation();
+        dr.startTotal();
         timeService.advance(5_000_000);
 
-        dr.startReplication();
+        dr.startProcessing();
         timeService.advance(2_000_000);
 
-        // Request fails before reaching majority (no completeReplication call).
+        // Request fails before reaching majority (no completeProcessing call).
         dr.failed(new RuntimeException("not leader"));
 
         // Total should be recorded: 5 + 2 = 7ms.
@@ -175,7 +175,7 @@ public class DownRequestTrackingTest {
     public void testFailedBeforeProcessing() {
         DownRequest dr = createTracked();
 
-        dr.startUserOperation();
+        dr.startTotal();
         timeService.advance(1_000_000);
 
         // Queue full — failed() called directly from offer().
@@ -194,13 +194,13 @@ public class DownRequestTrackingTest {
         for (int i = 1; i <= 3; i++) {
             DownRequest dr = createTracked();
 
-            dr.startUserOperation();
+            dr.startTotal();
             timeService.advance(i * 1_000_000L);
 
-            dr.startReplication();
+            dr.startProcessing();
             timeService.advance(i * 500_000L);
 
-            dr.completeReplication();
+            dr.completeProcessing();
 
             timeService.advance(100_000);
             dr.complete(new byte[0]);
@@ -216,9 +216,9 @@ public class DownRequestTrackingTest {
     public void testUntrackedRequest() {
         DownRequest dr = createUntracked();
 
-        dr.startUserOperation();
-        dr.startReplication();
-        dr.completeReplication();
+        dr.startTotal();
+        dr.startProcessing();
+        dr.completeProcessing();
         dr.complete(new byte[0]);
 
         // No metrics instance — nothing to check, just verifying no NPE or side effects.
@@ -235,13 +235,13 @@ public class DownRequestTrackingTest {
                 false, null, true, metrics, timeService
         );
 
-        dr.startUserOperation();
+        dr.startTotal();
         timeService.advance(2_000_000);
 
-        dr.startReplication();
+        dr.startProcessing();
         timeService.advance(1_000_000);
 
-        dr.completeReplication();
+        dr.completeProcessing();
 
         timeService.advance(500_000);
         dr.complete(new byte[0]);

@@ -17,6 +17,7 @@ import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.RaftHeader;
 import org.jgroups.raft.internal.metrics.ElectionProtocolMetrics;
+import org.jgroups.raft.metrics.LatencyMetrics;
 import org.jgroups.raft.util.RaftClassConfigurator;
 import org.jgroups.raft.util.TimeService;
 import org.jgroups.raft.util.Utils;
@@ -222,6 +223,13 @@ public abstract class BaseElection extends Protocol {
             up_prot.up(batch);
     }
 
+    /**
+     * @return election latency metrics, or disabled metrics if stats are off.
+     */
+    public LatencyMetrics electionLatency() {
+        return metrics != null ? metrics.election() : LatencyMetrics.disabled();
+    }
+
     protected void handleMessage(Message msg, RaftHeader hdr) {
         if (hdr instanceof LeaderElected) {
             handleLeaderElected(msg, (LeaderElected) hdr);
@@ -258,6 +266,11 @@ public abstract class BaseElection extends Protocol {
             log.trace("%s <- %s: %s (%d)", local_addr, msg.src(), hdr, res);
             if (res >= 0) {
                 stopVotingThread(); // only on the coord
+
+                // Non-coordinator members do not initiate the voting process, so we only track the instant it ended.
+                if (!isViewCoordinator()) {
+                    electionEnd = raft.timeService().now();
+                }
             }
         } else {
             log.trace("%s <- %s: %s after leader left (%s)", local_addr, msg.src(), hdr, v);

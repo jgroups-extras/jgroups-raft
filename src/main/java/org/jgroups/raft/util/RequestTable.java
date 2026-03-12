@@ -152,7 +152,7 @@ public class RequestTable<T> {
         public boolean add(T vote, final Supplier<Integer> majority) {
             boolean committed = votes.add(vote) && votes.size() >= majority.get() && commit();
             if (committed && client_future instanceof DownRequest dr)
-                dr.completeReplication();
+                dr.completeProcessing();
             return committed;
         }
 

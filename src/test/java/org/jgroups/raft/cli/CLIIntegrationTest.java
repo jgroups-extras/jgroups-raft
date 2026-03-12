@@ -117,7 +117,8 @@ public class CLIIntegrationTest {
         for (Map<String, Object> node : nodes) {
             Map<String, Object> data = (Map<String, Object>) node.get("response");
             assertThat(data).containsKeys("total-nodes", "active-nodes",
-                    "election-metrics", "processing-metrics", "replication-metrics");
+                    "election-metrics", "total-latency", "processing-latency",
+                    "election-latency", "redirect-latency");
             assertThat(((Number) data.get("total-nodes")).intValue())
                     .withFailMessage("Response was: " + json)
                     .isEqualTo(CLUSTER_SIZE);
