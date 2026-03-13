@@ -14,7 +14,7 @@ public interface SimpleKVStateMachine {
     String handleGet(String key);
 
     @StateMachineWrite(id = 2)
-    void handlePut(String key, String value);
+    Void handlePut(String key, String value);
 
     class Impl implements SimpleKVStateMachine {
         private final Map<String, String> data = new HashMap<>();
@@ -24,8 +24,9 @@ public interface SimpleKVStateMachine {
         }
 
         @Override
-        public void handlePut(String key, String value) {
+        public Void handlePut(String key, String value) {
             data.put(key, value);
+            return null;
         }
     }
 }

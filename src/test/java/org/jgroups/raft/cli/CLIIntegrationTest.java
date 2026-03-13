@@ -17,7 +17,6 @@ import java.io.StringWriter;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 import org.testng.annotations.AfterClass;
@@ -44,8 +43,8 @@ public class CLIIntegrationTest {
 
         // Submit a few writes so the log is not empty.
         JGroupsRaft<SimpleKVStateMachine> leader = cluster.leader();
-        leader.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("key1", "value1"));
-        leader.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("key2", "value2"));
+        leader.write(kv -> kv.handlePut("key1", "value1"));
+        leader.write(kv -> kv.handlePut("key2", "value2"));
 
         // Wait for replication to complete on all nodes.
         assertThat(eventually(() -> {

@@ -12,7 +12,6 @@ import org.jgroups.raft.exceptions.JRaftException;
 
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import org.testng.annotations.DataProvider;
@@ -75,7 +74,7 @@ public class JGroupsRaftAPITest {
         assertThat(raft.role()).isEqualTo(JGroupsRaftRole.NONE);
 
         // Assert an operation is not accepted before start.
-        assertThatThrownBy(() -> raft.read((Consumer<SimpleKVStateMachine>) kv -> kv.handleGet("key")))
+        assertThatThrownBy(() -> raft.read(kv -> kv.handleGet("key")))
                 .isInstanceOf(IllegalStateException.class);
 
         raft.start();
@@ -91,7 +90,7 @@ public class JGroupsRaftAPITest {
         raft.stop();
 
         // Assert an operation is not accepted after stop.
-        assertThatThrownBy(() -> raft.read((Consumer<SimpleKVStateMachine>) kv -> kv.handleGet("key")))
+        assertThatThrownBy(() -> raft.read(kv -> kv.handleGet("key")))
                 .isInstanceOf(IllegalStateException.class);
         assertThat(raft.role()).isEqualTo(JGroupsRaftRole.NONE);
 
@@ -147,9 +146,9 @@ public class JGroupsRaftAPITest {
         assertThat(raft.read((Function<SimpleKVStateMachine, String>) kv -> kv.handleGet("hello")))
                 .isNull();
 
-        raft.write((Consumer<SimpleKVStateMachine>)  kv -> kv.handlePut("hello", "world"));
+        raft.write(kv -> kv.handlePut("hello", "world"));
 
-        assertThat(raft.read((Function<SimpleKVStateMachine, String>)  kv -> kv.handleGet("hello")))
+        assertThat(raft.<String>read(kv -> kv.handleGet("hello")))
                 .isEqualTo("world");
 
         cluster.close();
@@ -167,7 +166,7 @@ public class JGroupsRaftAPITest {
         assertThat(raft.<String>read(kv -> kv.handleGet("hello"), JGroupsRaftCommandOptions.readOptions().build()))
                 .isNull();
 
-        raft.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("hello", "world"), JGroupsRaftCommandOptions.writeOptions().build());
+        raft.write(kv -> kv.handlePut("hello", "world"), JGroupsRaftCommandOptions.writeOptions().build());
 
         assertThat(raft.<String>read(kv -> kv.handleGet("hello"), JGroupsRaftCommandOptions.readOptions().build()))
                 .isEqualTo("world");

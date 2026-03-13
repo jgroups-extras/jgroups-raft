@@ -99,24 +99,28 @@ public class TotalOrder extends Frame {
                         case TotOrderRequest.ADDITION:
                             raft.write(c -> {
                                 c.addValueTo(req.x, req.y, req.val);
+                                return null;
                             });
                             num_additions++;
                             break;
                         case TotOrderRequest.SUBTRACTION:
                             raft.write( c -> {
                                 c.subtractValueFrom(req.x, req.y, req.val);
+                                return null;
                             });
                             num_subtractions++;
                             break;
                         case TotOrderRequest.MULTIPLICATION:
                             raft.write(c -> {
                                 c.multiplyValueWith(req.x, req.y, req.val);
+                                return null;
                             });
                             num_multiplications++;
                             break;
                         case TotOrderRequest.DIVISION:
                             raft.write(c -> {
                                 c.divideValueBy(req.x, req.y, req.val);
+                                return null;
                             });
                             num_divisions++;
                             break;
@@ -150,7 +154,10 @@ public class TotalOrder extends Frame {
 
         stop.addActionListener(e -> stopSender());
 
-        clear.addActionListener(e -> raft.write(CanvasStateMachine::clear));
+        clear.addActionListener(e -> raft.write(csm -> {
+            csm.clear();
+            return null;
+        }));
 
         quit.addActionListener(e -> {
             raft.stop();

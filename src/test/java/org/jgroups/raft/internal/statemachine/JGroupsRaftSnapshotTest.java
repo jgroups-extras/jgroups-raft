@@ -13,7 +13,6 @@ import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.util.Util;
 
 import java.lang.reflect.Field;
-import java.util.function.Consumer;
 
 import org.testng.annotations.Test;
 
@@ -27,7 +26,7 @@ public class JGroupsRaftSnapshotTest {
 
         JGroupsRaft<StateMachineTest> leader = cluster.leader();
         for (int i = 0; i < 10; i++) {
-            leader.write((Consumer<StateMachineTest>) smt -> smt.add(1));
+            leader.write(smt -> smt.add(1));
         }
 
         int index = cluster.leaderIndex();
@@ -59,7 +58,7 @@ public class JGroupsRaftSnapshotTest {
     private interface StateMachineTest {
 
         @StateMachineWrite(id = 1)
-        void add(int value);
+        Void add(int value);
 
         @StateMachineRead(id = 2)
         int get();
@@ -71,8 +70,9 @@ public class JGroupsRaftSnapshotTest {
         private int value;
 
         @Override
-        public void add(int value) {
+        public Void add(int value) {
             this.value += value;
+            return null;
         }
 
         @Override

@@ -17,7 +17,6 @@ import java.io.InputStream;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import net.jcip.annotations.ThreadSafe;
@@ -455,42 +454,6 @@ public interface JGroupsRaft<T> {
     <O> O write(Function<T, O> function, JGroupsRaftWriteCommandOptions options);
 
     /**
-     * Submits a write command to the state machine.
-     *
-     * <p>
-     * This method is similar to {@link #write(Function)}, but it accepts a consumer instead of a function.
-     * </p>
-     *
-     * <b>Only the methods are invoked in Raft. The lambda is executed locally and is not atomic.</b>
-     *
-     * @param consumer the consumer to execute using the state machine as argument.
-     * @see #write(Function)
-     */
-    default void write(Consumer<T> consumer) {
-        write(consumer, null);
-    }
-
-    /**
-     * Submits a write command to the state machine.
-     *
-     * <p>
-     * This method is similar to {@link #write(Function, JGroupsRaftWriteCommandOptions)}, but it accepts a consumer instead of a function.
-     * </p>
-     *
-     * <b>Only the methods are invoked in Raft. The lambda is executed locally and is not atomic.</b>
-     *
-     * @param consumer the consumer to execute using the state machine as argument.
-     * @param options options to change the command behavior during execution.
-     * @see #write(Function, JGroupsRaftWriteCommandOptions)
-     */
-    default void write(Consumer<T> consumer, JGroupsRaftWriteCommandOptions options) {
-        write(sm -> {
-            consumer.accept(sm);
-            return null;
-        });
-    }
-
-    /**
      * Submits a read command to the state machine.
      *
      * <p>
@@ -508,25 +471,6 @@ public interface JGroupsRaft<T> {
      */
     default <O> O read(Function<T, O> function) {
         return read(function, null);
-    }
-
-    /**
-     * Submits a read command to the state machine.
-     *
-     * <p>
-     * This method is similar to {@link #read(Function)}, but it accepts a consumer instead of a function.
-     * </p>
-     *
-     * <b>Only the methods are invoked in Raft. The lambda is executed locally and is not atomic.</b>
-     *
-     * @param consumer the consumer to execute using the state machine as argument.
-     * @see #read(Function)
-     */
-    default void read(Consumer<T> consumer) {
-        read(sm -> {
-            consumer.accept(sm);
-            return null;
-        });
     }
 
     /**

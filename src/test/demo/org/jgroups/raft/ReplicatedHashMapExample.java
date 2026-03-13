@@ -66,9 +66,7 @@ public class ReplicatedHashMapExample {
         final UserInformation value = new UserInformation(UUID.randomUUID().toString(), ThreadLocalRandom.current().nextInt());
         System.out.printf("Updating user %s to key %s%n", ui, userId);
         raft.read(api -> api.get(userId), JGroupsRaftReadCommandOptions.options().linearizable(false).build());
-        raft.write(rhm -> {
-           rhm.put(userId, value);
-        });
+        raft.write(rhm -> rhm.put(userId, value));
 
         // Now, we can retrieve the user information again to verify the update.
         //ui = raft.submit(GET_USER_INFO_REQUEST, userId, 10, TimeUnit.SECONDS);
@@ -99,7 +97,7 @@ public class ReplicatedHashMapExample {
         UserInformation get(String key);
 
         @StateMachineWrite(id = 2)
-        void put(String key, UserInformation value);
+        Void put(String key, UserInformation value);
     }
 
     /**
@@ -122,8 +120,9 @@ public class ReplicatedHashMapExample {
         }
 
         @Override
-        public void put(String key, UserInformation value) {
+        public Void put(String key, UserInformation value) {
             data.put(key, value);
+            return null;
         }
     }
 

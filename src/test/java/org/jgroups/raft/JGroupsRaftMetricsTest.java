@@ -16,7 +16,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
@@ -113,9 +112,9 @@ public class JGroupsRaftMetricsTest {
     public void testLogMetricsAfterWrites() {
         JGroupsRaft<SimpleKVStateMachine> leader = cluster.leader();
 
-        leader.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("m1", "v1"));
-        leader.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("m2", "v2"));
-        leader.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("m3", "v3"));
+        leader.write(kv -> kv.handlePut("m1", "v1"));
+        leader.write(kv -> kv.handlePut("m2", "v2"));
+        leader.write(kv -> kv.handlePut("m3", "v3"));
 
         LogMetrics leaderLog = leader.metrics().replicationMetrics();
         assertThat(leaderLog.getTotalLogEntries()).isGreaterThanOrEqualTo(3);
@@ -146,8 +145,8 @@ public class JGroupsRaftMetricsTest {
     public void testPerformanceMetricsAfterWrites() {
         JGroupsRaft<SimpleKVStateMachine> leader = cluster.leader();
 
-        leader.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("p1", "v1"));
-        leader.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("p2", "v2"));
+        leader.write(kv -> kv.handlePut("p1", "v1"));
+        leader.write(kv -> kv.handlePut("p2", "v2"));
 
         PerformanceMetrics perf = leader.metrics().performanceMetrics();
 
@@ -168,7 +167,7 @@ public class JGroupsRaftMetricsTest {
     public void testFollowerRedirectLatency() {
         JGroupsRaft<SimpleKVStateMachine> follower = cluster.follower();
 
-        follower.write((Consumer<SimpleKVStateMachine>) kv -> kv.handlePut("r1", "v1"));
+        follower.write(kv -> kv.handlePut("r1", "v1"));
 
         PerformanceMetrics perf = follower.metrics().performanceMetrics();
         LatencyMetrics redirect = perf.getRedirectLatency();
