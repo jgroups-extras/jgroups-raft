@@ -168,7 +168,7 @@ public interface JGroupsRaftMetrics {
             }
 
             @Override
-            public long getReplicatedLogEntries() {
+            public long getCommittedLogEntries() {
                 return -1;
             }
 
@@ -178,7 +178,27 @@ public interface JGroupsRaftMetrics {
             }
 
             @Override
-            public double getReplicationLag() {
+            public long getLogSizeInBytes() {
+                return -1;
+            }
+
+            @Override
+            public long getCurrentTerm() {
+                return -1;
+            }
+
+            @Override
+            public long getCommitIndex() {
+                return -1;
+            }
+
+            @Override
+            public int getSnapshotCount() {
+                return -1;
+            }
+
+            @Override
+            public int getSnapshotsReceived() {
                 return -1;
             }
         };

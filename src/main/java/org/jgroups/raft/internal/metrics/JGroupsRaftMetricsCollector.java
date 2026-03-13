@@ -14,11 +14,13 @@ public class JGroupsRaftMetricsCollector implements JGroupsRaftMetrics {
     private final RAFT raft;
     private final ElectionMetrics electionMetrics;
     private final PerformanceMetrics performanceMetrics;
+    private final LogMetrics logMetrics;
 
     public JGroupsRaftMetricsCollector(RAFT raft, BaseElection election, REDIRECT redirect) {
         this.raft = raft;
         this.electionMetrics = new ElectionMetricsCollector(election);
         this.performanceMetrics = new CompositePerformanceMetrics(raft, election, redirect);
+        this.logMetrics = new LogMetricsCollector(raft);
     }
 
     @Override
@@ -38,7 +40,7 @@ public class JGroupsRaftMetricsCollector implements JGroupsRaftMetrics {
 
     @Override
     public LogMetrics replicationMetrics() {
-        throw new UnsupportedOperationException();
+        return logMetrics;
     }
 
     @Override

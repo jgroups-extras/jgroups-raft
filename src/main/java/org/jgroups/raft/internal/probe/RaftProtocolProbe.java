@@ -87,7 +87,21 @@ public class RaftProtocolProbe implements DiagnosticsHandler.ProbeHandler {
         response.put("processing-latency", processingMetrics);
         response.put("election-latency", electionLatencyMetrics);
         response.put("redirect-latency", redirectMetrics);
+        response.put("log-metrics", writeLogMetrics());
         return response;
+    }
+
+    private Map<String, Object> writeLogMetrics() {
+        Map<String, Object> logMetrics = new HashMap<>();
+        logMetrics.put("total-entries", metrics.replicationMetrics().getTotalLogEntries());
+        logMetrics.put("committed-entries", metrics.replicationMetrics().getCommittedLogEntries());
+        logMetrics.put("uncommitted-entries", metrics.replicationMetrics().getUncommittedLogEntries());
+        logMetrics.put("log-size-bytes", metrics.replicationMetrics().getLogSizeInBytes());
+        logMetrics.put("current-term", metrics.replicationMetrics().getCurrentTerm());
+        logMetrics.put("commit-index", metrics.replicationMetrics().getCommitIndex());
+        logMetrics.put("snapshot-count", metrics.replicationMetrics().getSnapshotCount());
+        logMetrics.put("snapshots-received", metrics.replicationMetrics().getSnapshotsReceived());
+        return logMetrics;
     }
 
     private void populateLatencyMetrics(Map<String, Object> replicationMetrics, LatencyMetrics replicationValues) {

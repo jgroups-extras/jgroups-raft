@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -160,6 +161,39 @@ public class RaftMetricsTest extends BaseStateMachineTest<CounterStateMachine> {
         assertThat(after).as("resetStats should create a new metrics instance").isNotSameAs(before);
         assertThat(after.total().getTotalMeasurements()).isZero();
         assertThat(after.processing().getTotalMeasurements()).isZero();
+    }
+
+    /**
+     * Log state reflects the cluster after writes complete.
+     */
+    public void testLogStateAfterWrites() throws Exception {
+        RAFT leader = raft(0);
+        leader.sendCommitsImmediately(true);
+
+        int writeCount = 5;
+        for (int i = 0; i < writeCount; i++) {
+            addValue(handle(0), i + 1);
+        }
+
+        assertThat(leader.log().size())
+                .as("Leader should have at least %d log entries", writeCount)
+                .isGreaterThanOrEqualTo(writeCount);
+        assertThat(leader.lastAppended())
+                .as("All entries should be committed")
+                .isEqualTo(leader.commitIndex());
+        assertThat(leader.currentTerm())
+                .isGreaterThan(0);
+        assertThat(leader.currentLogSize())
+                .isGreaterThan(0);
+
+        // Follower should eventually converge to the same committed state.
+        RAFT follower = raft(1);
+        long leaderCommit = leader.commitIndex();
+        assertThat(eventually(() -> follower.commitIndex() >= leaderCommit, 10, TimeUnit.SECONDS))
+                .as("Follower commit index should catch up to leader's (%d)", leaderCommit)
+                .isTrue();
+        assertThat(follower.currentTerm())
+                .isEqualTo(leader.currentTerm());
     }
 
     private RaftProtocolMetrics leaderMetrics() {

@@ -286,6 +286,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public int          requestTableSize()            {return request_table != null? request_table.size() : 0;}
     public int          numSnapshots()                {return num_snapshots;}
 
+    public int numSnapshotReceived() {
+        return num_snapshot_received;
+    }
+
     @ManagedAttribute(description="The current leader (can be null if there is currently no leader) ")
     public Address      leader()                      {return raft_state.leader();}
     public String       leaderRaftId()                {
@@ -364,6 +368,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         drained_total.reset(); drained_avg.clear(); drained_down.reset(); drained_up.reset();
         avg_append_entries_batch_size.clear();
         metrics = stats ? new RaftProtocolMetrics() : null;
+
+        // Recreate timeService and requestFactory so they pick up the new metrics state.
+        // This is necessary when stats are enabled after the protocol has already started.
+        if (timeService != null) {
+            timeService = TimeService.create(metrics != null);
+            requestFactory = new RequestFactory(timeService, metrics);
+        }
     }
 
     @Property(description="Max size of the log cache (0 disables the log cache)",type=AttributeType.BYTES)

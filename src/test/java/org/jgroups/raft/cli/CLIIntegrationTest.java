@@ -118,13 +118,35 @@ public class CLIIntegrationTest {
             Map<String, Object> data = (Map<String, Object>) node.get("response");
             assertThat(data).containsKeys("total-nodes", "active-nodes",
                     "election-metrics", "total-latency", "processing-latency",
-                    "election-latency", "redirect-latency");
+                    "election-latency", "redirect-latency", "log-metrics");
             assertThat(((Number) data.get("total-nodes")).intValue())
                     .withFailMessage("Response was: " + json)
                     .isEqualTo(CLUSTER_SIZE);
             assertThat(((Number) data.get("active-nodes")).intValue())
                     .withFailMessage("Response was: " + json)
                     .isEqualTo(CLUSTER_SIZE);
+        }
+    }
+
+    public void testLogMetricsValues() {
+        String json = executeCLI("metrics", "--format", "JSON");
+        List<Map<String, Object>> nodes = parseJsonArray(json);
+
+        for (Map<String, Object> node : nodes) {
+            Map<String, Object> data = (Map<String, Object>) node.get("response");
+            Map<String, Object> log = (Map<String, Object>) data.get("log-metrics");
+
+            assertThat(((Number) log.get("total-entries")).longValue())
+                    .withFailMessage("Response was: " + json)
+                    .isGreaterThanOrEqualTo(2);
+            assertThat(((Number) log.get("committed-entries")).longValue())
+                    .isGreaterThanOrEqualTo(2);
+            assertThat(((Number) log.get("uncommitted-entries")).longValue())
+                    .isZero();
+            assertThat(((Number) log.get("current-term")).longValue())
+                    .isGreaterThan(0);
+            assertThat(((Number) log.get("log-size-bytes")).longValue())
+                    .isGreaterThan(0);
         }
     }
 
