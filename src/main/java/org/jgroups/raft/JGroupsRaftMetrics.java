@@ -137,6 +137,22 @@ public interface JGroupsRaftMetrics {
      */
     PerformanceMetrics performanceMetrics();
 
+    /**
+     * Resets all collected metrics to their initial state.
+     *
+     * <p>
+     * Clears latency histograms, counters, and any accumulated statistics across all metric categories (election, log,
+     * performance). Membership metrics ({@link #getTotalNodes()}, {@link #getActiveNodes()}) are not affected since they
+     * reflect live cluster state rather than accumulated measurements.
+     * </p>
+     *
+     * <p>
+     * This is useful for establishing a clean baseline after configuration changes, deployments, or when investigating
+     * a specific time window. Has no effect when metrics are disabled.
+     * </p>
+     */
+    void reset();
+
     static JGroupsRaftMetrics disabled() {
         return new DisabledJGroupsRaftMetrics();
     }
@@ -250,5 +266,8 @@ public interface JGroupsRaftMetrics {
         public PerformanceMetrics performanceMetrics() {
             return PERFORMANCE_METRICS;
         }
+
+        @Override
+        public void reset() { }
     }
 }

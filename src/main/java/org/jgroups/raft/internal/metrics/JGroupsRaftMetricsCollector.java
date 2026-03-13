@@ -12,12 +12,16 @@ import org.jgroups.raft.metrics.PerformanceMetrics;
 public class JGroupsRaftMetricsCollector implements JGroupsRaftMetrics {
 
     private final RAFT raft;
+    private final BaseElection election;
+    private final REDIRECT redirect;
     private final ElectionMetrics electionMetrics;
     private final PerformanceMetrics performanceMetrics;
     private final LogMetrics logMetrics;
 
     public JGroupsRaftMetricsCollector(RAFT raft, BaseElection election, REDIRECT redirect) {
         this.raft = raft;
+        this.election = election;
+        this.redirect = redirect;
         this.electionMetrics = new ElectionMetricsCollector(election);
         this.performanceMetrics = new CompositePerformanceMetrics(raft, election, redirect);
         this.logMetrics = new LogMetricsCollector(raft);
@@ -46,6 +50,13 @@ public class JGroupsRaftMetricsCollector implements JGroupsRaftMetrics {
     @Override
     public PerformanceMetrics performanceMetrics() {
         return performanceMetrics;
+    }
+
+    @Override
+    public void reset() {
+        raft.resetStats();
+        election.resetStats();
+        if (redirect != null) redirect.resetStats();
     }
 
     /**

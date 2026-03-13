@@ -183,6 +183,39 @@ public class JGroupsRaftMetricsTest {
         assertThat(perf.getProcessingLatency().getTotalMeasurements()).isZero();
     }
 
+    // -- Reset --
+
+    public void testResetClearsPerformanceMetrics() {
+        JGroupsRaft<SimpleKVStateMachine> leader = cluster.leader();
+
+        // Generate some latency measurements.
+        leader.write(kv -> kv.handlePut("reset1", "v1"));
+        leader.write(kv -> kv.handlePut("reset2", "v2"));
+
+        PerformanceMetrics perfBefore = leader.metrics().performanceMetrics();
+        assertThat(perfBefore.getTotalLatency().getTotalMeasurements()).isGreaterThanOrEqualTo(2);
+        assertThat(perfBefore.getProcessingLatency().getTotalMeasurements()).isGreaterThanOrEqualTo(2);
+
+        // Reset metrics.
+        leader.metrics().reset();
+
+        // Latency measurements should be cleared.
+        PerformanceMetrics perfAfter = leader.metrics().performanceMetrics();
+        assertThat(perfAfter.getTotalLatency().getTotalMeasurements()).isZero();
+        assertThat(perfAfter.getProcessingLatency().getTotalMeasurements()).isZero();
+    }
+
+    public void testResetOnDisabledMetricsIsNoOp() {
+        JGroupsRaftMetrics disabled = JGroupsRaftMetrics.disabled();
+
+        // Should not throw.
+        disabled.reset();
+
+        // Values remain unchanged.
+        assertThat(disabled.getTotalNodes()).isEqualTo(-1);
+        assertThat(disabled.performanceMetrics().getTotalLatency().getTotalMeasurements()).isEqualTo(-1);
+    }
+
     // -- Disabled metrics --
 
     public void testDisabledMetricsReturnDefaults() {
