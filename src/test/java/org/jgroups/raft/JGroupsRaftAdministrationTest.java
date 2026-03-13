@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.jgroups.Global;
+import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.raft.api.SimpleKVStateMachine;
 
@@ -50,6 +51,22 @@ public class JGroupsRaftAdministrationTest {
         assertThat(finalMembers).hasSize(3);
         assertThat(finalMembers).doesNotContain("newMember");
         assertThat(finalMembers).isEqualTo(initialMembers);
+    }
+
+    public void testSnapshot() throws Throwable {
+        JGroupsRaft<SimpleKVStateMachine> leader = cluster.leader();
+
+        // Write some data so there's something to snapshot.
+        leader.write(sm -> sm.handlePut("key1", "value1"));
+
+        // Trigger snapshot via the administration API.
+        leader.administration().snapshot()
+                .toCompletableFuture().get(10, TimeUnit.SECONDS);
+
+        // Verify the snapshot was created.
+        int leaderIndex = cluster.leaderIndex();
+        RAFT raft = cluster.raftProtocol(leaderIndex);
+        assertThat(raft.numSnapshots()).isPositive();
     }
 
     public void testForceLeaderElection() {

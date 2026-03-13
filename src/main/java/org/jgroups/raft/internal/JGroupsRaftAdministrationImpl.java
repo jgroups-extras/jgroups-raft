@@ -67,4 +67,9 @@ final class JGroupsRaftAdministrationImpl implements JGroupsRaftAdministration {
     public Set<String> members() {
         return Set.copyOf(raft.members());
     }
+
+    @Override
+    public CompletionStage<Void> snapshot() {
+        return raft.snapshotAsync();
+    }
 }

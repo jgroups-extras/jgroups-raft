@@ -14,6 +14,7 @@ import net.jcip.annotations.ThreadSafe;
  * <ul>
  *     <li>Trigger leader elections.</li>
  *     <li>Add or remove Raft members.</li>
+ *     <li>Create snapshots of the state machine.</li>
  * </ul>
  *
  * These operations are intended to be utilized during maintenance by operators. We recommend using them sparingly.
@@ -97,4 +98,17 @@ public interface JGroupsRaftAdministration {
     CompletionStage<Void> removeNode(String raftId);
 
     Set<String> members();
+
+    /**
+     * Triggers a snapshot of the current state machine and truncates the log.
+     *
+     * <p>
+     * A snapshot captures the current state machine state and allows the log to be truncated, reclaiming storage. Snapshots
+     * are also used to bring slow or new followers up to date without replaying the entire log. Taking a snapshot means
+     * stopping all reads and writes operations happening to the state machine until the procedure completes.
+     * </p>
+     *
+     * @return a stage that completes when the snapshot is done.
+     */
+    CompletionStage<Void> snapshot();
 }
