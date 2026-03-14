@@ -49,6 +49,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
     private final boolean attachedChannel;
     private final CommandRegistry<T> registry;
     private final StateMachineWrapper<T> wrapper;
+    private final DefaultJGroupsRaftHealthCheck healthCheck;
 
     private final List<BiConsumer<JGroupsRaftRole, JGroupsRaftRole>> listeners = new CopyOnWriteArrayList<>();
 
@@ -65,6 +66,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         Serializer serializer = Serializer.create(parameters.registry());
         this.wrapper = new StateMachineWrapper<>(parameters.sm(), parameters.api(), registry, serializer);
         this.role = JGroupsRaftRole.NONE;
+        this.healthCheck = new DefaultJGroupsRaftHealthCheck(parameters.channel());
     }
 
     @Override
@@ -166,6 +168,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
                 throw new JRaftException("Failed to connect to cluster", e);
             }
         }
+        healthCheck.start(raft);
 
         started = true;
     }
@@ -228,6 +231,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
 
         // Reset the role to identify it was not started.
         role = JGroupsRaftRole.NONE;
+        healthCheck.stop();
     }
 
     @Override
@@ -278,7 +282,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
 
     @Override
     public JGroupsRaftHealthCheck healthCheck() {
-        return null;
+        return healthCheck;
     }
 
     @Override

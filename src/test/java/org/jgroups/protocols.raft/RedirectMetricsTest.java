@@ -48,8 +48,10 @@ public class RedirectMetricsTest extends BaseStateMachineTest<CounterStateMachin
     @Override
     protected void afterClusterCreation() throws Exception {
         super.afterClusterCreation();
-        raft(0).setLeaderAndTerm(address(0));
-        raft(1).setLeaderAndTerm(address(0));
+
+        // Set a high term so the election protocol doesn't override the forced leader.
+        raft(0).setLeaderAndTerm(address(0), 20);
+        raft(1).setLeaderAndTerm(address(0), 20);
     }
 
     /**
