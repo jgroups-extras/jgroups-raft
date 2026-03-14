@@ -178,11 +178,11 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
         }
 
         @Override
-        protected Address determineLeader() {
+        protected Address determineLeader(Address exclude) {
             checkPoint.trigger(String.format("%s_DETERMINE_IN", raft.raftId()));
             checkPoint.uncheckedAwaitStrict(String.format("%s_DETERMINE_IN_CONTINUE", raft.raftId()), 10, TimeUnit.SECONDS);
 
-            Address a = super.determineLeader();
+            Address a = super.determineLeader(exclude);
 
             checkPoint.trigger(String.format("%s_DETERMINE_OUT", raft.raftId()));
             while (true) {

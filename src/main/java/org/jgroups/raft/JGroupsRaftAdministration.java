@@ -84,12 +84,44 @@ import net.jcip.annotations.ThreadSafe;
 public interface JGroupsRaftAdministration {
 
     /**
-     * Triggers the election mechanism.
+     * Forces a new leader election, excluding the current leader from candidacy.
      *
      * <p>
-     *
+     * This operation triggers the election mechanism without requiring a {@link org.jgroups.View} update. The current
+     * leader is excluded from candidacy so that a different node is elected. If no leader exists at the time of the call,
+     * the election proceeds without exclusion.
      * </p>
-     * @return
+     *
+     * <p>
+     * This method must be called on the JGroups view coordinator. Calling it on a non-coordinator node completes the
+     * returned stage exceptionally with {@link IllegalStateException}. Use this operation sparingly, for example, to
+     * offload leadership before removing a node from the cluster.
+     * </p>
+     *
+     * <p>
+     * The election still adheres to the Raft safety requirements: only a node with a sufficiently up-to-date log can
+     * be elected. If the excluded leader is the only node with the highest log, the election retries until another node
+     * catches. If the cluster is running below majority, the returned stage completes exceptionally. The future also
+     * completes exceptionally if the election mechanism is stopped externally (e.g., a view change stops the procedure).
+     * </p>
+     *
+     * <p>
+     * Callers can set a timeout on the returned stage. Otherwise, the election mechanism will run indefinitely.
+     * Cancelling the stage stops the election mechanism:
+     * </p>
+     *
+     * <pre>{@code
+     * administration.forceLeaderElection()
+     *     .toCompletableFuture()
+     *     .orTimeout(10, TimeUnit.SECONDS)
+     *     .whenComplete((leader, err) -> {
+     *         if (err != null) {
+     *             // Election timed out or failed.
+     *         }
+     *     });
+     * }</pre>
+     *
+     * @return a stage that completes with the Raft ID of the newly elected leader.
      */
     CompletionStage<String> forceLeaderElection();
 

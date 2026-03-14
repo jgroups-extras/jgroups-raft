@@ -6,7 +6,6 @@ import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.JGroupsRaftHealthCheck.ClusterHealth;
-import org.jgroups.raft.tests.harness.ControlledTimeService;
 
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;

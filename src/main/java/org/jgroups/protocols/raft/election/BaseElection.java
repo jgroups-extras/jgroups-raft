@@ -24,7 +24,6 @@ import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.ResponseCollector;
-import org.jgroups.util.Runner;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -33,6 +32,8 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -60,7 +61,7 @@ public abstract class BaseElection extends Protocol {
 
     protected RAFT raft;
 
-    private final Runner voting_thread = new Runner("voting-thread", this::runVotingProcess, null);
+    private final ElectionRunner voting_thread = new ElectionRunner("voting-thread", this::runVotingProcess);
     private final ResponseCollector<VoteResponse> votes = new ResponseCollector<>();
     private volatile boolean stopVoting;
 
@@ -334,65 +335,61 @@ public abstract class BaseElection extends Protocol {
         votes.add(msg.src(), hdr);
     }
 
-    protected Address determineLeader() {
+    protected Address determineLeader(Address exclude) {
         Address leader = null;
-        VoteResponse higher = null;
+        VoteResponse highest = null;
         Map<Address, VoteResponse> results = votes.getResults();
         for (Address mbr : view.getMembersRaw()) {
             VoteResponse rsp = results.get(mbr);
             if (rsp == null)
                 continue;
-            if (isHigher(higher, rsp)) {
+            if (highest == null || rsp.compareTo(highest) > 0) {
                 leader = mbr;
-                higher = rsp;
+                highest = rsp;
             }
         }
+
+        // Excluded node is the highest, find a runner-up with the same term/index.
+        // Equal term and index means equally up-to-date, safe to elect.
+        // No runner-up means the excluded node is strictly ahead, return null to signal retry.
+        if (Objects.equals(leader, exclude) && highest != null) {
+            for (Address mbr : view.getMembersRaw()) {
+                if (Objects.equals(mbr, exclude))
+                    continue;
+                VoteResponse rsp = results.get(mbr);
+                if (rsp != null && rsp.compareTo(highest) == 0)
+                    return mbr;
+            }
+            return null;
+        }
+
         return leader;
     }
 
     /**
-     * Compares the {@link VoteResponse}s in search of the highest one.
-     * <p>
-     * The verification follows the precedence:
-     * <ol>
-     *     <li>Compare Raft terms;</li>
-     *     <li>Compare the log last appended.</li>
-     * </ol>
-     * This verification ensures the decided leader has the longest log.
-     * </p>
-     *
-     * @param one   The base to check against.
-     * @param other The candidate response to check.
-     * @return <code>true</code> if {@param other} is higher than {@param one}. <code>false</code>, otherwise.
-     */
-    private boolean isHigher(VoteResponse one, VoteResponse other) {
-        if (one == null) return true;
-
-        // The candidate response has a higher Raft term.
-        if (one.last_log_term < other.last_log_term)
-            return true;
-
-        // The candidate response has an outdated Raft term.
-        if (one.last_log_term > other.last_log_term)
-            return false;
-
-        // Both responses have the same term.
-        // Break ties utilizing the index of the last appended entry.
-        return one.last_log_index < other.last_log_index;
-    }
-
-    /**
      * The mechanism for deciding a new leader.
+     *
      * <p>
      * Increases its term and queries all participants about their term and log index information. The thread blocks
-     * (with a timeout) wait for responses. If the majority replies, the process with the highest term and index is elected.
-     * <p>
+     * (with a timeout) waiting for responses. If the majority replies, the process with the highest term and index is elected.
      * The process keeps running until a leader is elected or the majority is lost.
+     * </p>
+     *
+     * @param exclude address to exclude from leader candidacy, or {@code null} for no exclusion.
+     * @param result  future to complete with the elected leader's address, or exceptionally on failure.
+     *                If cancelled by the caller, the voting thread stops.
      */
-    protected void runVotingProcess() {
+    private void runVotingProcess(Address exclude, CompletableFuture<Address> result) {
         // If the thread is interrupted, means the voting thread was already stopped.
         // We place this here just as a shortcut to not increase the term in RAFT.
         if (Thread.interrupted()) {
+            stopVotingThreadInternal();
+            result.completeExceptionally(new InterruptedException("Election voting thread interrupted"));
+            return;
+        }
+
+        // The caller cancelled the future, stop the voting thread.
+        if (result.isCancelled() || result.isCompletedExceptionally()) {
             stopVotingThreadInternal();
             return;
         }
@@ -402,6 +399,14 @@ public abstract class BaseElection extends Protocol {
             // Only stop in case there is no majority or the leader is already null.
             // Otherwise, keep running.
             stopVotingThreadInternal();
+
+            // A leader may have been set externally, just to be on the safe side.
+            Address leader = raft.leader();
+            if (leader != null) {
+                result.complete(leader);
+            } else {
+                result.completeExceptionally(new IllegalStateException("Election stopped without electing a leader"));
+            }
             return;
         }
 
@@ -420,7 +425,17 @@ public abstract class BaseElection extends Protocol {
 
         int majority = raft.majority();
         if (votes.numberOfValidResponses() >= majority) {
-            Address leader = determineLeader();
+            Address leader = determineLeader(exclude);
+
+            // The excluded node has the highest term/index.
+            // Do not elect a less up-to-date node, instead we retry the round.
+            // In a healthy cluster, followers will have caught up and a non-excluded node will tie for highest on a future round.
+            if (leader == null && exclude != null) {
+                log.trace("%s: excluded node %s is strictly ahead, retrying", local_addr, exclude);
+                stopVoting = false;
+                return;
+            }
+
             log.trace("%s: collected votes from %s in %d ms (majority=%d) -> leader is %s (new_term=%d)",
                     local_addr, votes.getResults(), duration, majority, leader, new_term);
 
@@ -439,6 +454,7 @@ public abstract class BaseElection extends Protocol {
                     log.trace("%s: majority lost (%s) before elected (%s)", local_addr, view, leader);
                     stopVotingThreadInternal();
                     raft.setLeaderAndTerm(null);
+                    result.completeExceptionally(new IllegalStateException("Majority lost during election"));
                     return;
                 }
 
@@ -446,6 +462,7 @@ public abstract class BaseElection extends Protocol {
                 // If the leader is not in the view anymore, we keep the voting thread running.
                 if (isLeaderInView(leader, view)) {
                     stopVotingThreadInternal();
+                    result.complete(leader);
                     return;
                 }
             }
@@ -476,6 +493,34 @@ public abstract class BaseElection extends Protocol {
 
     private static boolean isMajorityAvailable(View view, RAFT raft) {
         return view != null && view.size() >= raft.majority();
+    }
+
+    /**
+     * Starts a forced leader election, excluding the given address from candidacy.
+     *
+     * <p>
+     * Must be called on the view coordinator. The excluded address still participates in quorum
+     * (votes are collected from it), but it is skipped when determining the leader.
+     * </p>
+     *
+     * @param exclude the address to exclude from leader candidacy, or {@code null} for no exclusion.
+     * @return a stage that completes with the newly elected leader's address.
+     */
+    public synchronized CompletionStage<Address> startForcedElection(Address exclude) {
+        if (!isViewCoordinator())
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("forceLeaderElection() must be called on the view coordinator"));
+
+        // Only update the fields if the thread is not running.
+        // Calling start will not initiate a second round, it will return the existent future for the running mechanism.
+        if (!isVotingThreadRunning()) {
+            log.debug("%s: starting forced election (exclude=%s)", local_addr, exclude);
+            TimeService time = raft.timeService();
+            electionStart = time.now();
+            electionStartNanos = time.nanos();
+            stopVoting = false;
+        }
+        return voting_thread.start(exclude);
     }
 
     public synchronized BaseElection startVotingThread() {
