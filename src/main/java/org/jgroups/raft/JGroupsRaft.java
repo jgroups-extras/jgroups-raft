@@ -10,7 +10,6 @@ import org.jgroups.raft.exceptions.JRaftException;
 import org.jgroups.raft.internal.JGroupsRaftFactory;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.serialization.binary.SerializationRegistry;
-import org.jgroups.raft.logger.JRaftEventLogger;
 import org.jgroups.raft.serialization.JGroupsRaftCustomMarshaller;
 
 import java.io.InputStream;
@@ -141,7 +140,6 @@ public interface JGroupsRaft<T> {
         private String clusterName;
         private JChannel channel;
         private RuntimeProperties runtimeProperties;
-        private JRaftEventLogger eventLogger;
 
         private Builder(T stateMachine, Class<T> api) {
             this.stateMachine = Objects.requireNonNull(stateMachine, "state machine cannot be null");
@@ -250,21 +248,6 @@ public interface JGroupsRaft<T> {
         }
 
         /**
-         * Defines the event logger to publish internal events.
-         *
-         * <p>
-         * The default event logger is disabled.
-         * </p>
-         *
-         * @param eventLogger the event logger to be used.
-         * @return the builder instance.
-         */
-        public Builder<T> withEventLogger(JRaftEventLogger eventLogger) {
-            this.eventLogger = eventLogger;
-            return this;
-        }
-
-        /**
          * Configures the underlying {@link RAFT} protocol.
          *
          * <p>
@@ -313,10 +296,6 @@ public interface JGroupsRaft<T> {
         public JGroupsRaft<T> build() {
             validate();
 
-            JRaftEventLogger el = eventLogger;
-            if (el == null)
-                el = JRaftEventLogger.disabled();
-
             if (runtimeProperties == null)
                 runtimeProperties = RuntimeProperties.create().build();
 
@@ -325,7 +304,7 @@ public interface JGroupsRaft<T> {
                     JChannel ch = new JChannel(jgroupsConfig);
                     RAFT r = RAFT.findProtocol(RAFT.class, ch.getProtocolStack().getTopProtocol(), true);
                     if (r != null) raftBuilder.build(r);
-                    return JGroupsRaftFactory.create(clusterName, ch, stateMachine, api, registry, el, runtimeProperties);
+                    return JGroupsRaftFactory.create(clusterName, ch, stateMachine, api, registry, runtimeProperties);
                 } catch (Exception e) {
                     throw new JRaftException(e);
                 }
@@ -341,7 +320,7 @@ public interface JGroupsRaft<T> {
             if (clusterName == null && channel.isConnected())
                 clusterName = channel.getClusterName();
 
-            return JGroupsRaftFactory.create(clusterName, channel, stateMachine, api, registry, el, runtimeProperties);
+            return JGroupsRaftFactory.create(clusterName, channel, stateMachine, api, registry, runtimeProperties);
         }
     }
 

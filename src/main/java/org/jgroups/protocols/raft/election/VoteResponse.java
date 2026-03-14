@@ -61,6 +61,18 @@ public class VoteResponse extends RaftHeader implements Comparable<VoteResponse>
     }
 
     @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof VoteResponse other)) return false;
+        return compareTo(other) == 0;
+    }
+
+    @Override
+    public int hashCode() {
+        return Long.hashCode(last_log_term) * 31 + Long.hashCode(last_log_index);
+    }
+
+    @Override
     public int serializedSize() {
         return super.serializedSize() + Bits.size(last_log_term) + Bits.size(last_log_index);
     }

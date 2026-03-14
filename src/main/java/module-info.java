@@ -25,7 +25,6 @@ module org.jgroups.raft {
     exports org.jgroups.raft.command;
     exports org.jgroups.raft.configuration;
     exports org.jgroups.raft.exceptions;
-    exports org.jgroups.raft.logger;
     exports org.jgroups.raft.metrics;
     exports org.jgroups.raft.blocks;
     exports org.jgroups.raft.testfwk;

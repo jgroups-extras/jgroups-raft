@@ -40,8 +40,6 @@
             <Class name="org.jgroups.raft.cli.probe.ProbeResponseWriter$ProbeResponse"/>
             <Class name="org.jgroups.raft.client.ClientStub"/>
             <Class name="org.jgroups.raft.filelog.FileStorage"/>
-            <Class name="org.jgroups.raft.logger.JRaftEventLogger$ClusterEvent"/>
-            <Class name="org.jgroups.raft.logger.JRaftEventLogger$SearchCriteria"/>
             <Class name="org.jgroups.raft.testfwk.RaftNode"/>
             <Class name="org.jgroups.raft.util.LogCache"/>
             <Class name="org.jgroups.raft.util.RequestTable"/>

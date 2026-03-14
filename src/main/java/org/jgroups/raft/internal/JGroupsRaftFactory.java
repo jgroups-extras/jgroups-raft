@@ -4,7 +4,6 @@ import org.jgroups.JChannel;
 import org.jgroups.raft.JGroupsRaft;
 import org.jgroups.raft.configuration.RuntimeProperties;
 import org.jgroups.raft.internal.serialization.binary.SerializationRegistry;
-import org.jgroups.raft.logger.JRaftEventLogger;
 
 public final class JGroupsRaftFactory {
 
@@ -16,7 +15,6 @@ public final class JGroupsRaftFactory {
             T sm,
             Class<T> api,
             SerializationRegistry registry,
-            JRaftEventLogger eventLogger,
             RuntimeProperties runtimeProperties) {
         return new JGroupsRaftImpl<>(new JGroupsRaftParameters<>(
                 clusterName,
@@ -24,7 +22,6 @@ public final class JGroupsRaftFactory {
                 sm,
                 api,
                 registry,
-                eventLogger,
                 runtimeProperties));
     }
 }
