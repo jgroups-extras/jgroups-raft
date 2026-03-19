@@ -71,7 +71,7 @@ final class StateMachineAdapter<T> implements StateMachine {
         if (command == null)
             throw new IllegalStateException("command cannot be null");
 
-        ReplicatedMethodWrapper method = registry.getCommand(command.id());
+        ReplicatedMethodWrapper method = registry.getCommand(command.id(), command.version());
         RaftResponse res = null;
 
         try {

@@ -34,11 +34,11 @@ public class CommandRegistryTest {
         CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(simple, TestStateMachine.class);
         registry.initialize();
 
-        ReplicatedMethodWrapper add = registry.getCommand(1);
+        ReplicatedMethodWrapper add = registry.getCommand(1, 1);
         assertThat(add).isNotNull();
         assertThat(add.<Integer>submit(1)).isEqualTo(2);
 
-        ReplicatedMethodWrapper sub = registry.getCommand(2);
+        ReplicatedMethodWrapper sub = registry.getCommand(2, 1);
         assertThat(sub).isNotNull();
         assertThat(sub.<Integer>submit(1)).isEqualTo(0);
     }
@@ -72,7 +72,7 @@ public class CommandRegistryTest {
         CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(simple, TestStateMachine.class);
         registry.initialize();
 
-        ReplicatedMethodWrapper add = registry.getCommand(1);
+        ReplicatedMethodWrapper add = registry.getCommand(1, 1);
         assertThat(add.<Integer>submit(2, 2)).isEqualTo(4);
     }
 
@@ -87,7 +87,7 @@ public class CommandRegistryTest {
         CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(simple, TestStateMachine.class);
         registry.initialize();
 
-        ReplicatedMethodWrapper add = registry.getCommand(1);
+        ReplicatedMethodWrapper add = registry.getCommand(1, 1);
         assertThat(add).isNotNull();
         assertThat(add.<Object>submit(1)).isEqualTo(2);
     }
@@ -103,7 +103,7 @@ public class CommandRegistryTest {
         CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(simple, TestStateMachine.class);
         registry.initialize();
 
-        ReplicatedMethodWrapper add = registry.getCommand(1);
+        ReplicatedMethodWrapper add = registry.getCommand(1, 1);
         assertThat(add).isNotNull();
         Map.Entry<String, String> response = add.submit(1);
         assertThat(Map.ofEntries(response)).containsEntry("1", "2");
@@ -152,10 +152,10 @@ public class CommandRegistryTest {
         CommandRegistry<Generic> registry = new CommandRegistry<>(g, Generic.class);
         registry.initialize();
 
-        assertThat(registry.getCommand(1).<Integer>submit(1, 1)).isEqualTo(2);
-        assertThat(registry.getCommand(2).<Integer>submit("something", 1)).isEqualTo(0);
-        assertThat(registry.getCommand(3).<Integer>submit(1)).isEqualTo(1);
-        assertThat(registry.getCommand(4).<String>submit(1)).isEqualTo("1");
+        assertThat(registry.getCommand(1, 1).<Integer>submit(1, 1)).isEqualTo(2);
+        assertThat(registry.getCommand(2, 1).<Integer>submit("something", 1)).isEqualTo(0);
+        assertThat(registry.getCommand(3, 1).<Integer>submit(1)).isEqualTo(1);
+        assertThat(registry.getCommand(4, 1).<String>submit(1)).isEqualTo("1");
     }
 
     public void testArraysAndCollections() throws Throwable {
@@ -232,14 +232,14 @@ public class CommandRegistryTest {
         CommandRegistry<ArraysAndCollections> registry = new CommandRegistry<>(aac, ArraysAndCollections.class);
         registry.initialize();
 
-        assertThat(registry.getCommand(1).<Object>submit(1)).isEqualTo(List.of("1"));
-        assertThat(registry.getCommand(2).<Object>submit(1)).isEqualTo(List.of(1));
-        assertThat(registry.getCommand(3).<Object>submit(1)).isEqualTo(new String[] { "1" });
-        assertThat(registry.getCommand(4).<Object>submit(1)).isEqualTo(new Integer[] { 1 });
-        assertThat(registry.getCommand(5).<Object>submit(1)).isEqualTo(List.of(1));
-        assertThat(registry.getCommand(6).<Object>submit(1)).isEqualTo(new Integer[] { 1 });
-        assertThat(registry.getCommand(7).<Object>submit(1)).isEqualTo(Set.of(1));
-        assertThat(registry.getCommand(8).<Object>submit(1)).isEqualTo(Set.of("1"));
+        assertThat(registry.getCommand(1, 1).<Object>submit(1)).isEqualTo(List.of("1"));
+        assertThat(registry.getCommand(2, 1).<Object>submit(1)).isEqualTo(List.of(1));
+        assertThat(registry.getCommand(3, 1).<Object>submit(1)).isEqualTo(new String[] { "1" });
+        assertThat(registry.getCommand(4, 1).<Object>submit(1)).isEqualTo(new Integer[] { 1 });
+        assertThat(registry.getCommand(5, 1).<Object>submit(1)).isEqualTo(List.of(1));
+        assertThat(registry.getCommand(6, 1).<Object>submit(1)).isEqualTo(new Integer[] { 1 });
+        assertThat(registry.getCommand(7, 1).<Object>submit(1)).isEqualTo(Set.of(1));
+        assertThat(registry.getCommand(8, 1).<Object>submit(1)).isEqualTo(Set.of("1"));
     }
 
     public void testBoundedArrayFailure() throws Throwable {
@@ -267,8 +267,43 @@ public class CommandRegistryTest {
         CommandRegistry<Bounded> registry = new CommandRegistry<>(b, Bounded.class);
         registry.initialize();
 
-        assertThat(registry.getCommand(2).<Object>submit(1)).isEqualTo(List.of(1));
-        assertThat(registry.getCommand(1).<Object>submit(1)).isEqualTo(new Integer[] { 1 });
+        assertThat(registry.getCommand(2, 1).<Object>submit(1)).isEqualTo(List.of(1));
+        assertThat(registry.getCommand(1, 1).<Object>submit(1)).isEqualTo(new Integer[] { 1 });
+    }
+
+    public void testMultiVersionCoexistence() throws Throwable {
+        TestStateMachine sm = new TestStateMachine() {
+            @StateMachineWrite(id = 1, version = 1)
+            public String putV1(String value) { return "v1:" + value; }
+
+            @StateMachineWrite(id = 1, version = 2)
+            public String putV2(String value, int ttl) { return "v2:" + value + ":" + ttl; }
+        };
+
+        CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(sm, TestStateMachine.class);
+        registry.initialize();
+
+        assertThat(registry.getCommand(1, 1)).isNotNull();
+        assertThat(registry.getCommand(1, 2)).isNotNull();
+        assertThat(registry.getCommand(1, 1)).isNotEqualTo(registry.getCommand(1, 2));
+
+        assertThat(registry.getCommand(1, 1).<String>submit("a")).isEqualTo("v1:a");
+        assertThat(registry.getCommand(1, 2).<String>submit("a", 30)).isEqualTo("v2:a:30");
+    }
+
+    public void testDuplicateIdVersionRejected() {
+        TestStateMachine sm = new TestStateMachine() {
+            @StateMachineWrite(id = 1, version = 1)
+            public void put(String value) { }
+
+            @StateMachineWrite(id = 1, version = 1)
+            public void put2(String value) { }
+        };
+
+        CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(sm, TestStateMachine.class);
+        assertThatThrownBy(registry::initialize)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageStartingWith("Found duplicated method");
     }
 
     @JGroupsRaftStateMachine

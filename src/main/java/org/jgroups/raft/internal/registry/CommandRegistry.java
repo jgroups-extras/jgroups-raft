@@ -11,6 +11,8 @@ import org.jgroups.raft.internal.command.JRaftWriteCommand;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author José Bolina
  **/
 public class CommandRegistry<T> {
-    private final Map<Integer, CommandMetadata> registry = new HashMap<>();
+    private final Map<CommandKey, CommandMetadata> registry = new HashMap<>();
     private final Map<Method, JRaftCommand> commands = new ConcurrentHashMap<>();
     private final T stateMachine;
     private final Class<T> api;
@@ -75,9 +77,12 @@ public class CommandRegistry<T> {
 
             if (registerMethod) {
                 CommandMetadata metadata = createCommandMetadata(method, id, version);
-                CommandMetadata other = registry.put(id, metadata);
-                if (other != null)
-                    throw new IllegalStateException("Duplicate command id: " + id);
+                CommandKey key = new CommandKey(id, version);
+                CommandMetadata other = registry.put(key, metadata);
+                if (other != null) {
+                    String message = String.format("Found duplicated method '%s' and '%s' both with (id = %d, version = %d)", metadata.method().getName(), other.method().getName(), id, version);
+                    throw new IllegalStateException(message);
+                }
 
                 JRaftCommand command = commands.get(method);
                 metadata.validate(method, command);
@@ -102,15 +107,15 @@ public class CommandRegistry<T> {
     }
 
     public void validateCommand(JRaftCommand command) {
-        CommandMetadata metadata = registry.get(command.id());
+        CommandMetadata metadata = registry.get(new CommandKey(command.id(), command.version()));
         if (metadata == null)
             throw new IllegalArgumentException("Unknown command id: " + command.id());
 
         metadata.validate(null, command);
     }
 
-    public ReplicatedMethodWrapper getCommand(int id) {
-        CommandMetadata metadata = registry.get(id);
+    public ReplicatedMethodWrapper getCommand(int id, int version) {
+        CommandMetadata metadata = registry.get(new CommandKey(id, version));
         if (metadata == null)
             throw new IllegalStateException("Unknown command id: " + id);
 
@@ -130,10 +135,11 @@ public class CommandRegistry<T> {
             method.setAccessible(true);
         }
 
-        Type[] parameterTypes = method.getGenericParameterTypes();
-        Type inputType = parameterTypes.length > 0 ? parameterTypes[0] : null;
         Type outputType = method.getGenericReturnType();
-        return new CommandMetadata(stateMachine, id, version, method, createCommandSchema(inputType), createCommandSchema(outputType));
+        Collection<CommandSchema> inputs = Arrays.stream(method.getGenericParameterTypes())
+                .map(this::createCommandSchema)
+                .toList();
+        return new CommandMetadata(stateMachine, id, version, method, inputs, createCommandSchema(outputType));
     }
 
     private CommandSchema createCommandSchema(Type type) {

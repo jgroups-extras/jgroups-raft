@@ -4,8 +4,16 @@ import org.jgroups.raft.internal.command.JRaftCommand;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Collection;
 
-record CommandMetadata(Object stateMachine, int id, int version, Method method, CommandSchema inputSchema, CommandSchema outputSchema) implements ReplicatedMethodWrapper {
+record CommandMetadata(
+        Object stateMachine,
+        int id,
+        int version,
+        Method method,
+        Collection<CommandSchema> inputSchema,
+        CommandSchema outputSchema
+) implements ReplicatedMethodWrapper {
 
     void validate(Method method, JRaftCommand command) {
         if (id != command.id()) {
