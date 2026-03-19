@@ -125,10 +125,64 @@ public interface JGroupsRaftAdministration {
      */
     CompletionStage<String> forceLeaderElection();
 
+    /**
+     * Adds a new voting member to the Raft cluster.
+     *
+     * <p>
+     * Submits a membership change that adds the given Raft ID as a voting member. The operation is replicated through the
+     * Raft log and requires a quorum of the current members to commit. The returned stage completes when the membership
+     * change is committed.
+     * </p>
+     *
+     * <p>
+     * This operation must be submitted to the leader. If a {@link org.jgroups.protocols.raft.REDIRECT} protocol is present
+     * in the stack, the request is forwarded automatically; otherwise, calling this on a cluster without leader completes the
+     * stage exceptionally.
+     * </p>
+     *
+     * <p>
+     * Only one membership change can be in progress at a time. Adding a node that is already a member completes the stage
+     * exceptionally. Be aware that adding a fresh, stateless node might increase the quorum size; the cluster may stall
+     * until the new node catches up with the leader's log. Consider adding the node first as learner, just joining the cluster,
+     * and then promoting it to a voting member.
+     * </p>
+     *
+     * @param raftId the Raft identifier of the node to add. Must match the {@code raft_id} configured on the target node.
+     * @return a stage that completes when the membership change is committed.
+     */
     CompletionStage<Void> addNode(String raftId);
 
+    /**
+     * Removes a voting member from the Raft cluster.
+     *
+     * <p>
+     * Submits a membership change that removes the given Raft ID from the set of voting members. The operation is replicated
+     * through the Raft log and requires a quorum of the current members to commit. The returned stage completes when the
+     * membership change is committed.
+     * </p>
+     *
+     * <p>
+     * This operation must be submitted to the leader. If a {@link org.jgroups.protocols.raft.REDIRECT} protocol is present
+     * in the stack, the request is forwarded automatically; otherwise, calling this on a cluster without a leader node
+     * completes the stage exceptionally.
+     * </p>
+     *
+     * @param raftId the Raft identifier of the node to remove.
+     * @return a stage that completes when the membership change is committed.
+     */
     CompletionStage<Void> removeNode(String raftId);
 
+    /**
+     * Returns the current set of voting members in the Raft cluster.
+     *
+     * <p>
+     * The returned set reflects the committed membership configuration as known by this node. During a pending membership
+     * change, the set may not yet include a recently added node or may still include a recently removed one until the change
+     * is committed.
+     * </p>
+     *
+     * @return an unmodifiable set of Raft identifiers of the current voting members.
+     */
     Set<String> members();
 
     /**
