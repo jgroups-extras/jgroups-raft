@@ -366,12 +366,12 @@ public class SerializationCompatibilityTest {
                         "Map.of(\"key\", \"value\") - 1 entry"},
 
                 // ========== Raft Types ==========
-                {JRaftCommand.UserCommand.class, JRaftReadCommand.create(123L, 1),
-                        hexToBytes("00 00 00 43 00 00 00 00 0D 00 00 00 00 00 00 00 7B 00 00 00 01 01"),
+                {JRaftCommand.UserCommand.class, JRaftReadCommand.create(123, 1),
+                        hexToBytes("00 00 00 43 00 00 00 00 09 00 00 00 7B 00 00 00 01 01"),
                         "UserCommand: read command (id=123, version=1)"},
 
-                {JRaftCommand.UserCommand.class, JRaftWriteCommand.create(456L, 2),
-                        hexToBytes("00 00 00 43 00 00 00 00 0D 00 00 00 00 00 00 01 C8 00 00 00 02 00"),
+                {JRaftCommand.UserCommand.class, JRaftWriteCommand.create(456, 2),
+                        hexToBytes("00 00 00 43 00 00 00 00 09 00 00 01 C8 00 00 00 02 00"),
                         "UserCommand: write command (id=456, version=2)"},
 
                 {RaftResponse.class, RaftResponse.success("result"),

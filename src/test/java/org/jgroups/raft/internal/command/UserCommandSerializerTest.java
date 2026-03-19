@@ -44,20 +44,20 @@ public class UserCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testWireFormat() {
-        UserCommand command = new UserCommand(42L, 1, false);
+        UserCommand command = new UserCommand(42, 1, false);
 
         byte[] bytes = serialize(command);
 
-        // Verify wire format: [type-id: int][version: byte][length: int][id: long][version: int][isRead: boolean]
-        assertWireFormat(bytes, RaftTypeIds.USER_COMMAND, (byte) 0, 13);
+        // Verify wire format: [type-id: int][version: byte][length: int][id: int][version: int][isRead: boolean]
+        assertWireFormat(bytes, RaftTypeIds.USER_COMMAND, (byte) 0, 9);
 
-        // Expected size: 4 (type-id) + 1 (version) + 4 (length) + 8 (id) + 4 (version) + 1 (boolean) = 18 bytes
-        assertThat(bytes.length).isEqualTo(22);
+        // Expected size: 4 (type-id) + 1 (version) + 4 (length) + 4 (id) + 4 (version) + 1 (boolean) = 18 bytes
+        assertThat(bytes.length).isEqualTo(18);
     }
 
     @Test
     public void testReadCommand() {
-        UserCommand readCommand = new UserCommand(1L, 1, true);
+        UserCommand readCommand = new UserCommand(1, 1, true);
 
         assertThat(readCommand.isRead()).isTrue();
         assertThat(readCommand).isInstanceOf(JRaftReadCommand.class);
@@ -68,7 +68,7 @@ public class UserCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testWriteCommand() {
-        UserCommand writeCommand = new UserCommand(2L, 1, false);
+        UserCommand writeCommand = new UserCommand(2, 1, false);
 
         assertThat(writeCommand.isRead()).isFalse();
         assertThat(writeCommand).isInstanceOf(JRaftWriteCommand.class);
@@ -79,29 +79,29 @@ public class UserCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testMinMaxValues() {
-        UserCommand maxValues = new UserCommand(Long.MAX_VALUE, Integer.MAX_VALUE, true);
+        UserCommand maxValues = new UserCommand(Integer.MAX_VALUE, Integer.MAX_VALUE, true);
         assertSerializationRoundTrip(maxValues, UserCommand.class);
 
-        UserCommand minValues = new UserCommand(Long.MIN_VALUE, Integer.MIN_VALUE, false);
+        UserCommand minValues = new UserCommand(Integer.MIN_VALUE, Integer.MIN_VALUE, false);
         assertSerializationRoundTrip(minValues, UserCommand.class);
     }
 
     @Test
     public void testZeroValues() {
-        UserCommand zeros = new UserCommand(0L, 0, false);
+        UserCommand zeros = new UserCommand(0, 0, false);
         assertSerializationRoundTrip(zeros, UserCommand.class);
     }
 
     @DataProvider
     static Object[][] userCommands() {
         return new Object[][] {
-            { new UserCommand(0L, 0, false) },
-            { new UserCommand(1L, 1, true) },
-            { new UserCommand(42L, 5, false) },
-            { new UserCommand(Long.MAX_VALUE, Integer.MAX_VALUE, true) },
-            { new UserCommand(Long.MIN_VALUE, Integer.MIN_VALUE, false) },
-            { new UserCommand(12345L, 99, true) },
-            { new UserCommand(999L, 1, false) },
+            { new UserCommand(0, 0, false) },
+            { new UserCommand(1, 1, true) },
+            { new UserCommand(42, 5, false) },
+            { new UserCommand(Integer.MAX_VALUE, Integer.MAX_VALUE, true) },
+            { new UserCommand(Integer.MIN_VALUE, Integer.MIN_VALUE, false) },
+            { new UserCommand(12345, 99, true) },
+            { new UserCommand(999, 1, false) },
         };
     }
 }

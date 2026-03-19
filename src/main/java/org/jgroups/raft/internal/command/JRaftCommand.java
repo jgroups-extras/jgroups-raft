@@ -54,7 +54,7 @@ public sealed interface JRaftCommand permits JRaftCommand.UserCommand, JRaftRead
      *
      * @return The command id.
      */
-    long id();
+    int id();
 
     /**
      * The command version.
@@ -71,18 +71,18 @@ public sealed interface JRaftCommand permits JRaftCommand.UserCommand, JRaftRead
     final class UserCommand implements JRaftCommand, JRaftReadCommand, JRaftWriteCommand {
         public static final SingleBinarySerializer<UserCommand> SERIALIZER = UserCommandSerializer.INSTANCE;
 
-        private final long id;
+        private final int id;
         private final int version;
         private final boolean read;
 
-        UserCommand(long id, int version, boolean read) {
+        UserCommand(int id, int version, boolean read) {
             this.id = id;
             this.version = version;
             this.read = read;
         }
 
         @Override
-        public long id() {
+        public int id() {
             return id;
         }
 
@@ -123,14 +123,14 @@ public sealed interface JRaftCommand permits JRaftCommand.UserCommand, JRaftRead
 
             @Override
             public void write(SerializationContextWrite ctx, UserCommand target) {
-                ctx.writeLong(target.id);
+                ctx.writeInt(target.id);
                 ctx.writeInt(target.version);
                 ctx.writeBoolean(target.isRead());
             }
 
             @Override
             public UserCommand read(SerializationContextRead ctx, byte ignore) {
-                long id = ctx.readLong();
+                int id = ctx.readInt();
                 int version = ctx.readInt();
                 boolean read = ctx.readBoolean();
                 return new UserCommand(id, version, read);

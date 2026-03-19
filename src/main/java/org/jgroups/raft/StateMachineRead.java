@@ -38,7 +38,7 @@ public @interface StateMachineRead {
      *
      * @return the operation identifier
      */
-    long id();
+    int id();
 
     /**
      * Version number for backwards compatibility.

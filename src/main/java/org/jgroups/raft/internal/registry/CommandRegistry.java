@@ -27,7 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author José Bolina
  **/
 public class CommandRegistry<T> {
-    private final Map<Long, CommandMetadata> registry = new HashMap<>();
+    private final Map<Integer, CommandMetadata> registry = new HashMap<>();
     private final Map<Method, JRaftCommand> commands = new ConcurrentHashMap<>();
     private final T stateMachine;
     private final Class<T> api;
@@ -48,7 +48,7 @@ public class CommandRegistry<T> {
 
         for (Method method : methods) {
             boolean registerMethod = false;
-            long id = 0;
+            int id = 0;
             int version = 0;
 
             StateMachineWrite write = method.getAnnotation(StateMachineWrite.class);
@@ -109,7 +109,7 @@ public class CommandRegistry<T> {
         metadata.validate(null, command);
     }
 
-    public ReplicatedMethodWrapper getCommand(long id) {
+    public ReplicatedMethodWrapper getCommand(int id) {
         CommandMetadata metadata = registry.get(id);
         if (metadata == null)
             throw new IllegalStateException("Unknown command id: " + id);
@@ -125,7 +125,7 @@ public class CommandRegistry<T> {
         return JRaftReadCommand.create(read.id(), read.version());
     }
 
-    private CommandMetadata createCommandMetadata(Method method, long id, int version) {
+    private CommandMetadata createCommandMetadata(Method method, int id, int version) {
         if (!method.canAccess(stateMachine)) {
             method.setAccessible(true);
         }

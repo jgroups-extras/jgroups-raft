@@ -23,7 +23,7 @@ public sealed interface JRaftWriteCommand extends JRaftCommand permits JRaftComm
      * @param version The command version.
      * @return A new instance of a command to submit to the state machine.
      */
-    static JRaftWriteCommand create(long id, int version) {
+    static JRaftWriteCommand create(int id, int version) {
         return new JRaftCommand.UserCommand(id, version, false);
     }
 }

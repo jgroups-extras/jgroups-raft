@@ -52,18 +52,18 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testWireFormat() {
-        JRaftReadCommand userCommand = JRaftReadCommand.create(1L, 1);
+        JRaftReadCommand userCommand = JRaftReadCommand.create(1, 1);
         RaftCommand command = new RaftCommand(userCommand, null, null);
 
         byte[] bytes = serialize(command);
 
         // Verify wire format starts correctly
-        assertWireFormat(bytes, RaftTypeIds.RAFT_COMMAND, (byte) 0, 30);
+        assertWireFormat(bytes, RaftTypeIds.RAFT_COMMAND, (byte) 0, 26);
     }
 
     @Test
     public void testNullInput() {
-        JRaftReadCommand userCommand = JRaftReadCommand.create(1L, 1);
+        JRaftReadCommand userCommand = JRaftReadCommand.create(1, 1);
         RaftCommand command = new RaftCommand(userCommand, null, null);
 
         assertSerializationRoundTrip(command, RaftCommand.class);
@@ -74,7 +74,7 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testEmptyInput() {
-        JRaftReadCommand userCommand = JRaftReadCommand.create(1L, 1);
+        JRaftReadCommand userCommand = JRaftReadCommand.create(1, 1);
         RaftCommand command = new RaftCommand(userCommand, new Object[0], null);
 
         assertSerializationRoundTrip(command, RaftCommand.class);
@@ -86,7 +86,7 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testNullOptions() {
-        JRaftReadCommand userCommand = JRaftReadCommand.create(1L, 1);
+        JRaftReadCommand userCommand = JRaftReadCommand.create(1, 1);
         RaftCommand command = new RaftCommand(userCommand, null, null);
 
         RaftCommand deserialized = deserialize(serialize(command), RaftCommand.class);
@@ -95,7 +95,7 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testCommandEquality() {
-        JRaftWriteCommand userCommand = JRaftWriteCommand.create(42L, 5);
+        JRaftWriteCommand userCommand = JRaftWriteCommand.create(42, 5);
         RaftCommand command1 = new RaftCommand(userCommand, null, null);
         RaftCommand command2 = new RaftCommand(userCommand, null, null);
 
@@ -109,7 +109,7 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testReadCommand() {
-        JRaftReadCommand readCommand = JRaftReadCommand.create(1L, 1);
+        JRaftReadCommand readCommand = JRaftReadCommand.create(1, 1);
         RaftCommand command = new RaftCommand(readCommand, null, null);
 
         assertThat(command.isRead()).isTrue();
@@ -119,7 +119,7 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @Test
     public void testWriteCommand() {
-        JRaftWriteCommand writeCommand = JRaftWriteCommand.create(2L, 1);
+        JRaftWriteCommand writeCommand = JRaftWriteCommand.create(2, 1);
         RaftCommand command = new RaftCommand(writeCommand, null, null);
 
         assertThat(command.isRead()).isFalse();
@@ -141,12 +141,12 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
         Serializer serializer = Serializer.create(SerializationRegistry.create());
 
         RaftCommand command = new RaftCommand(
-                JRaftReadCommand.create(1L, 1),
+                JRaftReadCommand.create(1, 1),
                 new Object[]{"arg1", 42},
                 JGroupsRaftReadCommandOptions.options().linearizable(true).build()
         );
 
-        byte[] expectedBytes = hexToBytes("00 00 00 41 00 00 00 00 37 00 00 00 43 00 00 00 00 0D 00 00 00 00 00 00 00 01 00 00 00 01 01 00 00 00 02 00 00 00 08 00 04 61 72 67 31 00 00 00 02 00 00 00 2A 00 00 00 44 00 00 00 00 02 01 00");
+        byte[] expectedBytes = hexToBytes("00 00 00 41 00 00 00 00 33 00 00 00 43 00 00 00 00 09 00 00 00 01 00 00 00 01 01 00 00 00 02 00 00 00 08 00 04 61 72 67 31 00 00 00 02 00 00 00 2A 00 00 00 44 00 00 00 00 02 01 00");
 
         byte[] actualBytes = serializer.serialize(command);
         assertThat(actualBytes)
@@ -159,9 +159,9 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
 
     @DataProvider
     static Object[][] raftCommands() {
-        JRaftWriteCommand cmd1 = JRaftWriteCommand.create(1L, 1);
-        JRaftReadCommand cmd2 = JRaftReadCommand.create(42L, 5);
-        JRaftWriteCommand cmd3 = JRaftWriteCommand.create(Long.MAX_VALUE, Integer.MAX_VALUE);
+        JRaftWriteCommand cmd1 = JRaftWriteCommand.create(1, 1);
+        JRaftReadCommand cmd2 = JRaftReadCommand.create(42, 5);
+        JRaftWriteCommand cmd3 = JRaftWriteCommand.create(Integer.MAX_VALUE, Integer.MAX_VALUE);
 
         return new Object[][] {
             // Null inputs and options
@@ -174,8 +174,8 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
             { new RaftCommand(cmd3, null, null) },
 
             // Various command configurations
-            { new RaftCommand(JRaftWriteCommand.create(0L, 0), null, null) },
-            { new RaftCommand(JRaftReadCommand.create(999L, 99), new Object[0], null) },
+            { new RaftCommand(JRaftWriteCommand.create(0, 0), null, null) },
+            { new RaftCommand(JRaftReadCommand.create(999, 99), new Object[0], null) },
         };
     }
 
@@ -186,7 +186,7 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
      */
     @Test(enabled = false, description = "Requires primitive type serializers")
     public void testWithPrimitiveInputs() {
-        JRaftWriteCommand userCommand = JRaftWriteCommand.create(1L, 1);
+        JRaftWriteCommand userCommand = JRaftWriteCommand.create(1, 1);
 
         // String input
         RaftCommand withString = new RaftCommand(userCommand, new Object[]{"test"}, null);
@@ -207,7 +207,7 @@ public class RaftCommandSerializerTest extends AbstractBinarySerializerTest {
      */
     @Test(enabled = false, description = "Requires byte[] serializer")
     public void testWithByteArrayInput() {
-        JRaftWriteCommand userCommand = JRaftWriteCommand.create(1L, 1);
+        JRaftWriteCommand userCommand = JRaftWriteCommand.create(1, 1);
         byte[] data = new byte[]{1, 2, 3, 4, 5};
 
         RaftCommand command = new RaftCommand(userCommand, new Object[]{data}, null);

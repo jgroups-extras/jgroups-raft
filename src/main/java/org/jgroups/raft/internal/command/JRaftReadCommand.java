@@ -20,7 +20,7 @@ public sealed interface JRaftReadCommand extends JRaftCommand permits JRaftComma
      * @param version The command version.
      * @return A new instance of a command to submit to the state machine.
      */
-    static JRaftReadCommand create(long id, int version) {
+    static JRaftReadCommand create(int id, int version) {
         return new JRaftCommand.UserCommand(id, version, true);
     }
 }
