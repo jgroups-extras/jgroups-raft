@@ -76,22 +76,23 @@ public final class Json {
         if (input == null) return NULL;
 
         StringBuilder output = new StringBuilder();
-        output.append(LCB);
-        boolean first = true;
-        for (Map.Entry<String, ?> entry : input.entrySet()) {
-            if (!first) output.append(COMMA);
-            first = false;
+        stringify(output, input, false, 0);
+        return output.toString();
+    }
 
-            // Creates JSON key: "<key>":
-            output.append(QUOTE)
-                    .append(escape(entry.getKey()))
-                    .append(QUOTE)
-                    .append(COLON);
+    /**
+     * Serializes a map to a pretty-printed JSON string with indentation and newlines.
+     *
+     * @param input the map to serialize, or {@code null}
+     * @return pretty-printed JSON string, or "null" if input is {@code null}
+     * @throws IllegalArgumentException if the map contains unsupported value types
+     */
+    public static String toPrettyJson(Map<String, ?> input) {
+        if (input == null)
+            return NULL;
 
-            writeValue(output, entry.getValue());
-        }
-
-        output.append(RCB);
+        StringBuilder output = new StringBuilder();
+        stringify(output, input, true, 0);
         return output.toString();
     }
 
@@ -151,6 +152,47 @@ public final class Json {
         output.put(prefix, v);
     }
 
+    private static void stringify(StringBuilder output, Map<String, ?> input, boolean pretty, int indent) {
+        output.append(LCB);
+        if (input.isEmpty()) {
+            output.append(RCB);
+            return;
+        }
+
+        int level = indent + 1;
+        boolean first = true;
+        for (Map.Entry<String, ?> entry : input.entrySet()) {
+            if (!first) output.append(COMMA);
+            first = false;
+
+            if (pretty) {
+                output.append(System.lineSeparator());
+                writeIndent(output, level);
+            }
+
+            output.append(QUOTE)
+                    .append(escape(entry.getKey()))
+                    .append(QUOTE)
+                    .append(COLON);
+
+            if (pretty) output.append(' ');
+
+            writeValue(output, entry.getValue(), pretty, level);
+        }
+
+        if (pretty) {
+            output.append(System.lineSeparator());
+            writeIndent(output, indent);
+        }
+
+        output.append(RCB);
+    }
+
+    private static void writeIndent(StringBuilder output, int level) {
+        // Utilize a 2-space indentation.
+        output.append("  ".repeat(level));
+    }
+
     /**
      * Writes a single value to the output buffer in JSON format.
      * Recursively handles nested maps and collections.
@@ -159,7 +201,7 @@ public final class Json {
      * @param value the value to serialize
      * @throws IllegalArgumentException if the value is of an unsupported type
      */
-    private static void writeValue(StringBuilder output, Object value) {
+    private static void writeValue(StringBuilder output, Object value, boolean pretty, int indent) {
         if (value == null) {
             output.append(NULL);
             return;
@@ -184,17 +226,31 @@ public final class Json {
         if (value instanceof Map<?,?> map) {
             @SuppressWarnings("unchecked")
             Map<String, ?> m = (Map<String, ?>) map;
-            output.append(toJson(m));
+            stringify(output, m, pretty, indent);
             return;
         }
 
         if (value instanceof Collection<?> c) {
             output.append(LSB);
+            if (c.isEmpty()) {
+                output.append(RSB);
+                return;
+            }
+
+            int level = indent + 1;
             int i = 0;
             for (Object o : c) {
                 if (i > 0) output.append(COMMA);
-                writeValue(output, o);
+                if (pretty) {
+                    output.append(System.lineSeparator());
+                    writeIndent(output, level);
+                }
+                writeValue(output, o, pretty, level);
                 i++;
+            }
+            if (pretty) {
+                output.append(System.lineSeparator());
+                writeIndent(output, indent);
             }
             output.append(RSB);
             return;
@@ -423,12 +479,14 @@ public final class Json {
         }
 
         /**
-         * Peeks at the current character without consuming it.
+         * Advances the position past any whitespace characters (spaces, tabs, newlines).
+         * Called before reading tokens to support both compact and pretty-printed JSON.
          *
          * @return the current character
          * @throws IllegalStateException if the end of input is reached
          */
         private char peek() {
+            consumeSpaces();
             if (position >= input.length())
                 throw new IllegalStateException("Unexpected end of input");
 
@@ -448,6 +506,16 @@ public final class Json {
                 throw new IllegalStateException("Expected '" + expected + "' but found '" + actual + "' at position " + position);
 
             position++;
+        }
+
+        /**
+         * Skips whitespace and peeks at the current character without consuming it.
+         *
+         * @throws IllegalStateException if the end of input is reached
+         */
+        private void consumeSpaces() {
+            while (position < input.length() && Character.isWhitespace(input.charAt(position)))
+                position++;
         }
 
         /**
