@@ -1,0 +1,300 @@
+= Schema Validation Design
+:author: José Bolina
+:description: The design of the state machine schema validation system.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
+
+This document describes the state machine schema validation system introduced in jgroups-raft 2.0.
+
+== Context
+
+=== Why Schema Validation?
+
+JGroups Raft replicates state machine operations through a persistent log.
+Each operation is identified by a composite key `(id, version)` with serialized arguments stored in log entries.
+On restart, the system replays committed log entries against the state machine.
+If the state machine interface has changed incompatibly between restarts (removed commands, changed parameter types, read/write kind changes), replay will crash or silently produce wrong state.
+
+Schema validation detects backwards-incompatible changes at startup, before any log replay or cluster communication occurs.
+
+=== Design Goals
+
+. **Detect breaking changes at startup** — before log replay or cluster communication.
+. **Support safe state machine evolution** — versioned commands allow gradual migration.
+. **Track schema history automatically** — the system maintains the schema file; users do not manage it manually.
+. **Provide escape hatches** — retired command annotations for when commands are intentionally removed.
+. **Zero friction for simple cases** — users who never change their state machine notice nothing.
+
+=== Non-Goals
+
+- Forwards compatibility (new commands on old nodes during rolling upgrades).
+- Runtime schema negotiation between cluster nodes.
+- Automatic state machine migration or transformation.
+
+== Architecture
+
+=== Startup Flow
+
+[ditaa]
+----
+  JGroupsRaftImpl.start()
+      |
+      | Parse annotations
+      v
+  CommandRegistry.initialize()
+      |
+      | Compare current vs stored schema
+      v
+  SchemaValidator.validate()
+      |
+      +---> Read schema.raft
+      |     Apply validation rules
+      |     Write updated schema.raft
+      v
+  channel.connect()
+      |
+      v
+  Log replay begins
+----
+
+Validation runs after the registry parses annotations and before the channel connects.
+This ordering ensures incompatible state machines are rejected before any log entries are applied.
+
+=== Separation of Concerns
+
+The command registry knows about annotations, methods, and dispatch.
+It produces the current schema as a collection of schema entries but has no knowledge of files or persistence.
+
+The schema validator knows about comparison rules and file I/O.
+It receives schema entries and a directory path but has no knowledge of annotations or reflection.
+
+The bridge between them is the schema entry record that the registry produces and the validator consumes.
+
+=== When Validation Is Skipped
+
+Schema validation is skipped entirely when the log is not persistent (e.g., in-memory logs).
+In-memory logs do not survive restarts, so there is no schema to compare against.
+
+== Schema File Format
+
+=== Location
+
+`<log_dir>/schema.raft` — same directory as `metadata.raft` and log entries.
+
+=== JSON Envelope
+
+The file uses a JSON envelope with a format version field for future evolution:
+
+[source,json]
+----
+{
+  "version": 1,
+  "commands": [
+    {
+      "id": 1,
+      "commandVersion": 1,
+      "kind": "WRITE",
+      "parameterTypes": ["java.lang.String", "java.lang.String"],
+      "status": "RETIRED"
+    },
+    {
+      "id": 1,
+      "commandVersion": 2,
+      "kind": "WRITE",
+      "parameterTypes": ["java.lang.String", "java.lang.String", "java.lang.Long"],
+      "status": "ACTIVE"
+    },
+    {
+      "id": 2,
+      "commandVersion": 1,
+      "kind": "READ",
+      "parameterTypes": ["java.lang.String"],
+      "status": "ACTIVE"
+    }
+  ]
+}
+----
+
+The top-level `version` is the schema file format version (not command version).
+The `commandVersion` field name avoids collision with the envelope version.
+
+=== Field Descriptions
+
+**`id`**:: The command identifier, matching `@StateMachineRead.id()` or `@StateMachineWrite.id()`.
+
+**`commandVersion`**:: The command version, matching `@StateMachineRead.version()` or `@StateMachineWrite.version()`.
+
+**`kind`**:: `READ` or `WRITE`. Determines replication semantics (reads are local, writes are replicated).
+
+**`parameterTypes`**:: Fully qualified class names of the method parameters, in declaration order. Empty for retired commands (the method no longer exists).
+
+**`status`**:: `ACTIVE` (command is implemented) or `RETIRED` (command was permanently removed).
+
+=== Update Strategy
+
+After each successful validation, the file is overwritten entirely with the merged state:
+
+* Active commands from annotations are written as `ACTIVE`.
+* Retired commands from annotations are written as `RETIRED`.
+* Previously stored entries not present in current annotations are preserved to prevent accidental ID reuse.
+
+=== Known Limitation
+
+Parameter types are compared by fully qualified class name.
+If a user moves a class to a different package, the validator flags it as a breaking change even though the serializer (which uses integer type IDs) would handle it.
+The workaround is to bump the command version.
+A future schema file version will replace FQCNs with serializer type IDs to eliminate this false positive.
+
+== Validation Rules
+
+=== Pre-Validation
+
+Before comparing against the stored schema, the current schema is checked for duplicate `(id, version)` entries.
+This catches the case where the same slot appears in both method annotations and the retired lists.
+
+=== Evolution Rules
+
+[cols="3,1,3"]
+|===
+| Change | Result | Rationale
+
+| New `(id, version)` not in stored schema
+| Allowed
+| New command, always safe.
+
+| Same `(id, version)`, same parameter types and kind
+| Allowed
+| No change.
+
+| Same `(id, version)`, different parameter types
+| Error
+| Old log entries have incompatible serialized arguments.
+
+| Same `(id, version)`, different kind (READ/WRITE)
+| Error
+| Semantic break — changes replication semantics.
+
+| Removed `(id, version)`, higher version of same `id` exists
+| Allowed
+| Superseded by newer version.
+
+| Removed `(id, version)`, only lower versions remain
+| Error
+| Version downgrade — old log entries for the removed version would fail replay.
+
+| Removed `(id, version)`, declared as retired
+| Allowed
+| User acknowledges removal.
+
+| Removed `id` entirely, not all versions retired
+| Error
+| Old log entries may still reference this command.
+
+| Retired declaration for wrong kind
+| Error
+| User declared wrong annotation type.
+
+| Retired `(id, version)` never existed in stored schema
+| Error
+| Typo protection.
+
+| Previously retired slot reactivated
+| Error
+| Retired commands cannot be brought back.
+|===
+
+=== Safety Contract for Superseded Removal
+
+When a lower version is removed because a higher version exists, the validator allows it but cannot verify that compaction has occurred.
+Dispatch is by exact `(id, version)`.
+If old log entries for the removed version still exist in the log, replay will fail.
+The developer is responsible for ensuring all entries for the removed version are behind a snapshot before deploying the change.
+
+=== Error Messages
+
+Error messages are actionable, guiding users to the correct fix:
+
+[source]
+----
+Command (id=3, version=1) was removed without being retired.
+Include @StateMachineWrite(id = 3, version = 1) to the list of retired
+WRITE operations in @JGroupsRaftStateMachine. Otherwise, restore the command
+if it was a mistake.
+----
+
+[source]
+----
+Command (id=1, version=2) parameter types changed between restarts.
+It was '[java.lang.String]' and now is '[java.lang.Integer]'.
+You should retire the old method and introduce a new definition
+with a higher version.
+----
+
+== Annotation Changes
+
+=== Retired Command Declarations
+
+`@JGroupsRaftStateMachine` gained two attributes for declaring retired commands:
+
+[source,java]
+----
+@JGroupsRaftStateMachine(
+    retiredWrites = @StateMachineWrite(id = 1, version = 1)
+)
+public interface MyStateMachine {
+
+    @StateMachineWrite(id = 1, version = 2)
+    void put(String key, String value);
+
+    @StateMachineRead(id = 2, version = 1)
+    String get(String key);
+}
+----
+
+Retired entries tell the validator that the command was intentionally removed, not accidentally deleted.
+The annotation must use the same kind (`@StateMachineRead` or `@StateMachineWrite`) as the original command.
+
+== State Machine Evolution Guide
+
+=== Adding a New Command
+
+Add a new annotated method with a unique `id`. No special steps needed.
+
+=== Evolving a Command (Version Bump)
+
+. Keep the old method with `(id=X, version=N)`.
+. Add the new method with `(id=X, version=N+1)`.
+. Deploy. Both versions coexist. Old log entries route to version N, new operations use version N+1.
+
+=== Retiring an Old Version
+
+Once all log entries for `(id=X, version=N)` are behind a snapshot:
+
+. Remove the old method from the interface.
+. No annotation changes needed — the higher version covers it.
+. The validator allows removal because a higher version exists.
+
+=== Removing a Command Entirely
+
+Once all log entries for the command are behind a snapshot:
+
+. Remove all methods for that `id` from the interface.
+. Declare retirement in the `@JGroupsRaftStateMachine` annotation.
+. Trigger a snapshot before deploying to ensure compaction.
+
+=== When Is It Safe to Remove?
+
+A command's log entries are behind a snapshot when:
+
+. A snapshot has been taken after the last log entry using that command.
+. The log has been truncated past all entries using that command.
+
+== Future Work
+
+* **CLI commands** — `raft state-machine schema show/reset/diff` for inspecting, resetting, and comparing schemas from the command line.
+* **Serializer type IDs** — replace FQCNs in `parameterTypes` with integer type IDs to avoid false positives on package refactors. Requires bumping the schema file version to `2` with migration logic for version `1` files.
+
+[bibliography]
+== References
+
+* [[[raft,1]]] Ongaro, D., & Ousterhout, J. (2014). In search of an understandable consensus algorithm. USENIX Annual Technical Conference.

@@ -306,6 +306,29 @@ public class CommandRegistryTest {
                 .hasMessageStartingWith("Found duplicated method");
     }
 
+    public void testRetiredAnnotations() {
+        @JGroupsRaftStateMachine(
+                retiredWrites = {
+                        @StateMachineWrite(id = 99),
+                        @StateMachineWrite(id = 20, version = 4)
+                },
+                retiredReads = {
+                        @StateMachineRead(id = 10),
+                        @StateMachineRead(id = 42, version = 3)
+                }
+        )
+        class TestSM { }
+
+        JGroupsRaftStateMachine ann = TestSM.class.getAnnotation(JGroupsRaftStateMachine.class);
+        assertThat(ann.retiredWrites()).hasSize(2);
+        assertThat(ann.retiredWrites()[0].id()).isEqualTo(99);
+        assertThat(ann.retiredWrites()[0].version()).isEqualTo(1);
+
+        assertThat(ann.retiredReads()).hasSize(2);
+        assertThat(ann.retiredReads()[0].id()).isEqualTo(10);
+        assertThat(ann.retiredReads()[0].version()).isEqualTo(1);
+    }
+
     @JGroupsRaftStateMachine
     public interface TestStateMachine { }
 }

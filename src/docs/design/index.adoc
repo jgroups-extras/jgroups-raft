@@ -31,3 +31,5 @@ include::./Election2.adoc[ELECTION2 algorithm design]
 include::./Log.adoc[Persistent log design]
 
 include::./CLI.adoc[JGroups Raft CLI]
+
+include::./SchemaValidation.adoc[Schema Validation]

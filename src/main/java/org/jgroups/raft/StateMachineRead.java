@@ -29,7 +29,7 @@ import java.lang.annotation.Target;
  * @see JGroupsRaftStateMachine
  * @see StateMachineWrite
  */
-@Target(ElementType.METHOD)
+@Target({ElementType.METHOD, ElementType.ANNOTATION_TYPE})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface StateMachineRead {
 

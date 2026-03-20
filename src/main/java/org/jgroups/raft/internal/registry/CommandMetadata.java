@@ -2,6 +2,7 @@ package org.jgroups.raft.internal.registry;
 
 import org.jgroups.raft.internal.command.JRaftCommand;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collection;
@@ -10,6 +11,7 @@ record CommandMetadata(
         Object stateMachine,
         int id,
         int version,
+        Annotation annotation,
         Method method,
         Collection<CommandSchema> inputSchema,
         CommandSchema outputSchema

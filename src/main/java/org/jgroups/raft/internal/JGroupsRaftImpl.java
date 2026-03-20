@@ -109,6 +109,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         registry.initialize();
         wrapper.initialize(settable);
         raft.stateMachine(wrapper);
+        registry.evolveSchema(raft);
 
         // Only instantiate metric collection if it was enabled during startup.
         boolean metricsEnabled = parameters.runtimeProperties().getBoolean(JGroupsRaftMetrics.METRICS_ENABLED);
@@ -220,7 +221,6 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         if (!started) return;
 
         started = false;
-        registry.destroy();
 
         // If the channel is created by the RAFT instance, we close it.
         // If the channel was provided, it is the application's responsibility to close it.

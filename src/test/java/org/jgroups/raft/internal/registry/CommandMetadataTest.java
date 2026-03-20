@@ -47,7 +47,7 @@ public class CommandMetadataTest {
     public void testSubmitValidInput() throws Throwable {
         MetadataTarget target = new MetadataTarget();
         Method method = MetadataTarget.class.getMethod("singleArg", String.class);
-        CommandMetadata metadata = new CommandMetadata(target, 1, 1, method,
+        CommandMetadata metadata = new CommandMetadata(target, 1, 1, null, method,
                 List.of(new CommandSchema(String.class)), new CommandSchema(String.class));
 
         assertThat(metadata.<String>submit("test")).isEqualTo("test");
@@ -56,7 +56,7 @@ public class CommandMetadataTest {
     public void testSubmitPrimitiveWithAutoboxing() throws Throwable {
         MetadataTarget target = new MetadataTarget();
         Method method = MetadataTarget.class.getMethod("primitiveArg", int.class);
-        CommandMetadata metadata = new CommandMetadata(target,2, 1, method,
+        CommandMetadata metadata = new CommandMetadata(target,2, 1, null, method,
                 List.of(new CommandSchema(int.class)), new CommandSchema(int.class));
 
         assertThat(metadata.<Object>submit(1)).isEqualTo(2);
@@ -65,7 +65,7 @@ public class CommandMetadataTest {
     public void testSubmitNoArgMethod() throws Throwable {
         Method method = MetadataTarget.class.getMethod("noArg");
         MetadataTarget target = new MetadataTarget();
-        CommandMetadata metadata = new CommandMetadata(target,3, 1, method,
+        CommandMetadata metadata = new CommandMetadata(target,3, 1, null, method,
                 List.of(new CommandSchema(null)), new CommandSchema(void.class));
 
         assertThat(metadata.<Object>submit()).isNull();
@@ -77,7 +77,7 @@ public class CommandMetadataTest {
         Type inputType = method.getGenericParameterTypes()[0];
 
         MetadataTarget target = new MetadataTarget();
-        CommandMetadata metadata = new CommandMetadata(target, 4, 1, method,
+        CommandMetadata metadata = new CommandMetadata(target, 4, 1, null, method,
                 List.of(new CommandSchema(inputType)), new CommandSchema(returnType));
 
         // Integer extends Number, so this properly respects the upper bound
@@ -90,7 +90,7 @@ public class CommandMetadataTest {
         Type inputType = method.getGenericParameterTypes()[0];
 
         MetadataTarget target = new MetadataTarget();
-        CommandMetadata metadata = new CommandMetadata(target, 5, 1, method,
+        CommandMetadata metadata = new CommandMetadata(target, 5, 1, null, method,
                 List.of(new CommandSchema(inputType)), new CommandSchema(returnType));
 
         Integer[] array = new Integer[] { 1, 2, 3 };
@@ -102,7 +102,7 @@ public class CommandMetadataTest {
     public void testSubmitInvalidInput() throws Throwable {
         Method method = MetadataTarget.class.getMethod("singleArg", String.class);
         MetadataTarget target = new MetadataTarget();
-        CommandMetadata metadata = new CommandMetadata(target, 6, 1, method,
+        CommandMetadata metadata = new CommandMetadata(target, 6, 1, null, method,
                 List.of(new CommandSchema(String.class)), new CommandSchema(String.class));
 
 
@@ -114,7 +114,7 @@ public class CommandMetadataTest {
 
     public void testCommandValidationSuccess() throws Throwable {
         Method method = MetadataTarget.class.getMethod("noArg");
-        CommandMetadata metadata = new CommandMetadata(null, 8, 2, method,
+        CommandMetadata metadata = new CommandMetadata(null, 8, 2, null, method,
                 List.of(new CommandSchema(null)), new CommandSchema(void.class));
 
         JRaftCommand readCommand = JRaftReadCommand.create(8, 2);
@@ -127,7 +127,7 @@ public class CommandMetadataTest {
 
     public void testCommandValidationIdMismatch() throws Throwable {
         Method method = MetadataTarget.class.getMethod("noArg");
-        CommandMetadata metadata = new CommandMetadata(null, 9, 1, method,
+        CommandMetadata metadata = new CommandMetadata(null, 9, 1, null, method,
                 List.of(new CommandSchema(null)), new CommandSchema(void.class));
 
         JRaftCommand mismatchedIdCommand = JRaftReadCommand.create(10, 1);
@@ -138,7 +138,7 @@ public class CommandMetadataTest {
 
     public void testCommandValidationVersionMismatch() throws Throwable {
         Method method = MetadataTarget.class.getMethod("noArg");
-        CommandMetadata metadata = new CommandMetadata(null, 10, 2, method,
+        CommandMetadata metadata = new CommandMetadata(null, 10, 2, null, method,
                 List.of(new CommandSchema(null)), new CommandSchema(void.class));
 
         JRaftCommand mismatchedVersionCommand = JRaftReadCommand.create(10, 1);
