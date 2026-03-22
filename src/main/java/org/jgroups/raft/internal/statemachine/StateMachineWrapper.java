@@ -175,13 +175,11 @@ public final class StateMachineWrapper<T> implements StateMachine {
         private T acquire(int index, T[] arr, JGroupsRaftCommandOptions options) {
             T t = get(arr, index);
             if (t == null) {
-                synchronized (arr) {
-                    t = get(arr, index);
-                    if (t == null) {
-                        t = createIndirectProxy(options);
-                        ARRAY_HANDLE.setRelease(arr, index, t);
-                    }
-                }
+                t = createIndirectProxy(options);
+                @SuppressWarnings("unchecked")
+                T existing = (T) ARRAY_HANDLE.compareAndExchange(arr, index, null, t);
+                if (existing != null)
+                    t = existing;
             }
 
             return t;

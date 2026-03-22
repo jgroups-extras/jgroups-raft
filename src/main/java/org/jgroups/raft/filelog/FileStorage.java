@@ -1,7 +1,5 @@
 package org.jgroups.raft.filelog;
 
-import org.jgroups.logging.Log;
-import org.jgroups.logging.LogFactory;
 import org.jgroups.raft.util.pmem.FileProvider;
 import org.jgroups.util.Util;
 
@@ -27,8 +25,6 @@ public final class FileStorage implements Closeable {
    private enum Flush {
       Metadata, Data, None
    }
-
-   private static final Log LOG = LogFactory.getLog(FileStorage.class);
 
    private final boolean isWindowsOS;
    private final File storageFile;

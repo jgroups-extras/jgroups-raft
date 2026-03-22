@@ -17,6 +17,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Validates the current state machine schema against a previously stored schema to detect backwards-incompatible changes
@@ -237,11 +238,9 @@ final class SchemaValidator {
             envelope.put("commands", commands);
 
             try {
-                Path directory = file.toPath().getParent();
+                Path directory = Objects.requireNonNull(file.toPath().getParent(), "The schema file always has a parent");
                 if (Files.notExists(directory)) {
-                    // Explicitly ignore the return value.
-                    // If it failed to create the directories, the writeString operation will fail for use.
-                    directory.toFile().mkdirs();
+                    Files.createDirectories(directory);
                 }
                 Files.writeString(file.toPath(), Json.toPrettyJson(envelope));
             } catch (IOException e) {
