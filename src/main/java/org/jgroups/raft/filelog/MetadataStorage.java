@@ -1,7 +1,5 @@
 package org.jgroups.raft.filelog;
 
-import net.jcip.annotations.NotThreadSafe;
-
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.util.ByteBufferInputStream;
@@ -17,6 +15,8 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
+
+import net.jcip.annotations.NotThreadSafe;
 
 /**
  * Stores the RAFT log metadata in a file.
@@ -97,11 +97,6 @@ public class MetadataStorage {
    public void close() throws IOException {
       fileStorage.close();
       wrapper.close.close();
-   }
-
-   public void delete() throws IOException {
-      fileStorage.delete();
-      wrapper = null;
    }
 
    public long getCommitIndex() {

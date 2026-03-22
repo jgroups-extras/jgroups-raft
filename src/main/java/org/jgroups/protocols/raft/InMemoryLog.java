@@ -73,17 +73,6 @@ public class InMemoryLog implements Log {
     public void close() {}
 
     @Override
-    public void delete() {
-        InMemoryLog l = (InMemoryLog) logs.remove(name);
-        if (l != null) {
-            l.current_term = 0;
-            l.first_appended = 0;
-            l.last_appended = 0;
-            l.commit_index = 0;
-        }
-    }
-
-    @Override
     public long currentTerm() {return current_term;}
 
     @Override

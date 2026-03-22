@@ -29,9 +29,6 @@ public interface Log extends Closeable {
 
     boolean useFsync();
 
-    /** Remove the persistent store, e.g. DB table, or file */
-    void delete() throws Exception;
-
     /** Returns the current term */
     long currentTerm();
 

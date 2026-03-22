@@ -1,13 +1,19 @@
 package org.jgroups.raft.testfwk;
 
 import org.jgroups.JChannel;
+import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.BaseElection;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.LockSupport;
 import java.util.function.BooleanSupplier;
+import java.util.stream.Stream;
 
 /**
  * Utilities for developing tests with Raft.
@@ -76,14 +82,31 @@ public final class RaftTestUtils {
      *
      * @param r {@link RAFT} instance to delete all information.
      * @throws Exception If an exception happens while deleting the data.
-     * @see Log#delete()
      */
     public static void deleteRaftLog(RAFT r) throws Exception {
-        Log log = r != null ? r.log() : null;
+        if (r == null) return;
+
+        Log log = r.log();
         if (log != null) {
             log.close();
-            log.delete();
             r.log(null);
+        }
+
+        String logName = r.logName();
+        if (logName != null) {
+            Path dir = Path.of(logName);
+            if (Files.exists(dir)) {
+                try (Stream<Path> walk = Files.walk(dir)) {
+                    walk.sorted(Comparator.reverseOrder())
+                            .forEach(p -> {
+                                try {
+                                    Files.delete(p);
+                                } catch (IOException ignored) { }
+                            });
+                }
+            }
+
+            InMemoryLog.logs.remove(logName);
         }
     }
 

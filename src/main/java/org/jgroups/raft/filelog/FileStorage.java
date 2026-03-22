@@ -1,5 +1,10 @@
 package org.jgroups.raft.filelog;
 
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
+import org.jgroups.raft.util.pmem.FileProvider;
+import org.jgroups.util.Util;
+
 import java.io.Closeable;
 import java.io.File;
 import java.io.IOException;
@@ -10,11 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Objects;
-
-import org.jgroups.logging.Log;
-import org.jgroups.logging.LogFactory;
-import org.jgroups.raft.util.pmem.FileProvider;
-import org.jgroups.util.Util;
 
 /**
  * Base class to store data in a file.
@@ -237,15 +237,6 @@ public final class FileStorage implements Closeable {
             channel = null;
             fileSize = -1;
          }
-      }
-   }
-
-   public void delete() throws IOException {
-      if (storageFile.exists()) {
-         if (!storageFile.delete()) {
-            LOG.warn("Failed to delete file " + storageFile.getAbsolutePath());
-         }
-         close();
       }
    }
 

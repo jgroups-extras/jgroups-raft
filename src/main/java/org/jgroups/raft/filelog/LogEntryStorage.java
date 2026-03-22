@@ -49,10 +49,6 @@ public class LogEntryStorage {
       fileStorage.close();
    }
 
-   public void delete() throws IOException {
-      fileStorage.delete();
-   }
-
    public void reload() throws IOException {
       Header header = readHeader(0);
       if (header == null) {

@@ -6,9 +6,14 @@ import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Stream;
 
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -89,7 +94,15 @@ public class LogJmhBenchmark {
       @TearDown
       public void stop() throws Exception {
          if (log != null) {
-            log.delete();
+            Path dir = Path.of(baseDir);
+            try (Stream<Path> walk = Files.walk(dir)) {
+               walk.sorted(Comparator.reverseOrder())
+                       .forEach(p -> {
+                          try {
+                             Files.delete(p);
+                          } catch (IOException ignored) { }
+                       });
+            }
          }
       }
    }

@@ -12,7 +12,12 @@ import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.util.Util;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 
 import org.assertj.core.api.SoftAssertions;
 import org.testng.annotations.AfterMethod;
@@ -43,8 +48,24 @@ public class LogTest {
     @AfterMethod protected void destroy() throws Exception {
         if(log != null) {
             log.close();
-            log.delete();
             log=null;
+            delete();
+        }
+    }
+
+    private static void delete() throws IOException {
+        InMemoryLog.logs.remove(filename);
+        Path dir = Path.of(filename);
+        if (!Files.exists(dir))
+            return;
+
+        try (Stream<Path> walk = Files.walk(dir)) {
+            walk.sorted(Comparator.reverseOrder())
+                    .forEach(p -> {
+                        try {
+                            Files.delete(p);
+                        } catch (IOException ignored) { }
+                    });
         }
     }
 
@@ -67,14 +88,6 @@ public class LogTest {
         assertThat(current_term).isEqualTo(22);
         voted_for=log.votedFor();
         assertThat(voted_for).isEqualTo(addr);
-
-        log.close();
-        log.delete();
-        log.init(filename, null);
-        current_term=log.currentTerm();
-        assertThat(current_term).isEqualTo(0);
-        voted_for=log.votedFor();
-        assertThat(voted_for).isNull();
     }
 
 
@@ -82,19 +95,6 @@ public class LogTest {
         this.log=log;
         log.init(filename, null);
         assertIndices(0, 0, 0, 0);
-        assertThat(log.votedFor()).isNull();
-    }
-
-    public void testNewLogAfterDelete(Log log) throws Exception {
-        this.log=log;
-        log.init(filename, null);
-        append(log, 1, new byte[10], 5,5,5);
-        log.commitIndex(2);
-        assertIndices(0, 3, 2, 5);
-        log.close();
-        log.delete();
-        log.init(filename, null);
-        assertIndices(0,0,0,0);
         assertThat(log.votedFor()).isNull();
     }
 

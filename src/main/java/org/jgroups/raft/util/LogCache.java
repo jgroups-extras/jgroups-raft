@@ -57,13 +57,6 @@ public class LogCache implements Log {
         log.init(log_name, args);
     }
 
-    public void delete() throws Exception {
-        log.delete();
-        current_term=commit_index=first_appended=last_appended=0;
-        voted_for=null;
-        cache.clear();
-    }
-
     public long currentTerm() {
         return current_term;
     }

@@ -3,7 +3,6 @@ package org.jgroups.raft.util;
 import org.jgroups.Address;
 import org.jgroups.View;
 import org.jgroups.protocols.raft.RAFT;
-import org.jgroups.raft.testfwk.RaftTestUtils;
 
 import java.util.Arrays;
 import java.util.Collection;
@@ -72,21 +71,6 @@ public class Utils {
     public static boolean viewCoordinatorChanged(View prev, View curr) {
         if (prev == null) return true;
         return !Objects.equals(prev.getCoord(), curr.getCoord());
-    }
-
-    /**
-     * Deletes the log data for the given {@link RAFT} instance.
-     * <p>
-     *     <b>Warning:</b> This should be used in tests only.
-     * </p>
-     *
-     * @param r RAFT instance to delete the log contents.
-     * @throws Exception If an exception happens while deleting the log.
-     * @deprecated Use {@link RaftTestUtils#deleteRaftLog(RAFT)} instead.
-     */
-    @Deprecated(since = "1.0.13", forRemoval = true)
-    public static void deleteLog(RAFT r) throws Exception {
-        RaftTestUtils.deleteRaftLog(r);
     }
 
     /**

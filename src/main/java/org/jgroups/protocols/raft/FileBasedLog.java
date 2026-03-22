@@ -91,30 +91,6 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void delete() {
-      try {
-         MetadataStorage storage = metadataStorage;
-         if (storage != null) {
-            storage.delete();
-         }
-         LogEntryStorage entryStorage = logEntryStorage;
-         if (entryStorage != null) {
-            entryStorage.delete();
-         }
-         Files.deleteIfExists(snapshotPath());
-         if (logDir != null) {
-            // must be empty in order to be deleted
-            if (!logDir.delete()) {
-               throw new IllegalStateException("Unable to delete directory " + logDir.getAbsolutePath());
-            }
-            logDir = null;
-         }
-      } catch (IOException e) {
-         throw new IllegalStateException(e);
-      }
-   }
-
-   @Override
    public long currentTerm() {
       return currentTerm;
    }
