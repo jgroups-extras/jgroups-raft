@@ -141,11 +141,7 @@ public class CommandRegistry<T> {
     }
 
     public JRaftCommand getCommand(Method method) {
-        JRaftCommand command = commands.get(method);
-        if (command == null) {
-            throw new IllegalStateException("Method " + method.getName() + " is not registered as a command");
-        }
-        return command;
+        return commands.get(method);
     }
 
     public ReplicatedMethodWrapper getCommand(int id, int version) {

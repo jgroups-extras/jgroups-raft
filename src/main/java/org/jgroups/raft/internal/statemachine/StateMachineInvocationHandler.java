@@ -1,18 +1,14 @@
 package org.jgroups.raft.internal.statemachine;
 
 import org.jgroups.raft.Settable;
-import org.jgroups.raft.StateMachineRead;
-import org.jgroups.raft.StateMachineWrite;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
-import org.jgroups.raft.exceptions.JRaftException;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.registry.ReplicatedMethodWrapper;
 import org.jgroups.raft.internal.serialization.Serializer;
 
-import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -45,14 +41,12 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
     private final CommandRegistry<T> registry;
     private final Serializer serializer;
     private final Settable settable;
-    private final Class<? extends Annotation> permitted;
 
-    StateMachineInvocationHandler(T delegate, CommandRegistry<T> registry, Serializer serializer, Settable settable, Class<? extends Annotation> permitted) {
+    StateMachineInvocationHandler(T delegate, CommandRegistry<T> registry, Serializer serializer, Settable settable) {
         this.delegate = delegate;
         this.registry = registry;
         this.serializer = serializer;
         this.settable = settable;
-        this.permitted = permitted;
     }
 
     @Override
@@ -70,19 +64,7 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
      * @return The result of the method execution (or a Future if async).
      */
     public Object invoke(Object ignore, Method method, Object[] args, JGroupsRaftCommandOptions options) throws InvocationTargetException, IllegalAccessException {
-        JRaftCommand command;
-
-        // 1. Enforce annotation restrictions (if applicable)
-        // For example, the user is utilizing a JGroupsRaft instance for read-only operations.
-        // We restrict the allowed operations to read operations only, in this example.
-        if (permitted != null) {
-            command = findPermittedMethod(method);
-
-            if (command == null && searchMethod(method) != null)
-                throw new JRaftException(String.format("Only methods annotated with %s are allowed", permitted));
-        } else {
-            command = searchMethod(method);
-        }
+        JRaftCommand command = searchMethod(method);
 
         // 2. Unannotated methods bypass the Raft protocol completely
         // We assume these are methods outside the state machine contract. Otherwise, they would be annotated.
@@ -116,21 +98,6 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
     }
 
     private JRaftCommand searchMethod(Method method) {
-        if (method.getAnnotation(StateMachineWrite.class) != null) {
-            return registry.getCommand(method);
-        }
-
-        if (method.getAnnotation(StateMachineRead.class) != null) {
-            return registry.getCommand(method);
-        }
-
-        return null;
-    }
-
-    private JRaftCommand findPermittedMethod(Method method) {
-        if (method.getAnnotation(permitted) == null) {
-            return null;
-        }
         return registry.getCommand(method);
     }
 

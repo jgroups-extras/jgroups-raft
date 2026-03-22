@@ -58,10 +58,6 @@ public class ReplicatedHashMapExample {
         UserInformation ui = raft.read((Function<StateMachineApi, UserInformation>) rhm -> rhm.get(userId));
         System.out.printf("User %s is currently: %s%n", userId, ui);
 
-        // Uses the read-only client.
-        StateMachineApi readOnlyApi = raft.readOnly(JGroupsRaftReadCommandOptions.options().linearizable(false).build());
-        readOnlyApi.get(userId);
-
         // Now, we can update the user information for the given ID.
         final UserInformation value = new UserInformation(UUID.randomUUID().toString(), ThreadLocalRandom.current().nextInt());
         System.out.printf("Updating user %s to key %s%n", ui, userId);

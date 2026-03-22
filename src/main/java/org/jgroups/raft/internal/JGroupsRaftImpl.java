@@ -17,8 +17,6 @@ import org.jgroups.raft.JGroupsRaftMetrics;
 import org.jgroups.raft.JGroupsRaftRole;
 import org.jgroups.raft.JGroupsRaftState;
 import org.jgroups.raft.Settable;
-import org.jgroups.raft.StateMachineRead;
-import org.jgroups.raft.StateMachineWrite;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.exceptions.JRaftException;
@@ -249,18 +247,6 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
     public <O> O read(Function<T, O> function, JGroupsRaftReadCommandOptions options) {
         ensureInstanceInitialized();
         return wrapper.submit(function, options);
-    }
-
-    @Override
-    public T readOnly(JGroupsRaftReadCommandOptions options) {
-        ensureInstanceInitialized();
-        return wrapper.createWrapper(options, StateMachineRead.class);
-    }
-
-    @Override
-    public T writeOnly(JGroupsRaftWriteCommandOptions options) {
-        ensureInstanceInitialized();
-        return wrapper.createWrapper(options, StateMachineWrite.class);
     }
 
     @Override

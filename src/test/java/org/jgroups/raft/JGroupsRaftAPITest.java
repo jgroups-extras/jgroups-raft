@@ -8,7 +8,6 @@ import org.jgroups.Global;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.raft.api.SimpleKVStateMachine;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
-import org.jgroups.raft.exceptions.JRaftException;
 
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
@@ -28,38 +27,6 @@ public class JGroupsRaftAPITest {
     @Test(dataProvider = "arguments")
     public void testClusteringAndOperationsWithOptions(int size, boolean fromLeader) throws Exception {
         testSetupAndDestroyWithOptions(size, fromLeader);
-    }
-
-    @Test(dataProvider = "arguments")
-    public void testClusterAndOperationsDirectClient(int size, boolean fromLeader) throws Exception {
-        testSetupAndDestroyDirectClient(size, fromLeader);
-    }
-
-    public void testDirectClientValidatesRestriction() throws Exception {
-        JGroupsRaft.Builder<SimpleKVStateMachine> builder = JGroupsRaft.builder(new SimpleKVStateMachine.Impl(), SimpleKVStateMachine.class)
-              .withJGroupsConfig("test-raft.xml")
-              .withClusterName("direct-client-test");
-        builder.configureRaft()
-              .withRaftId("single_node")
-              .withMembers(Collections.singletonList("single_node"));
-        JGroupsRaft<SimpleKVStateMachine> raft = builder.build();
-
-        raft.start();
-
-        try {
-            SimpleKVStateMachine readOnly = raft.readOnly(JGroupsRaftCommandOptions.readOptions().build());
-            SimpleKVStateMachine writeOnly = raft.writeOnly(JGroupsRaftCommandOptions.writeOptions().build());
-
-            assertThatThrownBy(() -> readOnly.handlePut("key", "value"))
-                  .isInstanceOf(JRaftException.class)
-                  .hasMessageContaining("StateMachineRead");
-
-            assertThatThrownBy(() -> writeOnly.handleGet("key"))
-                  .isInstanceOf(JRaftException.class)
-                  .hasMessageContaining("StateMachineWrite");
-        } finally {
-            raft.stop();
-        }
     }
 
     public void testInstanceLifecycle() {
@@ -170,27 +137,6 @@ public class JGroupsRaftAPITest {
 
         assertThat(raft.<String>read(kv -> kv.handleGet("hello"), JGroupsRaftCommandOptions.readOptions().build()))
                 .isEqualTo("world");
-
-        cluster.close();
-    }
-
-    private void testSetupAndDestroyDirectClient(int size, boolean fromLeader) throws Exception {
-        JRaftTestCluster<SimpleKVStateMachine> cluster = JRaftTestCluster.create(SimpleKVStateMachine.Impl::new, SimpleKVStateMachine.class, size);
-
-        cluster.waitUntilLeaderElected();
-
-        JGroupsRaft<SimpleKVStateMachine> raft = fromLeader
-              ? cluster.leader()
-              : cluster.follower();
-
-        SimpleKVStateMachine readOnly = raft.readOnly(JGroupsRaftCommandOptions.readOptions().build());
-        SimpleKVStateMachine writeOnly = raft.writeOnly(JGroupsRaftCommandOptions.writeOptions().build());
-
-        assertThat(readOnly.handleGet("hello")).isNull();
-
-        writeOnly.handlePut("hello", "world");
-
-        assertThat(readOnly.handleGet("hello")).isEqualTo("world");
 
         cluster.close();
     }

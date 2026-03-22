@@ -389,32 +389,6 @@ public interface JGroupsRaft<T> {
     }
 
     /**
-     * Creates a write-only view of the underlying state machine.
-     *
-     * <p>
-     * The returned instance only allows invoking methods annotated with {@link StateMachineWrite}. Invoking read commands
-     * will throw an exception.
-     * </p>
-     *
-     * @param options Options utilized for all submitted commands.
-     * @return a write-only view of the underlying state machine.
-     */
-    T writeOnly(JGroupsRaftWriteCommandOptions options);
-
-    /**
-     * Creates a read-only view of the underlying state machine.
-     *
-     * <p>
-     * The returned instance only allows invoking methods annotated with {@link StateMachineRead}. Invoking write commands
-     * will throw an exception.
-     * </p>
-     *
-     * @param options Options utilized for all submitted commands.
-     * @return a read-only view of the underlying state machine.
-     */
-    T readOnly(JGroupsRaftReadCommandOptions options);
-
-    /**
      * Submits a write command to the state machine.
      *
      * <p>

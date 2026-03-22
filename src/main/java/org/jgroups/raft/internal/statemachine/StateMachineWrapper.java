@@ -3,12 +3,15 @@ package org.jgroups.raft.internal.statemachine;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
+import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
+import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.internal.registry.CommandRegistry;
 import org.jgroups.raft.internal.serialization.Serializer;
 
 import java.io.DataInput;
 import java.io.DataOutput;
-import java.lang.annotation.Annotation;
+import java.lang.invoke.MethodHandles;
+import java.lang.invoke.VarHandle;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.util.function.Function;
@@ -38,9 +41,7 @@ public final class StateMachineWrapper<T> implements StateMachine {
     private final Serializer serializer;
     private final StateMachine delegate;
 
-    private Settable settable;
-    private WrapperType type;
-    private T wrapper;
+    private ProxyWrapper<T> proxy;
 
     /**
      * Constructs the wrapper, initializing the internal adapter for log application.
@@ -68,16 +69,8 @@ public final class StateMachineWrapper<T> implements StateMachine {
      * @param settable The Raft cluster component used to asynchronously submit requests (get/set).
      */
     public void initialize(Settable settable) {
-        this.settable = settable;
-
-        if (verifyGenerateClasses()) {
-            this.type = WrapperType.GENERATED;
-            this.wrapper = useGeneratedSources();
-            return;
-        }
-
-        this.type = WrapperType.PROXY;
-        this.wrapper = useProxy(null);
+        StateMachineInvocationHandler<T> handler = new StateMachineInvocationHandler<>(concrete, registry, serializer, settable);
+        this.proxy = new ProxyWrapper<>(api, handler);
     }
 
     /**
@@ -90,78 +83,7 @@ public final class StateMachineWrapper<T> implements StateMachine {
      * @return The result of the state machine execution.
      */
     public <O> O submit(Function<T, O> function, JGroupsRaftCommandOptions options) {
-        if (options == null)
-            return function.apply(wrapper);
-
-        if (type == WrapperType.GENERATED) {
-            return submitGeneratedWithOptions();
-        }
-
-        return submitProxyWithOptions(wrapper, function, options);
-    }
-
-    /**
-     * Creates a new, specialized proxy wrapper that bakes in default execution options or restricts execution to methods
-     * tagged with a specific annotation.
-     *
-     * @param options    The default options to apply to all invocations through this new proxy.
-     * @param restricted An optional annotation class. If provided, the proxy will strictly reject any methods not
-     *                   annotated with this type.
-     * @return A customized proxy instance.
-     */
-    public T createWrapper(JGroupsRaftCommandOptions options, Class<? extends Annotation> restricted) {
-        if (type == WrapperType.GENERATED) {
-            //T dispatcher = useGeneratedSources();
-            return createGeneratedWithOptions();
-        }
-
-        T dispatcher = useProxy(restricted);
-        return createProxyWithOptions(dispatcher, options);
-    }
-
-    private static <T> boolean verifyGenerateClasses() {
-        return false;
-    }
-
-    private T useGeneratedSources() {
-        throw new UnsupportedOperationException();
-    }
-
-    @SuppressWarnings("unchecked")
-    private T useProxy(Class<? extends Annotation> restricted) {
-        StateMachineInvocationHandler<T> handler = new StateMachineInvocationHandler<>(concrete, registry, serializer, settable, restricted);
-        return (T) Proxy.newProxyInstance(
-                api.getClassLoader(),
-                new Class<?>[]{ api },
-                handler
-        );
-    }
-
-    private <O> O submitProxyWithOptions(T dispatcher, Function<T, O> function, JGroupsRaftCommandOptions options) {
-        T sm = createProxyWithOptions(dispatcher, options);
-        return function.apply(sm);
-    }
-
-    @SuppressWarnings("unchecked")
-    private T createProxyWithOptions(T dispatcher, JGroupsRaftCommandOptions options) {
-        InvocationHandler ih = (proxy, method, args) -> {
-            StateMachineInvocationHandler<T> handler = (StateMachineInvocationHandler<T>) Proxy.getInvocationHandler(dispatcher);
-            return handler.invoke(proxy, method, args, options);
-        };
-        return (T) Proxy.newProxyInstance(
-              api.getClassLoader(),
-              new Class<?>[]{ api },
-              ih
-        );
-    }
-
-    private <O> O submitGeneratedWithOptions() {
-        // Implementation for generated sources would go here
-        throw new UnsupportedOperationException();
-    }
-
-    private T createGeneratedWithOptions() {
-        throw new UnsupportedOperationException();
+        return proxy.submit(function, options);
     }
 
     /**
@@ -188,22 +110,86 @@ public final class StateMachineWrapper<T> implements StateMachine {
         delegate.writeContentTo(out);
     }
 
-    /**
-     * The mode to wrap the state machine implementation.
-     *
-     * <p>
-     * We only support {@link WrapperType#PROXY} at the moment.
-     * </p>
-     */
-    private enum WrapperType {
-        /**
-         * Utilize the Java {@link Proxy} API to redirect the calls to Raft and delegate the state machine.
-         */
-        PROXY,
+    private static final class ProxyWrapper<T> {
+        private static final VarHandle ARRAY_HANDLE = MethodHandles.arrayElementVarHandle(Object[].class);
 
-        /**
-         * Utilize code generated during compile-time to wrap the concrete state machine implementation.
-         */
-        GENERATED;
+        private final StateMachineInvocationHandler<T> handler;
+        private final T direct;
+        private final Class<T> api;
+
+        // Pre-builds one proxy per boolean option combination and selects via array index, eliminating some more expensive
+        // synchronization mechanisms like ThreadLocal or ConcurrentHashMap. The index is computed by bit-packing the boolean
+        // fields in the command options (e.g., linearizable | ignoreReturnValue -> 2-bit index into reads[4]).
+        //
+        // This scheme only works while command options are exclusively boolean.
+        // If a non-boolean option is added, this must be replaced with a different caching strategy.
+        // See ProxyWrapperArraySizeTest which guards this assumption.
+        private final T[] writes;
+        private final T[] reads;
+
+        @SuppressWarnings("unchecked")
+        public ProxyWrapper(Class<T> api, StateMachineInvocationHandler<T> handler) {
+            this.handler = handler;
+            this.direct = (T) Proxy.newProxyInstance(
+                    api.getClassLoader(),
+                    new Class<?>[]{ api },
+                    handler
+            );
+            this.api = api;
+            this.writes = (T[]) new Object[2];
+            this.reads = (T[]) new Object[4];
+        }
+
+        @SuppressWarnings("unchecked")
+        private T createIndirectProxy(JGroupsRaftCommandOptions options) {
+            InvocationHandler ih = (proxy, method, args) -> handler.invoke(proxy, method, args, options);
+            return (T) Proxy.newProxyInstance(api.getClassLoader(), new Class<?>[] { api }, ih);
+        }
+
+        public <O> O submit(Function<T, O> function, JGroupsRaftCommandOptions options) {
+            if (options == null) {
+                return function.apply(direct);
+            }
+
+            if (options instanceof JGroupsRaftWriteCommandOptions wco) {
+                return submitWrite(function, wco);
+            }
+
+            if (options instanceof JGroupsRaftReadCommandOptions rco) {
+                return submitRead(function, rco);
+            }
+
+            throw new IllegalStateException("Unknown command option type: " + options);
+        }
+
+        private <O> O submitWrite(Function<T, O> function, JGroupsRaftWriteCommandOptions options) {
+            int index = options.ignoreReturnValue() ? 1 : 0;
+            return function.apply(acquire(index, writes, options));
+        }
+
+        private <O> O submitRead(Function<T, O> function, JGroupsRaftReadCommandOptions options) {
+            int index = (options.linearizable() ? 2 : 0) | (options.ignoreReturnValue() ? 1 : 0);
+            return function.apply(acquire(index, reads, options));
+        }
+
+        private T acquire(int index, T[] arr, JGroupsRaftCommandOptions options) {
+            T t = get(arr, index);
+            if (t == null) {
+                synchronized (arr) {
+                    t = get(arr, index);
+                    if (t == null) {
+                        t = createIndirectProxy(options);
+                        ARRAY_HANDLE.setRelease(arr, index, t);
+                    }
+                }
+            }
+
+            return t;
+        }
+
+        @SuppressWarnings("unchecked")
+        private static <T> T get(T[] arr, int index) {
+            return (T) ARRAY_HANDLE.getAcquire(arr, index);
+        }
     }
 }
