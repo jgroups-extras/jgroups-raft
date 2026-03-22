@@ -1,7 +1,5 @@
 package org.jgroups.raft.internal.registry;
 
-import org.jgroups.raft.internal.command.JRaftCommand;
-
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
@@ -56,21 +54,6 @@ final class CommandMetadata implements ReplicatedMethodWrapper {
         } catch (IllegalAccessException e) {
             throw new IllegalStateException(String.format("Failed binding state machine method '%s' with (id=%d, version=%d)", method.getName(), id, version), e);
         }
-    }
-
-    void validate(Method method, JRaftCommand command) {
-        if (id != command.id()) {
-            throw new IllegalStateException(String.format("Command id mismatch. Expected: %s but got %s", this, command));
-        }
-        if (version != command.version())
-            throw new IllegalStateException(String.format("Command version mismatch. Expected: %s but got %s", this, command));
-
-        // TODO: ensure input and output types match the schema
-        /*if (!inputSchema.isTypeAcceptable(command.inputType()))
-            throw new IllegalArgumentException(String.format("Command input does not match schema input: %s is not %s", command.inputType(), inputSchema.type()));
-
-        if (!outputSchema().isTypeAcceptable(command.outputType()))
-            throw new IllegalArgumentException(String.format("Command output does not match schema input: %s is not %s", command.outputType(), outputSchema.type()));*/
     }
 
     @Override

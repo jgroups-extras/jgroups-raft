@@ -1,5 +1,7 @@
 package org.jgroups.raft.internal.statemachine;
 
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
@@ -12,6 +14,7 @@ import org.jgroups.raft.internal.serialization.Serializer;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -36,6 +39,7 @@ import java.util.function.Function;
  * @param <T> The type of the user-defined state machine interface.
  */
 final class StateMachineInvocationHandler<T> implements InvocationHandler {
+    private static final Log LOG = LogFactory.getLog(StateMachineInvocationHandler.class);
 
     private final T delegate;
     private final CommandRegistry<T> registry;
@@ -70,6 +74,10 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
         // We assume these are methods outside the state machine contract. Otherwise, they would be annotated.
         if (command == null)
             return method.invoke(delegate, args);
+
+        if (LOG.isTraceEnabled()) {
+            LOG.trace("Invoking method %s for (id=%d, version=%d), opts=%s and args=%s", method.getName(), command.id(), command.version(), options, Arrays.toString(args));
+        }
 
         RaftCommand wrapper = new RaftCommand(command, args, options);
 

@@ -4,9 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThatThrownBy;
 
 import org.jgroups.Global;
-import org.jgroups.raft.internal.command.JRaftCommand;
-import org.jgroups.raft.internal.command.JRaftReadCommand;
-import org.jgroups.raft.internal.command.JRaftWriteCommand;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
@@ -109,41 +106,6 @@ public class CommandMetadataTest {
         // Expected to throw an exception because Integer is not String.
         // The input payload violates the CommandSchema.
         assertThatThrownBy(() -> metadata.submit(123))
-                .isInstanceOf(Exception.class);
-    }
-
-    public void testCommandValidationSuccess() throws Throwable {
-        Method method = MetadataTarget.class.getMethod("noArg");
-        CommandMetadata metadata = new CommandMetadata(null, 8, 2, null, method,
-                List.of(new CommandSchema(null)), new CommandSchema(void.class));
-
-        JRaftCommand readCommand = JRaftReadCommand.create(8, 2);
-        JRaftCommand writeCommand = JRaftWriteCommand.create(8, 2);
-
-        // Neither should throw an exception since id and version perfectly match
-        metadata.validate(method, readCommand);
-        metadata.validate(null, writeCommand);
-    }
-
-    public void testCommandValidationIdMismatch() throws Throwable {
-        Method method = MetadataTarget.class.getMethod("noArg");
-        CommandMetadata metadata = new CommandMetadata(null, 9, 1, null, method,
-                List.of(new CommandSchema(null)), new CommandSchema(void.class));
-
-        JRaftCommand mismatchedIdCommand = JRaftReadCommand.create(10, 1);
-
-        assertThatThrownBy(() -> metadata.validate(method, mismatchedIdCommand))
-                .isInstanceOf(Exception.class);
-    }
-
-    public void testCommandValidationVersionMismatch() throws Throwable {
-        Method method = MetadataTarget.class.getMethod("noArg");
-        CommandMetadata metadata = new CommandMetadata(null, 10, 2, null, method,
-                List.of(new CommandSchema(null)), new CommandSchema(void.class));
-
-        JRaftCommand mismatchedVersionCommand = JRaftReadCommand.create(10, 1);
-
-        assertThatThrownBy(() -> metadata.validate(method, mismatchedVersionCommand))
                 .isInstanceOf(Exception.class);
     }
 }

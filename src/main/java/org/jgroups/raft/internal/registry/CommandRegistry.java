@@ -99,9 +99,6 @@ public class CommandRegistry<T> {
                     String message = String.format("Found duplicated method '%s' and '%s' both with (id = %d, version = %d)", metadata.method().getName(), other.method().getName(), id, version);
                     throw new IllegalStateException(message);
                 }
-
-                JRaftCommand command = commands.get(method);
-                metadata.validate(method, command);
             }
         }
     }
