@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 import org.jgroups.Global;
+import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.raft.api.SimpleKVStateMachine;
 import org.jgroups.raft.configuration.RuntimeProperties;
@@ -115,6 +116,9 @@ public class JGroupsRaftMetricsTest {
         leader.write(kv -> kv.handlePut("m1", "v1"));
         leader.write(kv -> kv.handlePut("m2", "v2"));
         leader.write(kv -> kv.handlePut("m3", "v3"));
+
+        RAFT raft = cluster.raftProtocol(cluster.leaderIndex());
+        assertThat(eventually(() -> raft.lastAppended() == raft.commitIndex(), 10, TimeUnit.SECONDS)).isTrue();
 
         LogMetrics leaderLog = leader.metrics().replicationMetrics();
         assertThat(leaderLog.getTotalLogEntries()).isGreaterThanOrEqualTo(3);

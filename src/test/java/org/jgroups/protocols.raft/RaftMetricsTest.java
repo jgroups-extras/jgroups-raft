@@ -175,6 +175,8 @@ public class RaftMetricsTest extends BaseStateMachineTest<CounterStateMachine> {
             addValue(handle(0), i + 1);
         }
 
+        assertThat(eventually(() -> leader.lastAppended() == leader.commitIndex(), 10, TimeUnit.SECONDS)).isTrue();
+
         assertThat(leader.log().size())
                 .as("Leader should have at least %d log entries", writeCount)
                 .isGreaterThanOrEqualTo(writeCount);
