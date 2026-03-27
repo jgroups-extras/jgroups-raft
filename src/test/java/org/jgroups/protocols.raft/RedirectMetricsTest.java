@@ -8,7 +8,9 @@ import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.internal.metrics.RedirectProtocolMetrics;
 import org.jgroups.raft.tests.harness.BaseStateMachineTest;
 import org.jgroups.raft.util.CounterStateMachine;
+import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
+import org.jgroups.util.Util;
 
 import java.lang.reflect.Field;
 import java.util.concurrent.TimeUnit;
@@ -43,6 +45,11 @@ public class RedirectMetricsTest extends BaseStateMachineTest<CounterStateMachin
     protected void amendRAFTConfiguration(RAFT raft) {
         raft.resendInterval(600_000).maxLogSize(1_000_000);
         raft.enableStats(true);
+    }
+
+    @Override
+    protected Protocol[] baseProtocolStackForNode(String name) {
+        return Util.getTestStack(createNewRaft(name), createRedirect());
     }
 
     @Override

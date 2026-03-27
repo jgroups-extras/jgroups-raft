@@ -10,7 +10,9 @@ import org.jgroups.raft.internal.metrics.RaftProtocolMetrics;
 import org.jgroups.raft.metrics.LatencyMetrics;
 import org.jgroups.raft.tests.harness.BaseStateMachineTest;
 import org.jgroups.raft.util.CounterStateMachine;
+import org.jgroups.stack.Protocol;
 import org.jgroups.util.Bits;
+import org.jgroups.util.Util;
 
 import java.lang.reflect.Field;
 import java.util.concurrent.TimeUnit;
@@ -53,10 +55,15 @@ public class RaftMetricsTest extends BaseStateMachineTest<CounterStateMachine> {
     }
 
     @Override
+    protected Protocol[] baseProtocolStackForNode(String name) {
+        return Util.getTestStack(createNewRaft(name), createRedirect());
+    }
+
+    @Override
     protected void afterClusterCreation() throws Exception {
         super.afterClusterCreation();
-        raft(0).setLeaderAndTerm(address(0));
-        raft(1).setLeaderAndTerm(address(0));
+        raft(0).setLeaderAndTerm(address(0), 20);
+        raft(1).setLeaderAndTerm(address(0), 20);
     }
 
     /**
