@@ -25,7 +25,7 @@
         <testng.version>7.12.0</testng.version>
         <assertj.version>3.27.7</assertj.version>
         <jgroups.version>5.5.4.Final</jgroups.version>
-        <log4j.version>2.25.3</log4j.version>
+        <log4j.version>2.25.4</log4j.version>
         <jmh.version>1.37</jmh.version>
         <mashona.version>1.1.0</mashona.version>
         <hdrhistogram.version>2.2.2</hdrhistogram.version>
