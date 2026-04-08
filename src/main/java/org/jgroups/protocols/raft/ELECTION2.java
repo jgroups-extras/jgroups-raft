@@ -47,7 +47,7 @@ import java.util.Map;
  * @since 1.0.12
  * @see ELECTION
  * @see <a href="https://web.stanford.edu/~ouster/cgi-bin/papers/OngaroPhD.pdf">Ongaro's dissertation</a>
- * @see <a href="https://github.com/belaban/jgroups-raft/issues/211">Issue #221</a>
+ * @see <a href="https://github.com/jgroups-extras/jgroups-raft/issues/211">Issue #221</a>
  * @author José Bolina
  */
 @MBean(description = "Performs leader election with a pre-voting phase.")

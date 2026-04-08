@@ -32,7 +32,7 @@ import org.testng.annotations.Test;
 
 /**
  * Tests replaying of requests after leader changes, to advance commit index<be/>
- * ref: https://github.com/belaban/jgroups-raft/issues/122
+ * ref: https://github.com/jgroups-extras/jgroups-raft/issues/122
  * @author Bela Ban
  * @since  1.0.7
  */
