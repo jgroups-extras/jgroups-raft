@@ -4,7 +4,7 @@ José Bolina <jbolina@redhat.com>
 :toc2:
 :toclevels: 3
 :icons:
-:homepage: http://belaban.github.io/jgroups-raft
+:homepage: http://jgroups-extras.github.io/jgroups-raft
 :source-highlighter: pygments
 :doctype: book
 :sectnums:
