@@ -21,7 +21,7 @@ import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
- * Tests that a member cannot vote twice. Issue: https://github.com/belaban/jgroups-raft/issues/24
+ * Tests that a member cannot vote twice. Issue: https://github.com/jgroups-extras/jgroups-raft/issues/24
  * @author Bela Ban
  * @since  0.2
  */
@@ -40,8 +40,8 @@ public class VoteTest extends BaseRaftElectionTest.ChannelBased {
     /**
      * Membership is {A,B,C,D}, majority 3. Members A and B are up. Try to append an entry won't work as A and B don't
      * have the majority. Now restart B. The entry must still not be able to commit as B's vote shouldn't count twice.<p/>
-     * https://github.com/belaban/jgroups-raft/issues/24
-     * @deprecated Voting has changed in 1.0.6, so this test is moot (https://github.com/belaban/jgroups-raft/issues/20)
+     * https://github.com/jgroups-extras/jgroups-raft/issues/24
+     * @deprecated Voting has changed in 1.0.6, so this test is moot (https://github.com/jgroups-extras/jgroups-raft/issues/20)
      */
     @Deprecated
     public void testMemberVotesTwice(Class<?> ignore) throws Exception {

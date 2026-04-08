@@ -225,7 +225,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
     }
 
     /**
-     * Tests https://github.com/belaban/jgroups-raft/issues/30-31: correct commit_index after leader restart, and
+     * Tests https://github.com/jgroups-extras/jgroups-raft/issues/30-31: correct commit_index after leader restart, and
      * populating request table in RAFT on leader change. Note that the commit index should still be 0, as the change
      * on the leader should throw an exception!
      */

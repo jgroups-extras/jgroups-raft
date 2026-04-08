@@ -26,7 +26,7 @@ import org.testng.annotations.Test;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests leader election on a merge (https://github.com/belaban/jgroups-raft/issues/125). Verifies that there can be
+ * Tests leader election on a merge (https://github.com/jgroups-extras/jgroups-raft/issues/125). Verifies that there can be
  * at most 1 leader during concurrent election rounds run by different coordinators.
  * @author Bela Ban
  * @since  1.0.10
@@ -56,7 +56,7 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
      * Members {A,B,C,D,E} are split into {A,B,C,D} and {E,D,C,B}. A and E are coordinators and start leader elections;
      * but only one of them must become leader. Because members B, C and D are part of _both_ subgroups, they can
      * potentially vote for both A and E, leading to 2 leaders.<br/>
-     * The fix implemented in https://github.com/belaban/jgroups-raft/issues/125 will ensure that members only vote
+     * The fix implemented in https://github.com/jgroups-extras/jgroups-raft/issues/125 will ensure that members only vote
      * for A _or_ E, but not both, in a given term.
      */
     //@Test(invocationCount=10)

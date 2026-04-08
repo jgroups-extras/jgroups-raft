@@ -75,7 +75,7 @@ public class RequestTable<T> {
      */
     public boolean add(long index, T sender, Supplier<Integer> majority) {
         // we're getting an ack for index, but we also need to ack entries lower than index (if any, should only
-        // happen on leader change): https://github.com/belaban/jgroups-raft/issues/122
+        // happen on leader change): https://github.com/jgroups-extras/jgroups-raft/issues/122
         if (requests == null) {
             return false;
         }

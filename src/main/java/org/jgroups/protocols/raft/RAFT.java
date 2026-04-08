@@ -563,7 +563,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return changeMembers(name, InternalCommand.Type.removeServer);
     }
 
-    /** Creates a snapshot and truncates the log. See https://github.com/belaban/jgroups-raft/issues/7 for details */
+    /** Creates a snapshot and truncates the log. See https://github.com/jgroups-extras/jgroups-raft/issues/7 for details */
     @ManagedOperation(description="Creates a new snapshot and truncates the log")
     public void snapshot() throws Exception {
         snapshotAsync().get();
@@ -1044,7 +1044,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader() + ")");
     }
 
-    /** Populate with non-committed entries (from log) (https://github.com/belaban/jgroups-raft/issues/31) */
+    /** Populate with non-committed entries (from log) (https://github.com/jgroups-extras/jgroups-raft/issues/31) */
     protected void createRequestTable() {
         request_table=new RequestTable<>();
         for(long i=this.commit_index+1; i <= this.last_appended; i++)
@@ -1150,7 +1150,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             down_prot.down(msg);
             return;
         }
-        if(this.commit_index < this.last_appended) // fixes https://github.com/belaban/jgroups-raft/issues/30
+        if(this.commit_index < this.last_appended) // fixes https://github.com/jgroups-extras/jgroups-raft/issues/30
             resend(member, this.commit_index+1, this.last_appended);
     }
 
@@ -1165,7 +1165,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         InternalCommand cmd=new InternalCommand(type, name);
         byte[] buf=Util.streamableToByteBuffer(cmd);
 
-        // only add/remove one server at a time (https://github.com/belaban/jgroups-raft/issues/175)
+        // only add/remove one server at a time (https://github.com/jgroups-extras/jgroups-raft/issues/175)
         return add_server_future=add_server_future
                 // Use handle, so we can execute even if the previous execution failed.
                 .handle((ignore, t) -> setAsync(buf, 0, buf.length, true, null))
