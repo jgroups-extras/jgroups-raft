@@ -3,7 +3,7 @@
 :toc2:
 :toclevels: 3
 :icons:
-:homepage: http://belaban.github.io/jgroups-raft
+:homepage: https://jgroups-extras.github.io/jgroups-raft
 :source-highlighter: pygments
 :iconsdir: ./images/icons
 
