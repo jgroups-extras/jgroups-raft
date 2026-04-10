@@ -36,6 +36,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * Abstract leader election algorithm functionalities.
@@ -492,7 +493,13 @@ public abstract class BaseElection extends Protocol {
     }
 
     private static boolean isMajorityAvailable(View view, RAFT raft) {
-        return view != null && view.size() >= raft.majority();
+        if (view == null) return false;
+
+        Collection<String> members = raft.members();
+        long voting = Stream.of(view.getMembersRaw())
+                .filter(a -> members.contains(Utils.extractRaftId(a)))
+                .count();
+        return voting >= raft.majority();
     }
 
     /**

@@ -1,8 +1,11 @@
 package org.jgroups.perf.counter;
 
-import org.HdrHistogram.AbstractHistogram;
-import org.HdrHistogram.Histogram;
-import org.jgroups.*;
+import org.jgroups.Address;
+import org.jgroups.JChannel;
+import org.jgroups.Message;
+import org.jgroups.Receiver;
+import org.jgroups.Version;
+import org.jgroups.View;
 import org.jgroups.annotations.Property;
 import org.jgroups.blocks.MethodCall;
 import org.jgroups.blocks.RequestOptions;
@@ -14,7 +17,13 @@ import org.jgroups.raft.blocks.CounterService;
 import org.jgroups.raft.blocks.RaftCounter;
 import org.jgroups.tests.perf.PerfUtil;
 import org.jgroups.tests.perf.PerfUtil.Config;
-import org.jgroups.util.*;
+import org.jgroups.util.Bits;
+import org.jgroups.util.DefaultThreadFactory;
+import org.jgroups.util.Rsp;
+import org.jgroups.util.RspList;
+import org.jgroups.util.Streamable;
+import org.jgroups.util.ThreadFactory;
+import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.io.DataOutput;
@@ -28,6 +37,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+
+import org.HdrHistogram.AbstractHistogram;
+import org.HdrHistogram.Histogram;
 
 
 /**
@@ -363,7 +375,7 @@ public class CounterPerf implements Receiver {
                                                    total_reqs_sec, print(globalHistogram, print_details))));
         System.out.println("\n\n");
     }
-    
+
 
     protected void changeFieldAcrossCluster(Field field, Object value) throws Exception {
         disp.callRemoteMethods(null, new MethodCall(SET, field.getName(), value), RequestOptions.SYNC());

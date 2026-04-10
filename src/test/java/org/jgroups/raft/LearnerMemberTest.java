@@ -1,25 +1,32 @@
 package org.jgroups.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+import static org.jgroups.raft.tests.harness.RaftAssertion.assertCommitIndex;
+import static org.jgroups.raft.tests.harness.RaftAssertion.assertLeaderlessOperationThrows;
+import static org.jgroups.raft.tests.harness.RaftAssertion.waitUntilAllRaftsHaveLeader;
+
 import org.jgroups.Global;
 import org.jgroups.JChannel;
+import org.jgroups.protocols.DISCARD;
+import org.jgroups.protocols.TP;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.tests.harness.BaseRaftChannelTest;
+import org.jgroups.stack.ProtocolStack;
 import org.jgroups.util.Util;
-import org.testng.annotations.AfterMethod;
-import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.jgroups.raft.tests.harness.RaftAssertion.assertCommitIndex;
-import static org.jgroups.raft.tests.harness.RaftAssertion.waitUntilAllRaftsHaveLeader;
+import org.testng.annotations.AfterMethod;
+import org.testng.annotations.Test;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class LearnerMemberTest extends BaseRaftChannelTest {
@@ -312,14 +319,301 @@ public class LearnerMemberTest extends BaseRaftChannelTest {
         assertThat(after.raftId()).isNotEqualTo(leader.raftId());
     }
 
-    private RAFT follower() {
+    public void testLeaderSelfRemovalFromTwoNodeCluster() throws Exception {
+        withClusterSize(2);
+        createCluster();
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT leader = leader();
+        String removedRaftId = leader.raftId();
+
+        leader.removeServer(removedRaftId).get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        BooleanSupplier membersUpdated = () -> Arrays.stream(channels())
+                .map(this::raft)
+                .allMatch(r -> r.members().size() == 1);
+        assertThat(eventually(membersUpdated, 10, TimeUnit.SECONDS)).isTrue();
+
         for (JChannel channel : channels()) {
             RAFT r = raft(channel);
-            if (!r.isLeader()) {
-                return r;
+            assertThat(r.members()).hasSize(1).doesNotContain(removedRaftId);
+        }
+
+        // With a single remaining member (majority = 1), a new leader should be elected.
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        RAFT newLeader = leader();
+        assertThat(newLeader.raftId()).isNotEqualTo(removedRaftId);
+    }
+
+    public void testLeaderSelfRemovalWithFollowerDown() throws Exception {
+        withClusterSize(3);
+        createCluster();
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT leader = leader();
+        String removedRaftId = leader.raftId();
+
+        int downIndex = indexOf(false);
+        Util.close(channel(downIndex));
+        channels()[downIndex] = null;
+        Util.waitUntilAllChannelsHaveSameView(10_000, 150, actualChannels());
+
+        // C_old majority = 2, achieved with leader's vote + remaining follower's ack.
+        leader.removeServer(removedRaftId).get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        // C_new majority = 2, but only one member is alive. No leader can be elected.
+        RAFT remaining = Arrays.stream(actualChannels())
+                .map(this::raft)
+                .filter(r -> !r.raftId().equals(removedRaftId))
+                .findFirst()
+                .orElseThrow();
+        BaseElection be = RAFT.findProtocol(BaseElection.class, remaining, true);
+        assertThat(eventually(() -> !be.isVotingThreadRunning(), 10, TimeUnit.SECONDS)).isTrue();
+        assertThat(remaining.isLeader()).isFalse();
+        assertThat(leader()).isNull();
+
+        // Without a leader, operations on the remaining member should be rejected.
+        assertLeaderlessOperationThrows(() -> remaining.set(new byte[] { 1 }, 0, 1, 500, TimeUnit.MILLISECONDS));
+
+        // Restart the downed follower to restore majority.
+        createCluster();
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        RAFT newLeader = leader();
+        assertThat(newLeader).isNotNull();
+        assertThat(newLeader.raftId()).isNotEqualTo(removedRaftId);
+    }
+
+    public void testLeaderSelfRemovalThenChannelClose() throws Exception {
+        withClusterSize(3);
+        createCluster();
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT leader = leader();
+        String removedRaftId = leader.raftId();
+        int leaderIndex = indexOf(true);
+
+        leader.removeServer(removedRaftId).get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        close(leaderIndex);
+        Util.waitUntilAllChannelsHaveSameView(10_000, 150, actualChannels());
+
+        waitUntilAllRaftsHaveLeader(actualChannels(), this::raft);
+        RAFT newLeader = leader();
+        assertThat(newLeader).isNotNull();
+        assertThat(newLeader.raftId()).isNotEqualTo(removedRaftId);
+
+        byte[] payload = new byte[] { 1 };
+        newLeader.set(payload, 0, 1, 10, TimeUnit.SECONDS);
+        assertCommitIndex(10_000, newLeader.lastAppended(), newLeader.lastAppended(), this::raft, actualChannels());
+    }
+
+    public void testRemoveAlreadyRemovedNode() throws Exception {
+        withClusterSize(3);
+        createCluster();
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT leader = leader();
+        String removedRaftId = leader.raftId();
+
+        leader.removeServer(removedRaftId).get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        RAFT newLeader = leader();
+
+        // Removing the same node again should complete without error.
+        newLeader.removeServer(removedRaftId).get(10, TimeUnit.SECONDS);
+
+        BooleanSupplier membersUpdated = () -> Arrays.stream(channels())
+                .map(this::raft)
+                .allMatch(r -> r.members().size() == 2);
+        assertThat(eventually(membersUpdated, 10, TimeUnit.SECONDS)).isTrue();
+
+        for (JChannel channel : channels()) {
+            RAFT r = raft(channel);
+            assertThat(r.members()).hasSize(2).doesNotContain(removedRaftId);
+        }
+
+        byte[] payload = new byte[] { 1 };
+        newLeader.set(payload, 0, 1, 10, TimeUnit.SECONDS);
+        assertCommitIndex(10_000, newLeader.lastAppended(), newLeader.lastAppended(), this::raft, channels());
+    }
+
+    public void testForceLeaderElectionThenRemoveOldLeader() throws Exception {
+        withClusterSize(3);
+        createCluster();
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT oldLeader = leader();
+        String oldLeaderRaftId = oldLeader.raftId();
+
+        // Transfer leadership to a different node.
+        BaseElection election = RAFT.findProtocol(BaseElection.class, raft(0), true);
+        election.startForcedElection(oldLeader.getAddress())
+                .toCompletableFuture().get(30, TimeUnit.SECONDS);
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        RAFT newLeader = leader();
+        assertThat(newLeader.raftId()).isNotEqualTo(oldLeaderRaftId);
+
+        // Remove the old leader from the cluster. It becomes a Learner.
+        newLeader.removeServer(oldLeaderRaftId).get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> oldLeader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        for (JChannel channel : channels()) {
+            RAFT r = raft(channel);
+            assertThat(r.members()).hasSize(2).doesNotContain(oldLeaderRaftId);
+        }
+
+        // Cluster continues to operate.
+        byte[] payload = new byte[] { 1 };
+        newLeader.set(payload, 0, 1, 10, TimeUnit.SECONDS);
+        assertCommitIndex(10_000, newLeader.lastAppended(), newLeader.lastAppended(), this::raft, channels());
+    }
+
+    public void testEntriesSurviveLeaderSelfRemoval() throws Exception {
+        withClusterSize(3);
+        createCluster();
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT leader = leader();
+        String removedRaftId = leader.raftId();
+
+        byte[] payload = new byte[] { 1 };
+        for (int i = 0; i < 16; i++) {
+            leader.set(payload, 0, 1, 10, TimeUnit.SECONDS);
+        }
+        assertCommitIndex(10_000, leader.lastAppended(), leader.lastAppended(), this::raft, channels());
+
+        leader.removeServer(removedRaftId).get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        RAFT newLeader = leader();
+        assertThat(newLeader.raftId()).isNotEqualTo(removedRaftId);
+
+        // Entries from before the self-removal are committed on all nodes, including the former leader (now Learner).
+        assertCommitIndex(10_000, newLeader.lastAppended(), newLeader.lastAppended(), this::raft, channels());
+
+        // New leader continues to operate and the Learner catches up with the new entries.
+        for (int i = 0; i < 8; i++) {
+            newLeader.set(payload, 0, 1, 10, TimeUnit.SECONDS);
+        }
+        assertCommitIndex(10_000, newLeader.lastAppended(), newLeader.lastAppended(), this::raft, channels());
+    }
+
+    public void testConcurrentOperationsDuringLeaderSelfRemoval() throws Exception {
+        withClusterSize(3);
+        createCluster();
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT leader = leader();
+        String removedRaftId = leader.raftId();
+
+        // Submit the self-removal first, its log entry gets a lower index.
+        CompletableFuture<byte[]> removal = leader.removeServer(removedRaftId);
+
+        // Submit operations while the removal is being processed.
+        List<CompletableFuture<byte[]>> futures = new ArrayList<>();
+        byte[] payload = new byte[] { 1 };
+        for (int i = 0; i < 50; i++) {
+            try {
+                futures.add(leader.setAsync(payload, 0, payload.length));
+            } catch (Exception e) {
+                break;
             }
         }
 
-        throw new AssertionError("Follower not found");
+        removal.get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        // All submitted futures must complete within a bounded time.
+        for (CompletableFuture<byte[]> future : futures) {
+            try {
+                future.get(10, TimeUnit.SECONDS);
+            } catch (ExecutionException ignored) { }
+        }
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        RAFT newLeader = leader();
+        assertThat(newLeader.raftId()).isNotEqualTo(removedRaftId);
+    }
+
+    public void testPendingFuturesCompleteDuringLeaderSelfRemoval() throws Exception {
+        withClusterSize(3);
+        createCluster();
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        RAFT leader = leader();
+        String removedRaftId = leader.raftId();
+        int leaderIndex = indexOf(true);
+
+        // Block followers from receiving messages, preventing entries from committing.
+        for (int i = 0; i < channels().length; i++) {
+            if (i == leaderIndex) continue;
+            JChannel ch = channel(i);
+            ch.getProtocolStack().insertProtocol(
+                    new DISCARD().discardAll(true).setAddress(ch.getAddress()),
+                    ProtocolStack.Position.ABOVE, TP.class);
+        }
+
+        // Submit operations.
+        // They are appended to the leader's log but cannot commit.
+        List<CompletableFuture<byte[]>> futures = new ArrayList<>();
+        byte[] payload = new byte[] { 1 };
+        for (int i = 0; i < 5; i++) {
+            futures.add(leader.setAsync(payload, 0, payload.length));
+        }
+
+        // Submit the self-removal while the operations are still pending.
+        CompletableFuture<byte[]> removal = leader.removeServer(removedRaftId);
+
+        // Wait for all entries to be appended to the log.
+        assertThat(eventually(() -> leader.lastAppended() >= futures.size() + 1, 10, TimeUnit.SECONDS)).isTrue();
+
+        // Verify the operations are still pending.
+        for (CompletableFuture<byte[]> future : futures) {
+            assertThat(future.isDone()).isFalse();
+        }
+
+        // Resume communication, entries commit, and the leader steps down.
+        for (int i = 0; i < channels().length; i++) {
+            if (i == leaderIndex) continue;
+            channel(i).getProtocolStack().removeProtocol(DISCARD.class);
+        }
+
+        removal.get(10, TimeUnit.SECONDS);
+        assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
+
+        // All previously pending operations completed, they should not hang.
+        for (CompletableFuture<byte[]> future : futures) {
+            try {
+                future.get(10, TimeUnit.SECONDS);
+            } catch (ExecutionException ignored) { }
+        }
+
+        waitUntilAllRaftsHaveLeader(channels(), this::raft);
+        RAFT newLeader = leader();
+        assertThat(newLeader.raftId()).isNotEqualTo(removedRaftId);
+    }
+
+    private int indexOf(boolean isLeader) {
+        JChannel[] channels = channels();
+        for (int i = 0; i < channels.length; i++) {
+            if (channels[i] != null && raft(channels[i]).isLeader() == isLeader)
+                return i;
+        }
+        throw new AssertionError((isLeader ? "Leader" : "Follower") + " not found");
+    }
+
+    private RAFT follower() {
+        return raft(indexOf(false));
     }
 }
