@@ -61,11 +61,7 @@ public class RequestTable<T> {
         // Keep throwable so any entries created *after* destroying also complete exceptionally.
         destroyed = t;
         if (requests != null) {
-            requests.forEach((e, ignore) -> {
-                if (!e.committed) {
-                    e.notify(t);
-                }
-            });
+            requests.forEach((e, ignore) -> e.notify(t));
         }
     }
 
