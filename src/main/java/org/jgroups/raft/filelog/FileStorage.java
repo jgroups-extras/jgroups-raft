@@ -236,6 +236,10 @@ public final class FileStorage implements Closeable {
       }
    }
 
+   public boolean hasPendingFlush() {
+      return requiredFlush != Flush.None;
+   }
+
    private static FileChannel tryCreatePMEMFileChannel(File tmpFile, long fileSize) throws IOException {
       if (FileProvider.isPMEMAvailable()) {
          final FileChannel pmemChannel = FileProvider.openPMEMChannel(tmpFile, (int) fileSize, true, true);

@@ -50,9 +50,9 @@ public class MetadataStorage {
 
    private static final String FILE_NAME = "metadata.raft";
 
-   // page 4 RAft original paper: COMMIT INDEX DOESN'T REQUIRE FDATASYNC
+   // page 4 Raft original paper: COMMIT INDEX DOESN'T REQUIRE FDATASYNC
    private static final int COMMIT_INDEX_POS = 0;
-   // page 4 RAft original paper: RARE BUT REQUIRES FDATASYNC
+   // page 4 Raft original paper: RARE BUT REQUIRES FDATASYNC
    private static final int CURRENT_TERM_POS = COMMIT_INDEX_POS + Global.LONG_SIZE;
    // Check if file length is != from the last FSYNC: this is variable-sized!
    private static final int VOTED_FOR_POS = CURRENT_TERM_POS + Global.LONG_SIZE;
@@ -61,8 +61,13 @@ public class MetadataStorage {
    private boolean fsync;
 
    public MetadataStorage(File parentDir, boolean fsync) {
-      fileStorage = new FileStorage(new File(parentDir, FILE_NAME));
-      this.fsync = fsync;
+      this(new FileStorage(new File(parentDir, FILE_NAME)), fsync);
+   }
+
+   // Package-private for testing purposes.
+   MetadataStorage(FileStorage fileStorage, boolean fsync) {
+       this.fileStorage = fileStorage;
+       this.fsync = fsync;
    }
 
    public void useFsync(boolean value) {
@@ -137,6 +142,9 @@ public class MetadataStorage {
    public void setVotedFor(Address address) throws IOException {
       if (address == null) {
          fileStorage.truncateTo(VOTED_FOR_POS);
+         if (fsync) {
+             fileStorage.flush();
+         }
          return;
       }
       ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -148,6 +156,9 @@ public class MetadataStorage {
       buffer.put(data);
       buffer.flip();
       fileStorage.write(VOTED_FOR_POS);
+      if (fsync) {
+          fileStorage.flush();
+      }
    }
 
    private static Address readAddress(ByteBuffer buffer) throws IOException, ClassNotFoundException {
@@ -233,7 +244,7 @@ public class MetadataStorage {
 
         @Override
         public void fsync() throws IOException {
-            channel.force(true);
+            channel.force(false);
         }
     }
 
