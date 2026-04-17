@@ -17,15 +17,28 @@ import java.util.Objects;
 /**
  * Base class to store data in a file.
  *
+ * <p>
+ * Durable storage for a single file with buffered positional I/O. Callers prepare data via {@link #ioBufferWith(int)},
+ * then issue a positional {@link #write(long)}. Writes are guaranteed to be complete; partial writes from the underlying
+ * channel are retried automatically, and zero-progress writes result in an {@link IOException}. Data becomes durable only
+ * after an explicit {@link #flush()}.
+ * </p>
+ *
+ * <p>
+ * The file may optionally pre-allocate space beyond the written data to reduce metadata updates on subsequent writes
+ * (write-ahead allocation).
+ * </p>
+ *
  * @author Pedro Ruivo
  * @since 0.5.4
  */
-public final class FileStorage implements Closeable {
+final class FileStorage implements Closeable {
 
    private enum Flush {
       Metadata, Data, None
    }
 
+   private final FileHandleProvider fileHandleProvider;
    private final boolean isWindowsOS;
    private final File storageFile;
    private FileChannel channel;
@@ -42,6 +55,11 @@ public final class FileStorage implements Closeable {
    }
 
    public FileStorage(final File storageFile, final int writeAheadBytes) {
+      this(storageFile, writeAheadBytes, FileHandleProvider.defaultProvider());
+   }
+
+   // Package-private for testing purposes.
+   FileStorage(final File storageFile, final int writeAheadBytes, FileHandleProvider fileHandleProvider) {
       if (writeAheadBytes < 0) {
          throw new IllegalArgumentException("writeAheadBytes must be greater than or equals to 0");
       }
@@ -50,8 +68,20 @@ public final class FileStorage implements Closeable {
       this.fileSize = -1;
       this.requiredFlush = Flush.None;
       this.isWindowsOS = Util.checkForWindows();
+      this.fileHandleProvider = fileHandleProvider;
    }
 
+   /**
+    * Returns a direct {@link ByteBuffer} with at least the requested capacity, ready for writing.
+    *
+    * <p>
+    * The returned buffer is reused across calls when its capacity is sufficient, avoiding repeated allocation. The caller
+    * fills the buffer and then calls {@link #write(long)}.
+    * </p>
+    *
+    * @param requiredCapacity minimum number of bytes the buffer must hold
+    * @return a direct byte buffer positioned at 0 with the given limit
+    */
    public ByteBuffer ioBufferWith(final int requiredCapacity) {
       final ByteBuffer availableWriteBuffer = this.ioBuffer;
       if (availableWriteBuffer != null && availableWriteBuffer.capacity() >= requiredCapacity) {
@@ -78,19 +108,32 @@ public final class FileStorage implements Closeable {
 
    public void open() throws IOException {
       if (channel == null) {
-         final FileChannel pmemChannel = FileProvider.openPMEMChannel(storageFile, 1024, true, true);
-         if (pmemChannel == null) {
-            final RandomAccessFile raf = new RandomAccessFile(storageFile, "rw");
-            this.channel = raf.getChannel();
-            this.raf = raf;
-         } else {
-            this.channel = pmemChannel;
-            this.raf = null;
-         }
+         FileHandleProvider.Handle handle = fileHandleProvider.open(storageFile);
+         this.channel = handle.channel();
+         this.raf = handle.raf();
          fileSize = channel.size();
       }
    }
 
+   /**
+    * Writes the contents of the I/O buffer to the file at the given position.
+    *
+    * <p>
+    * The buffer must be prepared beforehand via {@link #ioBufferWith(int)}. All remaining bytes in the buffer are guaranteed
+    * to be written; partial writes are retried until complete. If the channel makes no progress (zero bytes written), an
+    * {@link IOException} is thrown.
+    * </p>
+    *
+    * <p>
+    * When the write extends beyond the current file size, the file is grown automatically. If write-ahead allocation is
+    * configured, additional space is pre-allocated to reduce future metadata updates.
+    * </p>
+    *
+    * @param position the file offset at which to begin writing
+    * @return the total number of bytes written
+    * @throws IOException if the write fails or makes no progress
+    * @throws IllegalStateException if the I/O buffer was not prepared or the file is not open
+    */
    public int write(final long position) throws IOException {
       if (!ioBufferReady) {
          throw new IllegalStateException("must prepare the IO buffer first!");
@@ -110,14 +153,21 @@ public final class FileStorage implements Closeable {
          requiredFlush = Flush.Metadata;
       }
       try {
-         final int written = channel.write(ioBuffer, position);
-         if (written < dataLength && !growFile) {
-            fileSize = position + written;
+         int totalWritten = 0;
+         // Keep writing the full buffer and track for short writes.
+         while (ioBuffer.hasRemaining()) {
+            final int written = channel.write(ioBuffer, position + totalWritten);
+            if (written == 0) {
+               String message = String.format("No progress writing to %s at position %d: 0 bytes written, %d remaining",
+                       storageFile.getAbsolutePath(), position + totalWritten, ioBuffer.remaining());
+               throw new IOException(message);
+            }
+            totalWritten += written;
          }
-         if (written > 0 && requiredFlush == Flush.None) {
+         if (totalWritten > 0 && requiredFlush == Flush.None) {
             requiredFlush = Flush.Data;
          }
-         return written;
+         return totalWritten;
       } finally {
          ioBufferReady = false;
       }
@@ -125,8 +175,8 @@ public final class FileStorage implements Closeable {
 
    public ByteBuffer read(final long position, final int expectedLength) throws IOException {
       final FileChannel channel = checkOpen();
-         final ByteBuffer readBuffer = ioBufferWith(expectedLength);
-         assert ioBufferReady;
+      final ByteBuffer readBuffer = ioBufferWith(expectedLength);
+      assert ioBufferReady;
       try {
          channel.read(readBuffer, position);
          return readBuffer.flip();
@@ -147,6 +197,16 @@ public final class FileStorage implements Closeable {
       return channel;
    }
 
+   /**
+    * Flushes any pending writes to durable storage.
+    *
+    * <p>
+    * Uses {@code fdatasync} semantics ({@code force(false)}) for data-only changes, and {@code fsync} semantics
+    * ({@code force(true)}) when file metadata (size) also changed. No-op if no writes have occurred since the last flush.
+    * </p>
+    *
+    * @throws IOException if the flush fails
+    */
    public void flush() throws IOException {
       checkOpen();
       if (requiredFlush == Flush.None) {
@@ -168,6 +228,12 @@ public final class FileStorage implements Closeable {
       }
    }
 
+   /**
+    * Truncates the file to the given size, discarding any data beyond it.
+    *
+    * @param size the new file size in bytes
+    * @throws IOException if the truncation fails
+    */
    public void truncateTo(final long size) throws IOException {
       final FileChannel existing = checkOpen();
       existing.truncate(size);
@@ -175,6 +241,18 @@ public final class FileStorage implements Closeable {
       requiredFlush = Flush.Metadata;
    }
 
+   /**
+    * Discards the beginning of the file, keeping only data from the given position onward.
+    *
+    * <p>
+    * The retained data is copied to a temporary file which then replaces the original. The file is reopened after the
+    * operation completes.
+    * </p>
+    *
+    * @param position the first byte position to keep
+    * @throws IOException if the operation fails
+    * @throws IllegalArgumentException if position exceeds the file size
+    */
    public void truncateFrom(final long position) throws IOException {
       final FileChannel existing = checkOpen();
       if (position > fileSize) {
