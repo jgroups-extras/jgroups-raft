@@ -173,9 +173,9 @@ public class InMemoryLog implements Log {
     @Override
     public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
         long start = Math.max(start_index, entries.getHeadSequence());
-        long end = Math.min(end_index, entries.getTailSequence());
+        long end = Math.min(end_index, entries.getTailSequence() - 1);
 
-        for(long i=start; i < end; i++) {
+        for(long i=start; i <= end; i++) {
             LogEntry entry=entries.get(i);
             function.accept(entry, i);
         }
@@ -183,7 +183,7 @@ public class InMemoryLog implements Log {
 
     @Override
     public void forEach(ObjLongConsumer<LogEntry> function) {
-        forEach(function, Math.max(1, entries.getHeadSequence()), entries.getTailSequence());
+        forEach(function, Math.max(1, entries.getHeadSequence()), entries.getTailSequence() - 1);
     }
 
     public long sizeInBytes() {

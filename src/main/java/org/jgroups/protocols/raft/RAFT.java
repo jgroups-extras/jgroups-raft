@@ -363,8 +363,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         super.resetStats();
         num_snapshots=num_resends=num_successful_append_requests=num_failed_append_requests_not_found
           =num_failed_append_requests_wrong_term=num_snapshot_received=0;
-        if(log_impl instanceof LogCache)
-            ((LogCache)log_impl).resetStats();
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        if(lcc != null)
+            lcc.resetStats();
         drained_total.reset(); drained_avg.clear(); drained_down.reset(); drained_up.reset();
         avg_append_entries_batch_size.clear();
         metrics = stats ? new RaftProtocolMetrics() : null;
@@ -387,8 +388,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         _max_log_cache_size=size;
         if(log_impl == null) // initial configuration
             return this;
-        if(log_impl instanceof LogCache)
-            ((LogCache)log_impl).maxSize(size);
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        if(lcc != null)
+            lcc.maxSize(size);
         else {
             if(size <= 0)
                 disableLogCache();
@@ -405,17 +407,20 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description="Number of times the log cache has been trimmed",type=AttributeType.SCALAR)
     public int logCacheNumTrims() {
-        return log_impl instanceof LogCache? ((LogCache)log_impl).numTrims() : 0;
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        return lcc != null ? lcc.numTrims() : 0;
     }
 
     @ManagedAttribute(description="Number of times the cache has been accessed",type=AttributeType.SCALAR)
     public int logCacheNumAccesses() {
-        return log_impl instanceof LogCache? ((LogCache)log_impl).numAccesses() : 0;
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        return lcc != null ? lcc.numAccesses() : 0;
     }
 
     @ManagedAttribute(description="Hit ratio of the cache")
     public double logCacheHitRatio() {
-        return log_impl instanceof LogCache? ((LogCache)log_impl).hitRatio() : 0;
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        return lcc != null ? lcc.hitRatio() : 0;
     }
 
     @ManagedAttribute(description = "Mean latency of replication in nanoseconds", type = AttributeType.TIME, unit = TimeUnit.NANOSECONDS)
@@ -471,10 +476,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description="Describes the log")
     public String logDescription() {
-        if(log_impl instanceof LogCache) {
-            LogCache lc=(LogCache)log_impl;
-            return String.format("%s (%d/%d) -> %s", lc.getClass().getSimpleName(), lc.cacheSize(), lc.maxSize(),
-                                 lc.log().getClass().getSimpleName());
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        if(lcc != null) {
+            return lcc.description();
 
         }
         return log_impl.getClass().getSimpleName();
@@ -503,7 +507,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedOperation(description="Enabled the log cache")
     public void enableLogCache() {
-        if(!(log_impl instanceof LogCache)) {
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        if(lcc == null) {
             if(_max_log_cache_size <= 0)
                 log.error("cannot enable log cache as max_log_cache_size is 0");
             else
@@ -513,24 +518,25 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedOperation(description="Disables the log cache")
     public void disableLogCache() {
-        if(log_impl instanceof LogCache) {
-            LogCache lc=(LogCache)log_impl;
-            log_impl=lc.log();
-            lc.clear();
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        if(lcc != null) {
+            lcc.disable();
         }
     }
 
     @ManagedOperation(description="Clears the log cache")
     public RAFT clearLogCache() {
-        if(log_impl instanceof LogCache)
-            ((LogCache)log_impl).clear();
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        if(lcc != null)
+            lcc.clear();
         return this;
     }
 
     @ManagedOperation(description="Trims the log cache to max_log_cache_size")
     public RAFT trimLogCache() {
-        if(log_impl instanceof LogCache)
-            ((LogCache)log_impl).trim();
+        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+        if(lcc != null)
+            lcc.trim();
         return this;
     }
 

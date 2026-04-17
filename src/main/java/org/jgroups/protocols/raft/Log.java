@@ -134,4 +134,20 @@ public interface Log extends Closeable {
     }
 
     long sizeInBytes();
+
+    /**
+     * Looks up an optional capability provided by this log or any log in the delegation chain.
+     *
+     * <p>
+     * Implementations that wrap another {@link Log} should delegate to the wrapped log when they do not provide the
+     * requested capability themselves.
+     * </p>
+     *
+     * @param capability the capability interface to look up
+     * @param <T> the capability type
+     * @return the capability instance, or {@code null} if not available
+     */
+    default <T extends CacheCapability> T findCapability(Class<T> capability) {
+        return null;
+    }
 }
