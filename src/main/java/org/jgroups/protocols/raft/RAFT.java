@@ -222,6 +222,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     private RequestFactory requestFactory = null;
     private RaftProtocolMetrics metrics = null;
 
+    private volatile boolean canHandleRequests = true;
+
     /* ============================== EXPERIMENTAL - most of these metrics will be removed again ================== */
 
     @ManagedAttribute(description="Size of remove-queue")
@@ -249,6 +251,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return String.format("down=%.2f up=%.2f", down, up);
     }
     /* ============================================================================================================ */
+
+    @ManagedAttribute(description = "Whether this node can handle Raft requests. " +
+            "Set to false when degraded due to storage failures.")
+    public boolean canHandleRequests() {
+        return canHandleRequests;
+    }
 
     /**
      * @return end-to-end operation latency metrics, or disabled metrics if stats are off.
@@ -507,12 +515,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedOperation(description="Enabled the log cache")
     public void enableLogCache() {
+        if(_max_log_cache_size <= 0) {
+            log.error("cannot enable log cache as max_log_cache_size is 0");
+            return;
+        }
+
         LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
-        if(lcc == null) {
-            if(_max_log_cache_size <= 0)
-                log.error("cannot enable log cache as max_log_cache_size is 0");
-            else
-                log_impl=new LogCache(log_impl, _max_log_cache_size);
+        if(lcc != null) {
+            lcc.enable(_max_log_cache_size);
         }
     }
 
@@ -687,8 +697,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         curr_log_size=logSizeInBytes();
         log_impl.useFsync(_log_use_fsync);
 
-        if(_max_log_cache_size > 0)  // the log cache is enabled
-            log_impl=new LogCache(log_impl, _max_log_cache_size);
+        LogCache lc = new LogCache(log_impl, Math.max(_max_log_cache_size, 1));
+        if(_max_log_cache_size <= 0)  // the log cache is disabled
+            lc.disable();
+        log_impl = lc;
+        log_impl = new RaftLogAdapter(log_impl, this::onLogFailure);
         runner.start();
         protocolStarted = true;
     }
@@ -1371,7 +1384,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         notify(entry, rsp);
     }
 
-
+    private void onLogFailure(Throwable t) {
+        canHandleRequests = false;
+        log.error("%s: storage failure, node entering into degraded mode", local_addr, t);
+        setLeaderAndTerm(null);
+    }
 
     public void handleView(View view) {
         boolean check_view=this.view != null && this.view.size() < view.size();

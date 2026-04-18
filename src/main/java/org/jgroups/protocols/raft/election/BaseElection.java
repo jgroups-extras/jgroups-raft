@@ -292,6 +292,11 @@ public abstract class BaseElection extends Protocol {
         if (log.isTraceEnabled())
             log.trace("%s <- %s: VoteRequest(term=%d)", local_addr, sender, new_term);
 
+        if (!raft.canHandleRequests()) {
+            log.trace("%s: node is degraded, not voting for %s in term %d", local_addr, sender, new_term);
+            return;
+        }
+
         int result = raft.currentTerm(new_term);
         switch (result) {
             case -1: // new_term < current_term
