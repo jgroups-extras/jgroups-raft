@@ -19,7 +19,11 @@ import java.util.function.ObjLongConsumer;
  * @author Pedro Ruivo
  * @since 0.5.4
  */
-public class LogEntryStorage {
+public final class LogEntryStorage {
+
+   private static final byte[] FILE_HEADER_MAGIC = {'R', 'A', 'F', 'T'};
+   private static final byte FILE_HEADER_VERSION = 2;
+   private static final int FILE_HEADER_SIZE = 8;
 
    private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
    private static final byte MAGIC_NUMBER = 0x01;
@@ -32,6 +36,7 @@ public class LogEntryStorage {
    private FilePositionCache positionCache;
    private Header lastAppendedHeader;
    private long lastAppended;
+   private long entryStartOffset;
    private boolean fsync;
 
    public LogEntryStorage(File parentDir, boolean fsync) {
@@ -43,6 +48,10 @@ public class LogEntryStorage {
 
    public void open() throws IOException {
       fileStorage.open();
+      if (fileStorage.getCachedFileSize() == 0) {
+         writeFileHeader();
+         entryStartOffset = FILE_HEADER_SIZE;
+      }
    }
 
    public void close() throws IOException {
@@ -50,7 +59,36 @@ public class LogEntryStorage {
    }
 
    public void reload() throws IOException {
-      Header header = readHeader(0);
+      long fileSize = fileStorage.getCachedFileSize();
+      if (fileSize == 0) {
+         positionCache = new FilePositionCache(0);
+         lastAppended = 0;
+         return;
+      }
+
+      ByteBuffer peek = fileStorage.read(0, 4);
+      if (isRaftFile(peek)) {
+         ByteBuffer header = fileStorage.read(0, FILE_HEADER_SIZE);
+         // The version is after the magic bytes.
+         byte version = header.get(FILE_HEADER_MAGIC.length);
+         if (version < 1 || version > FILE_HEADER_VERSION) {
+            String message = String.format("entries.raft has version %d, but this release only supports up to version %d. " +
+                            "Upgrade to a compatible release, or run 'raft log downgrade' to convert the log file.",
+                    version, FILE_HEADER_VERSION);
+            throw new IOException(message);
+         }
+         entryStartOffset = FILE_HEADER_SIZE;
+      } else if (peek.get(0) == MAGIC_NUMBER) {
+         entryStartOffset = 0;
+      } else {
+         String message = String.format("Unrecognized format in entries.raft: first byte is 0x%02X. " +
+                 "Expected file header 'RAFT' or legacy entry magic 0x%02X. The file may be corrupted or is not a Raft log.",
+                 peek.get(0), MAGIC_NUMBER);
+         throw new IOException(message);
+      }
+
+      // Resume scanning the entries at the correct offset.
+      Header header = readHeader(entryStartOffset);
       if (header == null) {
          positionCache = new FilePositionCache(0);
          lastAppended = 0;
@@ -81,6 +119,9 @@ public class LogEntryStorage {
    }
 
    public long getCachedFileSize() {
+      if (lastAppended == 0)
+         return 0;
+
       return fileStorage.getCachedFileSize();
    }
 
@@ -98,7 +139,7 @@ public class LogEntryStorage {
 
    public int write(long startIndex, LogEntries entries) throws IOException {
       if (startIndex == 1) {
-         return appendWithoutOverwriteCheck(entries, 1, 0);
+         return appendWithoutOverwriteCheck(entries, 1, entryStartOffset);
       }
       // find previous entry to append
       long previousPosition = positionCache.getPosition(startIndex - 1);
@@ -177,6 +218,7 @@ public class LogEntryStorage {
          // if pos is < 0, means the entry does not exist
          // if pos == 0, means there is nothing to truncate
          fileStorage.truncateFrom(pos);
+         entryStartOffset = 0;
       }
       positionCache = positionCache.createDeleteCopyFrom(index);
       if (lastAppended < index) {
@@ -187,20 +229,23 @@ public class LogEntryStorage {
    public void reinitializeTo(long index, LogEntry firstEntry) throws IOException {
       // remove the content of the file
       fileStorage.truncateTo(0);
+      writeFileHeader();
+      entryStartOffset = FILE_HEADER_SIZE;
       // first appended is set in the constructor
       positionCache = new FilePositionCache(index);
 
       int batchBytes = Header.getTotalLength(firstEntry.length());
       final ByteBuffer batchBuffer = fileStorage.ioBufferWith(batchBytes);
-      Header header = new Header(0, index, firstEntry);
+      Header header = new Header(entryStartOffset, index, firstEntry);
       header.writeTo(batchBuffer);
 
       if (firstEntry.length() > 0) {
          batchBuffer.put(firstEntry.command(), firstEntry.offset(), firstEntry.length());
       }
 
-      fileStorage.write(0);
-      setFilePosition(index, 0);
+      batchBuffer.flip();
+      fileStorage.write(entryStartOffset);
+      setFilePosition(index, entryStartOffset);
       if (fsync) {
          fileStorage.flush();
       }
@@ -214,6 +259,7 @@ public class LogEntryStorage {
       // remove all?
       if (index == 1) {
          fileStorage.truncateTo(0);
+         writeFileHeader();
          lastAppended = 0;
          return 0;
       }
@@ -247,6 +293,28 @@ public class LogEntryStorage {
 
    public void useFsync(final boolean value) {
       this.fsync = value;
+   }
+
+   private void writeFileHeader() throws IOException {
+      ByteBuffer header = fileStorage.ioBufferWith(FILE_HEADER_SIZE);
+      header.put(FILE_HEADER_MAGIC);
+      header.put(FILE_HEADER_VERSION);
+
+      // We include a few padding bytes for alignment in 8 bytes and if we ever need extra flags in the future.
+      header.put((byte) 0);
+      header.put((byte) 0);
+      header.put((byte) 0);
+      header.flip();
+      fileStorage.write(0);
+      fileStorage.flush();
+   }
+
+   private static boolean isRaftFile(ByteBuffer bb) {
+      return bb.remaining() >= 4
+              && bb.get(0) == FILE_HEADER_MAGIC[0]
+              && bb.get(1) == FILE_HEADER_MAGIC[1]
+              && bb.get(2) == FILE_HEADER_MAGIC[2]
+              && bb.get(3) == FILE_HEADER_MAGIC[3];
    }
 
    private static class Header {
