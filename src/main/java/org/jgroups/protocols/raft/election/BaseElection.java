@@ -13,7 +13,6 @@ import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.protocols.raft.Log;
-import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.RaftHeader;
 import org.jgroups.raft.internal.metrics.ElectionProtocolMetrics;
@@ -331,9 +330,8 @@ public abstract class BaseElection extends Protocol {
         if (log_impl == null)
             return;
         raft.votedFor(sender);
-        long my_last_index = log_impl.lastAppended();
-        LogEntry entry = log_impl.get(my_last_index);
-        long my_last_term = entry != null ? entry.term() : 0;
+        long my_last_index = raft.lastAppended();
+        long my_last_term = raft.lastTerm();
         sendVoteResponse(sender, new_term, my_last_term, my_last_index);
     }
 

@@ -12,4 +12,4 @@ package org.jgroups.protocols.raft;
  * @see Log#findCapability(Class)
  * @see LogCacheControl
  */
-public interface CacheCapability { }
+public interface LogCapability { }

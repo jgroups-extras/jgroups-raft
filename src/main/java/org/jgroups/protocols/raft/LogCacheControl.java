@@ -16,7 +16,7 @@ package org.jgroups.protocols.raft;
  * @since 2.0
  * @see Log#findCapability(Class)
  */
-public interface LogCacheControl extends CacheCapability {
+public interface LogCacheControl extends LogCapability {
 
     /**
      * Enables caching with the given maximum number of entries.

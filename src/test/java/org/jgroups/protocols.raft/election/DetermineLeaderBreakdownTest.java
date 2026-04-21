@@ -1,5 +1,8 @@
 package org.jgroups.protocols.raft.election;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
@@ -21,9 +24,6 @@ import java.util.function.BooleanSupplier;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true, dataProvider = "determine-data-provider")
 public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBased<RaftCluster> {
@@ -142,7 +142,7 @@ public class DetermineLeaderBreakdownTest extends BaseRaftElectionTest.ClusterBa
         }
     }
 
-    private void setLog(RAFT raft, int... terms) {
+    private void setLog(RAFT raft, int... terms) throws Exception {
         Log log = raft.log();
         long index = log.lastAppended();
         LogEntries le = new LogEntries();

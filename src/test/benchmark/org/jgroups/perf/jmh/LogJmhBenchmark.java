@@ -54,7 +54,7 @@ public class LogJmhBenchmark {
    }
 
    @Benchmark
-   public void append(ExecutionPlan plan) {
+   public void append(ExecutionPlan plan) throws Exception {
       plan.log.append(plan.index, plan.entries);
       plan.index+= plan.batchSize;
    }

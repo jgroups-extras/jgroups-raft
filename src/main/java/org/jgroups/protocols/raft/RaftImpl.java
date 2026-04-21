@@ -1,11 +1,11 @@
 package org.jgroups.protocols.raft;
 
-import org.jgroups.Address;
-import org.jgroups.Message;
-
 import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_CONFLICTING_PREV_TERM;
 import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_ENTRY_NOT_FOUND;
 import static org.jgroups.protocols.raft.AppendResult.Result.OK;
+
+import org.jgroups.Address;
+import org.jgroups.Message;
 
 /**
  * Base class for the different roles a RAFT node can have (follower, candidate, leader)
@@ -104,7 +104,7 @@ public abstract class RaftImpl {
     /** Finds the first index at which conflicting_term starts, going back from start_index towards the head of the log,
      * not not going lower than commit-index */
     protected long getFirstIndexOfConflictingTerm(long start_index, long conflicting_term) {
-        Log log=raft.log_impl;
+        RaftLogAdapter log=raft.log_impl;
         long first=Math.max(1, log.firstAppended()), last=log.lastAppended(), commit_index=log.commitIndex();
         long retval=Math.min(start_index, last);
         for(long i=retval; i >= first && i > commit_index; i--) {

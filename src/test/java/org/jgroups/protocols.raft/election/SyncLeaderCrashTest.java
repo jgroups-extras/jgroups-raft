@@ -160,7 +160,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         return val;
     }
 
-    protected void assertTerms(long[] ... exp_terms) {
+    protected void assertTerms(long[] ... exp_terms) throws Exception {
         int index=0;
         for(long[] expected_terms: exp_terms) {
             RAFT r=raft(index++);
@@ -207,7 +207,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         }
     }
 
-    protected String printTerms() {
+    protected String printTerms() throws Exception {
         StringBuilder sb=new StringBuilder("    1 2 3 4 5 6 7\n    -------------\n");
         List<String> mbrs = new ArrayList<>(getRaftMembers());
         for(int i=0; i < mbrs.size(); i++) {
@@ -236,7 +236,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
           .collect(Collectors.joining("\n"));
     }
 
-    protected static long[] terms(RAFT r) {
+    protected static long[] terms(RAFT r) throws Exception {
         Log l=r.log();
         List<Long> list=new ArrayList<>((int)l.size());
         for(int i=1; i <= l.lastAppended(); i++) {

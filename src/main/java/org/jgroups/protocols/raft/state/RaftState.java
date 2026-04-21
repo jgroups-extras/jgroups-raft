@@ -1,11 +1,11 @@
 package org.jgroups.protocols.raft.state;
 
-import java.util.Objects;
-import java.util.function.Consumer;
-
 import org.jgroups.Address;
+import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
+
+import java.util.Objects;
 
 import net.jcip.annotations.ThreadSafe;
 
@@ -39,16 +39,15 @@ import net.jcip.annotations.ThreadSafe;
 @ThreadSafe
 public class RaftState {
 
-    private final RAFT raft;
-    private final Consumer<Address> onLeaderUpdate;
+    private static final org.jgroups.logging.Log LOG = LogFactory.getLog(RAFT.class);
+
+    private final RaftStateMutator mutator;
     private Address leader;
     private long term;
     private Address votedFor;
 
-    public RaftState(RAFT raft, Consumer<Address> onLeaderUpdate) {
-        this.raft = raft;
-        this.onLeaderUpdate = onLeaderUpdate;
-        reload();
+    public RaftState(RaftStateMutator mutator) {
+        this.mutator = mutator;
     }
 
     public synchronized Address leader() {
@@ -111,7 +110,7 @@ public class RaftState {
             if (newTerm > 0 && newTerm < term) return -1;
             if (newTerm == term && newLeader == null) return 0;
             if (newTerm > term) {
-                raft.getLog().trace("%s: changed term from %d -> %d", raft.addr(), term, newTerm);
+                LOG.trace("changed term from %d -> %d", term, newTerm);
 
                 term = newTerm;
                 saveTerm = true;
@@ -122,11 +121,8 @@ public class RaftState {
             setLeader(newLeader);
         }
 
-        Log log = raft.log();
-        if (log != null) {
-            if (saveTerm) log.currentTerm(currentTerm());
-            if (saveVote) log.votedFor(votedFor());
-        }
+        if (saveTerm) mutator.currentTerm(currentTerm());
+        if (saveVote) mutator.votedFor(votedFor());
 
         return saveTerm ? 1 : 0;
     }
@@ -149,8 +145,8 @@ public class RaftState {
 
         // We only should invoke the listener when a new leader is set/step down.
         if (updated) {
-            raft.getLog().trace("%s: change leader from %s -> %s", raft.addr(), leader, newLeader);
-            onLeaderUpdate.accept(this.leader);
+            LOG.trace("change leader from %s -> %s", leader, newLeader);
+            mutator.onLeaderUpdate(this.leader);
         }
     }
 
@@ -170,8 +166,7 @@ public class RaftState {
     /**
      * Read the state information from the {@link RAFT}'s log.
      */
-    public void reload() {
-        Log log = raft.log();
+    public void reload(Log log) {
         if (log != null) {
             synchronized (this) {
                 term = log.currentTerm();
@@ -190,13 +185,12 @@ public class RaftState {
             this.votedFor = votedFor;
         }
 
-        if (votedFor != null && raft.getLog().isTraceEnabled()) {
-            raft.getLog().trace("%s: voted for %s in term %d", raft.addr(), votedFor, currentTerm());
+        if (votedFor != null && LOG.isTraceEnabled()) {
+            LOG.trace("voted for %s in term %d", votedFor, currentTerm());
         }
 
         if (save) {
-            Log log = raft.log();
-            if (log != null) log.votedFor(votedFor());
+            mutator.votedFor(votedFor());
         }
         return true;
     }
@@ -204,5 +198,14 @@ public class RaftState {
     @Override
     public String toString() {
         return "[leader=" + leader + ", term=" + term + ", voted=" + votedFor + "]";
+    }
+
+    public interface RaftStateMutator {
+
+        void votedFor(Address member);
+
+        void currentTerm(long term);
+
+        void onLeaderUpdate(Address member);
     }
 }

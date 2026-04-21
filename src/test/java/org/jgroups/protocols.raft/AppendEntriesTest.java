@@ -1,5 +1,9 @@
 package org.jgroups.protocols.raft;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -23,10 +27,6 @@ import java.util.stream.Stream;
 import org.assertj.core.api.Assertions;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 /**
  * Tests the AppendEntries functionality: appending log entries in regular operation, new members, late joiners etc
@@ -705,7 +705,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         return raft.impl();
     }
 
-    protected static String printLog(Log l) {
+    protected static String printLog(Log l) throws Exception {
         StringBuilder sb=new StringBuilder();
         l.forEach((e,i) -> sb.append(String.format("%d: term=%d\n", i, e.term())));
         return sb.toString();

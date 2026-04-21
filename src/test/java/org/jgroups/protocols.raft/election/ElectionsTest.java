@@ -54,7 +54,7 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
     /**
      * B and C have longer logs than A: one of {B,C} must become coordinator, but *not* A
      */
-    public void testElectionWithLongLogTie(Class<?> ignore) {
+    public void testElectionWithLongLogTie(Class<?> ignore) throws Exception {
         testLongestLog(Map.of(b, new int[]{1, 1, 2}, c, new int[]{1, 1, 2}), b.getAddress(), c.getAddress());
     }
 
@@ -62,7 +62,7 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
      * B has the longest term in the view {A, B, C}.
      * Node B has to become the leader.
      */
-    public void testElectionWithLongLogMiddle(Class<?> ignore) {
+    public void testElectionWithLongLogMiddle(Class<?> ignore) throws Exception {
         int[] termsB = new int[] { 1, 1, 2, 2 };
         int[] termsC = new int[] { 1, 1, 2 };
         testLongestLog(Map.of(b, termsB, c, termsC), b.getAddress());
@@ -72,7 +72,7 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
      * C has the longest term in the view {A, B, C}.
      * Node C has to become the leader.
      */
-    public void testElectionWithLongLogLast(Class<?> ignore) {
+    public void testElectionWithLongLogLast(Class<?> ignore) throws Exception {
         int[] termsB = new int[] { 1, 1, 2 };
         int[] termsC = new int[] { 1, 1, 2, 2 };
         testLongestLog(Map.of(b, termsB, c, termsC), c.getAddress());
@@ -123,7 +123,7 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         assertThat(leader).isEqualTo(coord.getAddress());
     }
 
-    private void testLongestLog(Map<JChannel, int[]> logs, Address ... possibleElected) {
+    private void testLongestLog(Map<JChannel, int[]> logs, Address ... possibleElected) throws Exception {
         // Let node A be elected the first leader.
         assertLeader(10_000, a.getAddress(), a, b, c);
 
@@ -171,7 +171,7 @@ public class ElectionsTest extends BaseRaftElectionTest.ChannelBased {
         return null;
     }
 
-    protected void setLog(JChannel ch, int... terms) {
+    protected void setLog(JChannel ch, int... terms) throws Exception {
         RAFT raft = raft(ch);
         Log log = raft.log();
         long index = log.lastAppended();

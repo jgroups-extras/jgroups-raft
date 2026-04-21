@@ -3,136 +3,272 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
 
 /**
- * The interface for a persistent log. See doc/design/Log.adoc for details.
+ * Durable storage for Raft consensus log entries, election metadata (term and vote), and state machine snapshots.
+ *
+ * <p>
+ * Implementations provide the persistence layer that backs the Raft consensus algorithm. Each Raft node owns exactly one
+ * {@code Log} instance for the lifetime of the node. The log stores three categories of data:
+ * </p>
+ *
+ * <ul>
+ *   <li><b>Entries</b>: an ordered, 1-based sequence of {@link LogEntry} records appended during replication.</li>
+ *   <li><b>Election metadata</b>: the current term ({@link #currentTerm(long)}) and the candidate voted for in that
+ *       term ({@link #votedFor(Address)}). These values must survive restarts to preserve Raft's single-vote-per-term invariant.</li>
+ *   <li><b>Snapshot</b>: a point-in-time capture of the state machine, used to compact the log.</li>
+ * </ul>
+ *
+ * <h2>Lifecycle</h2>
+ *
+ * <p>
+ * A {@code Log} instance must be {@linkplain #init(String, Map) initialized} before any other method is called and
+ * {@linkplain #close() closed} when no longer needed. After {@code close()}, behavior of all other methods is undefined.
+ * </p>
+ *
+ * <h2>Durability and failure</h2>
+ *
+ * <p>
+ * Mutating operations declare {@link IOException} to signal storage failures. When an {@code IOException} is thrown, the
+ * operation did not complete and the log's state may be inconsistent. Callers must not assume partial progress unless a
+ * method's contract explicitly defines it (see {@link #append(long, LogEntries)}).
+ * </p>
+ *
+ * <p>
+ * When {@link #useFsync(boolean) fsync} is enabled, each mutating operation guarantees that data has reached stable storage
+ * before the call returns.
+ * </p>
+ *
+ * <h2>Thread safety</h2>
+ *
+ * <p>
+ * Implementations may assume <b>single-writer</b> semantics: at most one thread performs mutating operations at any given
+ * time. However, read-only accessors ({@link #currentTerm()}, {@link #votedFor()}, {@link #commitIndex()},
+ * {@link #firstAppended()}, {@link #lastAppended()}) must be safe to call concurrently from any thread while a mutating
+ * operation is in progress.
+ * </p>
+ *
+ * <h2>Delegation</h2>
+ *
+ * <p>
+ * Implementations that wrap another {@code Log} (e.g., caching or adapter layers) should delegate {@link #findCapability(Class)}
+ * to the wrapped log so that the full delegation chain is discoverable.
+ * </p>
+ *
  * @author Bela Ban
- * @since  0.1
+ * @since 0.1
+ * @see LogEntry
+ * @see LogCapability
  */
 public interface Log extends Closeable {
 
-    /** Called after the instance has been created
-     * @param log_name The name of the log. Implementations can create a DB or file named after this, e.g.
-     *                 {@code /tmp/<log_name></log_name>.log}
-     * @param args A hashmap of configuration information (impl-dependent) to configure itself. May be null
+    /**
+     * Initializes this log with the given identity and optional configuration. Must be called exactly once
+     * before any other method.
+     *
+     * @param log_name a name used to derive the storage identity (file name, database table, etc.).
+     *                 Two logs initialized with the same name in the same environment share state.
+     * @param args implementation-specific configuration parameters, may be {@code null}
+     * @throws Exception if initialization fails (missing directory, permission denied, corrupt storage, etc.)
      */
     void init(String log_name, Map<String,String> args) throws Exception;
 
     /**
-     * Do not cache a change (e.g. AppendEntriesRequest, or setting the commit index), but force a write
-     * to disk (fsync), if true.
+     * Controls whether mutating operations force data to stable storage (fsync) before returning.
+     *
+     * @param f {@code true} to force all writes to stable storage
+     * @return this log
      */
     Log useFsync(boolean f);
 
+    /**
+     * Returns whether writes are forced to stable storage before mutating operations return.
+     *
+     * @return {@code true} if fsync is enabled
+     */
     boolean useFsync();
 
-    /** Returns the current term */
+    /**
+     * Returns the current Raft term.
+     *
+     * @return the current term, or 0 if not yet set
+     */
     long currentTerm();
 
-    /** Sets the current term */
-    Log currentTerm(long new_term);
+    /**
+     * Persists the current Raft term. The Raft protocol guarantees that terms are monotonically increasing.
+     *
+     * @param new_term the term to persist
+     * @return this log
+     * @throws IOException if the term cannot be persisted
+     */
+    Log currentTerm(long new_term) throws IOException;
 
-    /** Returns the address of the candidate that this node voted for in the current term */
+    /**
+     * Returns the candidate this node voted for in the current term.
+     *
+     * @return the address of the voted-for candidate, or {@code null} if no vote has been cast in this term
+     */
     Address votedFor();
 
-    /** Sets the address of the member this node voted for in the current term. Only invoked once per term */
-    Log votedFor(Address member);
+    /**
+     * Persists the vote for the given candidate in the current term. The Raft protocol guarantees at most
+     * one vote per term. Passing {@code null} clears the vote, typically at term boundaries.
+     *
+     * @param member the candidate address, or {@code null} to clear the vote
+     * @return this log
+     * @throws IOException if the vote cannot be persisted
+     */
+    Log votedFor(Address member) throws IOException;
 
-    /** Returns the current commit index. (May get removed as the RAFT paper has this as in-memory attribute) */
+    /**
+     * Returns the current commit index.
+     *
+     * @return the commit index, or 0 if no entries have been committed
+     */
     long commitIndex();
 
     /**
-     * Sets commitIndex to a new value
-     * @param new_index The new index to set commitIndex to. May throw an exception if new_index > lastApplied()
-     * @return the log
+     * Persists the commit index.
+     *
+     * @param new_index the new commit index
+     * @return this log
+     * @throws IOException if the commit index cannot be persisted
      */
-    Log commitIndex(long new_index);
+    Log commitIndex(long new_index) throws IOException;
 
-    /** Returns the index of the first log entry */
+    /**
+     * Returns the index of the first entry in the log.
+     *
+     * @return the first entry index, or 0 if the log is empty
+     */
     long firstAppended();
 
-    /** Returns the index of the last append entry<br/>
-     * This value is set by {@link #append(long,LogEntries)} */
+    /**
+     * Returns the index of the last appended entry.
+     *
+     * @return the last appended index, or 0 if the log is empty
+     */
     long lastAppended();
 
     /**
-     * Stores a snapshot in the log.
-     * @param sn The snapshot data
-     */
-    void setSnapshot(ByteBuffer sn);
-
-    /**
-     * Gets the snapshot from the log
-     * @return The snapshot, or null if not existing
-     */
-    ByteBuffer getSnapshot();
-
-    /**
-     * Append the entries starting at index. Advance last_appended by the number of entries appended.
-     * <br/>
-     * If the operation fails, then last_appended needs to be the index of the last successful append. E.g. if
-     * last_appended is 1, and we attempt to appened 100 entries, but fail at 51, then last_appended must be 50 (not 1!).
-     * <br/>
-     * @param index The index at which to append the entries. Should be the same as lastAppended. LastAppended needs
-     *              to be incremented by the number of entries appended
-     * @param entries The entries to append
-     * @return long The index of the last appended entry
-     */
-    long append(long index, LogEntries entries);
-
-
-    /**
-     * Gets the entry at start_index. Updates current_term and last_appended accordingly
-     * @param index The index
-     * @return The LogEntry, or null if none is present at index.
-     */
-    LogEntry get(long index);
-
-    /**
-     * Truncates the log up to (and excluding) index. All entries &lt; index are removed. First = index.
-     * @param index_exclusive If greater than commit_index, commit_index will be used instead
-     */
-    void truncate(long index_exclusive);
-
-    /**
-     * Clears all entries and sets first_appended/last_appended/commit_index to index and appends entry at index. The
-     * next entry will be appended at last_appended+1.<br/>
-     * Use when a snapshot has been received by a follower, after setting the snapshot, to basically create a new log
-     * @param index The new index
-     * @param entry The entry to append
-     * @throws Exception Thrown if this operation failed
-     */
-    void reinitializeTo(long index, LogEntry entry) throws Exception;
-
-    /**
-     * Delete all entries starting from start_index (including the entry at start_index).
-     * Updates current_term and last_appended accordingly
+     * Stores a snapshot of the state machine, replacing any previously stored snapshot.
      *
-     * @param start_index
+     * @param sn the snapshot data
+     * @throws IOException if the snapshot cannot be stored
      */
-    void deleteAllEntriesStartingFrom(long start_index);
-
+    void setSnapshot(ByteBuffer sn) throws IOException;
 
     /**
-     * Applies function to all elements of the log in range [max(start_index,first_appended) .. min(last_appended,end_index)].
-     * @param function The function to be applied
-     * @param start_index The start index. If smaller than first_appended, first_appended will be used
-     * @param end_index The end index. If greater than last_appended, last_appended will be used
+     * Returns the most recently stored snapshot.
+     *
+     * @return the snapshot data, or {@code null} if no snapshot has been stored
+     * @throws IOException if the snapshot cannot be read
      */
-    void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index);
+    ByteBuffer getSnapshot() throws IOException;
 
-    /** Applies a function to all elements in range [first_appended .. last_appended] */
-    void forEach(ObjLongConsumer<LogEntry> function);
+    /**
+     * Appends entries starting at the given index and advances {@link #lastAppended()} accordingly.
+     *
+     * <p>
+     * On partial failure, {@code lastAppended} must reflect the last successfully written entry rather than
+     * reverting to the value before the call. For example, if {@code lastAppended} was 1 and 100 entries were
+     * submitted but the operation failed at entry 51, {@code lastAppended} must be 50 after the exception.
+     * </p>
+     *
+     * @param index the index at which to begin appending
+     * @param entries the entries to append
+     * @return the index of the last appended entry
+     * @throws IOException if one or more entries cannot be written to storage
+     */
+    long append(long index, LogEntries entries) throws IOException;
 
-    /** The number of entries in the log */
+    /**
+     * Returns the entry at the given index.
+     *
+     * @param index the log index to retrieve
+     * @return the entry, or {@code null} if no entry exists at that index
+     * @throws IOException if the entry cannot be read from storage
+     */
+    LogEntry get(long index) throws IOException;
+
+    /**
+     * Removes all entries before the given index. After this call, {@link #firstAppended()} equals
+     * {@code index_exclusive}.
+     *
+     * <p>
+     * If {@code index_exclusive} exceeds {@link #commitIndex()}, the commit index is used instead to
+     * prevent truncating committed entries.
+     * </p>
+     *
+     * @param index_exclusive entries strictly before this index are removed
+     * @throws IOException if the truncation cannot be completed
+     */
+    void truncate(long index_exclusive) throws IOException;
+
+    /**
+     * Resets the log to contain only the given entry at the given index. Sets {@link #firstAppended()},
+     * {@link #lastAppended()}, and {@link #commitIndex()} to {@code index}. The next entry will be appended
+     * at {@code index + 1}.
+     *
+     * <p>
+     * Typically called after installing a snapshot received from the leader.
+     * </p>
+     *
+     * @param index the new starting index
+     * @param entry the single entry to store
+     * @throws IOException if the log cannot be reinitialized
+     */
+    void reinitializeTo(long index, LogEntry entry) throws IOException;
+
+    /**
+     * Deletes all entries at and after {@code start_index}. Updates {@link #lastAppended()} and
+     * {@link #currentTerm()} to reflect the remaining log.
+     *
+     * @param start_index the first index to delete (inclusive)
+     * @throws IOException if the deletion cannot be completed
+     */
+    void deleteAllEntriesStartingFrom(long start_index) throws IOException;
+
+    /**
+     * Applies the function to each entry in the range
+     * [{@code max(start_index, firstAppended)} .. {@code min(end_index, lastAppended)}], inclusive.
+     *
+     * @param function invoked with each entry and its index
+     * @param start_index the start of the range (inclusive), clamped to {@link #firstAppended()}
+     * @param end_index the end of the range (inclusive), clamped to {@link #lastAppended()}
+     * @throws IOException if an entry cannot be read
+     */
+    void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) throws IOException;
+
+    /**
+     * Applies the function to every entry in the log. Equivalent to
+     * {@code forEach(function, firstAppended(), lastAppended())}.
+     *
+     * @param function invoked with each entry and its index
+     * @throws IOException if an entry cannot be read
+     */
+    void forEach(ObjLongConsumer<LogEntry> function) throws IOException;
+
+    /**
+     * Returns the number of entries in the log.
+     *
+     * @return the entry count
+     */
     default long size() {
         long last=lastAppended(), first=firstAppended();
         return first == 0? last : last-first+1;
     }
 
+    /**
+     * Returns the approximate size of the log data in bytes.
+     *
+     * @return the size in bytes
+     */
     long sizeInBytes();
 
     /**
@@ -147,7 +283,7 @@ public interface Log extends Closeable {
      * @param <T> the capability type
      * @return the capability instance, or {@code null} if not available
      */
-    default <T extends CacheCapability> T findCapability(Class<T> capability) {
+    default <T extends LogCapability> T findCapability(Class<T> capability) {
         return null;
     }
 }

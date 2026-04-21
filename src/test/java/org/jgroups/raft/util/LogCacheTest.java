@@ -6,6 +6,7 @@ import org.jgroups.Global;
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogCacheControl;
+import org.jgroups.protocols.raft.LogCapability;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 
@@ -52,7 +53,7 @@ public class LogCacheTest {
         assertThat(result).isNull();
     }
 
-    public void testGetPopulatesCache() {
+    public void testGetPopulatesCache() throws Exception {
         appendEntries(1, 1);
 
         cache.get(1);
@@ -62,7 +63,7 @@ public class LogCacheTest {
         assertThat(cache.hitRatio()).isGreaterThan(0);
     }
 
-    public void testPassthroughGetBypassesCache() {
+    public void testPassthroughGetBypassesCache() throws Exception {
         appendEntries(1, 1);
 
         cache.disable();
@@ -72,7 +73,7 @@ public class LogCacheTest {
         assertThat(cache.numAccesses()).isZero();
     }
 
-    public void testPassthroughAppendBypassesCache() {
+    public void testPassthroughAppendBypassesCache() throws Exception {
         cache.disable();
 
         appendEntries(1, 5);
@@ -81,7 +82,7 @@ public class LogCacheTest {
         assertThat(cache.lastAppended()).isEqualTo(5);
     }
 
-    public void testEnableRestoresCaching() {
+    public void testEnableRestoresCaching() throws Exception {
         appendEntries(1, 3);
         cache.disable();
         cache.enable(64);
@@ -94,7 +95,7 @@ public class LogCacheTest {
         assertThat(cache.hitRatio()).isGreaterThan(0);
     }
 
-    public void testDisableClearsCache() {
+    public void testDisableClearsCache() throws Exception {
         appendEntries(1, 5);
         assertThat(cache.cacheSize()).isGreaterThan(0);
 
@@ -103,7 +104,7 @@ public class LogCacheTest {
         assertThat(cache.cacheSize()).isZero();
     }
 
-    public void testPassthroughForEachDelegatesToUnderlying() {
+    public void testPassthroughForEachDelegatesToUnderlying() throws Exception {
         appendEntries(1, 5);
         cache.disable();
 
@@ -113,7 +114,7 @@ public class LogCacheTest {
         assertThat(count.get()).isEqualTo(5);
     }
 
-    public void testPassthroughTrimIsNoOp() {
+    public void testPassthroughTrimIsNoOp() throws Exception {
         appendEntries(1, 5);
         int trimsBefore = cache.numTrims();
 
@@ -141,7 +142,7 @@ public class LogCacheTest {
         assertThat(description).doesNotContain("passthrough");
     }
 
-    public void testResetStatsClearsCounters() {
+    public void testResetStatsClearsCounters() throws Exception {
         appendEntries(1, 3);
         cache.get(1);
         cache.get(1);
@@ -168,7 +169,7 @@ public class LogCacheTest {
         assertThat(cache.maxSize()).isEqualTo(256);
     }
 
-    public void testClearEvictsWithoutDisabling() {
+    public void testClearEvictsWithoutDisabling() throws Exception {
         appendEntries(1, 5);
         assertThat(cache.cacheSize()).isGreaterThan(0);
 
@@ -182,7 +183,7 @@ public class LogCacheTest {
         assertThat(cache.hitRatio()).isGreaterThan(0);
     }
 
-    public void testPassthroughStillDelegatesMetadata() {
+    public void testPassthroughStillDelegatesMetadata() throws Exception {
         cache.disable();
 
         cache.currentTerm(5);
@@ -192,7 +193,7 @@ public class LogCacheTest {
         assertThat(cache.votedFor()).isNull();
     }
 
-    public void testDataIntegrityThroughPassthroughToggle() {
+    public void testDataIntegrityThroughPassthroughToggle() throws Exception {
         appendEntries(1, 5);
         cache.commitIndex(3);
         cache.disable();
@@ -211,7 +212,7 @@ public class LogCacheTest {
         }
     }
 
-    private void appendEntries(long startIndex, int count) {
+    private void appendEntries(long startIndex, int count) throws Exception {
         LogEntries entries = new LogEntries();
         for (int i = 0; i < count; i++) {
             entries.add(new LogEntry(1, DATA));
@@ -219,5 +220,5 @@ public class LogCacheTest {
         cache.append(startIndex, entries);
     }
 
-    private interface UnknownCapability extends org.jgroups.protocols.raft.CacheCapability { }
+    private interface UnknownCapability extends LogCapability { }
 }

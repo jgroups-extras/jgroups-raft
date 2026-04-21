@@ -1,5 +1,9 @@
 package org.jgroups.protocols.raft.election;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
@@ -18,10 +22,6 @@ import java.util.stream.IntStream;
 
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.Test;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true, dataProvider = ALL_ELECTION_CLASSES_PROVIDER)
 public class LeaderLeavingTest extends BaseRaftElectionTest.ClusterBased<RaftCluster> {
@@ -83,7 +83,7 @@ public class LeaderLeavingTest extends BaseRaftElectionTest.ClusterBased<RaftClu
         f2.get(10, SECONDS);
     }
 
-    private void setLog(RAFT raft, int... terms) {
+    private void setLog(RAFT raft, int... terms) throws Exception {
         Log log = raft.log();
         long index = log.lastAppended();
         LogEntries le = new LogEntries();

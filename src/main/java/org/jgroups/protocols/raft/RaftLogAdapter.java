@@ -31,7 +31,7 @@ import java.util.function.ObjLongConsumer;
  * @see LogFailureListener
  * @see RaftLogException
  */
-final class RaftLogAdapter implements Log {
+final class RaftLogAdapter implements Log, LogCapability {
 
     private static final org.jgroups.logging.Log LOG = LogFactory.getLog(RaftLogAdapter.class);
 
@@ -53,12 +53,13 @@ final class RaftLogAdapter implements Log {
      *
      * @param c the underlying storage failure
      */
-    void poison(Throwable c) {
+    RaftLogException poison(Throwable c) {
         RaftLogException ex = new RaftLogException(String.format("(%s) storage failure: %s", delegate.getClass(), c.getMessage()), c);
         if (cause.compareAndSet(null, ex)) {
             LOG.error("Storage failed, entering into degraded mode", ex);
             listener.onLogFailure(c);
         }
+        return cause.get();
     }
 
     public boolean isPoisoned() {
@@ -96,8 +97,12 @@ final class RaftLogAdapter implements Log {
     @Override
     public Log currentTerm(long new_term) {
         assertNotPoisoned();
-        delegate.currentTerm(new_term);
-        return this;
+        try {
+            delegate.currentTerm(new_term);
+            return this;
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
@@ -108,8 +113,12 @@ final class RaftLogAdapter implements Log {
     @Override
     public Log votedFor(Address member) {
         assertNotPoisoned();
-        delegate.votedFor(member);
-        return this;
+        try {
+            delegate.votedFor(member);
+            return this;
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
@@ -120,8 +129,12 @@ final class RaftLogAdapter implements Log {
     @Override
     public Log commitIndex(long new_index) {
         assertNotPoisoned();
-        delegate.commitIndex(new_index);
-        return this;
+        try {
+            delegate.commitIndex(new_index);
+            return this;
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
@@ -137,55 +150,91 @@ final class RaftLogAdapter implements Log {
     @Override
     public void setSnapshot(ByteBuffer sn) {
         assertNotPoisoned();
-        delegate.setSnapshot(sn);
+        try {
+            delegate.setSnapshot(sn);
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
     public ByteBuffer getSnapshot() {
         assertNotPoisoned();
-        return delegate.getSnapshot();
+        try {
+            return delegate.getSnapshot();
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
     public long append(long index, LogEntries entries) {
         assertNotPoisoned();
-        return delegate.append(index, entries);
+        try {
+            return delegate.append(index, entries);
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
     public LogEntry get(long index) {
         assertNotPoisoned();
-        return delegate.get(index);
+        try {
+            return delegate.get(index);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
     public void truncate(long index_exclusive) {
         assertNotPoisoned();
-        delegate.truncate(index_exclusive);
+        try {
+            delegate.truncate(index_exclusive);
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
-    public void reinitializeTo(long index, LogEntry entry) throws Exception {
+    public void reinitializeTo(long index, LogEntry entry) {
         assertNotPoisoned();
-        delegate.reinitializeTo(index, entry);
+        try {
+            delegate.reinitializeTo(index, entry);
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
     public void deleteAllEntriesStartingFrom(long start_index) {
         assertNotPoisoned();
-        delegate.deleteAllEntriesStartingFrom(start_index);
+        try {
+            delegate.deleteAllEntriesStartingFrom(start_index);
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
     public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
         assertNotPoisoned();
-        delegate.forEach(function, start_index, end_index);
+        try {
+            delegate.forEach(function, start_index, end_index);
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
     public void forEach(ObjLongConsumer<LogEntry> function) {
         assertNotPoisoned();
-        delegate.forEach(function);
+        try {
+            delegate.forEach(function);
+        } catch (IOException e) {
+            throw poison(e);
+        }
     }
 
     @Override
@@ -199,7 +248,7 @@ final class RaftLogAdapter implements Log {
     }
 
     @Override
-    public <T extends CacheCapability> T findCapability(Class<T> capability) {
+    public <T extends LogCapability> T findCapability(Class<T> capability) {
         return delegate.findCapability(capability);
     }
 

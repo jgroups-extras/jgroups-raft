@@ -1,7 +1,7 @@
 package org.jgroups.raft.util;
 
 import org.jgroups.Address;
-import org.jgroups.protocols.raft.CacheCapability;
+import org.jgroups.protocols.raft.LogCapability;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogCacheControl;
 import org.jgroups.protocols.raft.LogEntries;
@@ -111,7 +111,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public Log currentTerm(long new_term) {
+    public Log currentTerm(long new_term) throws IOException {
         log.currentTerm(new_term);
         current_term = new_term; // if the above fails, current_term won't be set
         return this;
@@ -123,7 +123,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public Log votedFor(Address member) {
+    public Log votedFor(Address member) throws IOException {
         log.votedFor(member);
         voted_for = member;
         return this;
@@ -135,7 +135,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public Log commitIndex(long new_index) {
+    public Log commitIndex(long new_index) throws IOException {
         log.commitIndex(new_index);
         commit_index = new_index;
         if (!passthrough)
@@ -154,17 +154,17 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public ByteBuffer getSnapshot() {
+    public ByteBuffer getSnapshot() throws IOException {
         return log.getSnapshot();
     }
 
     @Override
-    public void setSnapshot(ByteBuffer sn) {
+    public void setSnapshot(ByteBuffer sn) throws IOException {
         log.setSnapshot(sn); // the LogCache doesn't cache snapshots; this operation isn't frequent anyway
     }
 
     @Override
-    public long append(long index, LogEntries entries) {
+    public long append(long index, LogEntries entries) throws IOException {
         last_appended = log.append(index, entries);
         current_term = log.currentTerm();
         if (passthrough)
@@ -185,7 +185,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public LogEntry get(long index) {
+    public LogEntry get(long index) throws IOException {
         if (passthrough)
             return log.get(index);
 
@@ -215,7 +215,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public void truncate(long index_exclusive) {
+    public void truncate(long index_exclusive) throws IOException {
         log.truncate(index_exclusive);
         // todo: first_appended should be set to the return value of truncate() (once it has been changed)
         first_appended = log.firstAppended();
@@ -225,7 +225,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public void reinitializeTo(long index, LogEntry le) throws Exception {
+    public void reinitializeTo(long index, LogEntry le) throws IOException {
         log.reinitializeTo(index, le);
         first_appended = log.firstAppended();
         commit_index = log.commitIndex();
@@ -240,7 +240,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public void deleteAllEntriesStartingFrom(long start_index) {
+    public void deleteAllEntriesStartingFrom(long start_index) throws IOException {
         log.deleteAllEntriesStartingFrom(start_index);
         commit_index = log.commitIndex();
         last_appended = log.lastAppended();
@@ -251,7 +251,7 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
+    public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) throws IOException {
         if (passthrough) {
             log.forEach(function, start_index, end_index);
             return;
@@ -260,17 +260,13 @@ public final class LogCache implements Log, LogCacheControl {
         long from = Math.max(start_index, Math.max(first_appended, 1));
         long to = Math.min(end_index, last_appended);
         for (long i = from; i <= to; i++) {
-            try {
-                LogEntry l = get(i);
-                function.accept(l, i);
-            } catch (Exception ex) {
-                throw new RuntimeException("failed deserializing LogRecord " + i, ex);
-            }
+            LogEntry l = get(i);
+            function.accept(l, i);
         }
     }
 
     @Override
-    public void forEach(ObjLongConsumer<LogEntry> function) {
+    public void forEach(ObjLongConsumer<LogEntry> function) throws IOException {
         forEach(function, first_appended, last_appended);
     }
 
@@ -317,7 +313,7 @@ public final class LogCache implements Log, LogCacheControl {
 
     @Override
     @SuppressWarnings("unchecked")
-    public <T extends CacheCapability> T findCapability(Class<T> capability) {
+    public <T extends LogCapability> T findCapability(Class<T> capability) {
         if (capability.isAssignableFrom(LogCacheControl.class))
             return (T) this;
 

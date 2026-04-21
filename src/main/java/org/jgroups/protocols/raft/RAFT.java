@@ -111,7 +111,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected String                    raft_id;
 
     protected final PersistentState     internal_state=new PersistentState();
-    protected final RaftState           raft_state = new RaftState(this, this::leaderUpdated);
+    private RaftState                   raft_state;
 
     @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)")
     protected int                       majority=-1;
@@ -172,7 +172,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected boolean                   state_machine_loaded;
 
-    protected Log                       log_impl;
+    RaftLogAdapter              log_impl;
 
     protected RequestTable<String>      request_table;
     protected CommitTable               commit_table;
@@ -328,15 +328,34 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description="The member this member voted for in the current term")
     public Address      votedFor()                    {return raft_state.votedFor();}
-    public long         lastAppended()                {return last_appended;}
+
+    public long lastAppended() {
+        return log_impl != null ? log_impl.lastAppended() : last_appended;
+    }
+
     public long         commitIndex()                 {return commit_index;}
     public Log          log()                         {return log_impl;}
-    public RAFT         log(Log new_log)              {this.log_impl=new_log; return this;}
+
+    public RAFT log(Log new_log) {
+        if (new_log == null) {
+            this.log_impl = null;
+        } else {
+            this.log_impl = new RaftLogAdapter(new_log, this::onLogFailure);
+        }
+        return this;
+    }
+
+
     public RAFT         addRoleListener(RoleChange c) {this.role_change_listeners.add(c); return this;}
     public RAFT         remRoleListener(RoleChange c) {this.role_change_listeners.remove(c); return this;}
     public RAFT         stateMachineLoaded(boolean b) {this.state_machine_loaded=b; return this;}
     public boolean      synchronous()                 {return synchronous;}
     public RAFT         synchronous(boolean b)        {synchronous=b; return this;}
+
+    public long lastTerm() {
+        LogEntry entry = log_impl.get(log_impl.lastAppended());
+        return entry == null ? 0 : entry.term();
+    }
 
     public RAFT timeService(TimeService timeService) {
         this.timeService = timeService;
@@ -659,11 +678,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @Override public void start() throws Exception {
         super.start();
 
-        if(log_impl == null) {
+        Log userConfigured = log_impl;
+        if(userConfigured == null) {
             if(log_class == null)
                 throw new IllegalStateException("log_class has to be defined");
             Class<?> clazz=Util.loadClass(log_class, getClass());
-            log_impl=(Log)clazz.getDeclaredConstructor().newInstance();
+            userConfigured=(Log)clazz.getDeclaredConstructor().newInstance();
             Map<String,String> args;
             if(log_args != null && !log_args.isEmpty())
                 args=parseCommaDelimitedProps(log_args);
@@ -673,7 +693,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             if(log_prefix == null)
                 log_prefix=raft_id;
             log_name=createLogName(log_prefix, "log");
-            log_impl.init(log_name, args);
+            userConfigured.init(log_name, args);
         }
 
         if (stats && metrics == null)
@@ -685,9 +705,32 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(!(local_addr instanceof ExtendedUUID))
             throw new IllegalStateException("local address must be an ExtendedUUID but is a " + local_addr.getClass().getSimpleName());
 
+        LogCache lc = new LogCache(userConfigured, Math.max(_max_log_cache_size, 1));
+        if(_max_log_cache_size <= 0)  // the log cache is disabled
+            lc.disable();
+        log_impl = new RaftLogAdapter(lc, this::onLogFailure);
+
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
-        raft_state.reload();
+        raft_state = new RaftState(new RaftState.RaftStateMutator() {
+            @Override
+            public void votedFor(Address member) {
+                if (log_impl != null)
+                    log_impl.votedFor(member);
+            }
+
+            @Override
+            public void currentTerm(long term) {
+                if (log_impl != null)
+                    log_impl.currentTerm(term);
+            }
+
+            @Override
+            public void onLeaderUpdate(Address member) {
+                leaderUpdated(member);
+            }
+        });
+        raft_state.reload(log_impl);
         log.trace("%s: set last_appended=%d, commit_index=%d, current_state=%s", local_addr, last_appended, commit_index, raft_state);
 
         initStateMachineFromLog();
@@ -697,11 +740,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         curr_log_size=logSizeInBytes();
         log_impl.useFsync(_log_use_fsync);
 
-        LogCache lc = new LogCache(log_impl, Math.max(_max_log_cache_size, 1));
-        if(_max_log_cache_size <= 0)  // the log cache is disabled
-            lc.disable();
-        log_impl = lc;
-        log_impl = new RaftLogAdapter(log_impl, this::onLogFailure);
         runner.start();
         protocolStarted = true;
     }

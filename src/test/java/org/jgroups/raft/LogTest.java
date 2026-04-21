@@ -265,8 +265,13 @@ public class LogTest {
         assertThat(log.lastAppended()).isEqualTo(10);
         assertThat(log.commitIndex()).isEqualTo(10);
         SoftAssertions.assertSoftly(softly -> {
-            for(int i=1; i < 10; i++)
-                softly.assertThat(log.get(i)).isNull();
+            for(int i=1; i < 10; i++) {
+                try {
+                    softly.assertThat(log.get(i)).isNull();
+                } catch (IOException e) {
+                    softly.fail(e);
+                }
+            }
         });
         assertThat(log.get(10)).isNotNull();
     }
@@ -405,16 +410,20 @@ public class LogTest {
         assertThat(last).isEqualTo(entries.size());
 
         SoftAssertions.assertSoftly(softly -> {
-            log.forEach((e, l) -> {
-                softly.assertThat(e.internal())
-                        .withFailMessage("Entry not internal anymore")
-                        .isEqualTo(((l & 1) == 0));
-            });
+            try {
+                log.forEach((e, l) -> {
+                    softly.assertThat(e.internal())
+                            .withFailMessage("Entry not internal anymore")
+                            .isEqualTo(((l & 1) == 0));
+                });
+            } catch (IOException e) {
+                softly.fail(e);
+            }
         });
     }
 
 
-    protected static void append(final Log log, int start_index, final byte[] buf, int... terms) {
+    protected static void append(final Log log, int start_index, final byte[] buf, int... terms) throws Exception {
         LogEntries le=new LogEntries();
         for(int term: terms)
             le.add(new LogEntry(term, buf));

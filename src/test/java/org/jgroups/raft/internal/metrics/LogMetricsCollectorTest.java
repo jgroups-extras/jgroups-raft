@@ -55,7 +55,7 @@ public class LogMetricsCollectorTest {
         assertThat(metrics.getCommitIndex()).isZero();
     }
 
-    public void testAfterAppends() {
+    public void testAfterAppends() throws Exception {
         appendEntries(1, 3);
 
         assertThat(metrics.getTotalLogEntries()).isEqualTo(3);
@@ -63,7 +63,7 @@ public class LogMetricsCollectorTest {
         assertThat(metrics.getCommittedLogEntries()).isZero();
     }
 
-    public void testAfterCommit() {
+    public void testAfterCommit() throws Exception {
         appendEntries(1, 5);
         log.commitIndex(3);
 
@@ -73,7 +73,7 @@ public class LogMetricsCollectorTest {
         assertThat(metrics.getCommitIndex()).isEqualTo(3);
     }
 
-    public void testFullyCommitted() {
+    public void testFullyCommitted() throws Exception {
         appendEntries(1, 5);
         log.commitIndex(5);
 
@@ -81,7 +81,7 @@ public class LogMetricsCollectorTest {
         assertThat(metrics.getUncommittedLogEntries()).isZero();
     }
 
-    public void testAfterTruncation() {
+    public void testAfterTruncation() throws Exception {
         appendEntries(1, 10);
         log.commitIndex(10);
 
@@ -93,13 +93,13 @@ public class LogMetricsCollectorTest {
         assertThat(metrics.getUncommittedLogEntries()).isZero();
     }
 
-    public void testCurrentTerm() {
+    public void testCurrentTerm() throws Exception {
         log.currentTerm(3);
 
         assertThat(metrics.getCurrentTerm()).isEqualTo(3);
     }
 
-    public void testLogSizeInBytes() {
+    public void testLogSizeInBytes() throws Exception {
         assertThat(metrics.getLogSizeInBytes()).isZero();
 
         appendEntries(1, 5);
@@ -112,7 +112,7 @@ public class LogMetricsCollectorTest {
         assertThat(metrics.getSnapshotsReceived()).isZero();
     }
 
-    public void testMetricsReflectLiveState() {
+    public void testMetricsReflectLiveState() throws Exception {
         // Verify lazy delegation -- metrics update as log state changes.
         assertThat(metrics.getTotalLogEntries()).isZero();
 
@@ -124,7 +124,7 @@ public class LogMetricsCollectorTest {
         assertThat(metrics.getUncommittedLogEntries()).isEqualTo(1);
     }
 
-    private void appendEntries(long startIndex, int count) {
+    private void appendEntries(long startIndex, int count) throws Exception {
         LogEntries entries = new LogEntries();
         for (int i = 0; i < count; i++) {
             entries.add(new LogEntry(1, new byte[]{(byte) i}));

@@ -1,5 +1,9 @@
 package org.jgroups.protocols.raft.election;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.View;
@@ -25,10 +29,6 @@ import java.util.stream.Stream;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
-import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
  * Uses the synchronous test framework to test {@link ELECTION}. Tests the election restrictions described in 5.4.1
@@ -174,7 +174,7 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         }
     }
 
-    protected void assertTerms(long[] ... exp_terms) {
+    protected void assertTerms(long[] ... exp_terms) throws Exception {
         int index=0;
         for(long[] expected_terms: exp_terms) {
             RAFT r=raft(index++);
@@ -190,7 +190,13 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
 
     protected void waitUntilTerms(long timeout, long interval, long[] expexted_terms, Runnable action) {
         BooleanSupplier bs = () -> Stream.of(rafts()).filter(Objects::nonNull)
-                .allMatch(r -> Arrays.equals(terms(r),expexted_terms));
+                .allMatch(r -> {
+                    try {
+                        return Arrays.equals(terms(r),expexted_terms);
+                    } catch (Exception e) {
+                        throw new AssertionError(e);
+                    }
+                });
         assertThat(waitUntilTrue(timeout, interval, bs, action))
                 .as(this::dumpLeaderAndTerms)
                 .isTrue();
@@ -222,7 +228,7 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         }
     }
 
-    protected String printTerms() {
+    protected String printTerms() throws Exception {
         StringBuilder sb=new StringBuilder("     1 2 3\n     -----\n");
         List<String> mbrs = new ArrayList<>(getRaftMembers());
         for(int i=0; i < mbrs.size(); i++) {
@@ -246,7 +252,7 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         return sb.toString();
     }
 
-    protected static long[] terms(RAFT r) {
+    protected static long[] terms(RAFT r) throws Exception {
         Log l=r.log();
         List<Long> list=new ArrayList<>((int)l.size());
         for(int i=1; i <= l.lastAppended(); i++) {

@@ -75,18 +75,14 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public void close() {
-      try {
-         MetadataStorage metadataStorage = this.metadataStorage;
-         if (metadataStorage != null) {
-            metadataStorage.close();
-         }
-         LogEntryStorage entryStorage = logEntryStorage;
-         if (entryStorage != null) {
-            entryStorage.close();
-         }
-      } catch (IOException e) {
-         throw new IllegalStateException(e);
+   public void close() throws IOException {
+      MetadataStorage metadataStorage = this.metadataStorage;
+      if (metadataStorage != null) {
+         metadataStorage.close();
+      }
+      LogEntryStorage entryStorage = logEntryStorage;
+      if (entryStorage != null) {
+         entryStorage.close();
       }
    }
 
@@ -96,15 +92,10 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public Log currentTerm(long new_term) {
-      //assert new_term >= currentTerm;
-      try {
-         checkMetadataStarted().setCurrentTerm(new_term);
-         currentTerm = new_term;
-         return this;
-      } catch (IOException e) {
-         throw new IllegalStateException(e);
-      }
+   public Log currentTerm(long new_term) throws IOException {
+      checkMetadataStarted().setCurrentTerm(new_term);
+      currentTerm = new_term;
+      return this;
    }
 
    @Override
@@ -113,14 +104,10 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public Log votedFor(Address member) {
-      try {
-         checkMetadataStarted().setVotedFor(member);
-         votedFor = member;
-         return this;
-      } catch (IOException e) {
-         throw new IllegalStateException(e);
-      }
+   public Log votedFor(Address member) throws IOException {
+      checkMetadataStarted().setVotedFor(member);
+      votedFor = member;
+      return this;
    }
 
    @Override
@@ -129,15 +116,11 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public Log commitIndex(long new_index) {
+   public Log commitIndex(long new_index) throws IOException {
       assert new_index >= commitIndex;
-      try {
-         checkMetadataStarted().setCommitIndex(new_index);
-         commitIndex = new_index;
-         return this;
-      } catch (IOException e) {
-         throw new IllegalStateException();
-      }
+      checkMetadataStarted().setCommitIndex(new_index);
+      commitIndex = new_index;
+      return this;
    }
 
    @Override
@@ -150,31 +133,23 @@ public class FileBasedLog implements Log {
       return checkLogEntryStorageStarted().getLastAppended();
    }
 
-   public void setSnapshot(ByteBuffer sn) {
+   public void setSnapshot(ByteBuffer sn) throws IOException {
       Path snapshotPath = snapshotPath();
-      try {
-         if (Files.exists(snapshotPath)) {
-            // write to temporary file first
-            Path tmp = Files.createTempFile(logDir.toPath(), null, null);
-            writeSnapshot(sn, tmp);
-            // do we need atomic move?
-            Files.move(tmp, snapshotPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-         } else {
-            writeSnapshot(sn, snapshotPath);
-         }
-      } catch (IOException e) {
-         throw new RuntimeException(e);
+      if (Files.exists(snapshotPath)) {
+         // write to temporary file first
+         Path tmp = Files.createTempFile(logDir.toPath(), null, null);
+         writeSnapshot(sn, tmp);
+         // do we need atomic move?
+         Files.move(tmp, snapshotPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      } else {
+         writeSnapshot(sn, snapshotPath);
       }
    }
 
-   public ByteBuffer getSnapshot() {
+   public ByteBuffer getSnapshot() throws IOException {
       Path snapshotPath = snapshotPath();
       if (Files.exists(snapshotPath)) {
-         try {
-            return ByteBuffer.wrap(Files.readAllBytes(snapshotPath));
-         } catch (IOException e) {
-            throw new RuntimeException(e);
-         }
+         return ByteBuffer.wrap(Files.readAllBytes(snapshotPath));
       }
       return null;
    }
@@ -190,89 +165,65 @@ public class FileBasedLog implements Log {
    }
 
    @Override
-   public long append(long index, LogEntries entries) {
+   public long append(long index, LogEntries entries) throws IOException {
       assert index > firstAppended();
       assert index > commitIndex();
       LogEntryStorage storage = checkLogEntryStorageStarted();
-      try {
-         long term = storage.write(index, entries);
-         if (currentTerm != term) {
-            currentTerm(term);
-         }
-      } catch (IOException e) {
-         e.printStackTrace();
+      long term = storage.write(index, entries);
+      if (currentTerm != term) {
+         currentTerm(term);
       }
       return lastAppended();
    }
 
    @Override
-   public LogEntry get(long index) {
-      try {
-         return checkLogEntryStorageStarted().getLogEntry(index);
-      } catch (IOException e) {
-         return null;
-      }
+   public LogEntry get(long index) throws IOException {
+      return checkLogEntryStorageStarted().getLogEntry(index);
    }
 
    @Override
-   public void truncate(long index_exclusive) {
+   public void truncate(long index_exclusive) throws IOException {
       assert index_exclusive >= firstAppended();
 
       if (index_exclusive > commitIndex) {
          index_exclusive=commitIndex;
       }
 
-      try {
-         checkLogEntryStorageStarted().removeOld(index_exclusive);
-      } catch (IOException e) {
-         e.printStackTrace();
+      checkLogEntryStorageStarted().removeOld(index_exclusive);
+   }
+
+   @Override
+   public void reinitializeTo(long index, LogEntry entry) throws IOException {
+      MetadataStorage metadataStorage = checkMetadataStarted();
+      checkLogEntryStorageStarted().reinitializeTo(index, entry);
+
+      // update commit index
+      metadataStorage.setCommitIndex(index);
+      commitIndex = index;
+
+      // update term
+      if (currentTerm != entry.term()) {
+         metadataStorage.setCurrentTerm(entry.term());
+         currentTerm = entry.term();
       }
    }
 
    @Override
-   public void reinitializeTo(long index, LogEntry entry) {
-      try {
-         MetadataStorage metadataStorage = checkMetadataStarted();
-         checkLogEntryStorageStarted().reinitializeTo(index, entry);
-
-         // update commit index
-         metadataStorage.setCommitIndex(index);
-         commitIndex = index;
-
-         // update term
-         if (currentTerm != entry.term()) {
-            metadataStorage.setCurrentTerm(entry.term());
-            currentTerm = entry.term();
-         }
-      } catch (IOException e) {
-         e.printStackTrace();
-      }
-   }
-
-   @Override
-   public void deleteAllEntriesStartingFrom(long start_index) {
+   public void deleteAllEntriesStartingFrom(long start_index) throws IOException {
       assert start_index > commitIndex; // can we delete committed entries!? See org.jgroups.tests.LogTest.testDeleteEntriesFromFirst
       assert start_index >= firstAppended();
 
       LogEntryStorage storage = checkLogEntryStorageStarted();
-      try {
-         currentTerm(storage.removeNew(start_index));
-      } catch (IOException e) {
-         e.printStackTrace();
-      }
+      currentTerm(storage.removeNew(start_index));
    }
 
    @Override
-   public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) {
-      try {
-         checkLogEntryStorageStarted().forEach(function, start_index, end_index);
-      } catch (IOException e) {
-         e.printStackTrace();
-      }
+   public void forEach(ObjLongConsumer<LogEntry> function, long start_index, long end_index) throws IOException {
+      checkLogEntryStorageStarted().forEach(function, start_index, end_index);
    }
 
    @Override
-   public void forEach(ObjLongConsumer<LogEntry> function) {
+   public void forEach(ObjLongConsumer<LogEntry> function) throws IOException {
       forEach(function, firstAppended(), lastAppended());
    }
 
