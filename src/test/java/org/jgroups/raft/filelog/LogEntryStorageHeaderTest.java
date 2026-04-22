@@ -29,6 +29,7 @@ public class LogEntryStorageHeaderTest {
     private static final int FILE_HEADER_SIZE = 8;
     private static final byte CURRENT_VERSION = 2;
     private static final byte LEGACY_ENTRY_MAGIC = 0x01;
+    private static final byte CRC_ENTRY_MAGIC = 0x02;
 
     private Path tempDir;
     private LogEntryStorage storage;
@@ -100,7 +101,7 @@ public class LogEntryStorageHeaderTest {
         writeEntries(1, entry(1, "data"));
 
         byte[] firstByte = readRawBytes(FILE_HEADER_SIZE, 1);
-        assertThat(firstByte[0]).isEqualTo(LEGACY_ENTRY_MAGIC);
+        assertThat(firstByte[0]).isEqualTo(CRC_ENTRY_MAGIC);
     }
 
     public void testLegacyFileOpensInCompatibilityMode() throws IOException {

@@ -12,6 +12,7 @@ import java.lang.invoke.MethodHandles;
 import java.nio.ByteBuffer;
 import java.util.Objects;
 import java.util.function.ObjLongConsumer;
+import java.util.zip.CRC32C;
 
 /**
  * Stores the {@link LogEntry} into a file.
@@ -24,9 +25,11 @@ public final class LogEntryStorage {
    private static final byte[] FILE_HEADER_MAGIC = {'R', 'A', 'F', 'T'};
    private static final byte FILE_HEADER_VERSION = 2;
    private static final int FILE_HEADER_SIZE = 8;
+   private static final int CRC_SIZE = 4;
 
    private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
    private static final byte MAGIC_NUMBER = 0x01;
+   private static final byte MAGIC_NUMBER_CRC = 0x02;
    private static final String FILE_NAME = "entries.raft";
    private static final int HEADER_SIZE = Global.INT_SIZE * 2 + Global.LONG_SIZE * 2 + 1 + Global.BYTE_SIZE;
    // this is the typical OS page size and SSD blck_size
@@ -78,7 +81,7 @@ public final class LogEntryStorage {
             throw new IOException(message);
          }
          entryStartOffset = FILE_HEADER_SIZE;
-      } else if (peek.get(0) == MAGIC_NUMBER) {
+      } else if (peek.get(0) == MAGIC_NUMBER || peek.get(0) == MAGIC_NUMBER_CRC) {
          entryStartOffset = 0;
       } else {
          String message = String.format("Unrecognized format in entries.raft: first byte is 0x%02X. " +
@@ -170,13 +173,17 @@ public final class LogEntryStorage {
       }
       final long startPosition = position;
       final ByteBuffer batchBuffer = fileStorage.ioBufferWith(batchBytes);
+      int offset = 0;
       int size = entries.size(), i = 0;
+      final CRC32C crc = new CRC32C();
       for (LogEntry entry : entries) {
          Header header = new Header(position, index, entry);
          header.writeTo(batchBuffer);
          if (entry.length() > 0) {
             batchBuffer.put(entry.command(), entry.offset(), entry.length());
          }
+
+         writeTrailingCRC(crc, batchBuffer, offset);
          setFilePosition(header.index, header.position);
          term =(int)Math.max(entry.term(), term);
          position = header.nextPosition();
@@ -185,6 +192,7 @@ public final class LogEntryStorage {
          }
          ++i;
          ++index;
+         offset = batchBuffer.position();
       }
       batchBuffer.flip();
       fileStorage.write(startPosition);
@@ -198,9 +206,22 @@ public final class LogEntryStorage {
       return term;
    }
 
+   private void writeTrailingCRC(CRC32C crc, ByteBuffer buffer, int offset) {
+      int before = buffer.position();
+      buffer.position(offset);
+      buffer.limit(before);
+      crc.update(buffer);
+      buffer.limit(buffer.capacity());
+      // CRC32, as the name says, it has only 32 bits.
+      // Since it returns a long, we get only the first 32 bits and cast to int.
+      int checksum = (int) (crc.getValue() & 0xFFFFFFFFL);
+      buffer.putInt(checksum);
+      crc.reset();
+   }
+
    private static Header readHeader(LogEntryStorage logStorage, long position) throws IOException {
       ByteBuffer data = logStorage.fileStorage.read(position, HEADER_SIZE);
-      if (data.remaining() != HEADER_SIZE) {
+      if (data.remaining() < HEADER_SIZE) {
          // corrupted data or non-existing data
          return null;
       }
@@ -241,6 +262,7 @@ public final class LogEntryStorage {
 
       if (firstEntry.length() > 0) {
          batchBuffer.put(firstEntry.command(), firstEntry.offset(), firstEntry.length());
+         writeTrailingCRC(new CRC32C(), batchBuffer, 0);
       }
 
       batchBuffer.flip();
@@ -332,7 +354,7 @@ public final class LogEntryStorage {
       Header(long position, long index, LogEntry entry) {
          Objects.requireNonNull(entry);
          this.position = position;
-         this.magic = MAGIC_NUMBER;
+         this.magic = MAGIC_NUMBER_CRC;
          this.index = index;
          this.term = entry.term();
          this.dataLength = entry.length();
@@ -341,7 +363,7 @@ public final class LogEntryStorage {
       }
 
       public static int getTotalLength(final int dataLength) {
-         return HEADER_SIZE + dataLength;
+         return HEADER_SIZE + dataLength + CRC_SIZE;
       }
 
       Header(long position, ByteBuffer buffer) {
@@ -364,27 +386,67 @@ public final class LogEntryStorage {
       }
 
       long nextPosition() {
-         return HEADER_SIZE + position + dataLength;
+         long curr = HEADER_SIZE + position + dataLength;
+         // In version 2 we included CRC in the data trailer.
+         if (magic == MAGIC_NUMBER_CRC)
+            return CRC_SIZE + curr;
+         return curr;
       }
 
-      Header consistencyCheck() {
-         return magic != MAGIC_NUMBER ||
-               term <= 0 ||
-               index <= 0 ||
-               dataLength < 0 ||
-               totalLength < HEADER_SIZE ||
-               dataLength + HEADER_SIZE != totalLength ?
-               null : this;
+      Header consistencyCheck() throws IOException {
+         int expectedLength = 0;
+         if (magic != MAGIC_NUMBER && magic != MAGIC_NUMBER_CRC)
+            return null;
+
+         if (magic == MAGIC_NUMBER)
+            expectedLength = dataLength + HEADER_SIZE;
+
+         if (magic == MAGIC_NUMBER_CRC)
+            expectedLength = dataLength + HEADER_SIZE + CRC_SIZE;
+
+         if (term <= 0 || index <= 0 || dataLength < 0 || totalLength < HEADER_SIZE || totalLength != expectedLength) {
+            String message = String.format(
+                    "Corrupted entry header at file position %d. "
+                            + "The log file might be corrupted. Run 'raft log verify' for diagnostics before corrective action.", position);
+            throw new IOException(message);
+         }
+
+         return this;
       }
 
       LogEntry readLogEntry(LogEntryStorage storage) throws IOException {
-         ByteBuffer data = storage.fileStorage.read(position + HEADER_SIZE, dataLength);
-         if (data.remaining() != dataLength) {
+         int length = dataLength;
+         ByteBuffer data;
+         byte[] header = null;
+         if (magic == MAGIC_NUMBER_CRC) {
+            length += CRC_SIZE;
+            data = storage.fileStorage.read(position, HEADER_SIZE + length);
+            header = new byte[HEADER_SIZE];
+            data.get(header);
+         } else {
+            data = storage.fileStorage.read(position + HEADER_SIZE, length);
+         }
+         if (data.remaining() != length) {
             return null;
          }
+
          assert !data.hasArray();
          byte[] bytes = new byte[dataLength];
          data.get(bytes);
+         if (magic == MAGIC_NUMBER_CRC) {
+            int expected = data.getInt();
+            CRC32C crc = new CRC32C();
+            crc.update(header);
+            crc.update(bytes);
+            int actual = (int) (crc.getValue() & 0xFFFFFFFFL);
+            if (expected != actual) {
+               String message = String.format(
+                       "CRC mismatch for entry at index %d (file position %d): expected CRC 0x%08x but found 0x%08X. "
+                               + "The log file might be corrupted. Run 'raft log verify' for diagnostics before taking corrective action.",
+                       index, position, expected, actual);
+               throw new IOException(message);
+            }
+         }
          LogEntry entry = new LogEntry(term, bytes);
          return entry.internal(internal);
       }

@@ -9,7 +9,7 @@ import java.util.Arrays;
  * @author Pedro Ruivo, Francesco Nigro
  * @since 0.5.4
  */
-public class FilePositionCache {
+final class FilePositionCache {
 
    public static final int TOO_OLD = -2;
    public static final int EMPTY = -1;
