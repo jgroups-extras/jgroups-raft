@@ -3,15 +3,11 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
+import org.jgroups.raft.filelog.SnapshotStorage;
 
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
 
@@ -23,8 +19,6 @@ import java.util.function.ObjLongConsumer;
  */
 public class FileBasedLog implements Log {
 
-   private static final String SNAPSHOT_FILE_NAME = "state_snapshot.raft";
-
    private File logDir;
    private Address votedFor;
    private long commitIndex;
@@ -34,6 +28,7 @@ public class FileBasedLog implements Log {
    private boolean fsync = DEFAULT_FSYNC;
    private MetadataStorage metadataStorage;
    private LogEntryStorage logEntryStorage;
+   private SnapshotStorage snapshotStorage;
 
    @Override
    public void init(String log_name, Map<String, String> args) throws Exception {
@@ -49,6 +44,8 @@ public class FileBasedLog implements Log {
 
       logEntryStorage = new LogEntryStorage(logDir, fsync);
       logEntryStorage.open();
+
+      snapshotStorage = new SnapshotStorage(logDir);
 
       commitIndex = metadataStorage.getCommitIndex();
       currentTerm = metadataStorage.getCurrentTerm();
@@ -133,35 +130,14 @@ public class FileBasedLog implements Log {
       return checkLogEntryStorageStarted().getLastAppended();
    }
 
+   @Override
    public void setSnapshot(ByteBuffer sn) throws IOException {
-      Path snapshotPath = snapshotPath();
-      if (Files.exists(snapshotPath)) {
-         // write to temporary file first
-         Path tmp = Files.createTempFile(logDir.toPath(), null, null);
-         writeSnapshot(sn, tmp);
-         // do we need atomic move?
-         Files.move(tmp, snapshotPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-      } else {
-         writeSnapshot(sn, snapshotPath);
-      }
+      snapshotStorage.writeSnapshot(sn);
    }
 
+   @Override
    public ByteBuffer getSnapshot() throws IOException {
-      Path snapshotPath = snapshotPath();
-      if (Files.exists(snapshotPath)) {
-         return ByteBuffer.wrap(Files.readAllBytes(snapshotPath));
-      }
-      return null;
-   }
-
-   private Path snapshotPath() {
-      return logDir.toPath().resolve(SNAPSHOT_FILE_NAME);
-   }
-
-   private static void writeSnapshot(ByteBuffer snapshot, Path path) throws IOException {
-      try(ByteChannel ch=Files.newByteChannel(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
-         ch.write(snapshot);
-      }
+      return snapshotStorage.readSnapshot();
    }
 
    @Override
