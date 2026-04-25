@@ -135,7 +135,12 @@ public final class LogEntryStorage {
       }
       Header header = readHeader(position);
       if (header == null) {
-         return null;
+         String message = String.format(
+                 "Corrupted entry header at index %d (file position %d). " +
+                         "The log file may be corrupted. " +
+                         "Run 'raft log verify' for diagnostics before taking corrective action.",
+                 index, position);
+         throw new IOException(message);
       }
       return header.readLogEntry(this);
    }
@@ -282,6 +287,7 @@ public final class LogEntryStorage {
       if (index == 1) {
          fileStorage.truncateTo(0);
          writeFileHeader();
+         positionCache.invalidateFrom(1);
          lastAppended = 0;
          return 0;
       }
@@ -426,8 +432,14 @@ public final class LogEntryStorage {
          } else {
             data = storage.fileStorage.read(position + HEADER_SIZE, length);
          }
+
          if (data.remaining() != length) {
-            return null;
+            String message = String.format(
+                    "Truncated entry at index %d (file position %d): expected %d bytes, but found %d. " +
+                            "The log file may be corrupted. " +
+                            "Run 'raft log verify' for diagnostics before taking corrective action.",
+                    index, position, length, data.remaining());
+            throw new IOException(message);
          }
 
          assert !data.hasArray();
