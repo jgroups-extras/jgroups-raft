@@ -111,7 +111,24 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected String                    raft_id;
 
     protected final PersistentState     internal_state=new PersistentState();
-    private RaftState                   raft_state;
+    private final RaftState             raft_state = new RaftState(new RaftState.RaftStateMutator() {
+        @Override
+        public void votedFor(Address member) {
+            if (log_impl != null)
+                log_impl.votedFor(member);
+        }
+
+        @Override
+        public void currentTerm(long term) {
+            if (log_impl != null)
+                log_impl.currentTerm(term);
+        }
+
+        @Override
+        public void onLeaderUpdate(Address member) {
+            leaderUpdated(member);
+        }
+    });
 
     @ManagedAttribute(description="Majority needed to achieve consensus; computed from members)")
     protected int                       majority=-1;
@@ -353,7 +370,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public RAFT         synchronous(boolean b)        {synchronous=b; return this;}
 
     public long lastTerm() {
-        LogEntry entry = log_impl.get(log_impl.lastAppended());
+        return entryTerm(lastAppended());
+    }
+
+    public long entryTerm(long index) {
+        if (log_impl == null)
+            return 0;
+
+        LogEntry entry = log_impl.get(index);
         return entry == null ? 0 : entry.term();
     }
 
@@ -712,24 +736,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
-        raft_state = new RaftState(new RaftState.RaftStateMutator() {
-            @Override
-            public void votedFor(Address member) {
-                if (log_impl != null)
-                    log_impl.votedFor(member);
-            }
-
-            @Override
-            public void currentTerm(long term) {
-                if (log_impl != null)
-                    log_impl.currentTerm(term);
-            }
-
-            @Override
-            public void onLeaderUpdate(Address member) {
-                leaderUpdated(member);
-            }
-        });
         raft_state.reload(log_impl);
         log.trace("%s: set last_appended=%d, commit_index=%d, current_state=%s", local_addr, last_appended, commit_index, raft_state);
 

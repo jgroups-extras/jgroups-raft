@@ -331,7 +331,7 @@ public abstract class BaseElection extends Protocol {
             return;
         raft.votedFor(sender);
         long my_last_index = raft.lastAppended();
-        long my_last_term = raft.lastTerm();
+        long my_last_term = raft.entryTerm(my_last_index);
         sendVoteResponse(sender, new_term, my_last_term, my_last_index);
     }
 
