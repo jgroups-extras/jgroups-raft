@@ -1,0 +1,138 @@
+== Log Integrity and Recovery
+
+JGroups Raft provides the `Log` interface to build the log structure to hold committed entries, metadata, and snapshots.
+The log implementations might fail to perform an operation, which could lead to catastrophic failures and loss of guarantees, if not handled properly.
+Starting with version 2.x, the default persistent log shipped in JGroups Raft includes integrity checks that detect corruption caused by disk failures, incomplete writes during crashes, or other storage-level problems.
+
+This section explains what happens when a storage problem is detected and how to recover from it.
+
+=== What Happens on Storage Failure
+
+When the node detects a problem with its persistent log, whether during startup or at runtime, it enters a *degraded state*:
+
+- The node stops participating in Raft consensus.
+  It will not vote in elections, accept log entries, or serve client requests.
+- If the node was the leader, it steps down immediately.
+- The JGroups channel remains connected.
+  The node stays visible in the cluster view but does not contribute to the quorum.
+- The JVM process continues running.
+  There is no crash, no automatic restart. We deliberately avoid crashing the process.
+- The data on disk is never modified.
+  The node does not attempt to repair, truncate, or overwrite the corrupted data.
+
+This behavior is intentional.
+A node with corrupted storage cannot safely participate in consensus.
+Accepting or replicating entries from a damaged log could spread corruption to other nodes.
+Stopping early and loudly is the safest response.
+The operator is responsible for recovering the process to a stable state again.
+
+=== Why Not Just Continue?
+
+A Raft log is the source of truth for the replicated state machine.
+If a node silently continues with corrupted entries, several things can go wrong:
+
+- The state machine may apply garbage data, producing incorrect results that are impossible to trace back to the root cause.
+- During leader election, a node with a corrupted log could win the election and replicate bad entries to the entire cluster.
+- After a snapshot, the corrupted entries become permanently baked into the state, there is no way to recover without restoring from backup.
+
+By entering degraded state instead, the node preserves the original data on disk for inspection and gives operators the opportunity to make an informed decision.
+
+=== Detecting a Degraded Node
+
+A degraded node can be identified through several channels:
+
+Server logs::
+The node logs an `ERROR`-level message describing the failure.
+The message includes the nature of the problem (CRC mismatch, incomplete entry, I/O error), the affected file and position, and suggested next steps.
+
+Readiness API::
+The node reports as *live* (process running, channel connected) but *not ready* (cannot serve Raft operations).
+Health checks and Kubernetes readiness probes that use this API will correctly route traffic away from the degraded node.
+This API is available in version 2.x.
+
+CLI::
+The `raft status` command shows whether each node can handle requests.
+A degraded node will report that it cannot.
+
+=== Common Causes
+
+The most common causes of storage failures are:
+
+Disk corruption::
+Bit flips or bad sectors on the underlying storage device.
+The per-entry checksums introduced in 2.x detect these reliably.
+
+Incomplete writes from crashes::
+If the node crashes (power failure, OOM kill, SIGKILL) while writing a log entry, the last entry may be partially written.
+On restart, the node detects the incomplete entry and enters degraded state rather than silently losing data.
+
+Filesystem or volume errors::
+Full disks, read-only mounts, permission changes, or network-attached storage failures.
+These are detected at runtime when the node attempts to write fails, and the node enters into degraded state immediately.
+
+Manual file modification::
+Editing or truncating the log files outside of JGroups Raft.
+
+=== Recovery
+
+Recovery depends on the nature of the failure.
+
+==== Transient I/O Errors (Full Disk, Permission Issues)
+
+If the underlying problem is transient, for example, a full disk that has been cleaned up, or a permission issue that has been corrected, simply restart the node.
+On restart, the node re-reads the log from disk.
+If the data is intact, it rejoins the cluster normally and catches up with any entries it missed while degraded.
+
+NOTE: We made a conscious decision of not trying to be "smart" when handling failure. We could do something unexpected for operators.
+We offer the tools for operators to make their decision on how to handle the failure.
+
+==== Corrupted Entries
+
+If the log file contains corrupted data, the node cannot start normally.
+The recommended procedure is:
+
+. Inspect the error message in the server log.
+  It contains the file name, byte offset, and the nature of the corruption.
+. Back up the affected log directory before taking any action.
+. Use the `raft log verify` command to scan the entire log and identify all corrupted entries.
+. Use the `raft log repair` command to truncate the log at the first point of corruption.
+  This removes the corrupted entries and all entries after them.
+. Restart the node.
+  It will rejoin the cluster and recover the missing entries from the current leader via the normal Raft catch-up mechanism.
+
+WARNING: `raft log repair` permanently removes entries from the log file.
+Always back up the log directory before running it.
+
+==== Complete Log Loss
+
+If the log files are deleted or unrecoverable, delete the entire log directory and restart the node.
+The leader will send a snapshot followed by any subsequent entries, and the node will rebuild its state from scratch.
+This is the same mechanism used when adding a new node to the cluster.
+
+WARNING: Be extra careful when performing this action.
+The node is unable to accept requests until it has all entries.
+Additional failures in the cluster could cause loss of availability.
+
+=== Upgrade and Compatibility
+
+==== Upgrading from 1.x to 2.x
+
+No migration is required.
+The 2.x code reads 1.x log files in compatibility mode.
+Existing entries without checksums are accepted as-is.
+New entries appended after the upgrade are written with checksums and will be validated on subsequent reads.
+
+Over time, as snapshots are taken and the log is truncated, all legacy entries are naturally replaced with checksummed entries.
+
+==== Rolling Back from 2.x to 1.x
+
+Rolling back requires converting the log files to the 1.x format using the `raft log downgrade` CLI command.
+Without this conversion, the 1.x code will not recognize the file format and will start with an empty log.
+
+[source,bash]
+----
+# Convert log files in the given directory to 1.x format
+raft log downgrade /path/to/log/directory
+----
+
+After running the downgrade command, restart the node with the 1.x version.

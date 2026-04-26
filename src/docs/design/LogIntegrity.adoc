@@ -1,0 +1,239 @@
+= Log Integrity and Failure Handling
+:author: José Bolina <jbolina@redhat.com>
+:description: Design of the log integrity checks, degraded state, and file format versioning.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
+
+[abstract]
+--
+This document describes how JGroups Raft detects and responds to persistent log corruption and storage failures.
+It covers the file format versioning scheme, per-entry checksumming, the degraded state model, and the compatibility guarantees between versions.
+--
+
+== Motivation
+
+The persistent log is the foundation of Raft's durability guarantees.
+Every committed entry must survive restarts, and every node must be able to verify that the entries it reads from disk are the same entries that were originally written.
+
+Prior to 2.x, the persistent log had no checksumming and no structured error handling.
+A bit flip in a length field would silently discard the log tail during reload.
+An I/O failure during append would be caught, printed to stderr, and swallowed.
+The leader would believe the entry was replicated when it was not.
+
+These are not theoretical concerns.
+Disk corruption rates in production environments are well-documented, and incomplete writes during crashes are a routine occurrence.
+The integrity mechanisms described here ensure that corruption is detected early and handled safely, before it can propagate through the cluster.
+
+== Design Principles
+
+Never modify user data on failure::
+When corruption is detected, the node stops participating in consensus but never modifies the data on disk.
+The operator decides whether to repair, restore from backup, or let the node recover from the leader.
+Automatic truncation or repair would risk destroying evidence needed for root-cause analysis.
+
+Fail loudly, fail early::
+Every error message includes the file name, byte offset, nature of the corruption, and a suggested CLI command.
+Silent failures are treated as bugs.
+
+Stay alive, step aside::
+A node with a storage failure keeps its JVM process running and its JGroups channel connected.
+It remains visible in the cluster view but does not participate in Raft.
+This avoids cascading view changes and container orchestrator crash loops.
+
+Backwards compatible, forward incompatible::
+New code reads old files without migration.
+Old code cannot read new files, but the failure is loud and immediately obvious, again, not a silent data loss.
+
+== File Format
+
+These file formats apply to the default persistent log shipped with JGroups Raft.
+
+=== Log File (`entries.raft`)
+
+The log file begins with an 8-byte header followed by a sequence of entries.
+
+==== File Header
+
+[cols="1,3", options="header"]
+|===
+| Bytes | Content
+
+| 0-3
+| Magic: `RAFT` (0x52, 0x41, 0x46, 0x54)
+
+| 4
+| Format version (currently `2`)
+
+| 5-7
+| Reserved (zeros, for future use and 8 bytes alignment)
+|===
+
+Legacy 1.x files have no header.
+The first byte of a legacy file is the entry magic `0x01`, which cannot collide with the file header magic `0x52` (`R`).
+This allows reliable detection of file format on open.
+
+==== Entry Format
+
+Each entry consists of a fixed-size header, variable-length data, and an optional trailing checksum.
+
+[cols="1,1,3", options="header"]
+|===
+| Field | Size | Description
+
+| magic
+| 1 byte
+| `0x01` (legacy, no checksum) or `0x02` (with checksum)
+
+| totalLength
+| 4 bytes
+| Header size + data length (excludes checksum)
+
+| term
+| 8 bytes
+| Raft term in which the entry was created
+
+| index
+| 8 bytes
+| Log index of this entry
+
+| internal
+| 1 byte
+| Whether this is an internal (membership change) entry
+
+| dataLength
+| 4 bytes
+| Length of the data payload
+
+| data
+| variable
+| The command bytes
+
+| checksum
+| 4 bytes
+| CRC-32C over header + data (only present when magic is `0x02`)
+|===
+
+The entry header is 26 bytes.
+The total on-disk size of an entry is 26 + dataLength for legacy entries, or 26 + dataLength + 4 for checksummed entries.
+
+A single file may contain a mix of `0x01` and `0x02` entries.
+This happens naturally during the transition period after upgrading from 1.x: existing entries retain their original format, while new entries are written with checksums.
+
+
+=== Snapshot File (`state_snapshot.raft`)
+
+The snapshot file uses a similar header scheme.
+
+[cols="1,3", options="header"]
+|===
+| Bytes | Content
+
+| 0-3
+| Magic: `SNAP` (0x53, 0x4E, 0x41, 0x50)
+
+| 4
+| Format version (currently `2`)
+
+| 5-7
+| Reserved (zeros)
+
+| 8..N
+| Snapshot data (state machine dump)
+
+| N+1..N+4
+| CRC-32C over the snapshot data
+|===
+
+Legacy snapshots have no header.
+Detection works the same way as the log file: if the first 4 bytes are not `SNAP`, the file is treated as a legacy snapshot and read without checksum validation.
+
+
+== Checksum Algorithm
+
+CRC-32C (Castagnoli) is used for all integrity checks.
+It is available in `java.util.zip.CRC32C` since JDK 9 and is hardware-accelerated on x86 (SSE 4.2) and ARMv8 processors.
+
+For log entries, the checksum covers the full 26-byte header and the data payload.
+Including the header in the checksum protects variable fields (term, index, data length) from undetected corruption.
+
+For snapshots, the checksum covers only the snapshot data.
+The header is fixed and self-validating via its magic bytes and version field.
+
+
+== Degraded State
+
+When a storage failure is detected, whether during startup (reload) or at runtime (append, read), the node enters degraded state.
+
+=== Trigger
+
+Any unchecked exception originating from the log adapter triggers the transition.
+This includes:
+
+- CRC mismatch on entry read
+- Incomplete or truncated entry detected during reload
+- I/O errors during append, truncate, or metadata writes (term, votedFor, commitIndex)
+- Unrecognized file format or unsupported version on open
+
+=== Behavior
+
+The transition is one-way and irreversible without a restart:
+
+. The failure cause is stored. All subsequent storage-mutating operations fail immediately with the stored cause, without touching disk.
+. If the node is the current leader, it steps down.
+. The node stops voting in elections.
+. Client requests are rejected.
+. An `ERROR`-level message is logged once with the failure details.
+. The readiness API reports the node as live but not ready.
+. The JGroups channel remains connected. No view changes are triggered.
+
+=== Why Not Auto-Recover?
+
+Automatic recovery (clearing the poisoned state after some condition) was considered and rejected:
+
+- A transient I/O error (e.g., full disk) may have caused a partial write. The log is now in an unknown state. Resuming without operator verification risks silent data loss.
+- If the node automatically recovers and wins an election, it could replicate a corrupted log to the entire cluster.
+- Restart is a simple, well-understood recovery path that gives operators explicit control over when the node rejoins.
+
+
+== Version Compatibility
+
+=== 1.x Reading 1.x Files
+
+No change. Files have no header, entries use magic `0x01`, no checksums.
+
+=== 2.x Reading 1.x Files
+
+The first byte of the file is `0x01` (legacy entry magic), not `0x52` (`R`).
+The 2.x code detects this and reads entries starting at offset 0 (no file header).
+Legacy entries are accepted without checksum validation -- only the existing consistency check (valid magic, positive term, positive index, non-negative data length, matching total length) is applied.
+
+New entries appended to a legacy file use magic `0x02` with checksums.
+The file remains headerless until it is fully replaced (via snapshot + truncate), at which point the new file gets the 8-byte header.
+
+=== 1.x Reading 2.x Files
+
+The first byte of a 2.x file is `0x52` (`R`), which fails the legacy consistency check (expected `0x01`).
+The 1.x code loads an empty log.
+This is a loud failure: the node starts with no entries, the operator notices immediately.
+
+The `raft log downgrade` CLI command converts 2.x files back to 1.x format by stripping file headers, rewriting `0x02` entries to `0x01` (removing checksums), and converting snapshots to the legacy format.
+
+=== Unknown Version
+
+If the file header contains a version number higher than what the running code supports, the node refuses to open the file and enters degraded state.
+The error message directs the operator to either upgrade to a compatible release or run `raft log downgrade` to convert the file.
+
+
+== Deferred Work
+
+The following CLI commands are tracked for a future release:
+
+`raft log verify`::
+Scans the log file and snapshot, validates all checksums, and reports corruption without modifying anything.
+
+`raft log repair`::
+Truncates the log at the first point of corruption (with operator confirmation).
+After repair, the node recovers missing entries from the leader on restart.
+
+`raft log downgrade`::
+Converts 2.x log files and snapshots to 1.x format, enabling rollback to a previous release.

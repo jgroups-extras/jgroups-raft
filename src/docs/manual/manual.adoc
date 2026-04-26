@@ -30,6 +30,8 @@ include::./using.adoc[Using jgroups-raft]
 
 include::./blocks.adoc[Building blocks]
 
+include::./log-integrity.adoc[Log Integrity and Recovery]
+
 include::./protocols-generated.adoc[Protocol list]
 
 include::./migration.adoc[Migration guide]

@@ -33,3 +33,5 @@ include::./Log.adoc[Persistent log design]
 include::./CLI.adoc[JGroups Raft CLI]
 
 include::./SchemaValidation.adoc[Schema Validation]
+
+include::./LogIntegrity.adoc[Log Integrity and Failure Handling]
