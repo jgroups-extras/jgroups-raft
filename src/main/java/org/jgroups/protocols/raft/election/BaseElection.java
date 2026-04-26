@@ -269,7 +269,7 @@ public abstract class BaseElection extends Protocol {
                 stopVotingThread(); // only on the coord
 
                 // Non-coordinator members do not initiate the voting process, so we only track the instant it ended.
-                if (!isViewCoordinator()) {
+                if (v == null || Objects.equals(v.getCoord(), local_addr)) {
                     electionEnd = raft.timeService().now();
                 }
             }
