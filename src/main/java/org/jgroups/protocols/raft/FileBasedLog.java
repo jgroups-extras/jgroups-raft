@@ -1,6 +1,7 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
+import org.jgroups.raft.filelog.LogDirectoryLock;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
 import org.jgroups.raft.filelog.SnapshotStorage;
@@ -29,6 +30,7 @@ public class FileBasedLog implements Log {
    private MetadataStorage metadataStorage;
    private LogEntryStorage logEntryStorage;
    private SnapshotStorage snapshotStorage;
+   private LogDirectoryLock directoryLock;
 
    @Override
    public void init(String log_name, Map<String, String> args) throws Exception {
@@ -37,6 +39,15 @@ public class FileBasedLog implements Log {
          throw new IllegalArgumentException("Unable to create directory " + logDir.getAbsolutePath());
       } else if (!logDir.isDirectory()) {
          throw new IllegalArgumentException("File " + logDir.getAbsolutePath() + " is not a directory!");
+      }
+
+      directoryLock = new LogDirectoryLock(logDir);
+      if (!directoryLock.tryAcquire()) {
+         String message = String.format("Log directory %s is locked by another process. " +
+                 "Another RAFT node or CLI command is currently holding the lock for the directory. " +
+                 "Ensure no other process is accessing the directory before proceeding. " +
+                 "Ensure that each node is configured to use a dedicated directory.", logDir.getAbsolutePath());
+         throw new IOException(message);
       }
 
       metadataStorage = new MetadataStorage(logDir, fsync);
@@ -80,6 +91,11 @@ public class FileBasedLog implements Log {
       LogEntryStorage entryStorage = logEntryStorage;
       if (entryStorage != null) {
          entryStorage.close();
+      }
+
+      // Only release lock files after everything is flushed.
+      if (directoryLock != null) {
+         directoryLock.close();
       }
    }
 

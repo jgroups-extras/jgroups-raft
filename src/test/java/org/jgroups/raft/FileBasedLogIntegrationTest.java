@@ -8,6 +8,8 @@ import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 
+import org.jgroups.raft.filelog.LogDirectoryLock;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -143,6 +145,45 @@ public class FileBasedLogIntegrationTest {
 
         append(6, buf, 8, 8);
         assertIndices(5, 7, 5, 8);
+    }
+
+    public void testInitCreatesLockFile() throws Exception {
+        log = createLog();
+
+        assertThat(tempDir.resolve("raft.lock")).exists();
+    }
+
+    public void testRunningLogHoldsLock() throws Exception {
+        log = createLog();
+
+        assertThat(tempDir.resolve("raft.lock")).exists();
+
+        try (LogDirectoryLock externalLock = new LogDirectoryLock(tempDir.toFile())) {
+            assertThatThrownBy(externalLock::tryAcquire)
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("already locked by the current JVM");
+        }
+    }
+
+    public void testInitRefusesLockedDirectory() throws Exception {
+        try (LogDirectoryLock externalLock = new LogDirectoryLock(tempDir.toFile())) {
+            externalLock.tryAcquire();
+
+            FileBasedLog blockedLog = new FileBasedLog();
+            assertThatThrownBy(() -> blockedLog.init(tempDir.toString(), null))
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("locked");
+        }
+    }
+
+    public void testCloseReleasesLockFile() throws Exception {
+        log = createLog();
+        log.close();
+        log = null;
+
+        try (LogDirectoryLock afterClose = new LogDirectoryLock(tempDir.toFile())) {
+            assertThat(afterClose.tryAcquire()).isTrue();
+        }
     }
 
     public void testInitFailsOnCorruptedLogFile() throws Exception {
