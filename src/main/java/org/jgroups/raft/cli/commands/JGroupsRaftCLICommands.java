@@ -40,6 +40,7 @@ public final class JGroupsRaftCLICommands {
             Member.class,
             Metrics.class,
             RawProbeCommand.class,
+            LogCommand.class,
     };
 
     public static List<Class<?>> cliCommands() {
