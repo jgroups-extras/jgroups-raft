@@ -32,10 +32,10 @@ import net.jcip.annotations.NotThreadSafe;
 @NotThreadSafe
 public final class SnapshotStorage {
 
-    private static final byte[] SNAPSHOT_HEADER_MAGIC = {'S', 'N', 'A', 'P'};
-    private static final byte SNAPSHOT_HEADER_VERSION = 2;
-    private static final int SNAPSHOT_HEADER_SIZE = 8;
-    private static final int CRC_SIZE = 4;
+    public static final byte[] SNAPSHOT_HEADER_MAGIC = {'S', 'N', 'A', 'P'};
+    public static final byte SNAPSHOT_HEADER_VERSION = 2;
+    public static final int SNAPSHOT_HEADER_SIZE = 8;
+    public static final int CRC_SIZE = 4;
     private static final ByteBuffer HEADER_BUFFER = ByteBuffer.allocate(SNAPSHOT_HEADER_SIZE);
     private static final ByteBuffer CRC_BUFFER = ByteBuffer.allocate(CRC_SIZE);
 
@@ -50,7 +50,7 @@ public final class SnapshotStorage {
         HEADER_BUFFER.put((byte) 0);
     }
 
-    private static final String SNAPSHOT_FILE_NAME = "state_snapshot.raft";
+    public static final String SNAPSHOT_FILE_NAME = "state_snapshot.raft";
 
     private final File logDir;
     private final CRC32C crc;
@@ -185,7 +185,7 @@ public final class SnapshotStorage {
         return logDir.toPath().resolve(SNAPSHOT_FILE_NAME);
     }
 
-    private static boolean isSnapshotFile(ByteBuffer bb) {
+    public static boolean isSnapshotFile(ByteBuffer bb) {
         return bb.remaining() >= 4
                 && bb.get(0) == SNAPSHOT_HEADER_MAGIC[0]
                 && bb.get(1) == SNAPSHOT_HEADER_MAGIC[1]

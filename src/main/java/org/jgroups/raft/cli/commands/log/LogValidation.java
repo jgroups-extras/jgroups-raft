@@ -70,7 +70,8 @@ public final class LogValidation {
      */
     public static ValidationResult validate(File directory) {
         LogValidation lv = new LogValidation(directory, List.of(
-                new EntriesFileRule()
+                new EntriesFileRule(),
+                new SnapshotFileRule()
         ));
         return lv.validate();
     }

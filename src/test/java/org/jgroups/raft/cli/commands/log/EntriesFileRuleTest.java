@@ -11,6 +11,7 @@ import org.jgroups.raft.filelog.LogEntryStorage;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.RandomAccessFile;
 import java.io.StringWriter;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -19,7 +20,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Comparator;
 import java.util.stream.Stream;
-import java.util.zip.CRC32C;
 
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
@@ -27,14 +27,6 @@ import org.testng.annotations.Test;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class EntriesFileRuleTest {
-
-    private static final byte[] RAFT_MAGIC = LogEntryStorage.FILE_HEADER_MAGIC;
-    private static final int FILE_HEADER_SIZE = LogEntryStorage.FILE_HEADER_SIZE;
-    private static final byte V2_ENTRY_MAGIC = LogEntryStorage.MAGIC_NUMBER_CRC;
-    private static final byte V1_ENTRY_MAGIC = LogEntryStorage.MAGIC_NUMBER;
-    private static final int ENTRY_HEADER_SIZE = LogEntryStorage.HEADER_SIZE;
-    private static final int CRC_SIZE = LogEntryStorage.CRC_SIZE;
-    private static final String ENTRIES_FILE = LogEntryStorage.FILE_NAME;
 
     private Path tempDir;
 
@@ -54,8 +46,9 @@ public class EntriesFileRuleTest {
         }
     }
 
+    // --- Tests using real FileBasedLog ---
+
     public void testValidHeaderNoEntries() throws Exception {
-        // just create and close
         FileBasedLog fbl = createLog();
         fbl.close();
 
@@ -117,8 +110,104 @@ public class EntriesFileRuleTest {
         assertThat(result.lastLogIndex()).hasValue(2);
     }
 
+    public void testCrcMismatchDetected() throws Exception {
+        byte[] data = "payload".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, "good".getBytes()),
+                    new LogEntry(2, data)
+            ));
+        }
+
+        long corruptOffset = entryDataOffset(1, "good".getBytes().length);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(corruptOffset);
+            raf.writeByte(0xFF);
+        }
+
+        ValidationContext result = validate();
+
+        ValidationResult fileResult = singleResult(result);
+        assertThat(fileResult.isValid()).isFalse();
+        assertThat(fileResult.exitCode()).isEqualTo(1);
+        assertThat(formatOutput(result)).containsIgnoringCase("CRC");
+    }
+
+    public void testIncompleteTrailingEntryDetected() throws Exception {
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, "complete".getBytes()),
+                    new LogEntry(2, "to-be-truncated".getBytes())
+            ));
+        }
+
+        long truncateAt = entryOffset(1, "complete".getBytes().length)
+                + LogEntryStorage.HEADER_SIZE + 2;
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.setLength(truncateAt);
+        }
+
+        ValidationContext result = validate();
+
+        ValidationResult fileResult = singleResult(result);
+        assertThat(fileResult.isValid()).isFalse();
+        assertThat(fileResult.exitCode()).isEqualTo(1);
+    }
+
+    public void testInvalidEntryHeader() throws Exception {
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, "good".getBytes()),
+                    new LogEntry(2, "victim".getBytes())
+            ));
+        }
+
+        long secondEntryOffset = entryOffset(1, "good".getBytes().length);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(secondEntryOffset);
+            raf.writeByte(0x7F);
+        }
+
+        ValidationContext result = validate();
+
+        ValidationResult fileResult = singleResult(result);
+        assertThat(fileResult.isValid()).isFalse();
+        assertThat(fileResult.exitCode()).isEqualTo(1);
+    }
+
+    public void testScanContinuesPastCrcMismatch() throws Exception {
+        byte[] d1 = "bad1".getBytes();
+        byte[] d2 = "good".getBytes();
+        byte[] d3 = "bad2".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, d1),
+                    new LogEntry(2, d2),
+                    new LogEntry(3, d3)
+            ));
+        }
+
+        long entry1DataOffset = entryDataOffset(0, 0);
+        long entry3DataOffset = entryDataOffset(2, d1.length, d2.length);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(entry1DataOffset);
+            raf.writeByte(0xFF);
+
+            raf.seek(entry3DataOffset);
+            raf.writeByte(0xFF);
+        }
+
+        ValidationContext result = validate();
+
+        ValidationResult fileResult = singleResult(result);
+        assertThat(fileResult.isValid()).isFalse();
+        assertThat(result.lastLogIndex()).hasValue(3);
+    }
+
+    // --- Tests requiring hand-crafted files ---
+
     public void testEmptyEntriesFile() throws IOException {
-        Files.createFile(tempDir.resolve(ENTRIES_FILE));
+        Files.createFile(entriesPath());
 
         ValidationContext result = validate();
 
@@ -156,71 +245,13 @@ public class EntriesFileRuleTest {
     }
 
     public void testUnrecognizedFormatDetected() throws IOException {
-        Files.write(tempDir.resolve(ENTRIES_FILE), new byte[]{0x7F, 0x45, 0x4C, 0x46});
+        Files.write(entriesPath(), new byte[]{0x7F, 0x45, 0x4C, 0x46});
 
         ValidationContext result = validate();
 
         ValidationResult fileResult = singleResult(result);
         assertThat(fileResult.isValid()).isFalse();
         assertThat(fileResult.exitCode()).isEqualTo(2);
-    }
-
-    public void testCrcMismatchDetected() throws IOException {
-        try (FileChannel ch = openEntriesFile()) {
-            writeFileHeader(ch);
-            writeV2Entry(ch, 1, 1, "good".getBytes());
-            writeV2EntryWithBadCrc(ch, 2, 2, "corrupt".getBytes());
-        }
-
-        ValidationContext result = validate();
-
-        ValidationResult fileResult = singleResult(result);
-        assertThat(fileResult.isValid()).isFalse();
-        assertThat(fileResult.exitCode()).isEqualTo(1);
-        assertThat(formatOutput(result)).containsIgnoringCase("CRC");
-    }
-
-    public void testIncompleteTrailingEntryDetected() throws IOException {
-        try (FileChannel ch = openEntriesFile()) {
-            writeFileHeader(ch);
-            writeV2Entry(ch, 1, 1, "complete".getBytes());
-            writeIncompleteEntry(ch, 2, 2, 64);
-        }
-
-        ValidationContext result = validate();
-
-        ValidationResult fileResult = singleResult(result);
-        assertThat(fileResult.isValid()).isFalse();
-        assertThat(fileResult.exitCode()).isEqualTo(1);
-    }
-
-    public void testInvalidEntryHeader() throws IOException {
-        try (FileChannel ch = openEntriesFile()) {
-            writeFileHeader(ch);
-            writeV2Entry(ch, 1, 1, "good".getBytes());
-            writeEntryWithInvalidLength(ch, 2, 2);
-        }
-
-        ValidationContext result = validate();
-
-        ValidationResult fileResult = singleResult(result);
-        assertThat(fileResult.isValid()).isFalse();
-        assertThat(fileResult.exitCode()).isEqualTo(1);
-    }
-
-    public void testScanContinuesPastCrcMismatch() throws IOException {
-        try (FileChannel ch = openEntriesFile()) {
-            writeFileHeader(ch);
-            writeV2EntryWithBadCrc(ch, 1, 1, "bad1".getBytes());
-            writeV2Entry(ch, 2, 2, "good".getBytes());
-            writeV2EntryWithBadCrc(ch, 3, 3, "bad2".getBytes());
-        }
-
-        ValidationContext result = validate();
-
-        ValidationResult fileResult = singleResult(result);
-        assertThat(fileResult.isValid()).isFalse();
-        assertThat(result.lastLogIndex()).hasValue(3);
     }
 
     public void testMixedLegacyAndV2Entries() throws IOException {
@@ -241,6 +272,8 @@ public class EntriesFileRuleTest {
         assertThat(output).contains("2 entries");
         assertThat(output).containsIgnoringCase("no checksums");
     }
+
+    // --- Helpers ---
 
     private FileBasedLog createLog() throws Exception {
         FileBasedLog log = new FileBasedLog();
@@ -269,14 +302,39 @@ public class EntriesFileRuleTest {
         return sw.toString();
     }
 
+    private Path entriesPath() {
+        return tempDir.resolve(LogEntryStorage.FILE_NAME);
+    }
+
+    /**
+     * Returns the file offset where the Nth entry starts (0-based).
+     * Each preceding entry occupies HEADER_SIZE + dataLength + CRC_SIZE bytes.
+     */
+    private long entryOffset(int precedingEntries, int... precedingDataLengths) {
+        long offset = LogEntryStorage.FILE_HEADER_SIZE;
+        for (int i = 0; i < precedingEntries; i++) {
+            offset += LogEntryStorage.HEADER_SIZE + precedingDataLengths[i] + LogEntryStorage.CRC_SIZE;
+        }
+        return offset;
+    }
+
+    /**
+     * Returns the file offset of the data region for the entry after the given preceding entries.
+     */
+    private long entryDataOffset(int precedingEntries, int... precedingDataLengths) {
+        return entryOffset(precedingEntries, precedingDataLengths) + LogEntryStorage.HEADER_SIZE;
+    }
+
+    // --- Hand-crafted binary helpers (only for formats the real writer cannot produce) ---
+
     private FileChannel openEntriesFile() throws IOException {
-        return FileChannel.open(tempDir.resolve(ENTRIES_FILE),
+        return FileChannel.open(entriesPath(),
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE);
     }
 
     private void writeFileHeader(FileChannel ch) throws IOException {
-        ByteBuffer header = ByteBuffer.allocate(FILE_HEADER_SIZE);
-        header.put(RAFT_MAGIC);
+        ByteBuffer header = ByteBuffer.allocate(LogEntryStorage.FILE_HEADER_SIZE);
+        header.put(LogEntryStorage.FILE_HEADER_MAGIC);
         header.put((byte) 2);
         header.put(new byte[3]);
         header.flip();
@@ -284,14 +342,14 @@ public class EntriesFileRuleTest {
     }
 
     private void writeV2Entry(FileChannel ch, long term, long index, byte[] data) throws IOException {
-        int totalLength = ENTRY_HEADER_SIZE + data.length + CRC_SIZE;
-        byte[] headerBytes = entryHeader(V2_ENTRY_MAGIC, totalLength, term, index, data.length);
+        int totalLength = LogEntryStorage.HEADER_SIZE + data.length + LogEntryStorage.CRC_SIZE;
+        byte[] headerBytes = entryHeader(LogEntryStorage.MAGIC_NUMBER_CRC, totalLength, term, index, data.length);
 
-        CRC32C crc = new CRC32C();
+        java.util.zip.CRC32C crc = new java.util.zip.CRC32C();
         crc.update(headerBytes);
         crc.update(data);
 
-        ByteBuffer crcBuf = ByteBuffer.allocate(CRC_SIZE);
+        ByteBuffer crcBuf = ByteBuffer.allocate(LogEntryStorage.CRC_SIZE);
         crcBuf.putInt((int) crc.getValue());
         crcBuf.flip();
 
@@ -300,44 +358,16 @@ public class EntriesFileRuleTest {
         ch.write(crcBuf);
     }
 
-    private void writeV2EntryWithBadCrc(FileChannel ch, long term, long index, byte[] data) throws IOException {
-        int totalLength = ENTRY_HEADER_SIZE + data.length + CRC_SIZE;
-        byte[] headerBytes = entryHeader(V2_ENTRY_MAGIC, totalLength, term, index, data.length);
-
-        ByteBuffer crcBuf = ByteBuffer.allocate(CRC_SIZE);
-        crcBuf.putInt(0xDEADBEEF);
-        crcBuf.flip();
-
-        ch.write(ByteBuffer.wrap(headerBytes));
-        ch.write(ByteBuffer.wrap(data));
-        ch.write(crcBuf);
-    }
-
     private void writeV1Entry(FileChannel ch, long term, long index, byte[] data) throws IOException {
-        int totalLength = ENTRY_HEADER_SIZE + data.length;
-        byte[] headerBytes = entryHeader(V1_ENTRY_MAGIC, totalLength, term, index, data.length);
+        int totalLength = LogEntryStorage.HEADER_SIZE + data.length;
+        byte[] headerBytes = entryHeader(LogEntryStorage.MAGIC_NUMBER, totalLength, term, index, data.length);
 
         ch.write(ByteBuffer.wrap(headerBytes));
         ch.write(ByteBuffer.wrap(data));
-    }
-
-    private void writeIncompleteEntry(FileChannel ch, long term, long index, int declaredDataLength) throws IOException {
-        int totalLength = ENTRY_HEADER_SIZE + declaredDataLength + CRC_SIZE;
-        byte[] headerBytes = entryHeader(V2_ENTRY_MAGIC, totalLength, term, index, declaredDataLength);
-
-        ch.write(ByteBuffer.wrap(headerBytes));
-        ch.write(ByteBuffer.wrap(new byte[declaredDataLength / 2]));
-    }
-
-    private void writeEntryWithInvalidLength(FileChannel ch, long term, long index) throws IOException {
-        int badDataLength = Integer.MAX_VALUE - ENTRY_HEADER_SIZE - CRC_SIZE;
-        byte[] headerBytes = entryHeader(V2_ENTRY_MAGIC, Integer.MAX_VALUE, term, index, badDataLength);
-
-        ch.write(ByteBuffer.wrap(headerBytes));
     }
 
     private byte[] entryHeader(byte magic, int totalLength, long term, long index, int dataLength) {
-        ByteBuffer buf = ByteBuffer.allocate(ENTRY_HEADER_SIZE);
+        ByteBuffer buf = ByteBuffer.allocate(LogEntryStorage.HEADER_SIZE);
         buf.put(magic);
         buf.putInt(totalLength);
         buf.putLong(term);
