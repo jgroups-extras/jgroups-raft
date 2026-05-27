@@ -22,16 +22,16 @@ import java.util.zip.CRC32C;
  */
 public final class LogEntryStorage {
 
-   private static final byte[] FILE_HEADER_MAGIC = {'R', 'A', 'F', 'T'};
-   private static final byte FILE_HEADER_VERSION = 2;
-   private static final int FILE_HEADER_SIZE = 8;
-   private static final int CRC_SIZE = 4;
+   public static final byte[] FILE_HEADER_MAGIC = {'R', 'A', 'F', 'T'};
+   public static final byte FILE_HEADER_VERSION = 2;
+   public static final int FILE_HEADER_SIZE = 8;
+   public static final int CRC_SIZE = 4;
 
    private static final Log log = LogFactory.getLog(MethodHandles.lookup().lookupClass());
-   private static final byte MAGIC_NUMBER = 0x01;
-   private static final byte MAGIC_NUMBER_CRC = 0x02;
-   private static final String FILE_NAME = "entries.raft";
-   private static final int HEADER_SIZE = Global.INT_SIZE * 2 + Global.LONG_SIZE * 2 + 1 + Global.BYTE_SIZE;
+   public static final byte MAGIC_NUMBER = 0x01;
+   public static final byte MAGIC_NUMBER_CRC = 0x02;
+   public static final String FILE_NAME = "entries.raft";
+   public static final int HEADER_SIZE = Global.INT_SIZE * 2 + Global.LONG_SIZE * 2 + 1 + Global.BYTE_SIZE;
    // this is the typical OS page size and SSD blck_size
    private static final int DEFAULT_WRITE_AHEAD_BYTES = 4096;
 

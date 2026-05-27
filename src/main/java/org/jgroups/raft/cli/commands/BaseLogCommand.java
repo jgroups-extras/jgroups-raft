@@ -4,11 +4,7 @@ import org.jgroups.raft.filelog.LogDirectoryLock;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.Scanner;
 import java.util.concurrent.Callable;
 
@@ -43,11 +39,6 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
 
     // The magic word to confirm the prompt before doing dangerous work.
     static final String PROMPT_YES = "yes";
-
-    // Constant values defined in the Log implementation.
-    private static final byte[] RAFT_MAGIC = {'R', 'A', 'F', 'T'};
-    private static final byte LEGACY_MAGIC = 0x01;
-    private static final String ENTRIES_FILE = "entries.raft";
 
     @Parameters(index = "0", description = "Path to the Raft log directory")
     private File logDir;
@@ -95,10 +86,6 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
                 return EXIT_INVALID;
             }
 
-            int exit = isValidFile();
-            if (exit >= 0)
-                return exit;
-
             return execute();
         } catch (IOException e) {
             err().printf("Error: %s%n", e.getMessage());
@@ -135,55 +122,6 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
 
     protected final File directory() {
         return logDir;
-    }
-
-    /**
-     * Checks whether {@code entries.raft} is in v1 format (no file header, first byte is the legacy {@code 0x01} magic).
-     * If so, prints guidance and returns {@link #EXIT_INVALID}.
-     *
-     * @return the exit code if v1 is detected, or {@code -1} if the check passed
-     * @throws IOException if the file cannot be read
-     */
-    private int isValidFile() throws IOException {
-        Path entriesPath = directory().toPath().resolve(ENTRIES_FILE);
-        File entriesFile = entriesPath.toFile();
-        if (!entriesFile.isFile() || entriesFile.length() == 0) {
-            return -1;
-        }
-
-        try (FileChannel ch = FileChannel.open(entriesPath, StandardOpenOption.READ)) {
-            ByteBuffer buf = ByteBuffer.allocate(4);
-            int read = ch.read(buf);
-
-            // Very likely an empty file.
-            if (read < 4) {
-                return -1;
-            }
-            buf.flip();
-
-            // First verify if it is a legacy file.
-            // Legacy files do not include a checksum for verification, so there is nothing to do here.
-            if (buf.get(0) == LEGACY_MAGIC) {
-                out().println(entriesPath.toAbsolutePath());
-                out().println("  Format:    v1 (no checksums)");
-                out().println();
-                out().println("  This log is in v1 format. The CLI tool requires v2 format");
-                out().println("  with CRC checksums for integrity verification.");
-                out().println();
-                out().println("  Start the node with a 2.x release to upgrade the log format");
-                out().println("  automatically. New entries will be written with checksums.");
-                return EXIT_INVALID;
-            }
-
-            // If the file magic matches the RAFT magic, we can proceed with the validation.
-            if (buf.get(0) == RAFT_MAGIC[0] && buf.get(1) == RAFT_MAGIC[1]
-                    && buf.get(2) == RAFT_MAGIC[2] && buf.get(3) == RAFT_MAGIC[3])
-                return -1;
-
-            // There is file with content and it is neither legacy nor the new format.
-            // Let's assume it is a corrupted file already instead of doing work.
-            return EXIT_CORRUPTION;
-        }
     }
 
     private boolean doesUserConfirm() {
