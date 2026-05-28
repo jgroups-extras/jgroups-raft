@@ -44,12 +44,8 @@ public class SnapshotFileRuleTest {
         }
     }
 
-    // --- Tests using real FileBasedLog ---
-
     public void testNoSnapshotWritten() throws Exception {
-        try (FileBasedLog ignored = createLog()) {
-            // no snapshot
-        }
+        createLog().close();
 
         ValidationContext result = validate();
 
@@ -135,8 +131,6 @@ public class SnapshotFileRuleTest {
         assertThat(formatOutput(result)).containsIgnoringCase("truncated");
     }
 
-    // --- Tests requiring hand-crafted files ---
-
     public void testEmptyFile() throws IOException {
         Files.createFile(snapshotPath());
 
@@ -178,8 +172,6 @@ public class SnapshotFileRuleTest {
         assertThat(fileResult.isValid()).isFalse();
         assertThat(fileResult.exitCode()).isEqualTo(2);
     }
-
-    // --- Helpers ---
 
     private FileBasedLog createLog() throws Exception {
         FileBasedLog log = new FileBasedLog();

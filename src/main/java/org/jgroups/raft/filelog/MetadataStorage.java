@@ -48,7 +48,7 @@ import net.jcip.annotations.NotThreadSafe;
  */
 public class MetadataStorage {
 
-   private static final String FILE_NAME = "metadata.raft";
+   public static final String FILE_NAME = "metadata.raft";
 
    // page 4 Raft original paper: COMMIT INDEX DOESN'T REQUIRE FDATASYNC
    private static final int COMMIT_INDEX_POS = 0;

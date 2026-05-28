@@ -418,9 +418,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         super.resetStats();
         num_snapshots=num_resends=num_successful_append_requests=num_failed_append_requests_not_found
           =num_failed_append_requests_wrong_term=num_snapshot_received=0;
-        LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
-        if(lcc != null)
-            lcc.resetStats();
+        if (log_impl != null) {
+            LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
+            if(lcc != null)
+                lcc.resetStats();
+        }
         drained_total.reset(); drained_avg.clear(); drained_down.reset(); drained_up.reset();
         avg_append_entries_batch_size.clear();
         metrics = stats ? new RaftProtocolMetrics() : null;

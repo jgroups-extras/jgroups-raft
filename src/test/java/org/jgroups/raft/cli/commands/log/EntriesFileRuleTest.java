@@ -46,8 +46,6 @@ public class EntriesFileRuleTest {
         }
     }
 
-    // --- Tests using real FileBasedLog ---
-
     public void testValidHeaderNoEntries() throws Exception {
         FileBasedLog fbl = createLog();
         fbl.close();
@@ -204,8 +202,6 @@ public class EntriesFileRuleTest {
         assertThat(result.lastLogIndex()).hasValue(3);
     }
 
-    // --- Tests requiring hand-crafted files ---
-
     public void testEmptyEntriesFile() throws IOException {
         Files.createFile(entriesPath());
 
@@ -273,8 +269,6 @@ public class EntriesFileRuleTest {
         assertThat(output).containsIgnoringCase("no checksums");
     }
 
-    // --- Helpers ---
-
     private FileBasedLog createLog() throws Exception {
         FileBasedLog log = new FileBasedLog();
         log.useFsync(false);
@@ -324,8 +318,6 @@ public class EntriesFileRuleTest {
     private long entryDataOffset(int precedingEntries, int... precedingDataLengths) {
         return entryOffset(precedingEntries, precedingDataLengths) + LogEntryStorage.HEADER_SIZE;
     }
-
-    // --- Hand-crafted binary helpers (only for formats the real writer cannot produce) ---
 
     private FileChannel openEntriesFile() throws IOException {
         return FileChannel.open(entriesPath(),

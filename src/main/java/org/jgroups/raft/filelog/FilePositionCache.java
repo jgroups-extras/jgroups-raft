@@ -185,7 +185,7 @@ final class FilePositionCache {
       return clearSomething;
    }
 
-   public FilePositionCache createDeleteCopyFrom(long logIndex) {
+   public FilePositionCache createDeleteCopyFrom(long logIndex, long baseOffset) {
       final int cacheIndex = toCacheIndex(logIndex);
       if (cacheIndex < 0) {
          throw new IllegalArgumentException();
@@ -203,7 +203,7 @@ final class FilePositionCache {
          // nothing to copy
          return new FilePositionCache(logIndex);
       }
-      final long positionToDecrement = positionPage.get(pageOffset);
+      final long positionToDecrement = positionPage.get(pageOffset) - baseOffset;
       if (positionToDecrement == EMPTY) {
          // truncating to an index larger than last appended (example, snapshot transfer from leader -> follower)
          // nothing to copy

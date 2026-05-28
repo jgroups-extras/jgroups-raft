@@ -14,6 +14,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Stream;
@@ -24,12 +25,6 @@ import org.testng.annotations.Test;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class LogEntryStorageHeaderTest {
-
-    private static final byte[] MAGIC_BYTES = {'R', 'A', 'F', 'T'};
-    private static final int FILE_HEADER_SIZE = 8;
-    private static final byte CURRENT_VERSION = 2;
-    private static final byte LEGACY_ENTRY_MAGIC = 0x01;
-    private static final byte CRC_ENTRY_MAGIC = 0x02;
 
     private Path tempDir;
     private LogEntryStorage storage;
@@ -57,13 +52,13 @@ public class LogEntryStorageHeaderTest {
         storage = createStorage();
         storage.open();
 
-        byte[] rawHeader = readRawBytes(0, FILE_HEADER_SIZE);
-        assertThat(rawHeader).hasSize(FILE_HEADER_SIZE);
-        assertThat(rawHeader[0]).isEqualTo(MAGIC_BYTES[0]);
-        assertThat(rawHeader[1]).isEqualTo(MAGIC_BYTES[1]);
-        assertThat(rawHeader[2]).isEqualTo(MAGIC_BYTES[2]);
-        assertThat(rawHeader[3]).isEqualTo(MAGIC_BYTES[3]);
-        assertThat(rawHeader[4]).isEqualTo(CURRENT_VERSION);
+        byte[] rawHeader = readRawBytes(0, LogEntryStorage.FILE_HEADER_SIZE);
+        assertThat(rawHeader).hasSize(LogEntryStorage.FILE_HEADER_SIZE);
+        assertThat(rawHeader[0]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[0]);
+        assertThat(rawHeader[1]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[1]);
+        assertThat(rawHeader[2]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[2]);
+        assertThat(rawHeader[3]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[3]);
+        assertThat(rawHeader[4]).isEqualTo(LogEntryStorage.FILE_HEADER_VERSION);
         assertThat(rawHeader[5]).isZero();
         assertThat(rawHeader[6]).isZero();
         assertThat(rawHeader[7]).isZero();
@@ -100,8 +95,8 @@ public class LogEntryStorageHeaderTest {
 
         writeEntries(1, entry(1, "data"));
 
-        byte[] firstByte = readRawBytes(FILE_HEADER_SIZE, 1);
-        assertThat(firstByte[0]).isEqualTo(CRC_ENTRY_MAGIC);
+        byte[] firstByte = readRawBytes(LogEntryStorage.FILE_HEADER_SIZE, 1);
+        assertThat(firstByte[0]).isEqualTo(LogEntryStorage.MAGIC_NUMBER_CRC);
     }
 
     public void testLegacyFileOpensInCompatibilityMode() throws IOException {
@@ -172,12 +167,12 @@ public class LogEntryStorageHeaderTest {
 
         storage.reinitializeTo(10, entry(3, "snapshot-entry"));
 
-        byte[] rawHeader = readRawBytes(0, FILE_HEADER_SIZE);
-        assertThat(rawHeader[0]).isEqualTo(MAGIC_BYTES[0]);
-        assertThat(rawHeader[1]).isEqualTo(MAGIC_BYTES[1]);
-        assertThat(rawHeader[2]).isEqualTo(MAGIC_BYTES[2]);
-        assertThat(rawHeader[3]).isEqualTo(MAGIC_BYTES[3]);
-        assertThat(rawHeader[4]).isEqualTo(CURRENT_VERSION);
+        byte[] rawHeader = readRawBytes(0, LogEntryStorage.FILE_HEADER_SIZE);
+        assertThat(rawHeader[0]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[0]);
+        assertThat(rawHeader[1]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[1]);
+        assertThat(rawHeader[2]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[2]);
+        assertThat(rawHeader[3]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[3]);
+        assertThat(rawHeader[4]).isEqualTo(LogEntryStorage.FILE_HEADER_VERSION);
     }
 
     public void testReinitializeToPreservesEntryData() throws IOException {
@@ -215,11 +210,11 @@ public class LogEntryStorageHeaderTest {
         storage.reinitializeTo(5, entry(2, "new-snapshot"));
         storage.close();
 
-        byte[] rawHeader = readRawBytes(0, FILE_HEADER_SIZE);
-        assertThat(rawHeader[0]).isEqualTo(MAGIC_BYTES[0]);
-        assertThat(rawHeader[1]).isEqualTo(MAGIC_BYTES[1]);
-        assertThat(rawHeader[2]).isEqualTo(MAGIC_BYTES[2]);
-        assertThat(rawHeader[3]).isEqualTo(MAGIC_BYTES[3]);
+        byte[] rawHeader = readRawBytes(0, LogEntryStorage.FILE_HEADER_SIZE);
+        assertThat(rawHeader[0]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[0]);
+        assertThat(rawHeader[1]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[1]);
+        assertThat(rawHeader[2]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[2]);
+        assertThat(rawHeader[3]).isEqualTo(LogEntryStorage.FILE_HEADER_MAGIC[3]);
 
         storage = createStorage();
         storage.open();
@@ -278,6 +273,32 @@ public class LogEntryStorageHeaderTest {
         assertThat(storage.getLogEntry(2)).isNotNull();
     }
 
+    public void testRemoveOldPreservesFileHeader() throws IOException {
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        writeEntries(1, entry(1, "a"), entry(1, "b"), entry(1, "c"));
+        assertV2Header();
+
+        storage.removeOld(2);
+        storage.close();
+
+        assertV2Header();
+
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        assertThat(storage.getFirstAppended()).isEqualTo(2);
+        assertThat(storage.getLastAppended()).isEqualTo(3);
+
+        writeEntries(4, entry(2, "d"), entry(2, "e"));
+
+        assertThat(storage.getLastAppended()).isEqualTo(5);
+        assertV2Header();
+    }
+
     public void testRemoveNewWorksWithHeader() throws IOException {
         storage = createStorage();
         storage.open();
@@ -324,7 +345,7 @@ public class LogEntryStorageHeaderTest {
                 int totalLength = headerSize + dataLength;
 
                 ByteBuffer buffer = ByteBuffer.allocate(totalLength);
-                buffer.put(LEGACY_ENTRY_MAGIC);
+                buffer.put(LogEntryStorage.MAGIC_NUMBER);
                 buffer.putInt(totalLength);
                 buffer.putLong(entry.term());
                 buffer.putLong(index);
@@ -343,8 +364,8 @@ public class LogEntryStorageHeaderTest {
     }
 
     private void writeFileHeader(byte version) throws IOException {
-        ByteBuffer header = ByteBuffer.allocate(FILE_HEADER_SIZE);
-        header.put(MAGIC_BYTES);
+        ByteBuffer header = ByteBuffer.allocate(LogEntryStorage.FILE_HEADER_SIZE);
+        header.put(LogEntryStorage.FILE_HEADER_MAGIC);
         header.put(version);
         header.put((byte) 0);
         header.put((byte) 0);
@@ -362,6 +383,13 @@ public class LogEntryStorageHeaderTest {
         try (RandomAccessFile raf = new RandomAccessFile(file, "rw")) {
             raf.write(bytes);
         }
+    }
+
+    private void assertV2Header() throws IOException {
+        byte[] rawHeader = readRawBytes(0, LogEntryStorage.FILE_HEADER_SIZE);
+        byte[] magic = Arrays.copyOf(rawHeader, LogEntryStorage.FILE_HEADER_MAGIC.length);
+        assertThat(Arrays.equals(magic, LogEntryStorage.FILE_HEADER_MAGIC)).isTrue();
+        assertThat(rawHeader[LogEntryStorage.FILE_HEADER_MAGIC.length]).isEqualTo(LogEntryStorage.FILE_HEADER_VERSION);
     }
 
     private byte[] readRawBytes(long position, int length) throws IOException {

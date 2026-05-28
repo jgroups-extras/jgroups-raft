@@ -3,7 +3,6 @@ package org.jgroups.raft.cli.commands.log;
 import org.jgroups.raft.filelog.SnapshotStorage;
 import org.jgroups.util.Util;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -22,43 +21,26 @@ import java.util.zip.CRC32C;
  * @since 2.0
  * @author José Bolina
  */
-final class SnapshotFileRule implements LogValidatorRule {
+final class SnapshotFileRule extends BaseFileRule {
 
     private static final byte MAX_SUPPORTED_VERSION = 2;
     private static final int MIN_FILE_SIZE = SnapshotStorage.SNAPSHOT_HEADER_SIZE + SnapshotStorage.CRC_SIZE;
 
+    SnapshotFileRule() {
+        super(SnapshotStorage.SNAPSHOT_FILE_NAME);
+    }
+
     @Override
-    public ValidationContext validate(File directory, ValidationContext context) throws IOException {
-        Path snapshotPath = directory.toPath().resolve(SnapshotStorage.SNAPSHOT_FILE_NAME);
-        File file = snapshotPath.toFile();
-
-        if (!file.isFile()) {
-            String message = String.format("File not found at %s", snapshotPath.toAbsolutePath());
-            ValidationResult vr = FileValidationResult.builder(snapshotPath.toAbsolutePath().toString())
-                    .field("Status", "MISSING")
-                    .violation(new Violation(message, Violation.Severity.WARNING))
-                    .build();
-            return context.append(vr);
-        }
-
-        if (file.length() == 0) {
-            String message = String.format("File is empty at %s", snapshotPath.toAbsolutePath());
-            ValidationResult vr = FileValidationResult.builder(snapshotPath.toAbsolutePath().toString())
-                    .field("Status", "EMPTY")
-                    .violation(new Violation(message, Violation.Severity.WARNING))
-                    .build();
-            return context.append(vr);
-        }
-
+    ValidationContext proceedValidation(Path path, ValidationContext context) throws IOException {
         // Read the full file in-memory for assertion.
         // If this turns to be a problem, we could load the header for parsing, and CRC the snapshot content in chunks.
         // Taking the simple approach for now.
-        byte[] bytes = Files.readAllBytes(snapshotPath);
+        byte[] bytes = Files.readAllBytes(path);
         ByteBuffer buffer = ByteBuffer.wrap(bytes);
 
         if (!SnapshotStorage.isSnapshotFile(buffer)) {
-            String message = String.format("Unrecognized file format for snapshot at %s", snapshotPath.toAbsolutePath());
-            ValidationResult vr = FileValidationResult.builder(snapshotPath.toAbsolutePath().toString())
+            String message = String.format("Unrecognized file format for snapshot at %s", path.toAbsolutePath());
+            ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
                     .field("Status", "UNRECOGNIZED")
                     .violation(new Violation(message, Violation.Severity.INVALID))
                     .build();
@@ -69,7 +51,7 @@ final class SnapshotFileRule implements LogValidatorRule {
         if (version < 1 || version > MAX_SUPPORTED_VERSION) {
             String message = String.format("Snapshot version %d is not supported. " +
                     "This CLI release supports up to version %d. Upgrade to a compatible release.", version, MAX_SUPPORTED_VERSION);
-            ValidationResult vr = FileValidationResult.builder(snapshotPath.toAbsolutePath().toString())
+            ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
                     .field("Format", String.format("v%d", version))
                     .violation(new Violation(message, Violation.Severity.INVALID))
                     .build();
@@ -78,9 +60,9 @@ final class SnapshotFileRule implements LogValidatorRule {
 
         if (bytes.length < MIN_FILE_SIZE) {
             String message = String.format("Snapshot file is truncated: %d bytes present, minimum %d required " +
-                    "for header and checksum. The file may have been cut short during a write",
+                            "for header and checksum. The file may have been cut short during a write",
                     bytes.length, MIN_FILE_SIZE);
-            ValidationResult vr = FileValidationResult.builder(snapshotPath.toAbsolutePath().toString())
+            ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
                     .field("Status", "TRUNCATED")
                     .violation(new Violation(message, Violation.Severity.ERROR))
                     .build();
@@ -95,7 +77,7 @@ final class SnapshotFileRule implements LogValidatorRule {
         buffer.position(bytes.length - SnapshotStorage.CRC_SIZE);
         int storedChecksum = buffer.getInt();
 
-        FileValidationResult.ValidationResultBuilder builder = FileValidationResult.builder(snapshotPath.toAbsolutePath().toString())
+        FileValidationResult.ValidationResultBuilder builder = FileValidationResult.builder(path.toAbsolutePath().toString())
                 .field("Format", String.format("v%d (with checksums)", version))
                 .field("Size", Util.printBytes(dataLength));
 

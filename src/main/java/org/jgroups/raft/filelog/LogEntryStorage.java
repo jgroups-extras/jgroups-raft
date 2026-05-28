@@ -243,10 +243,11 @@ public final class LogEntryStorage {
       if (pos > 0) {
          // if pos is < 0, means the entry does not exist
          // if pos == 0, means there is nothing to truncate
-         fileStorage.truncateFrom(pos);
-         entryStartOffset = 0;
+         // We pass the entry offset so we can keep the file header and truncate the content from index.
+         fileStorage.truncateFrom(pos, entryStartOffset);
       }
-      positionCache = positionCache.createDeleteCopyFrom(index);
+      reload();
+      positionCache = positionCache.createDeleteCopyFrom(index, entryStartOffset);
       if (lastAppended < index) {
          lastAppended = index;
       }

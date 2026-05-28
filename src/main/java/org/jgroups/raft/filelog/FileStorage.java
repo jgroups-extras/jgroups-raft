@@ -250,16 +250,19 @@ final class FileStorage implements Closeable {
     * </p>
     *
     * @param position the first byte position to keep
+    * @param prefixLength allows keeping a file prefix when truncating the content.
     * @throws IOException if the operation fails
     * @throws IllegalArgumentException if position exceeds the file size
     */
-   public void truncateFrom(final long position) throws IOException {
+   public void truncateFrom(final long position, long prefixLength) throws IOException {
       final FileChannel existing = checkOpen();
       if (position > fileSize) {
          throw new IllegalArgumentException("position must be greater then fileSize");
       }
       final File tmpFile = new File(storageFile.getParentFile(), storageFile.getName() + ".tmp");
       try (FileChannel newChannel = tryCreatePMEMFileChannel(tmpFile, fileSize)) {
+         if (prefixLength > 0)
+            existing.transferTo(0, prefixLength, newChannel);
          existing.transferTo(position, fileSize, newChannel);
       }
       // TODO: it requires fsync on the parent folder and on the destination file?
