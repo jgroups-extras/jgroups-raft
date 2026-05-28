@@ -4,6 +4,7 @@ import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import picocli.CommandLine;
 
@@ -22,11 +23,24 @@ final class FileValidationResult implements ValidationResult {
     private final String filename;
     private final List<Map.Entry<String, ValidationField>> fields;
     private final List<Violation> violations;
+    private final CorruptionPoint corruptionPoint;
+    private final LogInfo logInfo;
+    private final MetadataInfo metadataInfo;
 
-    private FileValidationResult(String filename, List<Map.Entry<String, ValidationField>> fields, List<Violation> violations) {
+    private FileValidationResult(
+            String filename,
+            List<Map.Entry<String, ValidationField>> fields,
+            List<Violation> violations,
+            CorruptionPoint corruptionPoint,
+            LogInfo logInfo,
+            MetadataInfo metadataInfo
+    ) {
         this.filename = filename;
         this.fields = fields;
         this.violations = violations;
+        this.corruptionPoint = corruptionPoint;
+        this.logInfo = logInfo;
+        this.metadataInfo = metadataInfo;
     }
 
     /**
@@ -99,6 +113,21 @@ final class FileValidationResult implements ValidationResult {
         out.println();
     }
 
+    @Override
+    public Optional<CorruptionPoint> firstCorruption() {
+        return Optional.ofNullable(corruptionPoint);
+    }
+
+    @Override
+    public Optional<LogInfo> logInfo() {
+        return Optional.ofNullable(logInfo);
+    }
+
+    @Override
+    public Optional<MetadataInfo> metadataInfo() {
+        return Optional.ofNullable(metadataInfo);
+    }
+
     private String colorizeValue(CommandLine.Help.Ansi ansi, ValidationField value) {
         if (value instanceof ValidationField.Info)
             return ansi.string("@|green " + value.text() + "|@");
@@ -123,6 +152,9 @@ final class FileValidationResult implements ValidationResult {
         private final String filename;
         private final List<Map.Entry<String, ValidationField>> fields = new ArrayList<>();
         private final List<Violation> violations = new ArrayList<>();
+        private CorruptionPoint corruptionPoint = null;
+        private LogInfo logInfo = null;
+        private MetadataInfo metadataInfo = null;
 
         private ValidationResultBuilder(String filename) {
             this.filename = filename;
@@ -175,12 +207,46 @@ final class FileValidationResult implements ValidationResult {
         }
 
         /**
+         * Sets the first corruption point found during the entries scan.
+         *
+         * @param corruption the corruption point
+         * @return this builder
+         */
+        ValidationResultBuilder firstCorruption(ValidationResult.CorruptionPoint corruption) {
+            this.corruptionPoint = corruption;
+            return this;
+        }
+
+        /**
+         * Sets the log entry range information from the entries scan.
+         *
+         * @param logInfo the log info
+         * @return this builder
+         */
+        ValidationResultBuilder logInfo(ValidationResult.LogInfo logInfo) {
+            this.logInfo = logInfo;
+            return this;
+        }
+
+        /**
+         * Sets the metadata values read from the metadata file.
+         *
+         * @param metadataInfo the metadata info
+         * @return this builder
+         */
+        ValidationResultBuilder metadataInfo(ValidationResult.MetadataInfo metadataInfo) {
+            this.metadataInfo = metadataInfo;
+            return this;
+        }
+
+
+        /**
          * Builds an immutable validation result.
          *
          * @return the validation result
          */
         ValidationResult build() {
-            return new FileValidationResult(filename, List.copyOf(fields), List.copyOf(violations));
+            return new FileValidationResult(filename, List.copyOf(fields), List.copyOf(violations), corruptionPoint, logInfo, metadataInfo);
         }
     }
 

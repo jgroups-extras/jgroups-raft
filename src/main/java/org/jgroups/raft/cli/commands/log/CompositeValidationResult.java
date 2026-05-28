@@ -2,6 +2,7 @@ package org.jgroups.raft.cli.commands.log;
 
 import java.io.PrintWriter;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Aggregates multiple {@link ValidationResult}s into a single result.
@@ -45,5 +46,32 @@ final class CompositeValidationResult implements ValidationResult {
         for (ValidationResult result : results) {
             result.formatTo(out);
         }
+    }
+
+    @Override
+    public Optional<CorruptionPoint> firstCorruption() {
+        for (ValidationResult result : results) {
+            if (result.firstCorruption().isPresent())
+                return result.firstCorruption();
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<LogInfo> logInfo() {
+        for (ValidationResult result : results) {
+            if (result.logInfo().isPresent())
+                return result.logInfo();
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public Optional<MetadataInfo> metadataInfo() {
+        for (ValidationResult result : results) {
+            if (result.metadataInfo().isPresent())
+                return result.metadataInfo();
+        }
+        return Optional.empty();
     }
 }

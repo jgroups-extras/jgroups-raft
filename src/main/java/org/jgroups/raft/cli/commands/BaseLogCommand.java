@@ -50,6 +50,9 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
 
     private boolean backupConfirmed;
 
+    // Lazy initialize the scanner.
+    private Scanner promptScanner;
+
     @Override
     public final void run() { }
 
@@ -130,9 +133,11 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
     }
 
     private boolean doesUserConfirm() {
-        Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8);
-        if (scanner.hasNextLine()) {
-            String input = scanner.nextLine().trim();
+        if (promptScanner == null)
+            promptScanner = new Scanner(System.in, StandardCharsets.UTF_8);
+
+        if (promptScanner.hasNextLine()) {
+            String input = promptScanner.nextLine().trim();
             return PROMPT_YES.equals(input);
         }
         return false;

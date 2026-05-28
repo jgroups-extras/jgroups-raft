@@ -116,6 +116,7 @@ final class MetadataFileRule extends BaseFileRule {
             hasErrors = true;
         }
 
+        builder.metadataInfo(new ValidationResult.MetadataInfo(commitIndex, currentTerm));
         if (!hasErrors) {
             builder.field("Consistency", FileValidationResult.ValidationField.info("OK"));
         } else {

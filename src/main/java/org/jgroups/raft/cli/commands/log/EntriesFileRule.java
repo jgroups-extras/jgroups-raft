@@ -99,11 +99,15 @@ final class EntriesFileRule implements LogValidatorRule {
                 builder.field("Legacy", String.format("%d entries (no checksums)", scan.legacyCount()));
             }
 
+            builder.logInfo(new ValidationResult.LogInfo(
+                    scan.firstIndex(), scan.lastIndex(), scan.entryCount(), scan.highestTerm()));
+
             context = context
                     .withLogRange(scan.firstIndex(), scan.lastIndex())
                     .withHighestTerm(scan.highestTerm());
         }
 
+        builder.firstCorruption(scan.corruption());
         if (scan.violations().isEmpty()) {
             builder.field("Status", FileValidationResult.ValidationField.info("OK (all checksums valid)"));
         } else {
@@ -211,6 +215,7 @@ final class EntriesFileRule implements LogValidatorRule {
             int entryCount = 0;
             int legacyCount = 0;
             List<Violation> violations = new ArrayList<>();
+            ValidationResult.CorruptionPoint corruptionPoint = null;
 
             try (FileChannel ch = FileChannel.open(entriesPath, StandardOpenOption.READ)) {
                 long fileSize = ch.size();
@@ -225,6 +230,9 @@ final class EntriesFileRule implements LogValidatorRule {
                                         "The incomplete trailing bytes can be removed with the repair command.",
                                 position, fileSize - position, LogEntryStorage.HEADER_SIZE);
                         violations.add(new Violation(message, Violation.Severity.ERROR));
+                        if (corruptionPoint == null)
+                            corruptionPoint = new ValidationResult.CorruptionPoint(
+                                    position, -1, -1, ValidationResult.CorruptionPoint.Type.TRUNCATED_HEADER);
                         break;
                     }
 
@@ -254,6 +262,9 @@ final class EntriesFileRule implements LogValidatorRule {
                                         "entries. The node will replicate the entries from the leader on restart.",
                                 magic, position, entryCount, entryCount);
                         violations.add(new Violation(message, Violation.Severity.ERROR));
+                        if (corruptionPoint == null)
+                            corruptionPoint = new ValidationResult.CorruptionPoint(
+                                    position, -1, -1, ValidationResult.CorruptionPoint.Type.INVALID_MAGIC);
                         break;
                     }
 
@@ -272,6 +283,9 @@ final class EntriesFileRule implements LogValidatorRule {
                                         "Entries before this offset (%d scanned) appear intact.",
                                 position, totalLength, expectedLength, term, index, dataLength, entryCount);
                         violations.add(new Violation(message, Violation.Severity.ERROR));
+                        if (corruptionPoint == null)
+                            corruptionPoint = new ValidationResult.CorruptionPoint(
+                                    position, index, term, ValidationResult.CorruptionPoint.Type.INVALID_HEADER);
                         break;
                     }
 
@@ -283,6 +297,9 @@ final class EntriesFileRule implements LogValidatorRule {
                                         "The incomplete trailing bytes can be removed with the repair command.",
                                 index, term, position, totalLength, fileSize - position);
                         violations.add(new Violation(message, Violation.Severity.ERROR));
+                        if (corruptionPoint == null)
+                            corruptionPoint = new ValidationResult.CorruptionPoint(
+                                    position, index, term, ValidationResult.CorruptionPoint.Type.INCOMPLETE_ENTRY);
                         break;
                     }
 
@@ -324,6 +341,10 @@ final class EntriesFileRule implements LogValidatorRule {
                                             "The node will replicate the missing entries from the leader.",
                                     index, term, position, storedChecksum, computedChecksum);
                             violations.add(new Violation(message, Violation.Severity.ERROR));
+
+                            if (corruptionPoint == null)
+                                corruptionPoint = new ValidationResult.CorruptionPoint(
+                                        position, index, term, ValidationResult.CorruptionPoint.Type.CRC_MISMATCH);
                         } else {
                             status = new EntryCallback.CrcStatus.Ok();
                         }
@@ -343,7 +364,7 @@ final class EntriesFileRule implements LogValidatorRule {
                 }
             }
 
-            return new ScanResult(firstIndex, lastIndex, highestTerm, entryCount, legacyCount, violations);
+            return new ScanResult(firstIndex, lastIndex, highestTerm, entryCount, legacyCount, violations, corruptionPoint);
         }
     }
 
@@ -356,6 +377,7 @@ final class EntriesFileRule implements LogValidatorRule {
      * @param entryCount  total number of entries scanned (including corrupted)
      * @param legacyCount number of legacy (v1) entries without CRC
      * @param violations  problems found during scanning
+     * @param corruption  first corruption point found, or {@code null} if all entries are intact
      */
     private record ScanResult(
             long firstIndex,
@@ -363,6 +385,7 @@ final class EntriesFileRule implements LogValidatorRule {
             long highestTerm,
             int entryCount,
             int legacyCount,
-            List<Violation> violations
+            List<Violation> violations,
+            ValidationResult.CorruptionPoint corruption
     ) { }
 }
