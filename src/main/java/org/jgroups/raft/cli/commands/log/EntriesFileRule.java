@@ -40,25 +40,32 @@ final class EntriesFileRule implements LogValidatorRule {
 
         return switch (format) {
             case MISSING -> {
-                String message = String.format("File not found at %s", entriesPath.toAbsolutePath());
+                String message = String.format("File not found at %s. " +
+                        "The entry directory exists but contains no entry file. If this is a fresh node that has not " +
+                        "yet joined the cluster, this is expected. Otherwise, compare with other nodes in the cluster " +
+                        "to determine whether the file was mistakenly deleted.", entriesPath.toAbsolutePath());
                 ValidationResult vr = FileValidationResult.builder(entriesPath.toAbsolutePath().toString())
-                        .field("Status", "MISSING")
+                        .field("Status", FileValidationResult.ValidationField.warn("MISSING"))
                         .violation(new Violation(message, Violation.Severity.WARNING))
                         .build();
                 yield context.append(vr);
             }
             case EMPTY -> {
-                String message = String.format("File is empty at %s", entriesPath.toAbsolutePath());
+                String message = String.format("File is empty at %s. If this is a fresh node, this is expected. " +
+                        "Otherwise, compare with other nodes to determine whether entries were lost.", entriesPath.toAbsolutePath());
                 ValidationResult vr = FileValidationResult.builder(entriesPath.toAbsolutePath().toString())
-                        .field("Status", "EMPTY")
+                        .field("Status", FileValidationResult.ValidationField.warn("EMPTY"))
                         .violation(new Violation(message, Violation.Severity.WARNING))
                         .build();
                 yield context.append(vr);
             }
             case UNRECOGNIZED -> {
-                String message = String.format("Unrecognized file format for file at %s", entriesPath.toAbsolutePath());
+                String message = String.format("Unrecognized file format for file at %s. " +
+                        "The file does not match any known Raft log format. Verify this is the correct log directory. " +
+                        "If the file is corrupted beyond recognition, delete and restart the node. " +
+                        "The node should join as a fresh member and replicate the state again.", entriesPath.toAbsolutePath());
                 ValidationResult vr = FileValidationResult.builder(entriesPath.toAbsolutePath().toString())
-                        .field("Status", "UNRECOGNIZED")
+                        .field("Status", FileValidationResult.ValidationField.error("UNRECOGNIZED"))
                         .violation(new Violation(message, Violation.Severity.INVALID))
                         .build();
                 yield context.append(vr);
@@ -69,7 +76,7 @@ final class EntriesFileRule implements LogValidatorRule {
                         "Start the node with a 2.x release to upgrade the log format automatically. New entries will " +
                         "be written with checksums.";
                 ValidationResult vr = FileValidationResult.builder(entriesPath.toAbsolutePath().toString())
-                        .field("Format", "v1 (no checksums)")
+                        .field("Format", FileValidationResult.ValidationField.warn("v1 (no checksums)"))
                         .violation(new Violation(message, Violation.Severity.INVALID))
                         .build();
                 yield context.append(vr);
@@ -79,7 +86,7 @@ final class EntriesFileRule implements LogValidatorRule {
     }
 
     private ValidationContext scanEntries(Path entriesPath, ValidationContext context) throws IOException {
-        ScanResult scan = Scanner.scan(entriesPath);
+        ScanResult scan = Scanner.scan(entriesPath, context.options());
 
         FileValidationResult.ValidationResultBuilder builder = FileValidationResult.builder(entriesPath.toAbsolutePath().toString())
                 .field("Format", "v2 (with checksums)");
@@ -98,9 +105,9 @@ final class EntriesFileRule implements LogValidatorRule {
         }
 
         if (scan.violations().isEmpty()) {
-            builder.field("Status", "OK (all checksums valid)");
+            builder.field("Status", FileValidationResult.ValidationField.info("OK (all checksums valid)"));
         } else {
-            builder.field("Status", "CORRUPTED");
+            builder.field("Status", FileValidationResult.ValidationField.error("CORRUPTED"));
             builder.violations(scan.violations());
         }
 
@@ -193,10 +200,11 @@ final class EntriesFileRule implements LogValidatorRule {
          * </p>
          *
          * @param entriesPath path to the {@code entries.raft} file
+         * @param options runtime options to customize the parsing behavior
          * @return the scan results including entry range, counts, and any violations found
          * @throws IOException if the file cannot be read
          */
-        public static ScanResult scan(Path entriesPath) throws IOException {
+        public static ScanResult scan(Path entriesPath, LogValidationOptions options) throws IOException {
             long firstIndex = -1;
             long lastIndex = -1;
             long highestTerm = 0;
@@ -228,7 +236,7 @@ final class EntriesFileRule implements LogValidatorRule {
                     int totalLength = buffer.getInt();
                     long term = buffer.getLong();
                     long index = buffer.getLong();
-                    buffer.get();
+                    boolean internal = buffer.get() != 0;
                     int dataLength = buffer.getInt();
 
                     // The FileBasedLog allocates the data in chunks, with 0x00 padding after the last actual entry.
@@ -241,8 +249,10 @@ final class EntriesFileRule implements LogValidatorRule {
                     if (magic != LogEntryStorage.MAGIC_NUMBER && magic != LogEntryStorage.MAGIC_NUMBER_CRC) {
                         String message = String.format("Unrecognized entry magic byte 0x%02X at offset %d (expected 0x01 or 0x02). " +
                                         "This may indicate file corruption or a misaligned read. " +
-                                        "Entries before this offset (%d scanned) appear intact.",
-                                magic, position, entryCount);
+                                        "Entries before this offset (%d scanned) appear intact. " +
+                                        "Run the repair tool to truncate the log at this offset, preserving the %d intact " +
+                                        "entries. The node will replicate the entries from the leader on restart.",
+                                magic, position, entryCount, entryCount);
                         violations.add(new Violation(message, Violation.Severity.ERROR));
                         break;
                     }
@@ -288,6 +298,7 @@ final class EntriesFileRule implements LogValidatorRule {
                         ch.read(data, position + LogEntryStorage.HEADER_SIZE);
                     }
 
+                    EntryCallback.CrcStatus status;
                     if (magic == LogEntryStorage.MAGIC_NUMBER_CRC) {
                         ByteBuffer crcBuff = ByteBuffer.allocate(LogEntryStorage.CRC_SIZE);
                         ch.read(crcBuff, position + LogEntryStorage.HEADER_SIZE + dataLength);
@@ -305,15 +316,23 @@ final class EntriesFileRule implements LogValidatorRule {
                         buffer.flip();
 
                         if (storedChecksum != computedChecksum) {
+                            status = new EntryCallback.CrcStatus.Mismatch(storedChecksum, computedChecksum);
                             String message = String.format("CRC mismatch on entry %d (term %d) at offset %d: " +
                                             "stored checksum 0x%08X, computed 0x%08X. " +
-                                            "The entry data may have been corrupted after write.",
+                                            "The entry data may have been corrupted after write. " +
+                                            "Run the repair command to truncate the log from this entry onward. " +
+                                            "The node will replicate the missing entries from the leader.",
                                     index, term, position, storedChecksum, computedChecksum);
                             violations.add(new Violation(message, Violation.Severity.ERROR));
+                        } else {
+                            status = new EntryCallback.CrcStatus.Ok();
                         }
                     } else {
+                        status = new EntryCallback.CrcStatus.Legacy();
                         legacyCount++;
                     }
+
+                    options.callback().onEntry(index, term, internal, dataLength, magic, status, payload);
 
                     if (firstIndex < 0) firstIndex = index;
                     lastIndex = index;

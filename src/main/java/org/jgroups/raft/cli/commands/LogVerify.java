@@ -21,9 +21,10 @@ final class LogVerify extends BaseLogCommand {
      * Scans all files in the log directory and reports integrity status.
      *
      * <p>
-     * Delegates to {@link LogValidation#validate(File)} which runs the full rule chain (format detection, entry scanning,
-     * snapshot and metadata checks) and returns a composite result. The result is printed directly to the operator without
-     * extra formatting and its exit code determines the process exit status.
+     * Delegates to {@link LogValidation#validate(File, org.jgroups.raft.cli.commands.log.LogValidationOptions)} which runs
+     * the full rule chain (format detection, entry scanning, snapshot and metadata checks) and returns a composite result.
+     * The result is printed directly to the operator without extra formatting and its exit code determines the process
+     * exit status. Users are allow to adjust the output verbosity with CLI flags -v/-vv.
      * </p>
      *
      * @return the exit code from the validation result
@@ -31,7 +32,7 @@ final class LogVerify extends BaseLogCommand {
      */
     @Override
     protected int execute() throws IOException {
-        ValidationResult result = LogValidation.validate(directory());
+        ValidationResult result = LogValidation.validate(directory(), validationOptions());
         result.formatTo(out());
         return result.exitCode();
     }

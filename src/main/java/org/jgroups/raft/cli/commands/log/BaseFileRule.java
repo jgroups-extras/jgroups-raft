@@ -19,9 +19,10 @@ abstract class BaseFileRule implements LogValidatorRule {
 
         if (!file.isFile()) {
             String message = String.format("File not found at %s. " +
-                    "The node may never have been started, the file was deleted, or not written yet", path.toAbsolutePath());
+                    "If this is a fresh node, this is expected. Otherwise, compare with other nodes in the cluster.",
+                    path.toAbsolutePath());
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
-                    .field("Status", "MISSING")
+                    .field("Status", FileValidationResult.ValidationField.warn("MISSING"))
                     .violation(new Violation(message, Violation.Severity.WARNING))
                     .build();
             return context.append(vr);
@@ -30,7 +31,7 @@ abstract class BaseFileRule implements LogValidatorRule {
         if (file.length() == 0) {
             String message = String.format("File is empty at %s", path.toAbsolutePath());
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
-                    .field("Status", "EMPTY")
+                    .field("Status", FileValidationResult.ValidationField.warn("EMPTY"))
                     .violation(new Violation(message, Violation.Severity.WARNING))
                     .build();
             return context.append(vr);

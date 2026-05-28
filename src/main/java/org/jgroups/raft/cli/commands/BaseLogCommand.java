@@ -1,13 +1,18 @@
 package org.jgroups.raft.cli.commands;
 
+import org.jgroups.raft.cli.commands.log.EntryCallback;
+import org.jgroups.raft.cli.commands.log.LogValidationOptions;
 import org.jgroups.raft.filelog.LogDirectoryLock;
+import org.jgroups.util.Util;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 import java.util.concurrent.Callable;
 
+import picocli.CommandLine;
 import picocli.CommandLine.Parameters;
 
 /**
@@ -131,5 +136,113 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
             return PROMPT_YES.equals(input);
         }
         return false;
+    }
+
+    protected final LogValidationOptions validationOptions() {
+        CommandLine.Help.Ansi ansi = spec().commandLine().getColorScheme().ansi();
+        return switch (verbosityLevel()) {
+            case 1 -> LogValidationOptions.withCallback(new VerboseCallback(out(), ansi));
+            case 2 -> LogValidationOptions.withCallback(new HexDumpCallback(out(), ansi));
+            default -> LogValidationOptions.simple();
+        };
+    }
+
+    /**
+     * Formats one line per entry with parsed header fields and CRC status.
+     *
+     * <p>
+     * Entry numbers are Raft log indices, not ordinal positions in the file. Legacy entries display {@code CRC N/A (legacy)}
+     * since they have no checksum. CRC mismatches include a second line with the expected and actual checksum values.
+     * </p>
+     *
+     * @author José Bolina
+     * @since 2.0
+     */
+    private record VerboseCallback(PrintWriter out, CommandLine.Help.Ansi ansi) implements EntryCallback {
+        @Override
+        public void onEntry(long index, long term, boolean internal, int dataLength, byte magic, CrcStatus status, byte[] payload) {
+            out.printf("Entry %-6d term=%-4d index=%-6d internal=%-3s data=%-6s %s%n",
+                    index, term, index, internal ? "yes" : "no", Util.printBytes(dataLength), colorStatus(status));
+
+            if (status instanceof CrcStatus.Mismatch m) {
+                String err = String.format("  @|red expected: 0x%08X  actual: 0x%08X|@%n", m.stored(), m.computed());
+                out.printf(ansi.string(err));
+            }
+        }
+
+        private String colorStatus(CrcStatus status) {
+            if (status instanceof CrcStatus.Ok)
+                return ansi.string(String.format("@|green %s|@", status));
+
+            if (status instanceof CrcStatus.Legacy)
+                return ansi.string(String.format("@|yellow %s|@", status));
+
+            if (status instanceof CrcStatus.Mismatch)
+                return ansi.string(String.format("@|bold,red *** %s ***|@", status));
+
+            return status.toString();
+        }
+    }
+
+    /**
+     * Formats each entry with parsed header fields, CRC status, and a Wireshark-style hex dump of the payload.
+     *
+     * <p>
+     * Delegates the header line to {@link VerboseCallback} and appends a hex dump with 16 bytes per line, grouped in two
+     * 8-byte halves, with an ASCII sidebar showing printable characters.
+     * </p>
+     *
+     * @since 2.0
+     * @author José Bolina
+     */
+    private static final class HexDumpCallback implements EntryCallback {
+        private final VerboseCallback delegate;
+        private final PrintWriter out;
+
+        HexDumpCallback(PrintWriter out, CommandLine.Help.Ansi ansi) {
+            this.delegate = new VerboseCallback(out, ansi);
+            this.out = out;
+        }
+
+        @Override
+        public void onEntry(long index, long term, boolean internal, int dataLength, byte magic, CrcStatus status, byte[] payload) {
+            delegate.onEntry(index, term, internal, dataLength, magic, status, payload);
+
+            if (payload.length > 0) {
+                dump(payload);
+            }
+        }
+
+        /**
+         * Writes a hex dump of the given data in Wireshark-style format.
+         *
+         * <p>
+         * Each line shows a file offset, 16 hex bytes grouped in two 8-byte halves, and an ASCII sidebar where
+         * non-printable bytes are replaced with {@code '.'}.
+         * </p>
+         *
+         * @param data the raw bytes to dump
+         */
+        private void dump(byte[] data) {
+            for (int offset = 0; offset < data.length; offset += 16) {
+                int lineLen = Math.min(16, data.length - offset);
+                StringBuilder hex = new StringBuilder();
+                StringBuilder ascii = new StringBuilder();
+
+                for (int i = 0; i < 16; i++) {
+                    if (i == 8) hex.append(' ');
+                    if (i < lineLen) {
+                        byte b = data[offset + i];
+                        hex.append(String.format("%02x ", b));
+                        ascii.append(b >= 0x20 && b < 0x7F ? (char) b : '.');
+                    } else {
+                        hex.append("   ");
+                    }
+                }
+
+                out.printf("   %08x  %s |%s|%n", offset, hex, ascii);
+            }
+            out.println();
+        }
     }
 }

@@ -18,7 +18,9 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Stream;
 
 import org.testng.annotations.AfterMethod;
@@ -268,6 +270,90 @@ public class EntriesFileRuleTest {
         assertThat(output).contains("2 entries");
         assertThat(output).containsIgnoringCase("no checksums");
     }
+
+    public void testCallbackInvokedPerEntry() throws Exception {
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, "alpha".getBytes()),
+                    new LogEntry(3, "beta".getBytes())
+            ));
+        }
+
+        List<CallbackRecord> entries = new ArrayList<>();
+        EntryCallback collecting = (index, term, internal, dataLength, magic, status, payload) ->
+                entries.add(new CallbackRecord(index, term, internal, dataLength, magic, status, new String(payload)));
+
+        ValidationContext context = ValidationContext.withOptions(LogValidationOptions.withCallback(collecting));
+        EntriesFileRule rule = new EntriesFileRule();
+        rule.validate(tempDir.toFile(), context);
+
+        assertThat(entries).hasSize(2);
+
+        CallbackRecord first = entries.get(0);
+        assertThat(first.index).isEqualTo(1);
+        assertThat(first.term).isEqualTo(1);
+        assertThat(first.internal).isFalse();
+        assertThat(first.dataLength).isEqualTo("alpha".length());
+        assertThat(first.magic).isEqualTo(LogEntryStorage.MAGIC_NUMBER_CRC);
+        assertThat(first.status).isInstanceOf(EntryCallback.CrcStatus.Ok.class);
+        assertThat(first.payload).isEqualTo("alpha");
+
+        CallbackRecord second = entries.get(1);
+        assertThat(second.index).isEqualTo(2);
+        assertThat(second.term).isEqualTo(3);
+        assertThat(second.status).isInstanceOf(EntryCallback.CrcStatus.Ok.class);
+        assertThat(second.payload).isEqualTo("beta");
+    }
+
+    public void testCallbackReceivesMismatchStatus() throws Exception {
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, "corrupt-me".getBytes())
+            ));
+        }
+
+        long dataOffset = entryDataOffset(0, 0);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(dataOffset);
+            raf.writeByte(0xFF);
+        }
+
+        List<CallbackRecord> entries = new ArrayList<>();
+        EntryCallback collecting = (index, term, internal, dataLength, magic, status, payload) ->
+                entries.add(new CallbackRecord(index, term, internal, dataLength, magic, status, new String(payload)));
+
+        ValidationContext context = ValidationContext.withOptions(LogValidationOptions.withCallback(collecting));
+        EntriesFileRule rule = new EntriesFileRule();
+        rule.validate(tempDir.toFile(), context);
+
+        assertThat(entries).hasSize(1);
+        assertThat(entries.get(0).status).isInstanceOf(EntryCallback.CrcStatus.Mismatch.class);
+    }
+
+    public void testCallbackReceivesLegacyStatus() throws IOException {
+        try (FileChannel ch = openEntriesFile()) {
+            writeFileHeader(ch);
+            writeV1Entry(ch, 1, 1, "old".getBytes());
+            writeV2Entry(ch, 2, 2, "new".getBytes());
+        }
+
+        List<CallbackRecord> entries = new ArrayList<>();
+        EntryCallback collecting = (index, term, internal, dataLength, magic, status, payload) ->
+                entries.add(new CallbackRecord(index, term, internal, dataLength, magic, status, new String(payload)));
+
+        ValidationContext context = ValidationContext.withOptions(LogValidationOptions.withCallback(collecting));
+        EntriesFileRule rule = new EntriesFileRule();
+        rule.validate(tempDir.toFile(), context);
+
+        assertThat(entries).hasSize(2);
+        assertThat(entries.get(0).status).isInstanceOf(EntryCallback.CrcStatus.Legacy.class);
+        assertThat(entries.get(0).magic).isEqualTo(LogEntryStorage.MAGIC_NUMBER);
+        assertThat(entries.get(1).status).isInstanceOf(EntryCallback.CrcStatus.Ok.class);
+        assertThat(entries.get(1).magic).isEqualTo(LogEntryStorage.MAGIC_NUMBER_CRC);
+    }
+
+    private record CallbackRecord(long index, long term, boolean internal, int dataLength,
+                                   byte magic, EntryCallback.CrcStatus status, String payload) { }
 
     private FileBasedLog createLog() throws Exception {
         FileBasedLog log = new FileBasedLog();

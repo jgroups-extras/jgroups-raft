@@ -29,7 +29,8 @@ record ValidationContext(
         List<ValidationResult> results,
         OptionalLong firstLogIndex,
         OptionalLong lastLogIndex,
-        OptionalLong highestTerm
+        OptionalLong highestTerm,
+        LogValidationOptions options
 ) {
 
     /**
@@ -38,7 +39,17 @@ record ValidationContext(
      * @return a fresh context
      */
     static ValidationContext empty() {
-        return new ValidationContext(Collections.emptyList(), OptionalLong.empty(), OptionalLong.empty(), OptionalLong.empty());
+        return withOptions(LogValidationOptions.simple());
+    }
+
+    /**
+     * Creates an empty context with the given options.
+     *
+     * @param options the operator-selected options to carry through the rule chain
+     * @return a context with no results, no domain facts, and the given options
+     */
+    static ValidationContext withOptions(LogValidationOptions options) {
+        return new ValidationContext(Collections.emptyList(), OptionalLong.empty(), OptionalLong.empty(), OptionalLong.empty(), options);
     }
 
     /**
@@ -50,7 +61,7 @@ record ValidationContext(
     ValidationContext append(ValidationResult result) {
         List<ValidationResult> next = new ArrayList<>(results);
         next.add(result);
-        return new ValidationContext(Collections.unmodifiableList(next), firstLogIndex, lastLogIndex, highestTerm);
+        return new ValidationContext(Collections.unmodifiableList(next), firstLogIndex, lastLogIndex, highestTerm, options);
     }
 
     /**
@@ -61,7 +72,7 @@ record ValidationContext(
      * @return a new context with the log range set
      */
     ValidationContext withLogRange(long first, long last) {
-        return new ValidationContext(results, OptionalLong.of(first), OptionalLong.of(last), highestTerm);
+        return new ValidationContext(results, OptionalLong.of(first), OptionalLong.of(last), highestTerm, options);
     }
 
     /**
@@ -71,6 +82,6 @@ record ValidationContext(
      * @return a new context with the highest term set
      */
     ValidationContext withHighestTerm(long term) {
-        return new ValidationContext(results, firstLogIndex, lastLogIndex, OptionalLong.of(term));
+        return new ValidationContext(results, firstLogIndex, lastLogIndex, OptionalLong.of(term), options);
     }
 }

@@ -17,11 +17,12 @@ import java.util.List;
  * </p>
  *
  * <p>
- * Callers interact only with {@link #validate(File)}}. The rule set, execution order, and context threading are internal
- * concerns. Usage:
+ * Callers interact only with {@link #validate(File, LogValidationOptions)}}. The rule set, execution order, and context
+ * threading are internal concerns. Usage:
  *
  * <pre>{@code
- * ValidationResult result = LogValidation.validate(directory);
+ * LogValidationOptions options = ...; // LogValidationOptions.simple() or with a custom callback.
+ * ValidationResult result = LogValidation.validate(directory, options);
  * result.formatTo(out);
  * return result.exitCode();
  * }</pre>
@@ -66,15 +67,16 @@ public final class LogValidation {
      * </p>
      *
      * @param directory the log directory to validate
+     * @param options options to customize the validation behavior
      * @return a configured engine ready to run
      */
-    public static ValidationResult validate(File directory) {
+    public static ValidationResult validate(File directory, LogValidationOptions options) {
         LogValidation lv = new LogValidation(directory, List.of(
                 new EntriesFileRule(),
                 new SnapshotFileRule(),
                 new MetadataFileRule()
         ));
-        return lv.validate();
+        return lv.validate(ValidationContext.withOptions(options));
     }
 
     /**
@@ -82,8 +84,7 @@ public final class LogValidation {
      *
      * @return the overall validation result covering all checked files
      */
-    private ValidationResult validate() {
-        ValidationContext context = ValidationContext.empty();
+    private ValidationResult validate(ValidationContext context) {
         for (LogValidatorRule rule : rules) {
             try {
                 context = rule.validate(directory, context);
@@ -92,7 +93,7 @@ public final class LogValidation {
                         "The existing validation was unable to perform the step for rule %s, it was skipped. " +
                         "The failure is: %s", directory.getAbsolutePath(), rule.getClass(), e);
                 ValidationResult failure = FileValidationResult.builder(directory.getAbsolutePath())
-                        .field("Status", "ERROR")
+                        .field("Status", FileValidationResult.ValidationField.error("ERROR"))
                         .violation(new Violation(message, Violation.Severity.ERROR))
                         .build();
                 context = context.append(failure);

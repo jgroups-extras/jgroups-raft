@@ -40,10 +40,11 @@ final class MetadataFileRule extends BaseFileRule {
 
         if (bytes.length < MIN_FILE_SIZE) {
             String message = String.format("Metadata file is truncated: %d bytes present, minimum %d required " +
-                    "for commit index and current term. The file may have been cut short during a write",
+                            "for commit index and current term. The file may have been cut short during a write. " +
+                            "Use the repair tool to reconstruct the metadata from the entries file.",
                     bytes.length, MIN_FILE_SIZE);
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
-                    .field("Status", "TRUNCATED")
+                    .field("Status", FileValidationResult.ValidationField.error("TRUNCATED"))
                     .violation(new Violation(message, Violation.Severity.ERROR))
                     .build();
             return context.append(vr);
@@ -65,9 +66,12 @@ final class MetadataFileRule extends BaseFileRule {
             try {
                 int addressLength = buffer.getInt();
                 if (addressLength < 0 || MIN_FILE_SIZE + Global.INT_SIZE + addressLength > bytes.length) {
-                    builder.field("Vote for", "UNREADABLE");
+                    builder.field("Vote for", FileValidationResult.ValidationField.error("UNREADABLE"));
                     String message = String.format("Voted for address length is invalid or extends beyond file boundary. " +
-                            "Expected additional %d bytes, but there is only %d bytes remaining", addressLength, buffer.remaining());
+                            "Expected additional %d bytes, but there is only %d bytes remaining. " +
+                            "The metadata file may have been partially written or corrupted. Run the repair tool to " +
+                            "clear the voted field. Clearing the voted field in a stable cluster is a safe operation.",
+                            addressLength, buffer.remaining());
                     builder.violation(new Violation(message, Violation.Severity.ERROR));
                     hasErrors = true;
                 } else {
@@ -76,7 +80,7 @@ final class MetadataFileRule extends BaseFileRule {
                     builder.field("Voted for", Objects.toString(votedFor));
                 }
             } catch (Exception e) {
-                builder.field("Voted for", "UNREADABLE");
+                builder.field("Voted for", FileValidationResult.ValidationField.error("UNREADABLE"));
                 String message = String.format("Failed to deserialize voted for address: %s", e);
                 builder.violation(new Violation(message, Violation.Severity.ERROR));
                 hasErrors = true;
@@ -92,7 +96,10 @@ final class MetadataFileRule extends BaseFileRule {
 
         if (lastLogIndex.isPresent() && commitIndex > lastLogIndex.getAsLong()) {
             String message = String.format("Commit index %d is beyond the last log entry index %d. " +
-                    "This may indicate the log file was truncated or it was modified outside of normal operation",
+                            "This may indicate the log file was truncated or it was modified outside of normal operation. " +
+                            "It is unknown whether the metadata is incorrect or the log file is truncated. " +
+                            "Compare with the log directories of other nodes in the cluster to determine whether " +
+                            "entries are missing from this log or the commit index in metadata is stale.",
                     commitIndex, lastLogIndex.getAsLong());
             builder.violation(new Violation(message, Violation.Severity.ERROR));
             hasErrors = true;
@@ -100,14 +107,19 @@ final class MetadataFileRule extends BaseFileRule {
 
         if (highestTerm.isPresent() && currentTerm < highestTerm.getAsLong()) {
             String message = String.format("Current term %d in metadata is lower than the highest term %d found in the " +
-                    "log entries. The term values should be at least as high as the terms found in the entries.",
+                            "log entries. The term values should be at least as high as the terms found in the entries. " +
+                            "This indicates issues when flushing the metadata after entries were written. An outdated " +
+                            "metadata could disrupt leader election. Run the repair command to update the metadata to " +
+                            "match the entries file.",
                     currentTerm, highestTerm.getAsLong());
             builder.violation(new Violation(message, Violation.Severity.ERROR));
             hasErrors = true;
         }
 
         if (!hasErrors) {
-            builder.field("Consistency", "OK");
+            builder.field("Consistency", FileValidationResult.ValidationField.info("OK"));
+        } else {
+            builder.field("Consistency", FileValidationResult.ValidationField.error("Failures found"));
         }
 
         return context.append(builder.build());

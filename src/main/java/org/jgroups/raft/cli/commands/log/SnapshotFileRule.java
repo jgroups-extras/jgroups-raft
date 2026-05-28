@@ -41,7 +41,7 @@ final class SnapshotFileRule extends BaseFileRule {
         if (!SnapshotStorage.isSnapshotFile(buffer)) {
             String message = String.format("Unrecognized file format for snapshot at %s", path.toAbsolutePath());
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
-                    .field("Status", "UNRECOGNIZED")
+                    .field("Status", FileValidationResult.ValidationField.error("UNRECOGNIZED"))
                     .violation(new Violation(message, Violation.Severity.INVALID))
                     .build();
             return context.append(vr);
@@ -60,10 +60,13 @@ final class SnapshotFileRule extends BaseFileRule {
 
         if (bytes.length < MIN_FILE_SIZE) {
             String message = String.format("Snapshot file is truncated: %d bytes present, minimum %d required " +
-                            "for header and checksum. The file may have been cut short during a write",
+                            "for header and checksum. The file may have been cut short during a write. Do not delete " +
+                            "the snapshot file without verifying another node in the cluster holds a valid copy. " +
+                            "If a healthy leader is available, deletion through the repair tool should be safe as " +
+                            "the node will replicate the state on start. Otherwise, data could be lost.",
                     bytes.length, MIN_FILE_SIZE);
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
-                    .field("Status", "TRUNCATED")
+                    .field("Status", FileValidationResult.ValidationField.error("TRUNCATED"))
                     .violation(new Violation(message, Violation.Severity.ERROR))
                     .build();
             return context.append(vr);
@@ -83,12 +86,16 @@ final class SnapshotFileRule extends BaseFileRule {
 
         if (storedChecksum != computedChecksum) {
             String message = String.format("CRC mismatch in snapshot: stored checksum 0x%08X, computed 0x%08X. " +
-                    "The snapshot data may have been corrupted after write.", storedChecksum, computedChecksum);
-            builder.field("Status", "Corrupted");
+                    "The snapshot data may have been corrupted after write. " +
+                    "Do not delete the snapshot file without verifying another node in the cluster holds a valid copy. " +
+                    "If a healthy leader is currently available, deletion through the repair tool should be safe as " +
+                    "the node will replicate the state on start. Otherwise, data could be lost.",
+                    storedChecksum, computedChecksum);
+            builder.field("Status", FileValidationResult.ValidationField.error("Corrupted"));
             builder.violation(new Violation(message, Violation.Severity.ERROR));
 
         } else {
-            builder.field("Status", "OK (checksum valid)");
+            builder.field("Status", FileValidationResult.ValidationField.info("OK (checksum valid)"));
         }
 
         return context.append(builder.build());

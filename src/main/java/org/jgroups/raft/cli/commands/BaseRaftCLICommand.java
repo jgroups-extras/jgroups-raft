@@ -53,8 +53,11 @@ abstract class BaseRaftCLICommand implements Runnable {
      * subclasses via {@link #isVerbose()} to print debug information.
      * </p>
      */
-    @Option(names = {"-v", "--verbose"}, description = "Enable verbose output")
-    private boolean verbose;
+    @Option(names = {"-v", "--verbose"}, description = {
+            "Enable verbose output",
+            "Provide varying levels of verbosity: -v, -vv.",
+    })
+    private boolean[] verbosity;
 
     /**
      * Returns the Picocli command specification.
@@ -71,7 +74,27 @@ abstract class BaseRaftCLICommand implements Runnable {
      * @return {@code true} if the user provided the {@code -v} or {@code --verbose} flag.
      */
     public final boolean isVerbose() {
-        return verbose;
+        return verbosity != null && verbosity.length > 0;
+    }
+
+    /**
+     * The verbosity level to log in CLI.
+     *
+     * <p>
+     * The user can ask for more details when running an operation:
+     * <ul>
+     *     <li>0. No additional details. The default value.</li>
+     *     <li>1 (-v). Include more details when running operations, show stack traces.</li>
+     *     <li>2 (-vv). As detailed as possible when running commands.</li>
+     * </ul>
+     * </p>
+     *
+     * @return A value from 0 to 2 depending on the user requested verbosity.
+     */
+    public final int verbosityLevel() {
+        return verbosity == null
+                ? 0
+                : verbosity.length;
     }
 
     /**

@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import picocli.CommandLine;
+
 /**
  * Default {@link ValidationResult} backed by ordered fields and violations.
  *
@@ -18,10 +20,10 @@ import java.util.Map;
 final class FileValidationResult implements ValidationResult {
 
     private final String filename;
-    private final List<Map.Entry<String, String>> fields;
+    private final List<Map.Entry<String, ValidationField>> fields;
     private final List<Violation> violations;
 
-    private FileValidationResult(String filename, List<Map.Entry<String, String>> fields, List<Violation> violations) {
+    private FileValidationResult(String filename, List<Map.Entry<String, ValidationField>> fields, List<Violation> violations) {
         this.filename = filename;
         this.fields = fields;
         this.violations = violations;
@@ -63,7 +65,9 @@ final class FileValidationResult implements ValidationResult {
 
     @Override
     public void formatTo(PrintWriter out) {
-        out.println(filename);
+        CommandLine.Help.Ansi ansi = CommandLine.Help.Ansi.AUTO;
+
+        out.println(ansi.string("@|bold " + filename + "|@"));
 
         // Calculate the width to output everything aligned.
         // These are additional information for Raft to help understand the current file state.
@@ -72,8 +76,8 @@ final class FileValidationResult implements ValidationResult {
                 .max().orElse(0);
         String format = "  %-" + (labelWidth + 1) + "s %s%n";
 
-        for (Map.Entry<String, String> field : fields) {
-            out.printf(format, field.getKey() + ":", field.getValue());
+        for (Map.Entry<String, ValidationField> field : fields) {
+            out.printf(format, field.getKey() + ":", colorizeValue(ansi, field.getValue()));
         }
 
 
@@ -81,13 +85,31 @@ final class FileValidationResult implements ValidationResult {
         // All the messages should be clear and actionable for operators.
         if (!violations.isEmpty()) {
             out.println();
-            out.println("  Problems:");
+            out.println(ansi.string("  @|bold Problems:|@"));
             for (Violation violation : violations) {
-                out.printf("    %s%n", violation.message());
+                String prefix = switch (violation.severity()) {
+                    case WARNING -> "@|yellow ";
+                    case ERROR -> "@|red,bold ";
+                    case INVALID -> "@|bold ";
+                };
+                out.printf("    %s%n", ansi.string(prefix + violation.message() + "|@"));
             }
         }
 
         out.println();
+    }
+
+    private String colorizeValue(CommandLine.Help.Ansi ansi, ValidationField value) {
+        if (value instanceof ValidationField.Info)
+            return ansi.string("@|green " + value.text() + "|@");
+
+        if (value instanceof ValidationField.Error)
+            return ansi.string("@|bold,red " + value.text() + "|@");
+
+        if (value instanceof ValidationField.Warn)
+            return ansi.string("@|yellow " + value.text() + "|@");
+
+        return value.text();
     }
 
     /**
@@ -99,7 +121,7 @@ final class FileValidationResult implements ValidationResult {
      */
     static final class ValidationResultBuilder {
         private final String filename;
-        private final List<Map.Entry<String, String>> fields = new ArrayList<>();
+        private final List<Map.Entry<String, ValidationField>> fields = new ArrayList<>();
         private final List<Violation> violations = new ArrayList<>();
 
         private ValidationResultBuilder(String filename) {
@@ -110,11 +132,23 @@ final class FileValidationResult implements ValidationResult {
          * Adds a labeled field to the result.
          *
          * @param label the field label (e.g., {@code "Format"})
+         * @param value the field value wrapped by a custom informational level
+         * @return this builder
+         */
+        ValidationResultBuilder field(String label, ValidationField value) {
+            fields.add(Map.entry(label, value));
+            return this;
+        }
+
+        /**
+         * Adds a labeled field to the result.
+         *
+         * @param label the field label (e.g., {@code "Format"})
          * @param value the field value (e.g., {@code "v2 (checksummed)"})
          * @return this builder
          */
         ValidationResultBuilder field(String label, String value) {
-            fields.add(Map.entry(label, value));
+            fields.add(Map.entry(label, ValidationField.plain(value)));
             return this;
         }
 
@@ -148,5 +182,69 @@ final class FileValidationResult implements ValidationResult {
         ValidationResult build() {
             return new FileValidationResult(filename, List.copyOf(fields), List.copyOf(violations));
         }
+    }
+
+    /**
+     * A display value for a labeled field in a validation result.
+     *
+     * @since 2.0
+     * @author José Bolina
+     */
+    sealed interface ValidationField {
+
+        /**
+         * Returns the display text for this field value.
+         *
+         * @return the text to render after the field label
+         */
+        String text();
+
+        /**
+         * An informational text.
+         *
+         * @param text the display text
+         * @return a validation field with the proper informational level.
+         */
+        static ValidationField plain(String text) {
+            return new Plain(text);
+        }
+
+        /**
+         * A healthy or informational value with no severity implication.
+         *
+         * @param text the display text
+         * @return a validation field with the proper informational level.
+         */
+        static ValidationField info(String text) {
+            return new Info(text);
+        }
+
+        /**
+         * A value indicating a non-fatal condition the operator should be aware of.
+         *
+         * @param text the display text
+         * @return a validation field with the proper informational level.
+         */
+        static ValidationField warn(String text) {
+            return new Warn(text);
+        }
+
+        /**
+         * A value indicating a problem that requires attention.
+         *
+         * @param text the display text
+         * @return a validation field with the proper informational level.
+         */
+        static ValidationField error(String text) {
+            return new Error(text);
+        }
+
+        record Plain(String text) implements ValidationField { }
+
+        record Info(String text) implements ValidationField { }
+
+        record Warn(String text) implements ValidationField { }
+
+        record Error(String text) implements ValidationField { }
     }
 }
