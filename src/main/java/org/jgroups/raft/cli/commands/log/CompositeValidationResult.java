@@ -24,6 +24,19 @@ final class CompositeValidationResult implements ValidationResult {
     }
 
     @Override
+    public ParseType fileParsed() {
+        ParseType pt = ParseType.SUCCESS;
+        for (ValidationResult result : results) {
+            if (result.fileParsed() == ParseType.UNRECOGNIZED)
+                return ParseType.UNRECOGNIZED;
+
+            if (result.fileParsed() != ParseType.SUCCESS)
+                pt = result.fileParsed();
+        }
+        return pt;
+    }
+
+    @Override
     public boolean isValid() {
         return results.stream().allMatch(ValidationResult::isValid);
     }

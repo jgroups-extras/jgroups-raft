@@ -67,6 +67,7 @@ final class EntriesFileRule implements LogValidatorRule {
                 ValidationResult vr = FileValidationResult.builder(entriesPath.toAbsolutePath().toString())
                         .field("Status", FileValidationResult.ValidationField.error("UNRECOGNIZED"))
                         .violation(new Violation(message, Violation.Severity.INVALID))
+                        .parseType(ValidationResult.ParseType.UNRECOGNIZED)
                         .build();
                 yield context.append(vr);
             }
@@ -78,6 +79,7 @@ final class EntriesFileRule implements LogValidatorRule {
                 ValidationResult vr = FileValidationResult.builder(entriesPath.toAbsolutePath().toString())
                         .field("Format", FileValidationResult.ValidationField.warn("v1 (no checksums)"))
                         .violation(new Violation(message, Violation.Severity.INVALID))
+                        .parseType(ValidationResult.ParseType.INVALID_VERSION)
                         .build();
                 yield context.append(vr);
             }

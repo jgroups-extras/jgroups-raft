@@ -21,6 +21,7 @@ import picocli.CommandLine;
 final class FileValidationResult implements ValidationResult {
 
     private final String filename;
+    private final ParseType parseType;
     private final List<Map.Entry<String, ValidationField>> fields;
     private final List<Violation> violations;
     private final CorruptionPoint corruptionPoint;
@@ -29,6 +30,7 @@ final class FileValidationResult implements ValidationResult {
 
     private FileValidationResult(
             String filename,
+            ParseType parseType,
             List<Map.Entry<String, ValidationField>> fields,
             List<Violation> violations,
             CorruptionPoint corruptionPoint,
@@ -36,6 +38,7 @@ final class FileValidationResult implements ValidationResult {
             MetadataInfo metadataInfo
     ) {
         this.filename = filename;
+        this.parseType = parseType;
         this.fields = fields;
         this.violations = violations;
         this.corruptionPoint = corruptionPoint;
@@ -51,6 +54,11 @@ final class FileValidationResult implements ValidationResult {
      */
     static ValidationResultBuilder builder(String filename) {
         return new ValidationResultBuilder(filename);
+    }
+
+    @Override
+    public ParseType fileParsed() {
+        return parseType;
     }
 
     @Override
@@ -152,6 +160,7 @@ final class FileValidationResult implements ValidationResult {
         private final String filename;
         private final List<Map.Entry<String, ValidationField>> fields = new ArrayList<>();
         private final List<Violation> violations = new ArrayList<>();
+        private ValidationResult.ParseType parseType = ParseType.SUCCESS;
         private CorruptionPoint corruptionPoint = null;
         private LogInfo logInfo = null;
         private MetadataInfo metadataInfo = null;
@@ -239,6 +248,16 @@ final class FileValidationResult implements ValidationResult {
             return this;
         }
 
+        /**
+         * Sets the parse type in case of failures parsing.
+         *
+         * @param parseType The parsing status.
+         * @return this builder
+         */
+        ValidationResultBuilder parseType(ValidationResult.ParseType parseType) {
+            this.parseType = parseType;
+            return this;
+        }
 
         /**
          * Builds an immutable validation result.
@@ -246,7 +265,7 @@ final class FileValidationResult implements ValidationResult {
          * @return the validation result
          */
         ValidationResult build() {
-            return new FileValidationResult(filename, List.copyOf(fields), List.copyOf(violations), corruptionPoint, logInfo, metadataInfo);
+            return new FileValidationResult(filename, parseType, List.copyOf(fields), List.copyOf(violations), corruptionPoint, logInfo, metadataInfo);
         }
     }
 

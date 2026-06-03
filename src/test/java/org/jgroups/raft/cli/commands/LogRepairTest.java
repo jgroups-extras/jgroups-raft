@@ -66,7 +66,7 @@ public class LogRepairTest {
         RepairResult result = executeRepair();
 
         assertThat(result.exitCode).isEqualTo(0);
-        assertThat(result.output).containsIgnoringCase("nothing to repair");
+        assertThat(result.output).containsIgnoringCase("No further repair needed.");
     }
 
     public void testCrcMismatchTruncatesLog() throws Exception {
@@ -182,6 +182,196 @@ public class LogRepairTest {
         assertThat(Files.size(entriesPath())).isEqualTo(fileSizeBefore);
     }
 
+    public void testCorruptedHeaderReconstructed() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        byte[] d3 = "third".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, d1),
+                    new LogEntry(1, d2),
+                    new LogEntry(1, d3)
+            ));
+            log.currentTerm(1);
+        }
+
+        corruptFileHeader();
+
+        RepairResult result = executeRepair("yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).contains("Header reconstructed");
+        assertThat(result.output).contains("No further repair needed");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.firstIndex()).isEqualTo(1);
+            assertThat(info.lastIndex()).isEqualTo(3);
+            assertThat(info.entryCount()).isEqualTo(3);
+        });
+    }
+
+    public void testCorruptedHeaderWithTruncatedLastEntry() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        byte[] d3 = "third".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, d1),
+                    new LogEntry(1, d2),
+                    new LogEntry(1, d3)
+            ));
+            log.currentTerm(1);
+        }
+
+        corruptFileHeader();
+
+        // Truncate mid-way through entry 3. Simulates crash during write.
+        long truncateAt = entryOffset(2, d1.length, d2.length) + LogEntryStorage.HEADER_SIZE + 2;
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.setLength(truncateAt);
+        }
+
+        RepairResult result = executeRepair("yes", "yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).contains("Header reconstructed");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.firstIndex()).isEqualTo(1);
+            assertThat(info.lastIndex()).isEqualTo(2);
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testCorruptedHeaderWithLastEntryCrcMismatch() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        byte[] d3 = "third".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, d1),
+                    new LogEntry(1, d2),
+                    new LogEntry(1, d3)
+            ));
+            log.currentTerm(1);
+        }
+
+        corruptFileHeader();
+
+        long corruptOffset = entryDataOffset(2, d1.length, d2.length);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(corruptOffset);
+            raf.writeByte(0xFF);
+        }
+
+        RepairResult result = executeRepair("yes", "yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).contains("Header reconstructed");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.firstIndex()).isEqualTo(1);
+            assertThat(info.lastIndex()).isEqualTo(2);
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testCorruptedHeaderWithMiddleEntryCrcMismatch() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        byte[] d3 = "third".getBytes();
+        byte[] d4 = "fourth".getBytes();
+        byte[] d5 = "fifth".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, d1),
+                    new LogEntry(1, d2),
+                    new LogEntry(1, d3),
+                    new LogEntry(1, d4),
+                    new LogEntry(1, d5)
+            ));
+            log.currentTerm(1);
+        }
+
+        corruptFileHeader();
+
+        // Corrupt entry 3. Entries 4 and 5 are also removed because the log cannot have gaps.
+        long corruptOffset = entryDataOffset(2, d1.length, d2.length);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(corruptOffset);
+            raf.writeByte(0xFF);
+        }
+
+        RepairResult result = executeRepair("yes", "yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).contains("Header reconstructed");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.firstIndex()).isEqualTo(1);
+            assertThat(info.lastIndex()).isEqualTo(2);
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testCorruptedHeaderWithFirstEntryCrcMismatch() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        byte[] d3 = "third".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, d1),
+                    new LogEntry(1, d2),
+                    new LogEntry(1, d3)
+            ));
+            log.currentTerm(1);
+        }
+
+        corruptFileHeader();
+
+        long corruptOffset = entryDataOffset(0);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(corruptOffset);
+            raf.writeByte(0xFF);
+        }
+
+        RepairResult result = executeRepair("yes", "yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).contains("Header reconstructed");
+
+        // All entries removed. Only the 8-byte file header remains.
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.logInfo()).isEmpty();
+    }
+
+    public void testCorruptedHeaderDeclined() throws Exception {
+        byte[] d1 = "data".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(new LogEntry(1, d1)));
+            log.currentTerm(1);
+        }
+
+        corruptFileHeader();
+
+        RepairResult result = executeRepair("no");
+
+        assertThat(result.exitCode).isEqualTo(1);
+
+        // Header reconstruction was declined. File should still be unrecognized.
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isFalse();
+    }
+
     public void testOperatorDeclinesNoModification() throws Exception {
         byte[] d1 = "data".getBytes();
         try (FileBasedLog log = createLog()) {
@@ -212,6 +402,13 @@ public class LogRepairTest {
 
     private Path entriesPath() {
         return tempDir.resolve(LogEntryStorage.FILE_NAME);
+    }
+
+    private void corruptFileHeader() throws IOException {
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(0);
+            raf.writeInt(0xDEADBEEF);
+        }
     }
 
     private long entryOffset(int precedingEntries, int... precedingDataLengths) {

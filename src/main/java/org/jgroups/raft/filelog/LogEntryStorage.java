@@ -49,6 +49,15 @@ public final class LogEntryStorage {
       fileStorage = new FileStorage(new File(parentDir, FILE_NAME), DEFAULT_WRITE_AHEAD_BYTES);
    }
 
+   public static void writeFileHeaderTo(ByteBuffer buffer) {
+      buffer.put(FILE_HEADER_MAGIC);
+      buffer.put(FILE_HEADER_VERSION);
+
+      // We include a few padding bytes for alignment in 8 bytes and if we ever need extra flags in the future.
+      while (buffer.position() < FILE_HEADER_SIZE)
+         buffer.put((byte) 0);
+   }
+
    public void open() throws IOException {
       fileStorage.open();
       if (fileStorage.getCachedFileSize() == 0) {
@@ -326,13 +335,7 @@ public final class LogEntryStorage {
 
    private void writeFileHeader() throws IOException {
       ByteBuffer header = fileStorage.ioBufferWith(FILE_HEADER_SIZE);
-      header.put(FILE_HEADER_MAGIC);
-      header.put(FILE_HEADER_VERSION);
-
-      // We include a few padding bytes for alignment in 8 bytes and if we ever need extra flags in the future.
-      header.put((byte) 0);
-      header.put((byte) 0);
-      header.put((byte) 0);
+      writeFileHeaderTo(header);
       header.flip();
       fileStorage.write(0);
       fileStorage.flush();

@@ -25,6 +25,14 @@ import java.util.Optional;
  */
 public sealed interface ValidationResult permits CompositeValidationResult, FileValidationResult {
 
+    enum ParseType {
+        SUCCESS,
+        UNRECOGNIZED,
+        INVALID_VERSION,
+    }
+
+    ParseType fileParsed();
+
     /**
      * Returns {@code true} if no violations were found.
      *
