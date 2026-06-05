@@ -216,24 +216,22 @@ The first byte of a 2.x file is `0x52` (`R`), which fails the legacy consistency
 The 1.x code loads an empty log.
 This is a loud failure: the node starts with no entries, the operator notices immediately.
 
-The `raft log downgrade` CLI command converts 2.x files back to 1.x format by stripping file headers, rewriting `0x02` entries to `0x01` (removing checksums), and converting snapshots to the legacy format.
+Rolling back to 1.x requires restoring from a backup taken before the upgrade, or deleting the log directory and letting the node rebuild from the cluster leader.
 
 === Unknown Version
 
 If the file header contains a version number higher than what the running code supports, the node refuses to open the file and enters degraded state.
-The error message directs the operator to either upgrade to a compatible release or run `raft log downgrade` to convert the file.
+The error message directs the operator to upgrade to a compatible release.
 
 
-== Deferred Work
+== CLI Commands
 
-The following CLI commands are tracked for a future release:
+The following offline CLI commands operate directly on files in a stopped node's log directory.
+See the CLI documentation for usage details.
 
 `raft log verify`::
-Scans the log file and snapshot, validates all checksums, and reports corruption without modifying anything.
+Scans the log file, snapshot, and metadata, validates all checksums, and reports corruption without modifying anything.
 
 `raft log repair`::
-Truncates the log at the first point of corruption (with operator confirmation).
+Identifies and fixes recoverable corruption with operator confirmation.
 After repair, the node recovers missing entries from the leader on restart.
-
-`raft log downgrade`::
-Converts 2.x log files and snapshots to 1.x format, enabling rollback to a previous release.

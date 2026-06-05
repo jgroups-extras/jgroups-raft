@@ -1,0 +1,107 @@
+== Log Commands
+
+Offline commands that operate on files in a stopped node's log directory.
+A lock file prevents concurrent access with a running node.
+
+[NOTE]
+====
+Log commands require the v2 file format introduced in JGroups Raft 2.x and later.
+====
+
+=== Verify (`verify`)
+
+Scans all files in the log directory and reports integrity status.
+Does not modify any file.
+
+[source,bash]
+----
+raft log verify /path/to/log/directory
+----
+
+The scan validates the log entries, snapshot, and metadata for structural integrity, CRC-32C checksums, and cross-file consistency.
+
+==== Options
+
+[cols="1,3", options="header"]
+|===
+| Flag | Output
+
+| _(default)_
+| Summary per file: entry range, count, and status.
+
+| `-v`
+| One line per entry: term, index, internal flag, data size, CRC status.
+
+| `-vv`
+| Same as `-v` with hex dump of each entry payload.
+|===
+
+==== Exit Codes
+
+[cols="1,1,3", options="header"]
+|===
+| Code | Name | Meaning
+
+| `0`
+| OK
+| No corruption found.
+
+| `1`
+| CORRUPTION
+| Corruption or inconsistency detected in one or more files.
+
+| `2`
+| INVALID
+| The directory does not exist, cannot be locked, or is not a valid log directory.
+|===
+
+
+=== Repair (`repair`)
+
+Scans for corruption and applies fixes after operator confirmation.
+
+[source,bash]
+----
+raft log repair /path/to/log/directory
+----
+
+==== Confirmation
+
+Always interactive.
+Two prompts before each file modification, both default to NO:
+
+. `Have you backed up the log directory? (yes/NO):` — asked once per invocation.
+. Action-specific prompt (e.g., `Proceed with truncation? (yes/NO):`).
+
+==== What Repair Can Fix
+
+- Corrupted or truncated entries (truncation at first corruption point)
+- Missing or corrupted file header
+- Missing or truncated metadata
+- Commit index beyond entry range
+- Current term below highest entry term
+- Corrupted voted-for field
+
+==== Limitations
+
+Snapshot corruption is not repairable.
+Repair reports the situation and exits without modifying any file.
+
+==== Exit Codes
+
+[cols="1,1,3", options="header"]
+|===
+| Code | Name | Meaning
+
+| `0`
+| OK
+| No corruption found, or all repairs completed successfully.
+
+| `1`
+| CORRUPTION
+| Operator declined a repair, corruption is non-repairable, or no actions were identified.
+
+| `2`
+| INVALID
+| The directory does not exist, cannot be locked, or the log format prevents repair.
+|===

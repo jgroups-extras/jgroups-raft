@@ -31,3 +31,5 @@ include::./overview.adoc[Overview]
 include::./monitoring-commands.adoc[Monitoring commands]
 
 include::./management-commands.adoc[Management commands]
+
+include::./log-commands.adoc[Log commands]

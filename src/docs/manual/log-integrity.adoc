@@ -86,32 +86,38 @@ If the data is intact, it rejoins the cluster normally and catches up with any e
 NOTE: We made a conscious decision of not trying to be "smart" when handling failure. We could do something unexpected for operators.
 We offer the tools for operators to make their decision on how to handle the failure.
 
-==== Corrupted Entries
+==== Corrupted Log Files
 
-If the log file contains corrupted data, the node cannot start normally.
+If the log directory contains corrupted data, the node cannot start normally.
 The recommended procedure is:
 
-. Inspect the error message in the server log.
-  It contains the file name, byte offset, and the nature of the corruption.
-. Back up the affected log directory before taking any action.
-. Use the `raft log verify` command to scan the entire log and identify all corrupted entries.
-. Use the `raft log repair` command to truncate the log at the first point of corruption.
-  This removes the corrupted entries and all entries after them.
+. Back up the log directory before taking any action.
+. Run `raft log verify` to scan the directory and identify the corruption.
+. Run `raft log repair` to fix recoverable corruption.
+  The command presents each proposed action and asks for confirmation before modifying any file.
 . Restart the node.
-  It will rejoin the cluster and recover the missing entries from the current leader via the normal Raft catch-up mechanism.
+  It will rejoin the cluster and recover any missing entries from the current leader via the normal Raft catch-up mechanism.
 
-WARNING: `raft log repair` permanently removes entries from the log file.
+WARNING: `raft log repair` permanently modifies log files.
 Always back up the log directory before running it.
+
+If repair reports that the corruption is not repairable, for example, a corrupted snapshot that the log depends on, the log directory must be replaced.
+Back up the directory for later analysis, then follow the <<Complete Log Loss>> procedure below.
 
 ==== Complete Log Loss
 
-If the log files are deleted or unrecoverable, delete the entire log directory and restart the node.
-The leader will send a snapshot followed by any subsequent entries, and the node will rebuild its state from scratch.
-This is the same mechanism used when adding a new node to the cluster.
+If the log files are unrecoverable, the node can be rebuilt from the cluster leader.
 
-WARNING: Be extra careful when performing this action.
-The node is unable to accept requests until it has all entries.
-Additional failures in the cluster could cause loss of availability.
+WARNING: This is a destructive, last-resort action.
+Back up the log directory before deleting it, even if the files appear corrupted. They may still be useful for root-cause analysis.
+The node will be unable to accept requests until it has received all entries from the leader.
+Additional failures in the cluster during this window could cause loss of availability.
+
+. Back up the log directory.
+. Delete the log directory.
+. Restart the node.
+  The leader will send a snapshot followed by any subsequent entries, and the node will rebuild its state from scratch.
+  This is the same mechanism used when adding a new node to the cluster.
 
 === Upgrade and Compatibility
 
@@ -126,13 +132,9 @@ Over time, as snapshots are taken and the log is truncated, all legacy entries a
 
 ==== Rolling Back from 2.x to 1.x
 
-Rolling back requires converting the log files to the 1.x format using the `raft log downgrade` CLI command.
-Without this conversion, the 1.x code will not recognize the file format and will start with an empty log.
+The 1.x code cannot read 2.x log files.
+If a node that has written entries in 2.x format needs to be rolled back to 1.x, delete the log directory and restart the node with the 1.x release.
+The leader will send a snapshot and subsequent entries, and the node will rebuild its state from scratch.
 
-[source,bash]
-----
-# Convert log files in the given directory to 1.x format
-raft log downgrade /path/to/log/directory
-----
-
-After running the downgrade command, restart the node with the 1.x version.
+WARNING: Always back up the log directory before upgrading.
+Without a backup, rolling back to 1.x requires the node to rebuild its entire state from the cluster leader, and any entries not yet replicated to other nodes will be permanently lost.
