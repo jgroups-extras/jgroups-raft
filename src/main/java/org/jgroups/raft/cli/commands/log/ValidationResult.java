@@ -104,10 +104,27 @@ public sealed interface ValidationResult permits CompositeValidationResult, File
     record LogInfo(long firstIndex, long lastIndex, int entryCount, long highestTerm) { }
 
     /**
-     * Values read from the metadata file.
-     *
-     * @param commitIndex the stored commit index
-     * @param currentTerm the stored current term
+     * Represents the parsing of the metadata file.
      */
-    record MetadataInfo(long commitIndex, long currentTerm) { }
+    sealed interface MetadataInfo {
+        enum VoteStatus {
+            ABSENT,
+            VALID,
+            CORRUPT
+        }
+
+        /**
+         * Represents a file that could not be parsed for verification.
+         */
+        record Truncated() implements MetadataInfo { }
+
+        /**
+         * Values read from the metadata file.
+         *
+         * @param commitIndex the stored commit index
+         * @param currentTerm the stored current term
+         * @param voteStatus status of the voted for field
+         */
+        record Readable(long commitIndex, long currentTerm, VoteStatus voteStatus) implements MetadataInfo { }
+    }
 }

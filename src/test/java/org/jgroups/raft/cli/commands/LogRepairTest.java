@@ -10,6 +10,7 @@ import org.jgroups.raft.cli.commands.log.LogValidation;
 import org.jgroups.raft.cli.commands.log.LogValidationOptions;
 import org.jgroups.raft.cli.commands.log.ValidationResult;
 import org.jgroups.raft.filelog.LogEntryStorage;
+import org.jgroups.raft.filelog.MetadataStorage;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -128,8 +129,11 @@ public class LogRepairTest {
 
         ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
         assertThat(verification.isValid()).isTrue();
-        assertThat(verification.metadataInfo()).hasValueSatisfying(meta ->
-                assertThat(meta.commitIndex()).isEqualTo(1));
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.commitIndex()).isEqualTo(1);
+        });
     }
 
     public void testIncompleteTrailingEntryRepaired() throws Exception {
@@ -372,6 +376,330 @@ public class LogRepairTest {
         assertThat(verification.isValid()).isFalse();
     }
 
+    public void testVotedForCorruptedCleared() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(2, d1),
+                    new LogEntry(2, d2)
+            ));
+            log.currentTerm(2);
+            log.commitIndex(2);
+        }
+
+        // Write garbage at the votedFor position (offset 16) to trigger deserialization failure.
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.seek(16);
+            raf.writeInt(-1);
+            raf.write(new byte[] {0x01, 0x02, 0x03});
+        }
+
+        RepairResult result = executeRepair("yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).containsIgnoringCase("vote");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.commitIndex()).isEqualTo(2);
+            assertThat(readable.currentTerm()).isEqualTo(2);
+        });
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.firstIndex()).isEqualTo(1);
+            assertThat(info.lastIndex()).isEqualTo(2);
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testTruncatedMetadataReconstructed() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(3, d1),
+                    new LogEntry(5, d2)
+            ));
+            log.currentTerm(5);
+            log.commitIndex(2);
+        }
+
+        // Truncate metadata below the 16-byte minimum. Only partial commitIndex survives.
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.setLength(5);
+        }
+
+        ValidationResult preRepair = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(preRepair.metadataInfo()).hasValueSatisfying(meta ->
+                assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Truncated.class));
+
+        RepairResult result = executeRepair("yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).containsIgnoringCase("reconstruct");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.commitIndex()).isEqualTo(0);
+            assertThat(readable.currentTerm()).isEqualTo(5);
+        });
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testCommitIndexBeyondLogRangeStandaloneAdjusted() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        byte[] d3 = "third".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(1, d1),
+                    new LogEntry(1, d2),
+                    new LogEntry(1, d3)
+            ));
+            log.currentTerm(1);
+            log.commitIndex(3);
+        }
+
+        // Overwrite commitIndex to 100, well beyond the last log entry (3).
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.seek(0);
+            raf.writeLong(100);
+        }
+
+        RepairResult result = executeRepair("yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).containsIgnoringCase("commit index");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.commitIndex()).isEqualTo(3);
+            assertThat(readable.currentTerm()).isEqualTo(1);
+        });
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.entryCount()).isEqualTo(3);
+        });
+    }
+
+    public void testTermInconsistencyAdjusted() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(3, d1),
+                    new LogEntry(5, d2)
+            ));
+            log.currentTerm(5);
+            log.commitIndex(2);
+        }
+
+        // Overwrite currentTerm to 1, below the highest entry term (5).
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.seek(8);
+            raf.writeLong(1);
+        }
+
+        RepairResult result = executeRepair("yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).containsIgnoringCase("term");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.currentTerm()).isEqualTo(5);
+            assertThat(readable.commitIndex()).isEqualTo(2);
+        });
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testMetadataRepairDeclined() throws Exception {
+        byte[] d1 = "data".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(new LogEntry(2, d1)));
+            log.currentTerm(2);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.setLength(5);
+        }
+
+        long sizeBefore = Files.size(metadataPath());
+
+        RepairResult result = executeRepair("yes", "no");
+
+        assertThat(result.exitCode).isEqualTo(1);
+        assertThat(Files.size(metadataPath())).isEqualTo(sizeBefore);
+    }
+
+    public void testCorruptVotedForAndTermInconsistencyRepairedTogether() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(3, d1),
+                    new LogEntry(5, d2)
+            ));
+            log.currentTerm(5);
+            log.commitIndex(2);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.seek(8);
+            raf.writeLong(1);
+            raf.seek(16);
+            raf.writeInt(-1);
+            raf.write(new byte[] {0x01, 0x02, 0x03});
+        }
+
+        RepairResult result = executeRepair("yes", "yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).containsIgnoringCase("vote");
+        assertThat(result.output).containsIgnoringCase("term");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.commitIndex()).isEqualTo(2);
+            assertThat(readable.currentTerm()).isEqualTo(5);
+            assertThat(readable.voteStatus()).isEqualTo(ValidationResult.MetadataInfo.VoteStatus.ABSENT);
+        });
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testEntryCrcMismatchAndCorruptVotedForRepairedTogether() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        byte[] d3 = "third".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(2, d1),
+                    new LogEntry(2, d2),
+                    new LogEntry(2, d3)
+            ));
+            log.currentTerm(2);
+            log.commitIndex(3);
+        }
+
+        long corruptOffset = entryDataOffset(1, d1.length);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(corruptOffset);
+            raf.writeByte(0xFF);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.seek(16);
+            raf.writeInt(-1);
+            raf.write(new byte[] {0x01, 0x02, 0x03});
+        }
+
+        RepairResult result = executeRepair("yes", "yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.firstIndex()).isEqualTo(1);
+            assertThat(info.lastIndex()).isEqualTo(1);
+            assertThat(info.entryCount()).isEqualTo(1);
+        });
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.commitIndex()).isEqualTo(1);
+            assertThat(readable.currentTerm()).isEqualTo(2);
+            assertThat(readable.voteStatus()).isEqualTo(ValidationResult.MetadataInfo.VoteStatus.ABSENT);
+        });
+    }
+
+    public void testSecondActionDeclinedFirstPersists() throws Exception {
+        byte[] d1 = "first".getBytes();
+        byte[] d2 = "second".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.append(1, LogEntries.create(
+                    new LogEntry(3, d1),
+                    new LogEntry(5, d2)
+            ));
+            log.currentTerm(5);
+            log.commitIndex(2);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.seek(8);
+            raf.writeLong(1);
+            raf.seek(16);
+            raf.writeInt(-1);
+            raf.write(new byte[] {0x01, 0x02, 0x03});
+        }
+
+        RepairResult result = executeRepair("yes", "yes", "no");
+
+        assertThat(result.exitCode).isEqualTo(1);
+
+        assertThat(Files.size(metadataPath())).isEqualTo(16);
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isFalse();
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.currentTerm()).isEqualTo(1);
+            assertThat(readable.voteStatus()).isEqualTo(ValidationResult.MetadataInfo.VoteStatus.ABSENT);
+        });
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.entryCount()).isEqualTo(2);
+        });
+    }
+
+    public void testTruncatedMetadataReconstructedWithEmptyLog() throws Exception {
+        try (FileBasedLog log = createLog()) {
+            // No entries appended. Metadata exists with default values.
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(metadataPath().toFile(), "rw")) {
+            raf.setLength(5);
+        }
+
+        ValidationResult preRepair = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(preRepair.metadataInfo()).hasValueSatisfying(meta ->
+                assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Truncated.class));
+
+        RepairResult result = executeRepair("yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+        assertThat(result.output).containsIgnoringCase("reconstruct");
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.metadataInfo()).hasValueSatisfying(meta -> {
+            assertThat(meta).isInstanceOf(ValidationResult.MetadataInfo.Readable.class);
+            ValidationResult.MetadataInfo.Readable readable = (ValidationResult.MetadataInfo.Readable) meta;
+            assertThat(readable.commitIndex()).isEqualTo(0);
+            assertThat(readable.currentTerm()).isEqualTo(0);
+        });
+    }
+
     public void testOperatorDeclinesNoModification() throws Exception {
         byte[] d1 = "data".getBytes();
         try (FileBasedLog log = createLog()) {
@@ -402,6 +730,10 @@ public class LogRepairTest {
 
     private Path entriesPath() {
         return tempDir.resolve(LogEntryStorage.FILE_NAME);
+    }
+
+    private Path metadataPath() {
+        return tempDir.resolve(MetadataStorage.FILE_NAME);
     }
 
     private void corruptFileHeader() throws IOException {

@@ -46,6 +46,7 @@ final class MetadataFileRule extends BaseFileRule {
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
                     .field("Status", FileValidationResult.ValidationField.error("TRUNCATED"))
                     .violation(new Violation(message, Violation.Severity.ERROR))
+                    .metadataInfo(new ValidationResult.MetadataInfo.Truncated())
                     .build();
             return context.append(vr);
         }
@@ -62,6 +63,7 @@ final class MetadataFileRule extends BaseFileRule {
 
         // The last field has a variable size.
         // It contains the address of the last voted for node, and it could be empty.
+        ValidationResult.MetadataInfo.VoteStatus vs = ValidationResult.MetadataInfo.VoteStatus.VALID;
         if (bytes.length > MIN_FILE_SIZE) {
             try {
                 int addressLength = buffer.getInt();
@@ -73,6 +75,7 @@ final class MetadataFileRule extends BaseFileRule {
                             "clear the voted field. Clearing the voted field in a stable cluster is a safe operation.",
                             addressLength, buffer.remaining());
                     builder.violation(new Violation(message, Violation.Severity.ERROR));
+                    vs = ValidationResult.MetadataInfo.VoteStatus.CORRUPT;
                     hasErrors = true;
                 } else {
                     ByteBuffer addressBuffer = ByteBuffer.wrap(bytes, MIN_FILE_SIZE + Global.INT_SIZE, addressLength);
@@ -83,10 +86,12 @@ final class MetadataFileRule extends BaseFileRule {
                 builder.field("Voted for", FileValidationResult.ValidationField.error("UNREADABLE"));
                 String message = String.format("Failed to deserialize voted for address: %s", e);
                 builder.violation(new Violation(message, Violation.Severity.ERROR));
+                vs = ValidationResult.MetadataInfo.VoteStatus.CORRUPT;
                 hasErrors = true;
             }
         } else {
             builder.field("Voted for", "none");
+            vs = ValidationResult.MetadataInfo.VoteStatus.ABSENT;
         }
 
         // Utilize information for the entries file and perform a cross-check validation.
@@ -116,7 +121,7 @@ final class MetadataFileRule extends BaseFileRule {
             hasErrors = true;
         }
 
-        builder.metadataInfo(new ValidationResult.MetadataInfo(commitIndex, currentTerm));
+        builder.metadataInfo(new ValidationResult.MetadataInfo.Readable(commitIndex, currentTerm, vs));
         if (!hasErrors) {
             builder.field("Consistency", FileValidationResult.ValidationField.info("OK"));
         } else {
