@@ -87,4 +87,13 @@ final class CompositeValidationResult implements ValidationResult {
         }
         return Optional.empty();
     }
+
+    @Override
+    public Optional<SnapshotInfo> snapshotInfo() {
+        for (ValidationResult result : results) {
+            if (result.snapshotInfo().isPresent())
+                return result.snapshotInfo();
+        }
+        return Optional.empty();
+    }
 }

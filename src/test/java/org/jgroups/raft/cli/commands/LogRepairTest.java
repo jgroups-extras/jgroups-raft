@@ -11,6 +11,7 @@ import org.jgroups.raft.cli.commands.log.LogValidationOptions;
 import org.jgroups.raft.cli.commands.log.ValidationResult;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
+import org.jgroups.raft.filelog.SnapshotStorage;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -700,6 +701,117 @@ public class LogRepairTest {
         });
     }
 
+    public void testCorruptSnapshotWithDependentLogNonRepairable() throws Exception {
+        byte[] snapshotData = "state-machine-snapshot".getBytes();
+        byte[] d1 = "after-snapshot".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.reinitializeTo(501, new LogEntry(5, d1));
+            log.currentTerm(5);
+            log.commitIndex(501);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {
+            raf.seek(SnapshotStorage.SNAPSHOT_HEADER_SIZE);
+            raf.writeByte(0xFF);
+        }
+
+        long entriesSizeBefore = Files.size(entriesPath());
+        long snapshotSizeBefore = Files.size(snapshotPath());
+
+        RepairResult result = executeRepair();
+
+        assertThat(result.exitCode).isEqualTo(1);
+        assertThat(result.output).containsIgnoringCase("cannot be repaired");
+        assertThat(result.output).containsIgnoringCase("snapshot");
+        assertThat(result.output).containsIgnoringCase("delete the entire log directory");
+
+        assertThat(Files.size(entriesPath())).isEqualTo(entriesSizeBefore);
+        assertThat(Files.size(snapshotPath())).isEqualTo(snapshotSizeBefore);
+    }
+
+    public void testTruncatedSnapshotWithDependentLogNonRepairable() throws Exception {
+        byte[] snapshotData = "state-machine-snapshot-data".getBytes();
+        byte[] d1 = "after-snapshot".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.reinitializeTo(501, new LogEntry(5, d1));
+            log.currentTerm(5);
+            log.commitIndex(501);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {
+            raf.setLength(SnapshotStorage.SNAPSHOT_HEADER_SIZE);
+        }
+
+        RepairResult result = executeRepair();
+
+        assertThat(result.exitCode).isEqualTo(1);
+        assertThat(result.output).containsIgnoringCase("cannot be repaired");
+        assertThat(result.output).containsIgnoringCase("snapshot");
+    }
+
+    public void testCorruptSnapshotWithEntryCorruptionStillNonRepairable() throws Exception {
+        byte[] snapshotData = "state-machine-snapshot".getBytes();
+        byte[] d1 = "first-after".getBytes();
+        byte[] d2 = "second-after".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.reinitializeTo(501, new LogEntry(5, d1));
+            log.append(502, LogEntries.create(new LogEntry(5, d2)));
+            log.currentTerm(5);
+            log.commitIndex(502);
+        }
+
+        try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {
+            raf.seek(SnapshotStorage.SNAPSHOT_HEADER_SIZE);
+            raf.writeByte(0xFF);
+        }
+
+        long corruptOffset = entryDataOffset(0);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(corruptOffset);
+            raf.writeByte(0xFF);
+        }
+
+        RepairResult result = executeRepair();
+
+        assertThat(result.exitCode).isEqualTo(1);
+        assertThat(result.output).containsIgnoringCase("cannot be repaired");
+        assertThat(result.output).containsIgnoringCase("snapshot");
+    }
+
+    public void testHealthySnapshotWithEntryCorruptionProceedsNormally() throws Exception {
+        byte[] snapshotData = "state-machine-snapshot".getBytes();
+        byte[] d1 = "first-after".getBytes();
+        byte[] d2 = "second-after".getBytes();
+        try (FileBasedLog log = createLog()) {
+            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.reinitializeTo(501, new LogEntry(5, d1));
+            log.append(502, LogEntries.create(new LogEntry(5, d2)));
+            log.currentTerm(5);
+            log.commitIndex(502);
+        }
+
+        long corruptOffset = entryDataOffset(1, d1.length);
+        try (RandomAccessFile raf = new RandomAccessFile(entriesPath().toFile(), "rw")) {
+            raf.seek(corruptOffset);
+            raf.writeByte(0xFF);
+        }
+
+        RepairResult result = executeRepair("yes", "yes");
+
+        assertThat(result.exitCode).isEqualTo(0);
+
+        ValidationResult verification = LogValidation.validate(tempDir.toFile(), LogValidationOptions.simple());
+        assertThat(verification.isValid()).isTrue();
+        assertThat(verification.logInfo()).hasValueSatisfying(info -> {
+            assertThat(info.firstIndex()).isEqualTo(501);
+            assertThat(info.lastIndex()).isEqualTo(501);
+            assertThat(info.entryCount()).isEqualTo(1);
+        });
+    }
+
     public void testOperatorDeclinesNoModification() throws Exception {
         byte[] d1 = "data".getBytes();
         try (FileBasedLog log = createLog()) {
@@ -734,6 +846,10 @@ public class LogRepairTest {
 
     private Path metadataPath() {
         return tempDir.resolve(MetadataStorage.FILE_NAME);
+    }
+
+    private Path snapshotPath() {
+        return tempDir.resolve(SnapshotStorage.SNAPSHOT_FILE_NAME);
     }
 
     private void corruptFileHeader() throws IOException {

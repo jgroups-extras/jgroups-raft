@@ -76,6 +76,13 @@ public sealed interface ValidationResult permits CompositeValidationResult, File
     Optional<MetadataInfo> metadataInfo();
 
     /**
+     * Returns the snapshot information read from the snapshot file, if available.
+     *
+     * @return the snapshot state, or empty if the snapshot was never written.
+     */
+    Optional<SnapshotInfo> snapshotInfo();
+
+    /**
      * A corruption finding at a known file offset.
      *
      * @param offset file offset where the corruption starts
@@ -126,5 +133,42 @@ public sealed interface ValidationResult permits CompositeValidationResult, File
          * @param voteStatus status of the voted for field
          */
         record Readable(long commitIndex, long currentTerm, VoteStatus voteStatus) implements MetadataInfo { }
+    }
+
+    /**
+     * Represents the snapshot file parsed for verification.
+     */
+    sealed interface SnapshotInfo {
+
+        /**
+         * It was not possible to recognize if this file was a snapshot file.
+         */
+        record Unrecognized() implements SnapshotInfo { }
+
+        /**
+         * This is a snapshot file, but the version registered in the header is invalid.
+         *
+         * @param foundVersion the version stored in the header
+         * @param supportedVersion the maximum version the current release can handle
+         */
+        record Invalid(int foundVersion, int supportedVersion) implements SnapshotInfo { }
+
+        /**
+         * The snapshot file was truncated short.
+         */
+        record Truncated() implements SnapshotInfo { }
+
+        /**
+         * The snapshot file is complete, but a corruption was identified when calculating the checksum.
+         *
+         * @param computedChecksum the checksum calculated
+         * @param expectedChecksum the checksum stored in the file
+         */
+        record Corrupted(int computedChecksum, int expectedChecksum) implements SnapshotInfo { }
+
+        /**
+         * The snapshot file is good.
+         */
+        record OK() implements SnapshotInfo { }
     }
 }

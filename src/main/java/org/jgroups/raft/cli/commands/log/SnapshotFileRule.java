@@ -43,6 +43,7 @@ final class SnapshotFileRule extends BaseFileRule {
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
                     .field("Status", FileValidationResult.ValidationField.error("UNRECOGNIZED"))
                     .violation(new Violation(message, Violation.Severity.INVALID))
+                    .snapshotInfo(new ValidationResult.SnapshotInfo.Unrecognized())
                     .build();
             return context.append(vr);
         }
@@ -54,6 +55,7 @@ final class SnapshotFileRule extends BaseFileRule {
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
                     .field("Format", String.format("v%d", version))
                     .violation(new Violation(message, Violation.Severity.INVALID))
+                    .snapshotInfo(new ValidationResult.SnapshotInfo.Invalid(version, MAX_SUPPORTED_VERSION))
                     .build();
             return context.append(vr);
         }
@@ -68,6 +70,7 @@ final class SnapshotFileRule extends BaseFileRule {
             ValidationResult vr = FileValidationResult.builder(path.toAbsolutePath().toString())
                     .field("Status", FileValidationResult.ValidationField.error("TRUNCATED"))
                     .violation(new Violation(message, Violation.Severity.ERROR))
+                    .snapshotInfo(new ValidationResult.SnapshotInfo.Truncated())
                     .build();
             return context.append(vr);
         }
@@ -93,9 +96,11 @@ final class SnapshotFileRule extends BaseFileRule {
                     storedChecksum, computedChecksum);
             builder.field("Status", FileValidationResult.ValidationField.error("Corrupted"));
             builder.violation(new Violation(message, Violation.Severity.ERROR));
+            builder.snapshotInfo(new ValidationResult.SnapshotInfo.Corrupted(computedChecksum, storedChecksum));
 
         } else {
             builder.field("Status", FileValidationResult.ValidationField.info("OK (checksum valid)"));
+            builder.snapshotInfo(new ValidationResult.SnapshotInfo.OK());
         }
 
         return context.append(builder.build());

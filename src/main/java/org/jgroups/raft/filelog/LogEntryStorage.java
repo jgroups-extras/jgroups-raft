@@ -85,7 +85,7 @@ public final class LogEntryStorage {
          byte version = header.get(FILE_HEADER_MAGIC.length);
          if (version < 1 || version > FILE_HEADER_VERSION) {
             String message = String.format("entries.raft has version %d, but this release only supports up to version %d. " +
-                            "Upgrade to a compatible release, or run 'raft log downgrade' to convert the log file.",
+                            "Upgrade to a compatible release.",
                     version, FILE_HEADER_VERSION);
             throw new IOException(message);
          }

@@ -15,11 +15,10 @@ import picocli.CommandLine.Command;
  */
 @Command(
         name = "log",
-        description = "Inspect, repair, or downgrade offline Raft log files.",
+        description = "Inspect or repair logs file written by the FileBasedLog.",
         subcommands = {
                 LogVerify.class,
                 LogRepair.class,
-                LogDowngrade.class,
         }
 )
 final class LogCommand extends BaseRaftCLICommand {

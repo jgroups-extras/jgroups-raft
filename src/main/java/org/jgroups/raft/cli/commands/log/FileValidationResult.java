@@ -27,6 +27,7 @@ final class FileValidationResult implements ValidationResult {
     private final CorruptionPoint corruptionPoint;
     private final LogInfo logInfo;
     private final MetadataInfo metadataInfo;
+    private final SnapshotInfo snapshotInfo;
 
     private FileValidationResult(
             String filename,
@@ -35,7 +36,8 @@ final class FileValidationResult implements ValidationResult {
             List<Violation> violations,
             CorruptionPoint corruptionPoint,
             LogInfo logInfo,
-            MetadataInfo metadataInfo
+            MetadataInfo metadataInfo,
+            SnapshotInfo snapshotInfo
     ) {
         this.filename = filename;
         this.parseType = parseType;
@@ -44,6 +46,7 @@ final class FileValidationResult implements ValidationResult {
         this.corruptionPoint = corruptionPoint;
         this.logInfo = logInfo;
         this.metadataInfo = metadataInfo;
+        this.snapshotInfo = snapshotInfo;
     }
 
     /**
@@ -136,6 +139,11 @@ final class FileValidationResult implements ValidationResult {
         return Optional.ofNullable(metadataInfo);
     }
 
+    @Override
+    public Optional<SnapshotInfo> snapshotInfo() {
+        return Optional.ofNullable(snapshotInfo);
+    }
+
     private String colorizeValue(CommandLine.Help.Ansi ansi, ValidationField value) {
         if (value instanceof ValidationField.Info)
             return ansi.string("@|green " + value.text() + "|@");
@@ -164,6 +172,7 @@ final class FileValidationResult implements ValidationResult {
         private CorruptionPoint corruptionPoint = null;
         private LogInfo logInfo = null;
         private MetadataInfo metadataInfo = null;
+        private SnapshotInfo snapshotInfo = null;
 
         private ValidationResultBuilder(String filename) {
             this.filename = filename;
@@ -260,12 +269,24 @@ final class FileValidationResult implements ValidationResult {
         }
 
         /**
+         * Sets the snapshot values read from the snapshot file.
+         *
+         * @param snapshotInfo the snapshot info
+         * @return this builder
+         */
+        ValidationResultBuilder snapshotInfo(SnapshotInfo snapshotInfo) {
+            this.snapshotInfo = snapshotInfo;
+            return this;
+        }
+
+        /**
          * Builds an immutable validation result.
          *
          * @return the validation result
          */
         ValidationResult build() {
-            return new FileValidationResult(filename, parseType, List.copyOf(fields), List.copyOf(violations), corruptionPoint, logInfo, metadataInfo);
+            return new FileValidationResult(filename, parseType, List.copyOf(fields), List.copyOf(violations),
+                    corruptionPoint, logInfo, metadataInfo, snapshotInfo);
         }
     }
 

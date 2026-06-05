@@ -68,6 +68,14 @@ final class LogRepair extends BaseLogCommand {
         if (result.fileParsed() == ValidationResult.ParseType.UNRECOGNIZED)
             return handleHeaderReconstruction();
 
+        // Verify whether there was a snapshot corruption.
+        // Snapshot corruption takes precedence because it is an unrecoverable state.
+        // We can not perform any operation safely, otherwise, we could lead to silent data loss.
+        if (result.snapshotInfo().isPresent() && !(result.snapshotInfo().get() instanceof ValidationResult.SnapshotInfo.OK)) {
+            describeNonRepairableSnapshot(result);
+            return EXIT_CORRUPTION;
+        }
+
         // Otherwise, there was an issue in the file content.
         return repairFromValidation(result);
     }
@@ -162,5 +170,34 @@ final class LogRepair extends BaseLogCommand {
                 throw new IOException(message);
             }
         }
+    }
+
+    /**
+     * Prints the non-repairable snapshot explanation and manual recovery steps.
+     *
+     * @param result the validation result with snapshot corruption
+     */
+    private void describeNonRepairableSnapshot(ValidationResult result) {
+        long firstIndex = result.logInfo().map(ValidationResult.LogInfo::firstIndex).orElse(1L);
+        long dependencyEnd = firstIndex - 1;
+
+        out().println("  The snapshot cannot be repaired. The log starts at entry " + firstIndex + ",");
+        out().println("  which means the state machine depends on the snapshot for");
+        out().println("  entries [1 - " + dependencyEnd + "]. Deleting only the snapshot would cause the");
+        out().println("  node to replay entries on an empty state machine, producing");
+        out().println("  incorrect state silently diverged from the rest of the cluster.");
+        out().println();
+        out().println("  This node's files cannot be used to recover a consistent state.");
+        out().println();
+        out().println("Recommended action:");
+        out().println("  1. Back up the log directory for later analysis.");
+        out().println("  2. Delete the entire log directory.");
+        out().println("  3. Restart the node as a fresh member.");
+        out().println("  The leader will send a fresh snapshot and subsequent entries.");
+        out().println("  The node will rebuild its state from scratch.");
+        out().println();
+        out().println("  This is the same process as adding a new node to the cluster.");
+        out().println();
+        out().println("No repair action available for this case.");
     }
 }

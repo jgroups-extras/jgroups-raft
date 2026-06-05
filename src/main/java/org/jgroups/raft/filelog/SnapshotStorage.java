@@ -114,7 +114,7 @@ public final class SnapshotStorage {
             byte version = buf.get(SNAPSHOT_HEADER_MAGIC.length);
             if (version < 1 || version > SNAPSHOT_HEADER_VERSION) {
                 String message = String.format("Snapshot has version %d, but this release only supports up to version %d. " +
-                        "Upgrade to a compatible release, or run 'raft snapshot downgrade' to convert the snapshot file.",
+                        "Upgrade to a compatible release.",
                         version, SNAPSHOT_HEADER_VERSION);
                 throw new IOException(message);
             }
