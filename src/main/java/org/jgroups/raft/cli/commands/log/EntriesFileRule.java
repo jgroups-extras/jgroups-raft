@@ -253,8 +253,22 @@ final class EntriesFileRule implements LogValidatorRule {
                     // If after reading the next chunk, the magic byte, which is the first byte of the chunk, is 0x00,
                     // it means everything else is just padding.
                     // We can exit now because the file is effectively parsed.
-                    if (magic == 0x00)
+                    if (magic == 0x00) {
+                        // We just double-check whether this first zeroed block exists any data.
+                        // If there is data, it means the log has a gap.
+                        long trailingDataOffset = findNonZeroByte(ch, position, fileSize);
+                        if (trailingDataOffset >= 0) {
+                            String message = String.format("Zero-filled gap at offset %d with non-zero data found at offset %d. " +
+                                            "One or more entries may have been lost during a crash within the write-ahead region. " +
+                                            "Run the repair command to truncate the log at this offset.",
+                                    position, trailingDataOffset);
+                            violations.add(new Violation(message, Violation.Severity.ERROR));
+                            if (corruptionPoint == null)
+                                corruptionPoint = new ValidationResult.CorruptionPoint(
+                                        position, -1, -1, ValidationResult.CorruptionPoint.Type.INVALID_MAGIC);
+                        }
                         break;
+                    }
 
                     if (magic != LogEntryStorage.MAGIC_NUMBER && magic != LogEntryStorage.MAGIC_NUMBER_CRC) {
                         String message = String.format("Unrecognized entry magic byte 0x%02X at offset %d (expected 0x01 or 0x02). " +
@@ -368,6 +382,22 @@ final class EntriesFileRule implements LogValidatorRule {
 
             return new ScanResult(firstIndex, lastIndex, highestTerm, entryCount, legacyCount, violations, corruptionPoint);
         }
+    }
+
+    private static long findNonZeroByte(FileChannel ch, long from, long to) throws IOException {
+        ByteBuffer buf = ByteBuffer.allocate(4096);
+        long pos = from;
+        while (pos < to) {
+            buf.clear();
+            int read = ch.read(buf, pos);
+            if (read <= 0) break;
+            buf.flip();
+            for (int i = 0; i < read; i++) {
+                if (buf.get(i) != 0) return pos + i;
+            }
+            pos += read;
+        }
+        return -1;
     }
 
     /**
