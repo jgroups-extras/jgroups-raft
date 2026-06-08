@@ -32,7 +32,8 @@
 
     <Loggers>
         <Logger name="org.jgroups" level="${sys:jgroups.log.level:-INFO}" />
-        <Logger name="org.infinispan" level="WARN" />
+        <Logger name="org.jgroups.protocols.raft" level="${sys:jgroups.log.level:-DEBUG}" />
+        <Logger name="org.jgroups.raft" level="${sys:jgroups.log.level:-DEBUG}" />
 
         <Logger name="org.jgroups.raft.tests.listeners.TestSuiteProgress">
             <AppenderRef ref="FailuresFile" level="ERROR" />

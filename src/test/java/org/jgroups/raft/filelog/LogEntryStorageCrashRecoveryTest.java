@@ -70,7 +70,9 @@ public class LogEntryStorageCrashRecoveryTest {
 
         storage = createStorage();
         storage.open();
-        storage.reload();
+
+        assertThatThrownBy(() -> storage.reload())
+                .isInstanceOf(IOException.class);
 
         assertThat(storage.getLogEntry(1)).isNotNull();
         assertThat(storage.getLogEntry(2)).isNotNull();
@@ -155,12 +157,9 @@ public class LogEntryStorageCrashRecoveryTest {
 
         storage = createStorage();
         storage.open();
-        storage.reload();
 
-        try {
-            storage.getLogEntry(1);
-        } catch (IOException ignored) {
-        }
+        assertThatThrownBy(() -> storage.reload())
+                .isInstanceOf(IOException.class);
 
         byte[] digestAfter = fileDigest(entriesPath());
         assertThat(digestAfter).isEqualTo(digestBefore);
@@ -202,15 +201,19 @@ public class LogEntryStorageCrashRecoveryTest {
 
         storage = createStorage();
         storage.open();
-        storage.reload();
 
+        assertThatThrownBy(() -> storage.reload())
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("CRC");
+
+        assertThat(storage.getLastAppended()).isEqualTo(3);
         assertThat(new String(storage.getLogEntry(1).command())).isEqualTo("aaa");
         assertThat(new String(storage.getLogEntry(2).command())).isEqualTo("bbb");
         assertThatThrownBy(() -> storage.getLogEntry(3))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("CRC");
-        assertThat(new String(storage.getLogEntry(4).command())).isEqualTo("ddd");
-        assertThat(new String(storage.getLogEntry(5).command())).isEqualTo("eee");
+        assertThat(storage.getLogEntry(4)).isNull();
+        assertThat(storage.getLogEntry(5)).isNull();
     }
 
     public void testErrorMessageContainsPositionAndIndex() throws IOException {
@@ -226,7 +229,10 @@ public class LogEntryStorageCrashRecoveryTest {
 
         storage = createStorage();
         storage.open();
-        storage.reload();
+
+        assertThatThrownBy(() -> storage.reload())
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("CRC");
 
         assertThatThrownBy(() -> storage.getLogEntry(1))
                 .isInstanceOf(IOException.class)

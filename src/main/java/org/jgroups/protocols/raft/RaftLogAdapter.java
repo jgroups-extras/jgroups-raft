@@ -183,7 +183,7 @@ final class RaftLogAdapter implements Log, LogCapability {
         try {
             return delegate.get(index);
         } catch (IOException e) {
-            throw new RuntimeException(e);
+            throw poison(e);
         }
     }
 

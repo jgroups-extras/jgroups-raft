@@ -135,7 +135,10 @@ public class LogEntryStorageCrcTest {
 
         storage = createStorage();
         storage.open();
-        storage.reload();
+
+        assertThatThrownBy(() -> storage.reload())
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("CRC");
 
         assertThatThrownBy(() -> storage.getLogEntry(1))
                 .isInstanceOf(IOException.class)
@@ -156,7 +159,10 @@ public class LogEntryStorageCrcTest {
 
         storage = createStorage();
         storage.open();
-        storage.reload();
+
+        assertThatThrownBy(() -> storage.reload())
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("CRC");
 
         assertThatThrownBy(() -> storage.getLogEntry(1))
                 .isInstanceOf(IOException.class)
@@ -282,6 +288,115 @@ public class LogEntryStorageCrcTest {
         assertThat(loaded).isNotNull();
         assertThat(loaded.term()).isEqualTo(4);
         assertThat(new String(loaded.command())).isEqualTo("snapshot");
+    }
+
+    public void testReinitializeToWithNullCommandWritesCrc() throws IOException {
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        writeEntries(1, entry(1, "will-be-replaced"));
+
+        storage.reinitializeTo(100, new LogEntry(5, null));
+        storage.close();
+
+        byte[] magic = readRawBytes(FILE_HEADER_SIZE, 1);
+        assertThat(magic[0]).isEqualTo(CRC_MAGIC);
+
+        long crcPosition = FILE_HEADER_SIZE + ENTRY_HEADER_SIZE;
+        byte[] storedCrc = readRawBytes(crcPosition, CRC_SIZE);
+        assertThat(ByteBuffer.wrap(storedCrc).getInt()).isNotZero();
+
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        assertThat(storage.getFirstAppended()).isEqualTo(100);
+        assertThat(storage.getLastAppended()).isEqualTo(100);
+
+        LogEntry loaded = storage.getLogEntry(100);
+        assertThat(loaded).isNotNull();
+        assertThat(loaded.term()).isEqualTo(5);
+        assertThat(loaded.length()).isZero();
+    }
+
+    public void testReinitializeToWithNullCommandThenAppendSurvivesRestart() throws IOException {
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        storage.reinitializeTo(50, new LogEntry(3, null));
+
+        writeEntries(51, entry(3, "after-snap-1"), entry(4, "after-snap-2"));
+        storage.close();
+
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        assertThat(storage.getFirstAppended()).isEqualTo(50);
+        assertThat(storage.getLastAppended()).isEqualTo(52);
+
+        LogEntry snap = storage.getLogEntry(50);
+        assertThat(snap).isNotNull();
+        assertThat(snap.term()).isEqualTo(3);
+        assertThat(snap.length()).isZero();
+
+        assertThat(new String(storage.getLogEntry(51).command())).isEqualTo("after-snap-1");
+        assertThat(new String(storage.getLogEntry(52).command())).isEqualTo("after-snap-2");
+    }
+
+    public void testRepeatedReinitializeToWithNullCommand() throws IOException {
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        storage.reinitializeTo(100, new LogEntry(3, null));
+        writeEntries(101, entry(3, "after-first-snap"));
+
+        storage.reinitializeTo(200, new LogEntry(5, null));
+        storage.close();
+
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        assertThat(storage.getFirstAppended()).isEqualTo(200);
+        assertThat(storage.getLastAppended()).isEqualTo(200);
+
+        LogEntry loaded = storage.getLogEntry(200);
+        assertThat(loaded).isNotNull();
+        assertThat(loaded.term()).isEqualTo(5);
+        assertThat(loaded.length()).isZero();
+
+        assertThat(storage.getLogEntry(100)).isNull();
+        assertThat(storage.getLogEntry(101)).isNull();
+    }
+
+    public void testForEachOverNullCommandEntry() throws IOException {
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        storage.reinitializeTo(10, new LogEntry(2, null));
+        writeEntries(11, entry(2, "real-data"), entry(3, "more-data"));
+        storage.close();
+
+        storage = createStorage();
+        storage.open();
+        storage.reload();
+
+        int[] count = {0};
+        storage.forEach((entry, index) -> {
+            if (index == 10) {
+                assertThat(entry.term()).isEqualTo(2);
+                assertThat(entry.length()).isZero();
+            } else {
+                assertThat(entry.command()).isNotNull();
+            }
+            count[0]++;
+        }, 10, 12);
+        assertThat(count[0]).isEqualTo(3);
     }
 
     public void testReinitializeToOnLegacyUpgradesToCrc() throws IOException {

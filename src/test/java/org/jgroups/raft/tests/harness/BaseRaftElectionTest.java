@@ -1,5 +1,8 @@
 package org.jgroups.raft.tests.harness;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
+import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.ELECTION;
 import org.jgroups.protocols.raft.ELECTION2;
@@ -10,6 +13,7 @@ import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
@@ -18,8 +22,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import org.testng.annotations.DataProvider;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Base class for election tests.
@@ -157,18 +159,24 @@ public final class BaseRaftElectionTest {
         // Check that the node seen as leader is present in the cluster and sees itself as leader.
         // This is necessary when checking for a new leader between elections. Say we had a leader, stop some nodes,
         // and check again. The nodes could see the past leader still and evaluate to true.
-        BooleanSupplier electedIsLeader = () -> Arrays.stream(rafts)
-                .map(RAFT::leader)
-                .filter(Objects::nonNull)
-                .distinct()
-                .map(l -> Arrays.stream(rafts)
-                        .filter(r -> r.getAddress().equals(l))
-                        .findFirst())
-                .allMatch(o -> {
-                    if (o.isEmpty()) return false;
-                    RAFT r = o.get();
-                    return r.isLeader();
-                });
+        BooleanSupplier electedIsLeader = () -> {
+            List<Address> leaders = Arrays.stream(rafts)
+                    .map(RAFT::leader)
+                    .filter(Objects::nonNull)
+                    .distinct()
+                    .toList();
+            if (leaders.isEmpty())
+                return false;
+            return leaders.stream()
+                    .map(l -> Arrays.stream(rafts)
+                            .filter(r -> r.getAddress().equals(l))
+                            .findFirst())
+                    .allMatch(o -> {
+                        if (o.isEmpty()) return false;
+                        RAFT r = o.get();
+                        return r.isLeader();
+                    });
+        };
 
         return () -> sameLeader.getAsBoolean()
                 && sameTerm.getAsBoolean()

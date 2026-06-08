@@ -89,17 +89,19 @@ final class LogRepair extends BaseLogCommand {
      * @throws IOException if file operations fail
      */
     private int repairFromValidation(ValidationResult result) throws IOException {
-        List<RepairAction> actions = RepairAction.identify(result);
-
-        if (actions.isEmpty()) {
-            out().println("Not identified a manageable repair actions to fix the issues.");
-            return result.exitCode();
-        }
-
         CommandLine.Help.Ansi ansi = spec().commandLine().getColorScheme().ansi();
         Path directory = directory().toPath();
 
-        for (RepairAction action : actions) {
+        while (true) {
+            List<RepairAction> actions = RepairAction.identify(result);
+
+            if (actions.isEmpty()) {
+                out().println("Not identified a manageable repair actions to fix the issues.");
+                break;
+            }
+
+            // We apply one action at a time, and refresh the actions based on the previous repair.
+            RepairAction action = actions.get(0);
             action.describe(out(), ansi);
             out().println();
 
@@ -109,6 +111,10 @@ final class LogRepair extends BaseLogCommand {
             action.execute(directory);
             out().println();
             action.describeCompletion(out());
+
+            result = LogValidation.validate(directory(), LogValidationOptions.simple());
+            if (result.isValid())
+                break;
         }
 
         out().println();

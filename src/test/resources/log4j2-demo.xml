@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration name="DemoConfig">
+    <Appenders>
+        <Console name="STDOUT">
+            <PatternLayout pattern="%d{HH:mm:ss,SSS} %-5p [%c{1.}] %m%n"/>
+        </Console>
+    </Appenders>
+    <Loggers>
+        <Logger name="org.jgroups" level="INFO" />
+        <Root level="WARN">
+            <AppenderRef ref="STDOUT" />
+        </Root>
+    </Loggers>
+</Configuration>

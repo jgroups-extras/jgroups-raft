@@ -252,6 +252,8 @@ public class TotalOrder extends Frame {
 
 
     public static void main(String[] args) {
+        System.setProperty("log4j.configurationFile", "log4j2-demo.xml");
+
         TotalOrder g;
         String arg;
         long timeout=200;

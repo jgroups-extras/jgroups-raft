@@ -373,7 +373,9 @@ final class EntriesFileRule implements LogValidatorRule {
 
                     if (firstIndex < 0) firstIndex = index;
                     lastIndex = index;
-                    if (term > highestTerm) highestTerm = term;
+                    // Only update the term value if the data is valid. Don't carry garbage over.
+                    if ((magic != LogEntryStorage.MAGIC_NUMBER_CRC || status instanceof EntryCallback.CrcStatus.Ok) && term > highestTerm)
+                        highestTerm = term;
                     entryCount++;
 
                     position += totalLength;

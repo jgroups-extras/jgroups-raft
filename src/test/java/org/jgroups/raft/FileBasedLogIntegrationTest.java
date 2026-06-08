@@ -147,6 +147,79 @@ public class FileBasedLogIntegrationTest {
         assertIndices(5, 7, 5, 8);
     }
 
+    public void testReinitializeToWithNullCommandSurvivesReopen() throws Exception {
+        log = createLog();
+
+        byte[] buf = new byte[10];
+        append(1, buf, 1, 1, 2, 2, 3);
+        log.commitIndex(5);
+
+        log.reinitializeTo(5, new LogEntry(3, null));
+
+        assertIndices(5, 5, 5, 3);
+
+        log.close();
+        log = createLog();
+
+        assertIndices(5, 5, 5, 3);
+
+        LogEntry loaded = log.get(5);
+        assertThat(loaded).isNotNull();
+        assertThat(loaded.term()).isEqualTo(3);
+        assertThat(loaded.length()).isZero();
+
+        for (int i = 1; i <= 4; i++) {
+            assertThat(log.get(i)).as("Entry %d should be null after reinitialize", i).isNull();
+        }
+    }
+
+    public void testReinitializeToWithNullCommandThenAppendSurvivesReopen() throws Exception {
+        log = createLog();
+
+        byte[] buf = "data".getBytes();
+        append(1, buf, 1, 1, 2);
+        log.commitIndex(3);
+
+        log.reinitializeTo(3, new LogEntry(2, null));
+
+        append(4, buf, 2, 3);
+        log.commitIndex(5);
+
+        log.close();
+        log = createLog();
+
+        assertIndices(3, 5, 5, 3);
+
+        LogEntry snap = log.get(3);
+        assertThat(snap).isNotNull();
+        assertThat(snap.term()).isEqualTo(2);
+        assertThat(snap.length()).isZero();
+
+        assertThat(log.get(4)).isNotNull();
+        assertThat(log.get(5)).isNotNull();
+    }
+
+    public void testForEachOverNullCommandEntryAfterReopen() throws Exception {
+        log = createLog();
+
+        log.reinitializeTo(10, new LogEntry(4, null));
+        append(11, "after".getBytes(), 4, 5);
+        log.commitIndex(12);
+
+        log.close();
+        log = createLog();
+
+        int[] count = {0};
+        log.forEach((entry, index) -> {
+            if (index == 10) {
+                assertThat(entry.term()).isEqualTo(4);
+                assertThat(entry.length()).isZero();
+            }
+            count[0]++;
+        }, 10, 12);
+        assertThat(count[0]).isEqualTo(3);
+    }
+
     public void testInitCreatesLockFile() throws Exception {
         log = createLog();
 

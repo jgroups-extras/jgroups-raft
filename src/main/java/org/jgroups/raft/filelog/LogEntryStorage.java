@@ -78,6 +78,7 @@ public final class LogEntryStorage {
          return;
       }
 
+      boolean checksummed = false;
       ByteBuffer peek = fileStorage.read(0, 4);
       if (isRaftFile(peek)) {
          ByteBuffer header = fileStorage.read(0, FILE_HEADER_SIZE);
@@ -90,6 +91,7 @@ public final class LogEntryStorage {
             throw new IOException(message);
          }
          entryStartOffset = FILE_HEADER_SIZE;
+         checksummed = true;
       } else if (peek.get(0) == MAGIC_NUMBER || peek.get(0) == MAGIC_NUMBER_CRC) {
          entryStartOffset = 0;
       } else {
@@ -111,6 +113,11 @@ public final class LogEntryStorage {
       lastAppended = header.index;
       long position = header.nextPosition();
 
+      // If checksum is enabled, assert the very first entry is correct.
+      if (checksummed)
+         header.readLogEntry(this);
+
+      log.debug("Starting to reload entries, will validate each entry? %s", checksummed);
       while (true) {
          header = readHeader(position);
          if (header == null) {
@@ -119,6 +126,13 @@ public final class LogEntryStorage {
          setFilePosition(header.index, header.position);
          position = header.nextPosition();
          lastAppended = header.index;
+
+         // If checksum is enabled for this log, verify the entry contents.
+         // We assert the checksum last to ensure the invalid entry would be read.
+         // This ensures that during runtime, the entry would still be loaded and no operations are accepted.
+         if (checksummed) {
+            header.readLogEntry(this);
+         }
       }
    }
 
@@ -277,8 +291,9 @@ public final class LogEntryStorage {
 
       if (firstEntry.length() > 0) {
          batchBuffer.put(firstEntry.command(), firstEntry.offset(), firstEntry.length());
-         writeTrailingCRC(new CRC32C(), batchBuffer, 0);
       }
+
+      writeTrailingCRC(new CRC32C(), batchBuffer, 0);
 
       batchBuffer.flip();
       fileStorage.write(entryStartOffset);
