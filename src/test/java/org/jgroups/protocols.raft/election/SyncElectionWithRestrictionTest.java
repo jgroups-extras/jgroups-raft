@@ -282,6 +282,8 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
 
     @Override
     protected void amendRAFTConfiguration(RAFT raft) {
-        raft.synchronous(true).stateMachine(new DummyStateMachine());
+        raft.synchronous(true)
+                .resendInterval(60_000)
+                .stateMachine(new DummyStateMachine());
     }
 }

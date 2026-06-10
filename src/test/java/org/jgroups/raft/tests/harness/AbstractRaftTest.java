@@ -309,6 +309,7 @@ public abstract class AbstractRaftTest {
                 .stateMachine(new DummyStateMachine())
                 .logPrefix(String.format("%s-%s", raftId, clusterName()));
         r.enableStats(false);
+        r.resendInterval(50);
         amendRAFTConfiguration(r);
         return r;
     }
@@ -342,6 +343,7 @@ public abstract class AbstractRaftTest {
      */
     protected final BaseElection createNewElectionAndDecorate() throws Exception {
         BaseElection be = createNewElection();
+        be.voteTimeout(100L);
         amendBaseElectionConfiguration(be);
         return be;
     }

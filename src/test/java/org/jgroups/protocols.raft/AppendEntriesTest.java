@@ -14,6 +14,7 @@ import org.jgroups.raft.RaftHandle;
 import org.jgroups.raft.blocks.ReplicatedStateMachine;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.raft.tests.harness.BaseStateMachineTest;
+import org.jgroups.stack.Protocol;
 import org.jgroups.stack.ProtocolStack;
 import org.jgroups.util.Util;
 
@@ -21,7 +22,6 @@ import java.util.Arrays;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.assertj.core.api.Assertions;
@@ -36,8 +36,9 @@ import org.testng.annotations.Test;
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true,testName = "org.jgroups.raft.AppendEntriesTest")
 public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachine<Integer, Integer>> {
 
-    protected static final byte[]                     buf=new byte[10];
-    protected static final int[]                      terms={0,1,1,1,4,4,5,5,6,6,6};
+    protected static final byte[] buf=new byte[10];
+    protected static final int[] terms={0,1,1,1,4,4,5,5,6,6,6};
+    private int term = 10;
 
     {
         // We want to customize the cluster size per method. We need to manually create and clear the resources.
@@ -47,6 +48,11 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
     @Override
     protected ReplicatedStateMachine<Integer, Integer> createStateMachine(JChannel ch) {
         return new ReplicatedStateMachine<>(ch);
+    }
+
+    @Override
+    protected Protocol[] baseProtocolStackForNode(String name) {
+        return Util.getTestStack(createNewRaft(name), createRedirect());
     }
 
     @AfterMethod(alwaysRun = true)
@@ -59,8 +65,9 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         createCluster();
 
         JChannel a = channel(0);
+        raft(0).setLeaderAndTerm(address(0), term++);
         RaftHandle raft=new RaftHandle(a, new DummyStateMachine());
-        Util.waitUntil(1000, 250, raft::isLeader);
+        assertThat(raft.isLeader()).isTrue();
 
         // when
         byte[] data="foo".getBytes();
@@ -131,13 +138,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         close(1);
 
         stateMachine(0).timeout(500);
-
-        BooleanSupplier bs = () -> Arrays.stream(actualChannels())
-                .map(this::raft)
-                .allMatch(r -> r.leader() == null);
-        assertThat(eventually(bs, 5, SECONDS))
-                .as(this::dumpLeaderAndTerms)
-                .isTrue();
+        raft(0).setLeaderAndTerm(null);
 
         for(int i=1; i <= 3; i++) {
             int v = i;
@@ -235,15 +236,18 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         // A and B now have a majority and A is leader
         createCluster();
 
-        assertThat(RaftTestUtils.eventuallyIsRaftLeader(channel(0), 10_000))
-                .as("Channel A never elected")
-                .isTrue();
+        int t = term++;
+        for (JChannel ch : channels()) {
+            raft(ch).setLeaderAndTerm(address(0), t);
+        }
+
+        assertThat(RaftTestUtils.isRaftLeader(channel(0))).isTrue();
         assertThat(RaftTestUtils.isRaftLeader(channel(1))).isFalse();
 
         LOGGER.info("--> disconnecting B");
 
         close(1); // stop B; it was only needed to make A the leader
-        Util.waitUntil(5000, 100, () -> !RaftTestUtils.isRaftLeader(channel(0)));
+        raft(0).setLeaderAndTerm(null);
 
         // Now try to make a change on A. This will fail as A is not leader anymore
         Assertions.assertThatThrownBy(() -> raft(0).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS))
@@ -678,10 +682,10 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         withClusterSize(3);
         createCluster();
 
-        Util.waitUntil(5000, 100,
-                       () -> Stream.of(channels()).map(this::raft).allMatch(r -> r.leader() != null),
-                       () -> Stream.of(channels()).map(ch -> String.format("%s: leader=%s", ch.getAddress(), raft(ch).leader()))
-                         .collect(Collectors.joining("\n")));
+        int t = term++;
+        for (JChannel ch : channels()) {
+            raft(ch).setLeaderAndTerm(address(0), t);
+        }
 
         if(verbose) {
             LOGGER.info("A: is leader? -> {}", RaftTestUtils.isRaftLeader(channel(0)));

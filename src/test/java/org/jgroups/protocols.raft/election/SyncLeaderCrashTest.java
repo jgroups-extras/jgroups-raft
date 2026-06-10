@@ -253,6 +253,8 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
 
     @Override
     protected void amendRAFTConfiguration(RAFT raft) {
-        raft.synchronous(true).stateMachine(new CounterStateMachine());
+        raft.synchronous(true)
+                .resendInterval(60_000)
+                .stateMachine(new CounterStateMachine());
     }
 }

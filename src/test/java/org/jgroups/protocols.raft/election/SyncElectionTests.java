@@ -1,5 +1,8 @@
 package org.jgroups.protocols.raft.election;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
+
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Global;
@@ -12,6 +15,7 @@ import org.jgroups.protocols.raft.AppendEntriesRequest;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.Role;
 import org.jgroups.raft.DummyStateMachine;
 import org.jgroups.raft.testfwk.BlockingMessageInterceptor;
 import org.jgroups.raft.testfwk.RaftCluster;
@@ -21,6 +25,7 @@ import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.util.ResponseCollector;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -34,9 +39,6 @@ import java.util.stream.Stream;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.jgroups.raft.tests.harness.BaseRaftElectionTest.ALL_ELECTION_CLASSES_PROVIDER;
 
 /**
  * Uses the synchronous test framework to test {@link org.jgroups.protocols.raft.ELECTION}
@@ -449,15 +451,27 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
     }
 
     protected void assertNotElected(long timeout, int ... indexes) {
-        BooleanSupplier bs = () -> Arrays.stream(indexes)
+        AtomicBoolean leaderElected = new AtomicBoolean(false);
+        RAFT.RoleChange listener = role -> {
+            if (role == Role.Leader)
+                leaderElected.set(true);
+        };
+
+        List<RAFT> rafts = Arrays.stream(indexes)
                 .mapToObj(this::node)
                 .filter(Objects::nonNull)
                 .map(RaftNode::raft)
-                .anyMatch(RAFT::isLeader);
+                .toList();
+        rafts.forEach(r -> r.addRoleListener(listener));
 
-        assertThat(RaftTestUtils.eventually(bs, timeout, TimeUnit.MILLISECONDS))
-                .as("Leader should not be elected")
-                .isFalse();
+        try {
+            waitUntilVotingThreadStops(timeout, indexes);
+            assertThat(leaderElected.get())
+                    .as("No node should have been elected leader")
+                    .isFalse();
+        } finally {
+            rafts.forEach(r -> r.remRoleListener(listener));
+        }
     }
 
     protected void waitUntilStepDown(long timeout, int ... indexes) {
