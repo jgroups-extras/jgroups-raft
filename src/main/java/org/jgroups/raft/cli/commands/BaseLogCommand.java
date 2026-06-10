@@ -7,6 +7,7 @@ import org.jgroups.util.Util;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
@@ -52,6 +53,12 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
 
     // Lazy initialize the scanner.
     private Scanner promptScanner;
+
+    private InputStream input = System.in;
+
+    void setInputStream(InputStream is) {
+        this.input = is;
+    }
 
     @Override
     public final void run() { }
@@ -134,7 +141,7 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
 
     private boolean doesUserConfirm() {
         if (promptScanner == null)
-            promptScanner = new Scanner(System.in, StandardCharsets.UTF_8);
+            promptScanner = new Scanner(inputStream(), StandardCharsets.UTF_8);
 
         if (promptScanner.hasNextLine()) {
             String input = promptScanner.nextLine().trim();
@@ -150,6 +157,15 @@ abstract class BaseLogCommand extends BaseRaftCLICommand implements Callable<Int
             case 2 -> LogValidationOptions.withCallback(new HexDumpCallback(out(), ansi));
             default -> LogValidationOptions.simple();
         };
+    }
+
+    /**
+     * Returns the input stream the command should utilize to read the user's input.
+     *
+     * @return the input stream to utilize.
+     */
+    protected final InputStream inputStream() {
+        return input;
     }
 
     /**

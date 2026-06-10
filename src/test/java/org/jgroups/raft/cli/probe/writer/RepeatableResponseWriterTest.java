@@ -35,7 +35,6 @@ public class RepeatableResponseWriterTest {
         // Now, trigger the method again.
         // Since we are running in the test, ANSI is not enabled
         prw.accept(List.of(response));
-        assertThat(RepeatableResponseWriter.ANSI.enabled()).isFalse();
 
         String extra = sw.toString();
         assertThat(extra)

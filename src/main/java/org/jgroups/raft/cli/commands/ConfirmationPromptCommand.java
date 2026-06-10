@@ -1,5 +1,6 @@
 package org.jgroups.raft.cli.commands;
 
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Scanner;
 
@@ -30,6 +31,13 @@ abstract class ConfirmationPromptCommand extends BaseProbeCommand {
     @Option(names = "--force", description = "Skip interactive confirmation prompt. (${DEFAULT-VALUE})", defaultValue = "false")
     private boolean force;
 
+    private InputStream input = System.in;
+
+    // Package-private for testing purposes.
+    void setInputStream(InputStream is) {
+        this.input = is;
+    }
+
     /**
      * Defines the specific prompt message to display to the user.
      *
@@ -40,6 +48,15 @@ abstract class ConfirmationPromptCommand extends BaseProbeCommand {
      * @return The prompt string.
      */
     protected abstract String promptMessage();
+
+    /**
+     * Returns the input stream the command should utilize to read the user's input.
+     *
+     * @return the input stream to utilize.
+     */
+    protected final InputStream inputStream() {
+        return input;
+    }
 
     /**
      * Executes the command with a safety check.
@@ -83,7 +100,7 @@ abstract class ConfirmationPromptCommand extends BaseProbeCommand {
 
         // Utilizing Scanner like this allows user to pipe the answer in:
         // echo y | ./bin/raft ...
-        Scanner scanner = new Scanner(System.in, StandardCharsets.UTF_8);
+        Scanner scanner = new Scanner(inputStream(), StandardCharsets.UTF_8);
         if (scanner.hasNextLine()) {
             String input = scanner.nextLine().trim();
             return input.equalsIgnoreCase("y") || input.equalsIgnoreCase("yes");

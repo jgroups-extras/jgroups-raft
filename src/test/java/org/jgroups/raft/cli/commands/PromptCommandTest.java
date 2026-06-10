@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.jgroups.Global;
 
 import java.io.ByteArrayInputStream;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -52,24 +51,18 @@ public class PromptCommandTest {
     }
 
     private void performTest(String userInput, boolean shouldExecute) {
-        InputStream originalIn = System.in;
-        System.setIn(new ByteArrayInputStream(String.format("%s%s", userInput, System.lineSeparator()).getBytes(StandardCharsets.UTF_8)));
+        String raftId = UUID.randomUUID().toString();
+        Member.Add cmd = new Member.Add();
+        AtomicBoolean executed = new AtomicBoolean(false);
+        cmd.overrideProbeRunner((args, h) -> {
+            assertThat(args.request()).contains(raftId);
+            executed.set(true);
+        });
+        cmd.setInputStream(new ByteArrayInputStream(String.format("%s%s", userInput, System.lineSeparator()).getBytes(StandardCharsets.UTF_8)));
 
-        try {
-            String raftId = UUID.randomUUID().toString();
-            Member.Add cmd = new Member.Add();
-            AtomicBoolean executed = new AtomicBoolean(false);
-            cmd.overrideProbeRunner((args, h) -> {
-                assertThat(args.request()).contains(raftId);
-                executed.set(true);
-            });
+        CommandLine cli = new CommandLine(cmd);
+        cli.execute(raftId);
 
-            CommandLine cli = new CommandLine(cmd);
-            cli.execute(raftId);
-
-            assertThat(executed.get()).isEqualTo(shouldExecute);
-        } finally {
-            System.setIn(originalIn);
-        }
+        assertThat(executed.get()).isEqualTo(shouldExecute);
     }
 }

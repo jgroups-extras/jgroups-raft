@@ -41,7 +41,43 @@ jobs:
       - name: Build with Maven
         timeout-minutes: 10
         id: test_runner
-        run: mvn --batch-mode --no-transfer-progress package -Dgroups=functional -DjgroupsTestsParallelThreads=2
+        shell: bash
+        run: |
+          if [[ "$RUNNER_OS" != "Linux" ]]; then
+            mvn --batch-mode --no-transfer-progress package -Dgroups=functional -DjgroupsTestsParallelThreads=2
+            exit $?
+          fi
+
+          mvn --batch-mode --no-transfer-progress package -Dgroups=functional -DjgroupsTestsParallelThreads=2 &
+          MVN_PID=$!
+
+          # Watchdog: capture thread dumps if tests hang, fires 2 min before step timeout.
+          (
+            sleep 120
+            echo "::warning::Tests appear hung after 2 minutes — capturing thread dumps"
+            mkdir -p target
+
+            for pid in $(jcmd -l 2>/dev/null | grep -v "jcmd" | awk '{print $1}'); do
+              name=$(jcmd -l 2>/dev/null | grep "^$pid " | cut -d' ' -f2-)
+              echo "::group::Thread dump PID $pid ($name)"
+              jcmd "$pid" Thread.dump_to_file -format=json "target/thread-dump-${pid}.json" 2>/dev/null \
+                || jcmd "$pid" Thread.print > "target/thread-dump-${pid}.txt" 2>&1 \
+                || true
+              cat "target/thread-dump-${pid}.json" 2>/dev/null || cat "target/thread-dump-${pid}.txt" 2>/dev/null || true
+              echo "::endgroup::"
+            done
+
+            kill "$MVN_PID" 2>/dev/null
+          ) &
+          WATCHDOG_PID=$!
+
+          wait "$MVN_PID"
+          MVN_EXIT=$?
+
+          kill "$WATCHDOG_PID" 2>/dev/null
+          wait "$WATCHDOG_PID" 2>/dev/null || true
+
+          exit "$MVN_EXIT"
 
       - name: Generate reports
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17

@@ -16,7 +16,6 @@ import org.jgroups.raft.filelog.SnapshotStorage;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.RandomAccessFile;
 import java.io.StringWriter;
@@ -29,24 +28,20 @@ import java.util.stream.Stream;
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
-
 import picocli.CommandLine;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class LogRepairTest {
 
     private Path tempDir;
-    private InputStream originalIn;
 
     @BeforeMethod
     public void setUp() throws IOException {
         tempDir = Files.createTempDirectory("log-repair-test");
-        originalIn = System.in;
     }
 
     @AfterMethod
     public void tearDown() throws IOException {
-        System.setIn(originalIn);
         if (tempDir != null && Files.exists(tempDir)) {
             try (Stream<Path> walk = Files.walk(tempDir)) {
                 walk.sorted(Comparator.reverseOrder())
@@ -875,11 +870,12 @@ public class LogRepairTest {
         String input = inputLines.length > 0
                 ? String.join(System.lineSeparator(), inputLines) + System.lineSeparator()
                 : "";
-        System.setIn(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
 
         StringWriter outWriter = new StringWriter();
         StringWriter errWriter = new StringWriter();
-        CommandLine cmd = new CommandLine(new LogRepair());
+        LogRepair lr = new LogRepair();
+        lr.setInputStream(new ByteArrayInputStream(input.getBytes(StandardCharsets.UTF_8)));
+        CommandLine cmd = new CommandLine(lr);
         cmd.setOut(new PrintWriter(outWriter, true));
         cmd.setErr(new PrintWriter(errWriter, true));
         int exitCode = cmd.execute(tempDir.toString());
