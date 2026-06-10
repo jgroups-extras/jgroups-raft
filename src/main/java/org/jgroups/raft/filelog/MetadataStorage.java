@@ -80,6 +80,8 @@ public class MetadataStorage {
 
    public void open() throws IOException {
        fileStorage.open();
+       boolean isNew = fileStorage.getCachedFileSize() == 0;
+
        // Platform dependant.
        // Windows has more checks for file IO. For example, we can only delete a mmap'ed file after the buffer is collected by GC.
        // Since we don't have a way to control GC and when the contents are released, we avoid mmap on Windows altogether.
@@ -96,6 +98,14 @@ public class MetadataStorage {
                    mmap::force,
                    () -> {}
            ) ;
+       }
+
+       // Expand a fresh file to have the expected format already.
+       if (isNew) {
+           wrapper.writer.write(COMMIT_INDEX_POS, 0L);
+           wrapper.writer.write(CURRENT_TERM_POS, 0L);
+           if (fsync)
+               wrapper.flush.fsync();
        }
    }
 
