@@ -71,7 +71,7 @@
         <version.puppycrawl>12.3.1</version.puppycrawl>
         <version.spotbugs.plugin>4.10.2.0</version.spotbugs.plugin>
         <version.pmd.plugin>3.28.0</version.pmd.plugin>
-        <version.jacoco.plugin>0.8.14</version.jacoco.plugin>
+        <version.jacoco.plugin>0.8.15</version.jacoco.plugin>
 
         <!-- Plugins -->
         <version.nexus3.plugin>1.0.13</version.nexus3.plugin>
