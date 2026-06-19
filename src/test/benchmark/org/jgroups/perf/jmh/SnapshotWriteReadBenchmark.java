@@ -94,7 +94,7 @@ public class SnapshotWriteReadBenchmark {
             }
 
             SerializationRegistry registry = SerializationRegistry.create();
-            sm = new StateMachineWrapper<>(sn, SampleNew.class, null, Serializer.create(registry));
+            sm = StateMachineWrapper.create(sn, SampleNew.class, null, Serializer.create(registry));
         }
 
         private byte[] createApply() throws Exception {

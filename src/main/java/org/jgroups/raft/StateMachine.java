@@ -80,6 +80,7 @@ public interface StateMachine {
      * <p>
      * This method is invoked <b>synchronously</b> by the main Raft event loop. While this method is executing, the core Raft
      * protocol is entirely blocked. The node will not process incoming client requests until the restoration is fully complete.
+     * For an asynchronous version, check {@link AsyncSnapshot}.
      * </p>
      *
      * <h3>Buffer Ownership &amp; Determinism</h3>
@@ -117,7 +118,8 @@ public interface StateMachine {
      * <p>
      * This method is invoked <b>synchronously</b> by the main Raft event loop. While this method is executing, the core Raft
      * protocol is entirely blocked. Updates to the state machine may need to be put on hold while the state is written to the
-     * output stream. Otherwise, it is not possible to guarantee a consistent view of the state machine.
+     * output stream. Otherwise, it is not possible to guarantee a consistent view of the state machine. For an asynchronous
+     * version, check {@link AsyncSnapshot}.
      * </p>
      *
      * <h3>Buffer Ownership &amp; Determinism</h3>
