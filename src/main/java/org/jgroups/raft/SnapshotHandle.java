@@ -18,6 +18,7 @@ import java.io.DataOutput;
  * </p>
  *
  * @since 2.0
+ * @author José Bolina
  * @see AsyncSnapshot#prepareSnapshot()
  */
 public interface SnapshotHandle {

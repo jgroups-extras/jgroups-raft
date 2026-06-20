@@ -1,7 +1,6 @@
 package org.jgroups.protocols.raft;
 
 import org.jgroups.Address;
-import org.jgroups.BytesMessage;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Event;
 import org.jgroups.JChannel;
@@ -19,6 +18,7 @@ import org.jgroups.protocols.raft.internal.request.CallableDownRequest;
 import org.jgroups.protocols.raft.internal.request.DownRequest;
 import org.jgroups.protocols.raft.internal.request.RequestFactory;
 import org.jgroups.protocols.raft.internal.request.UpRequest;
+import org.jgroups.protocols.raft.internal.snapshot.SnapshotManager;
 import org.jgroups.protocols.raft.state.RaftState;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
@@ -35,7 +35,6 @@ import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.AverageMinMax;
 import org.jgroups.util.ByteArrayDataInputStream;
-import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.DefaultThreadFactory;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.MessageBatch;
@@ -173,9 +172,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Number of successful AppendEntriesRequests")
     protected int                       num_successful_append_requests;
 
-    @ManagedAttribute(description="Number of snapshot messages received (by a follower)")
-    protected int                       num_snapshot_received;
-
     @ManagedAttribute(description="Average AppendEntries batch size")
     protected AverageMinMax             avg_append_entries_batch_size=new AverageMinMax();
 
@@ -210,9 +206,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedAttribute(description="Index of the last committed log entry",type=AttributeType.SCALAR)
     protected long                      commit_index;
 
-    @ManagedAttribute(description="The number of snapshots performed")
-    protected int                       num_snapshots;
-
     @ManagedAttribute(description="The number of times AppendEntriesRequests were resent")
     protected int                       num_resends;
 
@@ -238,6 +231,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     private TimeService timeService = null;
     private RequestFactory requestFactory = null;
     private RaftProtocolMetrics metrics = null;
+    private SnapshotManager snapshotManager = null;
 
     private volatile boolean canHandleRequests = true;
 
@@ -309,10 +303,37 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public long         currentLogSize()              {return curr_log_size;}
     @ManagedAttribute(description="Number of pending requests")
     public int          requestTableSize()            {return request_table != null? request_table.size() : 0;}
-    public int          numSnapshots()                {return num_snapshots;}
 
+    @ManagedAttribute(description="The number of snapshots performed")
+    public int numSnapshots() {
+        return snapshotManager != null
+                ? snapshotManager.metrics().numSnapshots()
+                : 0;
+    }
+
+    @ManagedAttribute(description="Number of snapshot messages received (by a follower)")
     public int numSnapshotReceived() {
-        return num_snapshot_received;
+        return snapshotManager != null
+                ? snapshotManager.metrics().numSnapshotsReceived()
+                : 0;
+    }
+
+    @ManagedAttribute(description="The number of failure when taking a snapshot")
+    public int numSnapshotsCreateFailed() {
+        return snapshotManager != null
+                ? snapshotManager.metrics().numFailedSnapshotsTaken()
+                : 0;
+    }
+
+    @ManagedAttribute(description="The number of failed snapshots installations")
+    public int numSnapshotInstallFailed() {
+        return snapshotManager != null
+                ? snapshotManager.metrics().numFailedSnapshotsInstalled()
+                : 0;
+    }
+
+    SnapshotManager snapshotManager() {
+        return snapshotManager;
     }
 
     @ManagedAttribute(description="The current leader (can be null if there is currently no leader) ")
@@ -338,6 +359,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
               log.warn("%s: failed to initialize state machine from log: %s", local_addr, e);
            }
         }
+        if (protocolStarted && sm != null)
+            this.snapshotManager = SnapshotManager.create(this, internal_state);
         return this;
     }
 
@@ -416,8 +439,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     public void resetStats() {
         super.resetStats();
-        num_snapshots=num_resends=num_successful_append_requests=num_failed_append_requests_not_found
-          =num_failed_append_requests_wrong_term=num_snapshot_received=0;
+        num_resends=num_successful_append_requests=num_failed_append_requests_not_found
+          =num_failed_append_requests_wrong_term=0;
         if (log_impl != null) {
             LogCacheControl lcc = log_impl.findCapability(LogCacheControl.class);
             if(lcc != null)
@@ -432,6 +455,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if (timeService != null) {
             timeService = TimeService.create(metrics != null);
             requestFactory = new RequestFactory(timeService, metrics);
+        }
+
+        if (snapshotManager != null) {
+            snapshotManager.metrics().reset();
         }
     }
 
@@ -751,6 +778,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         curr_log_size=logSizeInBytes();
         log_impl.useFsync(_log_use_fsync);
+
+        // Only define the snapshot manager if there is a state machine to snapshot from/into.
+        // Otherwise, it'll be created when state machine is set.
+        if (state_machine != null)
+            this.snapshotManager = SnapshotManager.create(this, internal_state);
 
         runner.start();
         protocolStarted = true;
@@ -1284,14 +1316,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
 
     protected void sendSnapshotTo(Address dest) throws Exception {
-        LogEntry last_committed_entry=log_impl.get(commitIndex());
-        long last_index=commit_index, last_term=last_committed_entry.term;
-        takeSnapshot();
-        ByteBuffer data=log_impl.getSnapshot();
-        log.debug("%s: sending snapshot (%s) to %s", local_addr, Util.printBytes(data.position()), dest);
-        Message msg=new BytesMessage(dest, data)
-          .putHeader(id, new InstallSnapshotRequest(currentTerm(), leader(), last_index, last_term));
-        down_prot.down(msg);
+        if (snapshotManager == null)
+            throw new IllegalStateException("Snapshot not available");
+
+        LogEntry last_committed_entry = log_impl.get(commitIndex());
+        snapshotManager.transferTo(dest, commit_index, last_committed_entry.term);
     }
 
     /**
@@ -1367,17 +1396,16 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(state_machine == null)
             throw new IllegalStateException("state machine is null");
 
-        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(1 << 20, true);
-        internal_state.writeTo(out);
-        state_machine.writeContentTo(out);
-        ByteBuffer buf=ByteBuffer.wrap(out.buffer(), 0, out.position());
-        log_impl.setSnapshot(buf);
-        log_impl.truncate(commitIndex());
-        num_snapshots++;
-        // curr_log_size=logSizeInBytes();
-        // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
-        // behind last-appended, then this may perform the next truncation later than it should
-        curr_log_size=0;
+        if (snapshotManager == null)
+            throw new IllegalStateException("Snapshot not available");
+
+        snapshotManager.create(commitIndex(), capturedIndex -> {
+            log_impl.truncate(capturedIndex);
+            // curr_log_size=logSizeInBytes();
+            // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
+            // behind last-appended, then this may perform the next truncation later than it should
+            curr_log_size=0;
+        });
     }
 
     /**

@@ -24,6 +24,7 @@ import java.io.DataInput;
  * </p>
  *
  * @since 2.0
+ * @author José Bolina
  * @see SnapshotHandle
  * @see StateMachine
  */
