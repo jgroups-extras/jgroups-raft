@@ -55,7 +55,8 @@ public interface SnapshotHandle {
      *
      * <p>
      * Always called exactly once by the framework, regardless of whether {@link #writeTo(DataOutput)} was called, completed
-     * successfully, or threw an exception. After this method returns, the handle must not hold any resources.
+     * successfully, or threw an exception. After this method returns, the handle must not hold any resources. This method
+     * can be called by a different thread, but not concurrently.
      * </p>
      */
     void release();

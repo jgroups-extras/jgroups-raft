@@ -13,6 +13,7 @@ import org.jgroups.annotations.ManagedOperation;
 import org.jgroups.annotations.Property;
 import org.jgroups.conf.AttributeType;
 import org.jgroups.protocols.raft.election.BaseElection;
+import org.jgroups.protocols.raft.internal.RaftEventLoop;
 import org.jgroups.protocols.raft.internal.request.BaseRequest;
 import org.jgroups.protocols.raft.internal.request.CallableDownRequest;
 import org.jgroups.protocols.raft.internal.request.DownRequest;
@@ -39,6 +40,7 @@ import org.jgroups.util.DefaultThreadFactory;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Runner;
+import org.jgroups.util.ThreadFactory;
 import org.jgroups.util.Util;
 
 import java.io.File;
@@ -55,7 +57,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.LongAdder;
@@ -228,6 +235,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     // Identify whether the start method was executed.
     private boolean protocolStarted;
 
+    private ExecutorService executor;
+    private RaftEventLoop raftEventLoop;
+
     private TimeService timeService = null;
     private RequestFactory requestFactory = null;
     private RaftProtocolMetrics metrics = null;
@@ -360,7 +370,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
            }
         }
         if (protocolStarted && sm != null)
-            this.snapshotManager = SnapshotManager.create(this, internal_state);
+            this.snapshotManager = SnapshotManager.create(this, internal_state, raftEventLoop);
         return this;
     }
 
@@ -728,8 +738,24 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             });
         }
         processing_queue=new ArrayBlockingQueue<>(processing_queue_max_size);
-        runner=new Runner(new DefaultThreadFactory("runner", true, true),
-                          "runner", this::processQueue, null);
+        ThreadFactory tf = getThreadFactory();
+        if (tf == null)
+            tf = new DefaultThreadFactory("runner", true, true);
+        runner=new Runner(tf, "runner", this::processQueue, null);
+        executor = Executors.newSingleThreadExecutor(tf);
+        raftEventLoop = new RaftEventLoop() {
+            @Override
+            public <T> CompletionStage<T> submit(Callable<T> callable) {
+                CompletableFuture<T> cf = new CompletableFuture<>();
+                offer(requestFactory.createCallableRequest(callable, cf));
+                return cf;
+            }
+
+            @Override
+            public Executor executor() {
+                return executor;
+            }
+        };
     }
 
     @Override public void start() throws Exception {
@@ -782,7 +808,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         // Only define the snapshot manager if there is a state machine to snapshot from/into.
         // Otherwise, it'll be created when state machine is set.
         if (state_machine != null)
-            this.snapshotManager = SnapshotManager.create(this, internal_state);
+            this.snapshotManager = SnapshotManager.create(this, internal_state, raftEventLoop);
 
         runner.start();
         protocolStarted = true;
@@ -793,6 +819,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         super.stop();
         add_server_future.complete(null);
         runner.stop();
+        executor.shutdownNow();
         impl.destroy();
         Util.close(log_impl);
     }

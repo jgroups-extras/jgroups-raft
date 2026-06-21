@@ -76,7 +76,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
     public void transferTo(Address dest, long lastIndex, long lastTerm) throws Exception {
         ByteBuffer data = log.getSnapshot();
 
-        LOG.debug("Sending snapshot (%s), to %s (%d - %d)", Util.printBytes(data.position()), lastIndex, lastTerm);
+        LOG.debug("Sending snapshot (%s), to %s (%d - %d)", Util.printBytes(data.position()), dest, lastIndex, lastTerm);
         sender.send(dest, data, lastIndex, lastTerm);
     }
 

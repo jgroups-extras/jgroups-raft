@@ -6,6 +6,7 @@ import org.jgroups.Message;
 import org.jgroups.protocols.raft.InstallSnapshotRequest;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.internal.RaftEventLoop;
 import org.jgroups.raft.AsyncSnapshot;
 
 import java.nio.ByteBuffer;
@@ -27,7 +28,7 @@ import java.nio.ByteBuffer;
  * @author José Bolina
  * @see SnapshotMetrics
  */
-public sealed interface SnapshotManager permits SynchronousSnapshotManager {
+public sealed interface SnapshotManager permits AsynchronousSnapshotManager, SynchronousSnapshotManager {
 
     /**
      * Callback invoked when a snapshot has been fully serialized and is ready to be persisted.
@@ -140,18 +141,20 @@ public sealed interface SnapshotManager permits SynchronousSnapshotManager {
      * </p>
      *
      * @param raft the RAFT protocol instance
+     * @param persistentState raft internal state, like membership changes, need to be serialized, too
+     * @param eventLoop internal RAFT event loop to submit operations
      * @return a new snapshot manager
      */
-    static SnapshotManager create(RAFT raft, PersistentState persistentState) {
+    static SnapshotManager create(RAFT raft, PersistentState persistentState, RaftEventLoop eventLoop) {
         DefaultSnapshotMetrics metrics = new DefaultSnapshotMetrics();
         SnapshotSender sender = (dest, snapshot, lastIndex, lastTerm) -> {
             Message msg=new BytesMessage(dest, snapshot)
                     .putHeader(raft.getId(), new InstallSnapshotRequest(raft.currentTerm(), raft.leader(), lastIndex, lastTerm));
             raft.getDownProtocol().down(msg);
         };
-        if (raft.stateMachine() instanceof AsyncSnapshot)
-            // TODO;
-            return null;
+        if (raft.stateMachine() instanceof AsyncSnapshot as) {
+            return new AsynchronousSnapshotManager(eventLoop, as, persistentState, raft.log(), sender, metrics);
+        }
 
         return new SynchronousSnapshotManager(
                 raft.stateMachine(),
