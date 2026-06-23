@@ -4,6 +4,7 @@ import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
@@ -158,10 +159,40 @@ final class RaftLogAdapter implements Log, LogCapability {
     }
 
     @Override
+    public void setSnapshot(InputStream input) {
+        assertNotPoisoned();
+        try {
+            delegate.setSnapshot(input);
+        } catch (IOException e) {
+            throw poison(e);
+        }
+    }
+
+    @Override
     public ByteBuffer getSnapshot() {
         assertNotPoisoned();
         try {
             return delegate.getSnapshot();
+        } catch (IOException e) {
+            throw poison(e);
+        }
+    }
+
+    @Override
+    public long snapshotSize() {
+        assertNotPoisoned();
+        try {
+            return delegate.snapshotSize();
+        } catch (IOException e) {
+            throw poison(e);
+        }
+    }
+
+    @Override
+    public int readSnapshotRegion(long offset, byte[] dst, int dstOffset, int length) {
+        assertNotPoisoned();
+        try {
+            return delegate.readSnapshotRegion(offset, dst, dstOffset, length);
         } catch (IOException e) {
             throw poison(e);
         }

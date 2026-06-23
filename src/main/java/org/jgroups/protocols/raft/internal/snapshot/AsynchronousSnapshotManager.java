@@ -1,19 +1,31 @@
 package org.jgroups.protocols.raft.internal.snapshot;
 
 import org.jgroups.Address;
+import org.jgroups.Message;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.PersistentState;
+import org.jgroups.protocols.raft.RaftHeader;
 import org.jgroups.protocols.raft.internal.RaftEventLoop;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkRequest;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkResponse;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotMetadataRequest;
 import org.jgroups.raft.AsyncSnapshot;
 import org.jgroups.raft.SnapshotHandle;
-import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
+import java.io.BufferedInputStream;
 import java.io.DataInput;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 
@@ -43,6 +55,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
     private static final org.jgroups.logging.Log LOG = LogFactory.getLog(AsynchronousSnapshotManager.class);
 
     private static final int DEFAULT_BUFFER_SIZE = 1 << 20;
+    private static final String PREFIX_SNAPSHOT_FILE = "snapshot-transfer.tmp";
 
     private final RaftEventLoop eventLoop;
     private final AsyncSnapshot asyncSnapshot;
@@ -51,6 +64,13 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
     private final SnapshotSender sender;
     private final DefaultSnapshotMetrics metrics;
 
+    private final Path baseLogDir;
+    private final int chunkSize;
+    private final int batchSize;
+
+    private ActiveSnapshotTransfer transfer = null;
+
+    // In progress is updated both from event loop and from background task.
     private volatile boolean inProgress;
 
     AsynchronousSnapshotManager(
@@ -59,7 +79,10 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             PersistentState persistentState,
             Log log,
             SnapshotSender sender,
-            DefaultSnapshotMetrics metrics
+            DefaultSnapshotMetrics metrics,
+            Path baseLogDir,
+            int chunkSize,
+            int batchSize
     ) {
         this.eventLoop = eventLoop;
         this.asyncSnapshot = asyncSnapshot;
@@ -67,6 +90,9 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         this.log = log;
         this.sender = sender;
         this.metrics = metrics;
+        this.baseLogDir = baseLogDir;
+        this.chunkSize = chunkSize;
+        this.batchSize = batchSize;
     }
 
     @Override
@@ -103,36 +129,185 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
     }
 
     @Override
-    public void transferTo(Address dest, long lastIndex, long lastTerm) throws Exception {
-        ByteBuffer data = log.getSnapshot();
+    public void transferTo(Message message, RaftHeader hdr, long lastIndex, long lastTerm, Address dest) throws Exception {
+        if (hdr == null) {
+            long totalSize = log.snapshotSize();
 
-        if (LOG.isDebugEnabled())
-            LOG.debug("Sending snapshot (%s), to %s (index=%d, term=%d)", Util.printBytes(data.position()), dest, lastIndex, lastTerm);
+            LOG.debug("Sending snapshot metadata to %s (index=%d, term=%d, size=%d)", dest, lastIndex, lastTerm, totalSize);
+            sender.sendMetadata(dest, log.currentTerm(), lastIndex, lastTerm, totalSize);
+            return;
+        }
 
-        sender.send(dest, data, lastIndex, lastTerm);
+        if (!(hdr instanceof SnapshotChunkRequest scr)) {
+            LOG.warn("Unexpected request for async snapshot manager: %s", hdr);
+            return;
+        }
+
+        int startChunk = scr.startChunk();
+        int count = scr.count();
+        long lastIncludedIndex = scr.lastIncludedIndex();
+        long currentTerm = log.currentTerm();
+        long totalSize = log.snapshotSize();
+
+        for (int i = 0; i < count; i++) {
+            // Allocate a buffer per invocation.
+            // This buffer will be submitted internally through JGroups.
+            // We prefer to play safe and create a new copy instead of share/reuse the buffer.
+            byte[] buf = new byte[chunkSize];
+            int chunkIndex = startChunk + i;
+            long offset = (long) chunkIndex * chunkSize;
+
+            if (offset >= totalSize)
+                break;
+
+            int len = (int) Math.min(chunkSize, totalSize - offset);
+
+            // To keep things simple, we read the snapshot from the event loop.
+            // This alleviates us from having to implement some synchronization machinery for snapshot read/write.
+            // For example, reading outside the event loop, the snapshot could be swapped while reading chunks.
+            // This would allow to transfer corrupted chunks that could go unnoticed.
+            int read = log.readSnapshotRegion(offset, buf, 0, len);
+            if (read <= 0) {
+                LOG.debug("Reading from snapshot returned earlier. Read=%d and expected=%d", read, len);
+                break;
+            }
+
+            boolean done = offset + read >= totalSize;
+            ByteBuffer bb = ByteBuffer.wrap(buf, 0, read);
+
+            // We offload the operation submit to outisde the event loop so we can continue processing.
+            eventLoop.executor().execute(() -> sender.sendChunkResponse(dest, currentTerm, lastIncludedIndex, bb, offset, done));
+        }
     }
 
     @Override
-    public void install(ByteBuffer data, long lastIncludedIndex, long lastIncludedTerm, PostInstallAction action) throws Exception {
-        LOG.debug("Restoring state machine with snapshot (%d bytes), (index=%d, term=%d)", data.remaining(), lastIncludedIndex, lastIncludedTerm);
+    public void install(ByteBuffer data, RaftHeader hdr, PostInstallAction action) throws Exception {
+        LOG.debug("Restoring state machine with snapshot (%d bytes) - %s", data.remaining(), hdr);
 
-        int pos = data.position();
-        log.setSnapshot(data);
-        data.position(pos);
+        if (hdr instanceof SnapshotMetadataRequest smr) {
+            handleMetadata(smr, action);
+            return;
+        }
 
+        if (hdr instanceof SnapshotChunkResponse scr) {
+            handleChunkResponse(data, scr);
+            return;
+        }
+
+        LOG.warn("Unexpected header type in async install: %s", hdr);
+    }
+
+    private void handleMetadata(SnapshotMetadataRequest smr, PostInstallAction action) throws IOException {
+        if (transfer != null) {
+            if (transfer.lastIncludedIndex == smr.lastIncludedIndex()) {
+                LOG.debug("Repeated request for same index, and transfer already in progress, returning: %s", smr);
+                return;
+            }
+
+            abortActiveTransfer();
+        }
+
+        Path tempFile = temporaryFileLocation();
+        FileChannel channel = FileChannel.open(tempFile,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);
+        transfer = new ActiveSnapshotTransfer(
+                smr.lastIncludedIndex(), smr.lastIncludedTerm(), smr.currTerm(), smr.totalSize(), smr.leader(), channel, action);
+
+        metrics.chunkTransferStarted();
+
+        LOG.debug("Starting chunk transfer from %s -> %s", smr, transfer);
+
+        sender.sendChunkRequest(smr.leader(), smr.currTerm(), smr.lastIncludedIndex(), 0, batchSize);
+    }
+
+    private void handleChunkResponse(ByteBuffer buffer, SnapshotChunkResponse scr) throws Exception {
+        if (transfer == null) {
+            LOG.warn("Received chunk response without active transfer: %s", scr);
+            return;
+        }
+
+        if (scr.lastIncludedIndex() != transfer.lastIncludedIndex) {
+            LOG.debug("Received chunk of a different snapshot recv=%s / transfer=%s", scr, transfer);
+            return;
+        }
+
+        int chunkBytes = buffer.remaining();
+        transfer.bytesReceived += transfer.channel.write(buffer, scr.offset());
+        transfer.nextChunkIndex++;
+
+        metrics.chunkReceived(chunkBytes);
+
+        if (scr.isDone())
+            transfer.done = true;
+
+        if (transfer.bytesReceived == transfer.totalSize) {
+            completeActiveTransfer();
+            return;
+        }
+
+        if (!transfer.done && transfer.nextChunkIndex % (batchSize - (batchSize >> 2)) == 0) {
+            int size = batchSize >> 2;
+            sender.sendChunkRequest(transfer.leader, transfer.currentTerm, transfer.lastIncludedIndex, transfer.nextChunkIndex, size);
+        }
+    }
+
+    private void abortActiveTransfer() {
+        if (transfer == null)
+            return;
+
+        LOG.debug("Aborting chunked snapshot transfer %s", transfer);
+
+        metrics.chunkTransferFailed();
+        cleanupActiveTransfer();
+    }
+
+    private void cleanupActiveTransfer() {
+        if (transfer == null)
+            return;
+
+        ActiveSnapshotTransfer ast = transfer;
+        transfer = null;
+
+        Util.close(ast.channel);
         try {
-            DataInput in = new ByteArrayDataInputStream(data);
+            Files.deleteIfExists(temporaryFileLocation());
+        } catch (IOException e) {
+            LOG.warn("Failed to delete temporary snapshot file: %s", e.getMessage());
+        }
+    }
+
+    private void completeActiveTransfer() throws Exception {
+        try {
+            LOG.debug("Completing active snapshot entry: %s", transfer);
+
+            transfer.channel.position(0);
+            log.setSnapshot(Channels.newInputStream(transfer.channel));
+
+            transfer.channel.position(0);
+            DataInput in = new DataInputStream(new BufferedInputStream(Channels.newInputStream(transfer.channel)));
             persistentState.readFrom(in);
             asyncSnapshot.readContentFrom(in);
 
-            LogEntry le = new LogEntry(lastIncludedTerm, null);
-            log.reinitializeTo(lastIncludedIndex, le);
-            action.onSnapshotInstalled(lastIncludedIndex, lastIncludedTerm);
+            LogEntry le = new LogEntry(transfer.lastIncludedTerm, null);
+            log.reinitializeTo(transfer.lastIncludedIndex, le);
+
+            transfer.action.onSnapshotInstalled(transfer.lastIncludedIndex, transfer.lastIncludedTerm);
+
+            metrics.chunkTransferCompleted();
             metrics.snapshotReceived();
+
+            LOG.debug("Installed chunked snapshot: %s", transfer);
         } catch (Exception e) {
+            metrics.chunkTransferFailed();
             metrics.snapshotFailedInstall();
             throw e;
+        } finally {
+            cleanupActiveTransfer();
         }
+    }
+
+    private Path temporaryFileLocation() {
+        return baseLogDir.resolve(PREFIX_SNAPSHOT_FILE);
     }
 
     @Override
@@ -183,6 +358,44 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
                 handle.release();
                 inProgress = false;
             }
+        }
+    }
+
+    private static final class ActiveSnapshotTransfer {
+        private final long lastIncludedIndex;
+        private final long lastIncludedTerm;
+        private final long currentTerm;
+        private final long totalSize;
+        private final Address leader;
+        private final FileChannel channel;
+        private final PostInstallAction action;
+
+        private long bytesReceived;
+        private int nextChunkIndex;
+        private boolean done;
+
+        private ActiveSnapshotTransfer(long lastIncludedIndex, long lastIncludedTerm, long currentTerm, long totalSize, Address leader, FileChannel channel, PostInstallAction action) {
+            this.lastIncludedIndex = lastIncludedIndex;
+            this.lastIncludedTerm = lastIncludedTerm;
+            this.currentTerm = currentTerm;
+            this.totalSize = totalSize;
+            this.leader = leader;
+            this.channel = channel;
+            this.action = action;
+        }
+
+        @Override
+        public String toString() {
+            return "ActiveSnapshotTransfer{" +
+                    "lastIncludedIndex=" + lastIncludedIndex +
+                    ", lastIncludedTerm=" + lastIncludedTerm +
+                    ", currentTerm=" + currentTerm +
+                    ", totalSize=" + totalSize +
+                    ", leader=" + leader +
+                    ", channel=" + channel +
+                    ", action=" + action +
+                    ", bytesReceived=" + bytesReceived +
+                    '}';
         }
     }
 }

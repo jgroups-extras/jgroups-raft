@@ -22,6 +22,10 @@ import org.jgroups.protocols.raft.election.PreVoteRequest;
 import org.jgroups.protocols.raft.election.PreVoteResponse;
 import org.jgroups.protocols.raft.election.VoteRequest;
 import org.jgroups.protocols.raft.election.VoteResponse;
+import org.jgroups.protocols.raft.internal.snapshot.SnapshotConstant;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkRequest;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkResponse;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotMetadataRequest;
 import org.jgroups.stack.Protocol;
 
 import net.jcip.annotations.ThreadSafe;
@@ -125,6 +129,11 @@ public final class RaftClassConfigurator {
         add(RAFT.APPEND_RESULT,        AppendResult.class);
         add(RAFT.INSTALL_SNAPSHOT_REQ, InstallSnapshotRequest.class);
         add(RAFT.LOG_ENTRIES,          LogEntries.class);
+
+        // Asynchronous snapshot objects
+        add(SnapshotConstant.SNAPSHOT_METADATA_REQ, SnapshotMetadataRequest.class);
+        add(SnapshotConstant.SNAPSHOT_CHUNK_REQ, SnapshotChunkRequest.class);
+        add(SnapshotConstant.SNAPSHOT_CHUNK_RSP, SnapshotChunkResponse.class);
     }
 
     /**

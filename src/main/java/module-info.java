@@ -21,6 +21,8 @@ module org.jgroups.raft {
     // Core clustering part of JGroups Raft.
     requires org.jgroups;
 
+    opens org.jgroups.protocols.raft.internal.snapshot.messages to org.jgroups;
+
     exports org.jgroups.raft;
     exports org.jgroups.raft.command;
     exports org.jgroups.raft.configuration;

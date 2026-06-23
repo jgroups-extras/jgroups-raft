@@ -4,6 +4,7 @@ import org.jgroups.Address;
 
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
@@ -164,12 +165,40 @@ public interface Log extends Closeable {
     void setSnapshot(ByteBuffer sn) throws IOException;
 
     /**
+     * Stores a snapshot of the state machine, replacing any previously stored snapshot.
+     *
+     * @param input an input stream to read the snapshot data from
+     * @throws IOException if the snapshot cannot be stored
+     */
+    void setSnapshot(InputStream input) throws IOException;
+
+    /**
      * Returns the most recently stored snapshot.
      *
      * @return the snapshot data, or {@code null} if no snapshot has been stored
      * @throws IOException if the snapshot cannot be read
      */
     ByteBuffer getSnapshot() throws IOException;
+
+    /**
+     * Returns the size of the snapshot.
+     *
+     * @return returns the size of the stored snapshot.
+     * @throws IOException if not possible to extract the snapshot size
+     */
+    long snapshotSize() throws IOException;
+
+    /**
+     * Reads up to length bytes from the snapshot data starting at offset.
+     *
+     * @param offset offset to start reading from
+     * @param dst buffer to store the read bytes
+     * @param dstOffset offset to start writing the bytes at the destination buffer
+     * @param length how many bytes to try to read
+     * @return the number of actual read bytes
+     * @throws IOException if not possible to read the snapshot
+     */
+    int readSnapshotRegion(long offset, byte[] dst, int dstOffset, int length) throws IOException;
 
     /**
      * Appends entries starting at the given index and advances {@link #lastAppended()} accordingly.

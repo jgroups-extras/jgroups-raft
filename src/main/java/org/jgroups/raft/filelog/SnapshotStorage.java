@@ -2,13 +2,16 @@ package org.jgroups.raft.filelog;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.zip.CRC32C;
+import java.util.zip.CheckedOutputStream;
 
 import net.jcip.annotations.NotThreadSafe;
 
@@ -71,7 +74,7 @@ public final class SnapshotStorage {
      * @param snapshot the snapshot data to store
      * @throws IOException if the snapshot cannot be written
      */
-    public void writeSnapshot(ByteBuffer snapshot) throws IOException {
+    public void writeSnapshot(InputStream snapshot) throws IOException {
         Path snapshotPath = snapshotPath();
         if (Files.exists(snapshotPath)) {
             // Since the file already exist, we keep it as is.
@@ -85,6 +88,45 @@ public final class SnapshotStorage {
 
         // If this is a new file, we just write it.
         write(snapshot, snapshotPath);
+    }
+
+    public long snapshotSize() throws IOException {
+        Path snapshotPath = snapshotPath();
+        if (!Files.exists(snapshotPath)) {
+            return 0;
+        }
+
+        try (FileChannel channel = FileChannel.open(snapshotPath, StandardOpenOption.READ)) {
+            if (isSnapshotFile(channel))
+                return Files.size(snapshotPath) - SNAPSHOT_HEADER_SIZE - CRC_SIZE;
+
+            return Files.size(snapshotPath);
+        }
+    }
+
+    public int region(long offset, byte[] dst, int dstOffset, int length) throws IOException {
+        Path snapshotPath = snapshotPath();
+        if (!Files.exists(snapshotPath)) {
+            return 0;
+        }
+        try (FileChannel channel = FileChannel.open(snapshotPath, StandardOpenOption.READ)) {
+            long dataStart = 0;
+            if (isSnapshotFile(channel))
+                dataStart = SNAPSHOT_HEADER_SIZE;
+
+            ByteBuffer bb = ByteBuffer.wrap(dst, dstOffset, length);
+            return channel.read(bb, dataStart + offset);
+        }
+    }
+
+    private boolean isSnapshotFile(FileChannel channel) throws IOException {
+        if (channel.size() < SNAPSHOT_HEADER_SIZE)
+            return false;
+
+        ByteBuffer buf = ByteBuffer.allocate(SNAPSHOT_HEADER_SIZE);
+        channel.read(buf, 0);
+        buf.flip();
+        return isSnapshotFile(buf);
     }
 
     /**
@@ -151,30 +193,26 @@ public final class SnapshotStorage {
         return buf;
     }
 
-    private void write(ByteBuffer snapshot, Path path) throws IOException {
-        try (ByteChannel ch = Files.newByteChannel(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
+    private void write(InputStream snapshot, Path path) throws IOException {
+        try (OutputStream out = Files.newOutputStream(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
             // The buffer will always be at the end.
             // We can just flip it to consume the content when writing.
             HEADER_BUFFER.flip();
 
             // First bytes are the file header.
-            ch.write(HEADER_BUFFER);
+            out.write(HEADER_BUFFER.array(), 0, SNAPSHOT_HEADER_SIZE);
 
-            // We calculate the CRC from the provided snapshot.
-            // CRC will "consume" the buffer, so we need to return to the expected position.
-            int position = snapshot.position();
-            crc.update(snapshot);
-
-            // We restart the position and write the content to the underlying file.
-            snapshot.position(position);
-            ch.write(snapshot);
+            // We write the full snapshot utilizing the checked stream.
+            // The stream will update the underlying CRC automatically while writing.
+            CheckedOutputStream checked = new CheckedOutputStream(out, crc);
+            snapshot.transferTo(checked);
 
             // The last 4 bytes will be the 32 bits checksum.
             int checksum = (int) (crc.getValue() & 0xFFFFFFFFL);
             CRC_BUFFER.position(0);
             CRC_BUFFER.putInt(checksum);
             CRC_BUFFER.flip();
-            ch.write(CRC_BUFFER);
+            out.write(CRC_BUFFER.array(), 0, CRC_SIZE);
         } finally {
             // Reset the CRC to be utilized again in the next call.
             crc.reset();

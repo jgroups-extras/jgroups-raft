@@ -8,6 +8,7 @@ import org.jgroups.raft.filelog.SnapshotStorage;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
@@ -148,12 +149,51 @@ public class FileBasedLog implements Log {
 
    @Override
    public void setSnapshot(ByteBuffer sn) throws IOException {
-      snapshotStorage.writeSnapshot(sn);
+      InputStream is = new InputStream() {
+         @Override
+         public int read() {
+            if (!sn.hasRemaining())
+               return -1;
+
+            return sn.get() & 0xFF;
+         }
+
+         @Override
+         public int read(byte[] b, int off, int len) {
+            if (!sn.hasRemaining())
+               return -1;
+
+            int bytesToRead = Math.min(len, sn.remaining());
+            sn.get(b, off, bytesToRead);
+            return bytesToRead;
+         }
+
+         @Override
+         public int available() {
+            return sn.remaining();
+         }
+      };
+      setSnapshot(is);
+   }
+
+   @Override
+   public void setSnapshot(InputStream input) throws IOException {
+      snapshotStorage.writeSnapshot(input);
    }
 
    @Override
    public ByteBuffer getSnapshot() throws IOException {
       return snapshotStorage.readSnapshot();
+   }
+
+   @Override
+   public long snapshotSize() throws IOException {
+      return snapshotStorage.snapshotSize();
+   }
+
+   @Override
+   public int readSnapshotRegion(long offset, byte[] dst, int dstOffset, int length) throws IOException {
+      return snapshotStorage.region(offset, dst, dstOffset, length);
    }
 
    @Override

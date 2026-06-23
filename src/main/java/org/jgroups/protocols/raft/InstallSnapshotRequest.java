@@ -29,6 +29,18 @@ public class InstallSnapshotRequest extends RaftHeader {
         this.last_included_term=last_included_term;
     }
 
+    public Address leader() {
+        return leader;
+    }
+
+    public long lastIncludedIndex() {
+        return last_included_index;
+    }
+
+    public long lastIncludedTerm() {
+        return last_included_term;
+    }
+
     public short getMagicId() {
         return RAFT.INSTALL_SNAPSHOT_REQ;
     }

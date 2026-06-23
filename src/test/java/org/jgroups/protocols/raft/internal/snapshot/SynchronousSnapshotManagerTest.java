@@ -6,8 +6,10 @@ import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.protocols.raft.InMemoryLog;
+import org.jgroups.protocols.raft.InstallSnapshotRequest;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.raft.StateMachine;
+import org.jgroups.raft.util.TimeService;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
@@ -39,7 +41,7 @@ public class SynchronousSnapshotManagerTest {
         log.init(LOG_NAME, null);
         persistentState = new PersistentState();
         persistentState.setMembers(MEMBERS);
-        metrics = new DefaultSnapshotMetrics();
+        metrics = new DefaultSnapshotMetrics(TimeService.create(false));
     }
 
     @AfterMethod
@@ -95,7 +97,7 @@ public class SynchronousSnapshotManagerTest {
         SynchronousSnapshotManager manager = new SynchronousSnapshotManager(
                 target, targetState, log, noOpSender(), metrics);
 
-        manager.install(data, 5, 2, (idx, term) -> {
+        manager.install(data, new InstallSnapshotRequest(1, null, 5, 2), (idx, term) -> {
             assertThat(idx).isEqualTo(5);
             assertThat(term).isEqualTo(2);
         });
@@ -119,7 +121,7 @@ public class SynchronousSnapshotManagerTest {
         SynchronousSnapshotManager manager = createManager(failing, noOpSender());
 
         AtomicBoolean actionCalled = new AtomicBoolean();
-        assertThatThrownBy(() -> manager.install(data, 5, 2, (idx, term) -> actionCalled.set(true)))
+        assertThatThrownBy(() -> manager.install(data, new InstallSnapshotRequest(1, null, 5, 2), (idx, term) -> actionCalled.set(true)))
                 .isInstanceOf(RuntimeException.class);
 
         assertThat(actionCalled.get()).isFalse();
@@ -135,17 +137,20 @@ public class SynchronousSnapshotManagerTest {
         Address dest = Util.createRandomAddress("target");
         AtomicBoolean senderCalled = new AtomicBoolean();
 
-        SnapshotSender capturingSender = (d, sn, idx, term) -> {
-            assertThat(d).isEqualTo(dest);
-            assertThat(idx).isEqualTo(5);
-            assertThat(term).isEqualTo(2);
-            assertThat(sn).isNotNull();
-            assertThat(sn.remaining()).isGreaterThan(0);
-            senderCalled.set(true);
+        SnapshotSender capturingSender = new NoOpSnapshotSender() {
+            @Override
+            public void send(Address d, ByteBuffer sn, long idx, long term) {
+                assertThat(d).isEqualTo(dest);
+                assertThat(idx).isEqualTo(5);
+                assertThat(term).isEqualTo(2);
+                assertThat(sn).isNotNull();
+                assertThat(sn.remaining()).isGreaterThan(0);
+                senderCalled.set(true);
+            }
         };
 
         SynchronousSnapshotManager manager = createManager(sm, capturingSender);
-        manager.transferTo(dest, 5, 2);
+        manager.transferTo(null, null, 5, 2, dest);
 
         assertThat(senderCalled.get()).isTrue();
     }
@@ -157,7 +162,7 @@ public class SynchronousSnapshotManagerTest {
         manager.create(1, idx -> {});
 
         ByteBuffer data = createSnapshotBuffer(persistentState, sm);
-        manager.install(data, 1, 1, (idx, term) -> {});
+        manager.install(data, new InstallSnapshotRequest(1, null, 1, 1), (idx, term) -> {});
 
         assertThat(metrics.numSnapshots()).isEqualTo(1);
         assertThat(metrics.numSnapshotsReceived()).isEqualTo(1);
@@ -175,7 +180,21 @@ public class SynchronousSnapshotManagerTest {
     }
 
     private static SnapshotSender noOpSender() {
-        return (dest, snapshot, lastIndex, lastTerm) -> {};
+        return new NoOpSnapshotSender();
+    }
+
+    private static class NoOpSnapshotSender implements SnapshotSender {
+        @Override
+        public void send(Address dest, ByteBuffer snapshot, long lastIndex, long lastTerm) { }
+
+        @Override
+        public void sendMetadata(Address dest, long currTerm, long lastIncludedIndex, long lastIncludedTerm, long totalSize) { }
+
+        @Override
+        public void sendChunkRequest(Address dest, long currTerm, long lastIncludedIndex, int startChunk, int count) { }
+
+        @Override
+        public void sendChunkResponse(Address dest, long currTerm, long lastIncludedIndex, ByteBuffer chunk, long offset, boolean done) { }
     }
 
     private static ByteBuffer createSnapshotBuffer(PersistentState ps, StateMachine sm) throws Exception {

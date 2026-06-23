@@ -16,18 +16,49 @@ import java.nio.ByteBuffer;
  * @since 2.0
  * @author José Bolina
  */
-
-@FunctionalInterface
 interface SnapshotSender {
 
     /**
-     * Sends a snapshot to a remote node.
+     * Sends a complete snapshot to a remote node.
      *
      * @param dest the destination address
      * @param snapshot the serialized snapshot data
      * @param lastIndex the last committed log index reflected in the snapshot
      * @param lastTerm the term of the last committed log entry
-     * @throws Exception if the message cannot be sent
      */
-    void send(Address dest, ByteBuffer snapshot, long lastIndex, long lastTerm) throws Exception;
+    void send(Address dest, ByteBuffer snapshot, long lastIndex, long lastTerm);
+
+    /**
+     * Sends snapshot metadata to a follower to initiate a chunked transfer.
+     *
+     * @param dest the follower's address
+     * @param currTerm the leader's current term
+     * @param lastIncludedIndex the last log index reflected in the snapshot
+     * @param lastIncludedTerm the term of the last log entry in the snapshot
+     * @param totalSize the total snapshot size in bytes
+     */
+    void sendMetadata(Address dest, long currTerm, long lastIncludedIndex, long lastIncludedTerm, long totalSize);
+
+    /**
+     * Requests a batch of snapshot chunks from the leader.
+     *
+     * @param dest the leader's address
+     * @param currTerm the follower's current term
+     * @param lastIncludedIndex identifies the index the snapshot was taken
+     * @param startChunk the zero-based index of the first chunk to request
+     * @param count the number of consecutive chunks to request
+     */
+    void sendChunkRequest(Address dest, long currTerm, long lastIncludedIndex, int startChunk, int count);
+
+    /**
+     * Delivers a snapshot chunk to a follower.
+     *
+     * @param dest the follower's address
+     * @param currTerm the leader's current term
+     * @param lastIncludedIndex identifies the index the snapshot was taken
+     * @param chunk the raw chunk bytes
+     * @param offset the byte offset within the full snapshot
+     * @param done {@code true} if this is the last chunk in the snapshot
+     */
+    void sendChunkResponse(Address dest, long currTerm, long lastIncludedIndex, ByteBuffer chunk, long offset, boolean done);
 }

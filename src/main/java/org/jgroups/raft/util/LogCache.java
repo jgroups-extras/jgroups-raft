@@ -1,13 +1,14 @@
 package org.jgroups.raft.util;
 
 import org.jgroups.Address;
-import org.jgroups.protocols.raft.LogCapability;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogCacheControl;
+import org.jgroups.protocols.raft.LogCapability;
 import org.jgroups.protocols.raft.LogEntries;
 import org.jgroups.protocols.raft.LogEntry;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
@@ -161,6 +162,21 @@ public final class LogCache implements Log, LogCacheControl {
     @Override
     public void setSnapshot(ByteBuffer sn) throws IOException {
         log.setSnapshot(sn); // the LogCache doesn't cache snapshots; this operation isn't frequent anyway
+    }
+
+    @Override
+    public void setSnapshot(InputStream input) throws IOException {
+        log.setSnapshot(input);
+    }
+
+    @Override
+    public long snapshotSize() throws IOException {
+        return log.snapshotSize();
+    }
+
+    @Override
+    public int readSnapshotRegion(long offset, byte[] dst, int dstOffset, int length) throws IOException {
+        return log.readSnapshotRegion(offset, dst, dstOffset, length);
     }
 
     @Override

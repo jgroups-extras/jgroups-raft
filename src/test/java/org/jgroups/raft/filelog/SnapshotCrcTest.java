@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.jgroups.Global;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -49,7 +50,7 @@ public class SnapshotCrcTest {
 
     public void testNewSnapshotWrittenWithHeader() throws IOException {
         byte[] data = "snapshot-data".getBytes();
-        storage.writeSnapshot(ByteBuffer.wrap(data));
+        storage.writeSnapshot(new ByteArrayInputStream(data));
 
         byte[] rawHeader = readRawBytes(0, SNAP_HEADER_SIZE);
         assertThat(rawHeader[0]).isEqualTo(SNAP_MAGIC[0]);
@@ -73,7 +74,7 @@ public class SnapshotCrcTest {
 
     public void testSnapshotRoundtrip() throws IOException {
         byte[] data = "roundtrip-snapshot".getBytes();
-        storage.writeSnapshot(ByteBuffer.wrap(data));
+        storage.writeSnapshot(new ByteArrayInputStream(data));
 
         ByteBuffer loaded = storage.readSnapshot();
         assertThat(loaded).isNotNull();
@@ -95,7 +96,7 @@ public class SnapshotCrcTest {
 
     public void testCorruptedSnapshotDataDetectedByCrc() throws IOException {
         byte[] data = "will-be-corrupted".getBytes();
-        storage.writeSnapshot(ByteBuffer.wrap(data));
+        storage.writeSnapshot(new ByteArrayInputStream(data));
 
         corruptByteAt(SNAP_HEADER_SIZE);
 
@@ -106,7 +107,7 @@ public class SnapshotCrcTest {
 
     public void testCorruptedSnapshotCrcDetected() throws IOException {
         byte[] data = "valid-data".getBytes();
-        storage.writeSnapshot(ByteBuffer.wrap(data));
+        storage.writeSnapshot(new ByteArrayInputStream(data));
 
         long fileSize = Files.size(snapshotPath());
         corruptByteAt(fileSize - CRC_SIZE);
@@ -133,7 +134,7 @@ public class SnapshotCrcTest {
     }
 
     public void testEmptySnapshotRoundtrip() throws IOException {
-        storage.writeSnapshot(ByteBuffer.wrap(new byte[0]));
+        storage.writeSnapshot(new ByteArrayInputStream(new byte[0]));
 
         long fileSize = Files.size(snapshotPath());
         assertThat(fileSize).isEqualTo(SNAP_HEADER_SIZE + CRC_SIZE);
@@ -144,8 +145,8 @@ public class SnapshotCrcTest {
     }
 
     public void testSnapshotOverwritePreservesNewData() throws IOException {
-        storage.writeSnapshot(ByteBuffer.wrap("first-snapshot".getBytes()));
-        storage.writeSnapshot(ByteBuffer.wrap("second-snapshot".getBytes()));
+        storage.writeSnapshot(new ByteArrayInputStream("first-snapshot".getBytes()));
+        storage.writeSnapshot(new ByteArrayInputStream("second-snapshot".getBytes()));
 
         ByteBuffer loaded = storage.readSnapshot();
         assertThat(loaded).isNotNull();
@@ -161,7 +162,7 @@ public class SnapshotCrcTest {
     public void testRepeatedWriteAndReadCycles() throws IOException {
         String[] snapshots = {"first", "second-longer-data", "x", "fourth-snapshot-with-more-content", ""};
         for (String data : snapshots) {
-            storage.writeSnapshot(ByteBuffer.wrap(data.getBytes()));
+            storage.writeSnapshot(new ByteArrayInputStream(data.getBytes()));
 
             ByteBuffer loaded = storage.readSnapshot();
             assertThat(loaded).isNotNull();
@@ -173,7 +174,7 @@ public class SnapshotCrcTest {
 
     public void testTruncatedSnapshotFileDetected() throws IOException {
         byte[] data = "truncated".getBytes();
-        storage.writeSnapshot(ByteBuffer.wrap(data));
+        storage.writeSnapshot(new ByteArrayInputStream(data));
 
         try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {
             raf.setLength(SNAP_HEADER_SIZE + 2);
@@ -192,40 +193,123 @@ public class SnapshotCrcTest {
                 .hasMessageContaining("truncated");
     }
 
-    public void testByteBufferWithNonZeroPosition() throws IOException {
-        byte[] backing = "PREFIX-actual-data".getBytes();
-        ByteBuffer buf = ByteBuffer.wrap(backing);
-        buf.position("PREFIX-".length());
+    public void testSnapshotSizeV2() throws IOException {
+        byte[] data = "snapshot-size-test".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
 
-        storage.writeSnapshot(buf);
-
-        ByteBuffer loaded = storage.readSnapshot();
-        assertThat(loaded).isNotNull();
-        byte[] result = new byte[loaded.remaining()];
-        loaded.get(result);
-        assertThat(new String(result)).isEqualTo("actual-data");
+        assertThat(storage.snapshotSize()).isEqualTo(data.length);
     }
 
-    public void testByteBufferSlice() throws IOException {
-        byte[] backing = "HEADER-payload-data-TRAILER".getBytes();
-        ByteBuffer buf = ByteBuffer.wrap(backing);
-        buf.position("HEADER-".length());
-        buf.limit(backing.length - "-TRAILER".length());
-        ByteBuffer slice = buf.slice();
+    public void testSnapshotSizeNoFile() throws IOException {
+        assertThat(storage.snapshotSize()).isZero();
+    }
 
-        storage.writeSnapshot(slice);
+    public void testSnapshotSizeLegacy() throws IOException {
+        byte[] data = "legacy-size".getBytes();
+        Files.write(snapshotPath(), data);
 
-        ByteBuffer loaded = storage.readSnapshot();
-        assertThat(loaded).isNotNull();
-        byte[] result = new byte[loaded.remaining()];
-        loaded.get(result);
-        assertThat(new String(result)).isEqualTo("payload-data");
+        assertThat(storage.snapshotSize()).isEqualTo(data.length);
+    }
+
+    public void testSnapshotSizeEmpty() throws IOException {
+        storage.writeSnapshot(new ByteArrayInputStream(new byte[0]));
+
+        assertThat(storage.snapshotSize()).isZero();
+    }
+
+    public void testSnapshotSizeAfterOverwrite() throws IOException {
+        storage.writeSnapshot(new ByteArrayInputStream("short".getBytes()));
+        storage.writeSnapshot(new ByteArrayInputStream("much-longer-snapshot-data".getBytes()));
+
+        assertThat(storage.snapshotSize()).isEqualTo("much-longer-snapshot-data".length());
+    }
+
+    public void testRegionReadsFullData() throws IOException {
+        byte[] data = "region-full-read".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        byte[] dst = new byte[data.length];
+        int read = storage.region(0, dst, 0, data.length);
+
+        assertThat(read).isEqualTo(data.length);
+        assertThat(dst).isEqualTo(data);
+    }
+
+    public void testRegionReadsPartialChunk() throws IOException {
+        byte[] data = "abcdefghijklmnopqrstuvwxyz".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        byte[] dst = new byte[10];
+        int read = storage.region(5, dst, 0, 10);
+
+        assertThat(read).isEqualTo(10);
+        assertThat(dst).isEqualTo("fghijklmno".getBytes());
+    }
+
+    public void testRegionReadsLastBytes() throws IOException {
+        byte[] data = "abcdefghijklmnop".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        byte[] dst = new byte[6];
+        int read = storage.region(10, dst, 0, 6);
+
+        assertThat(read).isEqualTo(6);
+        assertThat(dst).isEqualTo("klmnop".getBytes());
+    }
+
+    public void testRegionWithDstOffset() throws IOException {
+        byte[] data = "offset-test-data".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        byte[] dst = new byte[20];
+        int read = storage.region(0, dst, 5, 10);
+
+        assertThat(read).isEqualTo(10);
+        byte[] slice = new byte[10];
+        System.arraycopy(dst, 5, slice, 0, 10);
+        assertThat(slice).isEqualTo("offset-tes".getBytes());
+    }
+
+    public void testRegionNoFile() throws IOException {
+        byte[] dst = new byte[10];
+        int read = storage.region(0, dst, 0, 10);
+
+        assertThat(read).isZero();
+    }
+
+    public void testRegionLegacySnapshot() throws IOException {
+        byte[] data = "legacy-region".getBytes();
+        Files.write(snapshotPath(), data);
+
+        byte[] dst = new byte[data.length];
+        int read = storage.region(0, dst, 0, data.length);
+
+        assertThat(read).isEqualTo(data.length);
+        assertThat(dst).isEqualTo(data);
+    }
+
+    public void testRegionMultipleReadsReassemble() throws IOException {
+        byte[] data = "reassemble-this-snapshot-data".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        int chunkSize = 8;
+        byte[] reassembled = new byte[data.length];
+        int totalChunks = (int) Math.ceil((double) data.length / chunkSize);
+
+        for (int i = 0; i < totalChunks; i++) {
+            int offset = i * chunkSize;
+            int len = Math.min(chunkSize, data.length - offset);
+            int read = storage.region(offset, reassembled, offset, len);
+            assertThat(read).isEqualTo(len);
+        }
+
+        assertThat(reassembled).isEqualTo(data);
     }
 
     public void testLegacySnapshotOverwrittenWithNewFormat() throws IOException {
         Files.write(snapshotPath(), "legacy-data".getBytes());
 
-        storage.writeSnapshot(ByteBuffer.wrap("new-data".getBytes()));
+        storage.writeSnapshot(new ByteArrayInputStream("new-data".getBytes()));
 
         byte[] rawHeader = readRawBytes(0, SNAP_HEADER_SIZE);
         assertThat(rawHeader[0]).isEqualTo(SNAP_MAGIC[0]);

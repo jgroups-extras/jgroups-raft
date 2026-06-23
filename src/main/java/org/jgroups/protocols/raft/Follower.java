@@ -13,13 +13,15 @@ import java.nio.ByteBuffer;
  * @since  0.1
  */
 public class Follower extends RaftImpl {
+
+    private static final ByteBuffer EMPTY_BUFFER = ByteBuffer.allocate(0);
+
     public Follower(RAFT raft) {
         super(raft);
     }
 
     @Override
-    public void handleInstallSnapshotRequest(Message msg, Address leader,
-                                             long last_included_index, long last_included_term) {
+    public void handleInstallSnapshotRequest(Message msg, RaftHeader hdr, Address leader) {
         if (raft.state_machine == null) {
             raft.getLog().error("%s: no state machine set, cannot install snapshot", raft.getAddress());
             return;
@@ -30,11 +32,12 @@ public class Follower extends RaftImpl {
             return;
         }
 
-        Address sender=msg.src();
         try {
             // Read into state machine
-            ByteBuffer sn=ByteBuffer.wrap(msg.getArray(), msg.getOffset(), msg.getLength());
-            snapshotManager.install(sn, last_included_index, last_included_term, (lastIncludedIndex, lastIncludedTerm) -> {
+            ByteBuffer sn = EMPTY_BUFFER;
+            if (msg.getArray() != null)
+                sn = ByteBuffer.wrap(msg.getArray(), msg.getOffset(), msg.getLength());
+            snapshotManager.install(sn, hdr, (lastIncludedIndex, lastIncludedTerm) -> {
                 raft.commit_index = raft.last_appended = lastIncludedIndex;
                 AppendResult result = new AppendResult(AppendResult.Result.OK, lastIncludedIndex)
                         .commitIndex(raft.commitIndex());
@@ -43,7 +46,7 @@ public class Follower extends RaftImpl {
                 raft.getDownProtocol().down(ack);
             });
         } catch(Exception ex) {
-            raft.getLog().error("%s: failed applying snapshot from %s: %s", raft.getAddress(), sender, ex);
+            raft.getLog().error("%s: failed applying snapshot from %s: %s", raft.getAddress(), msg.src(), ex);
         }
     }
 

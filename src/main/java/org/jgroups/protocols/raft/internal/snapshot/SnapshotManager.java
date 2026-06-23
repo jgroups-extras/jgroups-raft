@@ -1,15 +1,15 @@
 package org.jgroups.protocols.raft.internal.snapshot;
 
 import org.jgroups.Address;
-import org.jgroups.BytesMessage;
 import org.jgroups.Message;
-import org.jgroups.protocols.raft.InstallSnapshotRequest;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.RaftHeader;
 import org.jgroups.protocols.raft.internal.RaftEventLoop;
 import org.jgroups.raft.AsyncSnapshot;
 
 import java.nio.ByteBuffer;
+import java.nio.file.Path;
 
 /**
  * Manages snapshot creation and transfer for a RAFT node.
@@ -96,12 +96,14 @@ public sealed interface SnapshotManager permits AsynchronousSnapshotManager, Syn
     /**
      * Sends a snapshot to a lagging follower.
      *
-     * @param dest the follower's address
+     * @param message if there is an underlying message triggering the transfer. <code>null</code>, otherwise.
+     * @param hdr the header associated with the provided message. Can be <code>null</code>
      * @param lastIndex the last committed log index reflected in the snapshot
-     * @param lastTerm the term of the last committed log entry
+     * @param lastTerm  the term of the last committed log entry
+     * @param dest      the follower's address
      * @throws Exception if the snapshot cannot be read or the message cannot be sent
      */
-    void transferTo(Address dest, long lastIndex, long lastTerm) throws Exception;
+    void transferTo(Message message, RaftHeader hdr, long lastIndex, long lastTerm, Address dest) throws Exception;
 
     /**
      * Installs a snapshot received from the leader.
@@ -117,12 +119,11 @@ public sealed interface SnapshotManager permits AsynchronousSnapshotManager, Syn
      * </p>
      *
      * @param data the raw snapshot bytes
-     * @param lastIncludedIndex the last log index reflected in the snapshot
-     * @param lastIncludedTerm the term of the last log entry reflected in the snapshot
+     * @param hdr the request header with additional information
      * @param action callback for post-install protocol actions
      * @throws Exception if the snapshot cannot be installed
      */
-    void install(ByteBuffer data, long lastIncludedIndex, long lastIncludedTerm, PostInstallAction action) throws Exception;
+    void install(ByteBuffer data, RaftHeader hdr, PostInstallAction action) throws Exception;
 
     /**
      * Returns the metrics view for snapshot operations.
@@ -146,14 +147,11 @@ public sealed interface SnapshotManager permits AsynchronousSnapshotManager, Syn
      * @return a new snapshot manager
      */
     static SnapshotManager create(RAFT raft, PersistentState persistentState, RaftEventLoop eventLoop) {
-        DefaultSnapshotMetrics metrics = new DefaultSnapshotMetrics();
-        SnapshotSender sender = (dest, snapshot, lastIndex, lastTerm) -> {
-            Message msg=new BytesMessage(dest, snapshot)
-                    .putHeader(raft.getId(), new InstallSnapshotRequest(raft.currentTerm(), raft.leader(), lastIndex, lastTerm));
-            raft.getDownProtocol().down(msg);
-        };
+        DefaultSnapshotMetrics metrics = new DefaultSnapshotMetrics(raft.timeService());
+        SnapshotSender sender = new JGroupsRaftSnapshotSender(raft);
         if (raft.stateMachine() instanceof AsyncSnapshot as) {
-            return new AsynchronousSnapshotManager(eventLoop, as, persistentState, raft.log(), sender, metrics);
+            return new AsynchronousSnapshotManager(eventLoop, as, persistentState, raft.log(), sender, metrics,
+                    Path.of(raft.logDir()), raft.snapshotChunkSize(), raft.snapshotBatchSize());
         }
 
         return new SynchronousSnapshotManager(

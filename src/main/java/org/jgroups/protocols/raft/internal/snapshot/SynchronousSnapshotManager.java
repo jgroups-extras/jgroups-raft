@@ -1,10 +1,13 @@
 package org.jgroups.protocols.raft.internal.snapshot;
 
 import org.jgroups.Address;
+import org.jgroups.Message;
 import org.jgroups.logging.LogFactory;
+import org.jgroups.protocols.raft.InstallSnapshotRequest;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.PersistentState;
+import org.jgroups.protocols.raft.RaftHeader;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
@@ -73,7 +76,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
     }
 
     @Override
-    public void transferTo(Address dest, long lastIndex, long lastTerm) throws Exception {
+    public void transferTo(Message message, RaftHeader hdr, long lastIndex, long lastTerm, Address dest) throws Exception {
         ByteBuffer data = log.getSnapshot();
 
         LOG.debug("Sending snapshot (%s), to %s (%d - %d)", Util.printBytes(data.position()), dest, lastIndex, lastTerm);
@@ -81,7 +84,13 @@ final class SynchronousSnapshotManager implements SnapshotManager {
     }
 
     @Override
-    public void install(ByteBuffer data, long lastIncludedIndex, long lastIncludedTerm, PostInstallAction action) throws Exception {
+    public void install(ByteBuffer data, RaftHeader hdr, PostInstallAction action) throws Exception {
+        if (!(hdr instanceof InstallSnapshotRequest isr)) {
+            LOG.warn("Synchronous handler unable to handle request: %s", hdr);
+            return;
+        }
+        long lastIncludedIndex = isr.lastIncludedIndex();
+        long lastIncludedTerm = isr.lastIncludedTerm();
         LOG.debug("Restoring state machine with snapshot (%d bytes), (index=%d, term=%d)", data.remaining(), lastIncludedIndex, lastIncludedTerm);
 
         int pos = data.position();

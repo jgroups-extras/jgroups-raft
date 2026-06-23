@@ -20,6 +20,9 @@ import org.jgroups.protocols.raft.internal.request.DownRequest;
 import org.jgroups.protocols.raft.internal.request.RequestFactory;
 import org.jgroups.protocols.raft.internal.request.UpRequest;
 import org.jgroups.protocols.raft.internal.snapshot.SnapshotManager;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkRequest;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkResponse;
+import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotMetadataRequest;
 import org.jgroups.protocols.raft.state.RaftState;
 import org.jgroups.raft.Options;
 import org.jgroups.raft.Settable;
@@ -187,6 +190,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     @ManagedAttribute(description="Number of failed AppendEntriesRequests because the prev entry's term didn't match")
     protected int                       num_failed_append_requests_wrong_term;
+
+    @ManagedAttribute(description = "Size of the chunk transferred in async snapshot")
+    protected int snapshot_chunk_size;
+
+    @ManagedAttribute(description = "Batch size utilized during async snapshot")
+    protected int snapshot_batch_size;
 
     protected StateMachine              state_machine;
 
@@ -357,6 +366,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     public boolean isLeader() {
         Address l = leader();
         return l != null && Objects.equals(l, local_addr);
+    }
+
+    public int snapshotChunkSize() {
+        return snapshot_chunk_size;
+    }
+
+    public int snapshotBatchSize() {
+        return snapshot_batch_size;
     }
 
     public RAFT         stateMachine(StateMachine sm) {
@@ -1020,29 +1037,56 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(ri == null)
             return;
 
-        if(hdr instanceof AppendEntriesRequest) {
+        if (hdr instanceof AppendEntriesRequest r) {
             long current_term = currentTerm();
-            AppendEntriesRequest r=(AppendEntriesRequest)hdr;
             ObjectMessage om=(ObjectMessage)msg;
             log.trace("%s: from %s, %s header %s", local_addr, msg.src(), om, r);
             AppendResult res=ri.handleAppendEntriesRequest(om.getObject(), r.leader,
-                                                           r.prev_log_index, r.prev_log_term, r.entry_term,
-                                                           r.leader_commit);
+                    r.prev_log_index, r.prev_log_term, r.entry_term,
+                    r.leader_commit);
             res.commitIndex(commit_index);
             Message rsp=new EmptyMessage(msg.src()).putHeader(id, new AppendEntriesResponse(current_term, res));
             down_prot.down(rsp);
+            return;
         }
-        else if(hdr instanceof AppendEntriesResponse) {
-            AppendEntriesResponse rsp=(AppendEntriesResponse)hdr;
+
+        if (hdr instanceof AppendEntriesResponse rsp) {
             log.trace("%s: from %s res %s", local_addr, msg.src(), rsp);
             ri.handleAppendEntriesResponse(msg.src(),rsp.curr_term, rsp.result);
+            return;
         }
-        else if(hdr instanceof InstallSnapshotRequest) {
-            InstallSnapshotRequest req=(InstallSnapshotRequest)hdr;
-            ri.handleInstallSnapshotRequest(msg, req.leader, req.last_included_index, req.last_included_term);
+
+        if (hdr instanceof InstallSnapshotRequest req) {
+            ri.handleInstallSnapshotRequest(msg, req, req.leader());
+            return;
         }
-        else
-            log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
+
+        if (hdr instanceof SnapshotMetadataRequest smr) {
+            ri.handleInstallSnapshotRequest(msg, smr, smr.leader());
+            return;
+        }
+
+        if (hdr instanceof SnapshotChunkResponse scr) {
+            ri.handleInstallSnapshotRequest(msg, scr, msg.src());
+            return;
+        }
+
+        if (hdr instanceof SnapshotChunkRequest scr) {
+            if (snapshotManager == null) {
+                log.warn("Could not handle request %s because snapshot manager is unavailable", scr);
+                return;
+            }
+
+            try {
+                LogEntry last_committed_entry = log_impl.get(commitIndex());
+                snapshotManager.transferTo(msg, scr, scr.lastIncludedIndex(), last_committed_entry.term, msg.src());
+            } catch (Exception e) {
+                log.error("%s: Failed serving snapshot chunks to %s", local_addr, msg.src(), e);
+            }
+            return;
+        }
+
+        log.warn("%s: invalid header %s",local_addr,hdr.getClass().getCanonicalName());
     }
 
     protected void processQueue() {
@@ -1347,7 +1391,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             throw new IllegalStateException("Snapshot not available");
 
         LogEntry last_committed_entry = log_impl.get(commitIndex());
-        snapshotManager.transferTo(dest, commit_index, last_committed_entry.term);
+        snapshotManager.transferTo(null, null, commit_index, last_committed_entry.term, dest);
     }
 
     /**
