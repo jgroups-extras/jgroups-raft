@@ -2,8 +2,11 @@ package org.jgroups.protocols.raft.internal.snapshot;
 
 import org.jgroups.raft.util.TimeService;
 
+import java.util.Arrays;
+
 final class DefaultSnapshotMetrics implements SnapshotMetrics {
 
+    private static final int[] EMPTY_CHUNKS = {};
     private final TimeService timeService;
 
     private int numSnapshots;
@@ -17,6 +20,12 @@ final class DefaultSnapshotMetrics implements SnapshotMetrics {
     private long lastChunkTimestamp;
     private long transferStartTimestamp;
     private long lastTransferDurationNs;
+    private int activeTransferTotalChunks;
+    private int activeTransferReceived;
+    private int activeTransferInFlight;
+    private int activeTransferHighestRequested;
+    private int[] activeTransferMissing = EMPTY_CHUNKS;
+
 
     DefaultSnapshotMetrics(TimeService timeService) {
         this.timeService = timeService;
@@ -68,6 +77,31 @@ final class DefaultSnapshotMetrics implements SnapshotMetrics {
     }
 
     @Override
+    public int activeTransferTotalChunks() {
+        return activeTransferTotalChunks;
+    }
+
+    @Override
+    public int activeTransferChunksReceived() {
+        return activeTransferReceived;
+    }
+
+    @Override
+    public int activeTransferChunksInFlight() {
+        return activeTransferInFlight;
+    }
+
+    @Override
+    public int activeTransferHighestRequested() {
+        return activeTransferHighestRequested;
+    }
+
+    @Override
+    public int[] activeTransferMissingChunks() {
+        return Arrays.copyOf(activeTransferMissing, activeTransferMissing.length);
+    }
+
+    @Override
     public void reset() {
         numSnapshots = 0;
         numSnapshotsReceived = 0;
@@ -80,6 +114,7 @@ final class DefaultSnapshotMetrics implements SnapshotMetrics {
         lastChunkTimestamp = 0;
         transferStartTimestamp = 0;
         lastTransferDurationNs = 0;
+        clearTransferProgress();
     }
 
     void snapshotCreated() {
@@ -112,6 +147,22 @@ final class DefaultSnapshotMetrics implements SnapshotMetrics {
         lastChunkTimestamp = now;
         numChunksReceived++;
         numBytesReceived += bytes;
+    }
+
+    void updateTransferProgress(int totalChunks, int received, int inFlight, int highestRequested, int[] missing) {
+        this.activeTransferTotalChunks = totalChunks;
+        this.activeTransferReceived = received;
+        this.activeTransferInFlight = inFlight;
+        this.activeTransferHighestRequested = highestRequested;
+        this.activeTransferMissing = missing;
+    }
+
+    void clearTransferProgress() {
+        activeTransferTotalChunks = 0;
+        activeTransferReceived = 0;
+        activeTransferInFlight = 0;
+        activeTransferHighestRequested = 0;
+        activeTransferMissing = EMPTY_CHUNKS;
     }
 
     void chunkTransferCompleted() {

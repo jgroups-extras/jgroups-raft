@@ -77,6 +77,42 @@ public sealed interface SnapshotMetrics permits DefaultSnapshotMetrics {
     long lastTransferDurationNanos();
 
     /**
+     * Total chunks expected in the active chunked transfer.
+     *
+     * @return the total chunk count, zero when no transfer is active
+     */
+    int activeTransferTotalChunks();
+
+    /**
+     * Chunks received so far in the active chunked transfer.
+     *
+     * @return the received chunk count, zero when no transfer is active
+     */
+    int activeTransferChunksReceived();
+
+    /**
+     * Chunks requested but not yet received in the active transfer.
+     *
+     * @return the in-flight chunk count, zero when no transfer is active
+     */
+    int activeTransferChunksInFlight();
+
+    /**
+     * Highest chunk index requested (exclusive) in the active transfer.
+     *
+     * @return the request frontier, zero when no transfer is active
+     */
+    int activeTransferHighestRequested();
+
+    /**
+     * Indices of chunks that have been requested but not yet received.
+     * Returns a fresh copy on each invocation.
+     *
+     * @return the missing chunk indices, empty when no transfer is active
+     */
+    int[] activeTransferMissingChunks();
+
+    /**
      * Resets all metrics.
      */
     void reset();

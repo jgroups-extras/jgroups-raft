@@ -192,10 +192,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected int                       num_failed_append_requests_wrong_term;
 
     @ManagedAttribute(description = "Size of the chunk transferred in async snapshot")
-    protected int snapshot_chunk_size;
+    protected int snapshot_chunk_size = 2 << 18;
 
     @ManagedAttribute(description = "Batch size utilized during async snapshot")
-    protected int snapshot_batch_size;
+    protected int snapshot_batch_size = 16;
 
     protected StateMachine              state_machine;
 
@@ -349,6 +349,56 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return snapshotManager != null
                 ? snapshotManager.metrics().numFailedSnapshotsInstalled()
                 : 0;
+    }
+
+    @ManagedAttribute(description = "Total snapshot chunks received across all chunked transfers")
+    public int numChunksReceived() {
+        return snapshotManager != null ? snapshotManager.metrics().numChunksReceived() : 0;
+    }
+
+    @ManagedAttribute(description = "Total snapshot bytes received across all chunked transfers", type = AttributeType.BYTES)
+    public long numBytesReceived() {
+        return snapshotManager != null ? snapshotManager.metrics().numBytesReceived() : 0;
+    }
+
+    @ManagedAttribute(description = "Chunked transfers that started but failed before completion")
+    public int numFailedChunkTransfers() {
+        return snapshotManager != null ? snapshotManager.metrics().numFailedChunkTransfers() : 0;
+    }
+
+    @ManagedAttribute(description = "Average interval between consecutive chunk arrivals in nanoseconds")
+    public long avgChunkIntervalNanos() {
+        return snapshotManager != null ? snapshotManager.metrics().avgChunkIntervalNanos() : 0;
+    }
+
+    @ManagedAttribute(description = "Duration of the last completed chunked transfer in nanoseconds")
+    public long lastTransferDurationNanos() {
+        return snapshotManager != null ? snapshotManager.metrics().lastTransferDurationNanos() : 0;
+    }
+
+    @ManagedAttribute(description = "Total chunks expected in the active chunked transfer")
+    public int activeTransferTotalChunks() {
+        return snapshotManager != null ? snapshotManager.metrics().activeTransferTotalChunks() : 0;
+    }
+
+    @ManagedAttribute(description = "Chunks received so far in the active chunked transfer")
+    public int activeTransferChunksReceived() {
+        return snapshotManager != null ? snapshotManager.metrics().activeTransferChunksReceived() : 0;
+    }
+
+    @ManagedAttribute(description = "Chunks requested but not yet received in the active transfer")
+    public int activeTransferChunksInFlight() {
+        return snapshotManager != null ? snapshotManager.metrics().activeTransferChunksInFlight() : 0;
+    }
+
+    @ManagedAttribute(description = "Highest chunk index requested in the active transfer")
+    public int activeTransferHighestRequested() {
+        return snapshotManager != null ? snapshotManager.metrics().activeTransferHighestRequested() : 0;
+    }
+
+    @ManagedAttribute(description = "Indices of chunks requested but not yet received in the active transfer")
+    public int[] activeTransferMissingChunks() {
+        return snapshotManager != null ? snapshotManager.metrics().activeTransferMissingChunks() : new int[0];
     }
 
     SnapshotManager snapshotManager() {

@@ -43,6 +43,7 @@ import java.util.stream.Stream;
 
 import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
@@ -209,7 +210,7 @@ public class AsynchronousSnapshotManagerTest {
         CapturingSnapshotSender capturingSender = new CapturingSnapshotSender();
         AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
                 createEventLoop(), target, targetState, log, capturingSender, metrics,
-                tempDir, testChunkSize, 4);
+                tempDir, testChunkSize, 16);
 
         long term = 1;
         long lastIndex = 5;
@@ -562,6 +563,117 @@ public class AsynchronousSnapshotManagerTest {
         assertThat(metrics.numSnapshotsReceived()).isZero();
         assertThat(metrics.numFailedSnapshotsTaken()).isZero();
         assertThat(metrics.numFailedSnapshotsInstalled()).isZero();
+        assertThat(metrics.activeTransferTotalChunks()).isZero();
+        assertThat(metrics.activeTransferChunksReceived()).isZero();
+        assertThat(metrics.activeTransferChunksInFlight()).isZero();
+        assertThat(metrics.activeTransferHighestRequested()).isZero();
+        assertThat(metrics.activeTransferMissingChunks()).isEmpty();
+    }
+
+    @DataProvider
+    public Object[][] slidingWindowConfigurations() {
+        return new Object[][] {
+                // chunkSize, batchSize
+                { 16, 4 },
+                { 16, 8 },
+                { 13, 3 },
+                { 37, 5 },
+                { 17, 7 },
+        };
+    }
+
+    @Test(dataProvider = "slidingWindowConfigurations")
+    public void testSlidingWindowRefill(int testChunkSize, int testBatchSize) throws Exception {
+        byte[] raw = createPaddedSnapshot(persistentState, 42, testChunkSize * 12);
+
+        Address leader = Util.createRandomAddress("leader");
+        TestAsyncSnapshot target = new TestAsyncSnapshot(0);
+        PersistentState targetState = new PersistentState();
+
+        CapturingSnapshotSender capturingSender = new CapturingSnapshotSender();
+        AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                createEventLoop(), target, targetState, log, capturingSender, metrics,
+                tempDir, testChunkSize, testBatchSize);
+
+        long term = 1;
+        long lastIndex = 5;
+        long lastTerm = 2;
+
+        manager.install(ByteBuffer.allocate(0),
+                new SnapshotMetadataRequest(leader, term, lastTerm, lastIndex, raw.length), (idx, t) -> {});
+
+        assertThat(capturingSender.chunkRequestCount.get()).isEqualTo(1);
+
+        int totalChunks = (int) Math.ceil((double) raw.length / testChunkSize);
+        for (int i = 0; i < totalChunks; i++) {
+            int offset = i * testChunkSize;
+            int len = Math.min(testChunkSize, raw.length - offset);
+            boolean last = (i == totalChunks - 1);
+
+            ByteBuffer chunk = ByteBuffer.wrap(raw, offset, len);
+            manager.install(chunk,
+                    new SnapshotChunkResponse(term, lastIndex, offset, last), (idx, t) -> {});
+        }
+
+        assertThat(capturingSender.chunkRequestCount.get()).isGreaterThan(1);
+        assertThat(target.counter).isEqualTo(42);
+        assertThat(targetState.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
+        assertThat(metrics.numSnapshotsReceived()).isEqualTo(1);
+        assertThat(metrics.numChunksReceived()).isEqualTo(totalChunks);
+        assertThat(metrics.numBytesReceived()).isEqualTo(raw.length);
+    }
+
+    public void testMetricsGaugesDuringTransfer() throws Exception {
+        int testChunkSize = 16;
+        int testBatchSize = 16;
+        byte[] raw = createPaddedSnapshot(persistentState, 55, testChunkSize * 5);
+
+        Address leader = Util.createRandomAddress("leader");
+        TestAsyncSnapshot target = new TestAsyncSnapshot(0);
+        PersistentState targetState = new PersistentState();
+
+        AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                createEventLoop(), target, targetState, log, noOpSender(), metrics,
+                tempDir, testChunkSize, testBatchSize);
+
+        int totalChunks = (int) Math.ceil((double) raw.length / testChunkSize);
+
+        assertThat(metrics.activeTransferTotalChunks()).isZero();
+
+        long term = 1;
+        long lastIndex = 5;
+        long lastTerm = 2;
+
+        manager.install(ByteBuffer.allocate(0),
+                new SnapshotMetadataRequest(leader, term, lastTerm, lastIndex, raw.length), (idx, t) -> {});
+
+        ByteBuffer firstChunk = ByteBuffer.wrap(raw, 0, Math.min(testChunkSize, raw.length));
+        manager.install(firstChunk,
+                new SnapshotChunkResponse(term, lastIndex, 0, false), (idx, t) -> {});
+
+        assertThat(metrics.activeTransferTotalChunks()).isEqualTo(totalChunks);
+        assertThat(metrics.activeTransferChunksReceived()).isEqualTo(1);
+        assertThat(metrics.activeTransferChunksInFlight()).isEqualTo(totalChunks - 1);
+        assertThat(metrics.activeTransferHighestRequested()).isEqualTo(totalChunks);
+
+        for (int i = 1; i < totalChunks; i++) {
+            int offset = i * testChunkSize;
+            int len = Math.min(testChunkSize, raw.length - offset);
+            boolean last = (i == totalChunks - 1);
+
+            ByteBuffer chunk = ByteBuffer.wrap(raw, offset, len);
+            manager.install(chunk,
+                    new SnapshotChunkResponse(term, lastIndex, offset, last), (idx, t) -> {});
+        }
+
+        assertThat(metrics.activeTransferTotalChunks()).isZero();
+        assertThat(metrics.activeTransferChunksReceived()).isZero();
+        assertThat(metrics.activeTransferChunksInFlight()).isZero();
+        assertThat(metrics.activeTransferHighestRequested()).isZero();
+        assertThat(metrics.activeTransferMissingChunks()).isEmpty();
+
+        assertThat(target.counter).isEqualTo(55);
+        assertThat(metrics.numSnapshotsReceived()).isEqualTo(1);
     }
 
     private AsynchronousSnapshotManager createManager(TestAsyncSnapshot asyncSnapshot, RaftEventLoop eventLoop) {
@@ -627,6 +739,18 @@ public class AsynchronousSnapshotManagerTest {
         ps.writeTo(out);
         out.writeInt(value);
         return ByteBuffer.wrap(out.buffer(), 0, out.position());
+    }
+
+    private static byte[] createPaddedSnapshot(PersistentState ps, int value, int minSize) throws Exception {
+        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(minSize * 2, true);
+        ps.writeTo(out);
+        out.writeInt(value);
+        while (out.position() < minSize) {
+            out.writeInt(out.position());
+        }
+        byte[] result = new byte[out.position()];
+        System.arraycopy(out.buffer(), 0, result, 0, out.position());
+        return result;
     }
 
     private static class TestAsyncSnapshot implements AsyncSnapshot {

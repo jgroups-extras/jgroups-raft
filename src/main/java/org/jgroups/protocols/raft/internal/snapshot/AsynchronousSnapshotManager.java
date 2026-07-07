@@ -210,14 +210,18 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         Path tempFile = temporaryFileLocation();
         FileChannel channel = FileChannel.open(tempFile,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);
+
+        ChunkTracker tracker = new ChunkTracker(smr.totalSize(), chunkSize, batchSize);
         transfer = new ActiveSnapshotTransfer(
-                smr.lastIncludedIndex(), smr.lastIncludedTerm(), smr.currTerm(), smr.totalSize(), smr.leader(), channel, action);
+                tracker, smr.lastIncludedIndex(), smr.lastIncludedTerm(), smr.currTerm(), smr.leader(), channel, action);
 
         metrics.chunkTransferStarted();
 
         LOG.debug("Starting chunk transfer from %s -> %s", smr, transfer);
 
-        sender.sendChunkRequest(smr.leader(), smr.currTerm(), smr.lastIncludedIndex(), 0, batchSize);
+        int initialBatch = Math.min(batchSize, tracker.totalChunks());
+        sender.sendChunkRequest(smr.leader(), smr.currTerm(), smr.lastIncludedIndex(), 0, initialBatch);
+        tracker.markRequested(initialBatch);
     }
 
     private void handleChunkResponse(ByteBuffer buffer, SnapshotChunkResponse scr) throws Exception {
@@ -232,22 +236,31 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         }
 
         int chunkBytes = buffer.remaining();
-        transfer.bytesReceived += transfer.channel.write(buffer, scr.offset());
-        transfer.nextChunkIndex++;
+
+        long writeOffset = scr.offset();
+        while (buffer.hasRemaining()) {
+            writeOffset += transfer.channel.write(buffer, writeOffset);
+        }
+        transfer.tracker.markReceived(scr.offset(), chunkBytes);
 
         metrics.chunkReceived(chunkBytes);
+        metrics.updateTransferProgress(
+                transfer.tracker.totalChunks(),
+                transfer.tracker.received(),
+                transfer.tracker.inFlight(),
+                transfer.tracker.highestRequested(),
+                transfer.tracker.missingChunks());
 
-        if (scr.isDone())
-            transfer.done = true;
-
-        if (transfer.bytesReceived == transfer.totalSize) {
+        if (transfer.tracker.isComplete()) {
             completeActiveTransfer();
             return;
         }
 
-        if (!transfer.done && transfer.nextChunkIndex % (batchSize - (batchSize >> 2)) == 0) {
-            int size = batchSize >> 2;
-            sender.sendChunkRequest(transfer.leader, transfer.currentTerm, transfer.lastIncludedIndex, transfer.nextChunkIndex, size);
+        if (transfer.tracker.shouldRefill()) {
+            int count = transfer.tracker.refillCount();
+            int start = transfer.tracker.nextRequestStart();
+            sender.sendChunkRequest(transfer.leader, transfer.currentTerm, transfer.lastIncludedIndex, start, count);
+            transfer.tracker.markRequested(count);
         }
     }
 
@@ -274,6 +287,8 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         } catch (IOException e) {
             LOG.warn("Failed to delete temporary snapshot file: %s", e.getMessage());
         }
+
+        metrics.clearTransferProgress();
     }
 
     private void completeActiveTransfer() throws Exception {
@@ -361,41 +376,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         }
     }
 
-    private static final class ActiveSnapshotTransfer {
-        private final long lastIncludedIndex;
-        private final long lastIncludedTerm;
-        private final long currentTerm;
-        private final long totalSize;
-        private final Address leader;
-        private final FileChannel channel;
-        private final PostInstallAction action;
-
-        private long bytesReceived;
-        private int nextChunkIndex;
-        private boolean done;
-
-        private ActiveSnapshotTransfer(long lastIncludedIndex, long lastIncludedTerm, long currentTerm, long totalSize, Address leader, FileChannel channel, PostInstallAction action) {
-            this.lastIncludedIndex = lastIncludedIndex;
-            this.lastIncludedTerm = lastIncludedTerm;
-            this.currentTerm = currentTerm;
-            this.totalSize = totalSize;
-            this.leader = leader;
-            this.channel = channel;
-            this.action = action;
-        }
-
-        @Override
-        public String toString() {
-            return "ActiveSnapshotTransfer{" +
-                    "lastIncludedIndex=" + lastIncludedIndex +
-                    ", lastIncludedTerm=" + lastIncludedTerm +
-                    ", currentTerm=" + currentTerm +
-                    ", totalSize=" + totalSize +
-                    ", leader=" + leader +
-                    ", channel=" + channel +
-                    ", action=" + action +
-                    ", bytesReceived=" + bytesReceived +
-                    '}';
-        }
-    }
+    private record ActiveSnapshotTransfer(
+            ChunkTracker tracker, long lastIncludedIndex, long lastIncludedTerm,
+            long currentTerm, Address leader, FileChannel channel, PostInstallAction action) { }
 }
