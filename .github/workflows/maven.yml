@@ -51,10 +51,10 @@ jobs:
           mvn --batch-mode --no-transfer-progress package -Dgroups=functional -DjgroupsTestsParallelThreads=2 &
           MVN_PID=$!
 
-          # Watchdog: capture thread dumps if tests hang, fires 2 min before step timeout.
+          # Watchdog: capture thread dumps if tests hang, fires 3 min before step timeout.
           (
-            sleep 120
-            echo "::warning::Tests appear hung after 2 minutes — capturing thread dumps"
+            sleep 180
+            echo "::warning::Tests appear hung after 3 minutes. Capturing thread dumps"
             mkdir -p target
 
             for pid in $(jcmd -l 2>/dev/null | grep -v "jcmd" | awk '{print $1}'); do
