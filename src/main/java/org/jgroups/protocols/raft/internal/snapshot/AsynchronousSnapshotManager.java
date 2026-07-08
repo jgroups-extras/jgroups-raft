@@ -26,6 +26,7 @@ import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.Objects;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executor;
 
@@ -199,7 +200,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
     private void handleMetadata(SnapshotMetadataRequest smr, PostInstallAction action) throws IOException {
         if (transfer != null) {
-            if (transfer.lastIncludedIndex == smr.lastIncludedIndex()) {
+            if (transfer.lastIncludedIndex == smr.lastIncludedIndex() && Objects.equals(transfer.leader(), smr.leader())) {
                 LOG.debug("Repeated request for same index, and transfer already in progress, returning: %s", smr);
                 return;
             }

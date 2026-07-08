@@ -1,5 +1,7 @@
 package org.jgroups.protocols.raft;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -9,6 +11,7 @@ import org.jgroups.protocols.pbcast.NAKACK2;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.stack.ProtocolStack;
+import org.jgroups.util.Util;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -21,9 +24,8 @@ import java.util.function.BooleanSupplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.testng.SkipException;
 import org.testng.annotations.Test;
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Tests leader election on a merge (https://github.com/jgroups-extras/jgroups-raft/issues/125). Verifies that there can be
@@ -61,6 +63,9 @@ public class MergeTest extends BaseRaftElectionTest.ChannelBased {
      */
     //@Test(invocationCount=10)
     public void testMerge(Class<?> ignore) {
+        if (Util.checkForWindows())
+            throw new SkipException("Not running test for windows");
+
         long id=a.getView().getViewId().getId() +1;
         View v1=createView(id, a, b), v2=createView(id, c, d), v3=createView(id, e);
 

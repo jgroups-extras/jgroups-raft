@@ -1441,7 +1441,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             throw new IllegalStateException("Snapshot not available");
 
         LogEntry last_committed_entry = log_impl.get(commitIndex());
-        snapshotManager.transferTo(null, null, commit_index, last_committed_entry.term, dest);
+        long firstSnapshotIndex = log_impl.firstAppended();
+        snapshotManager.transferTo(null, null, firstSnapshotIndex, last_committed_entry.term, dest);
     }
 
     /**

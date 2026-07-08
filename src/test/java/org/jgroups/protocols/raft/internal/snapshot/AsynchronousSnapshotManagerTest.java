@@ -335,6 +335,35 @@ public class AsynchronousSnapshotManagerTest {
         assertThat(capturingSender.chunkRequestCount.get()).isEqualTo(1);
     }
 
+    public void testSameIndexDifferentLeaderAbortsAndRestarts() throws Exception {
+        Address leaderA = Util.createRandomAddress("leader-A");
+        Address leaderB = Util.createRandomAddress("leader-B");
+        TestAsyncSnapshot target = new TestAsyncSnapshot(0);
+        CapturingSnapshotSender capturingSender = new CapturingSnapshotSender();
+
+        AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                createEventLoop(), target, persistentState, log, capturingSender, metrics,
+                tempDir, 64, 4);
+
+        long term = 1;
+        long lastTerm = 2;
+        long lastIndex = 5;
+        long totalSize = 128;
+
+        manager.install(ByteBuffer.allocate(0),
+                new SnapshotMetadataRequest(leaderA, term, lastTerm, lastIndex, totalSize),
+                (idx, t) -> {});
+
+        assertThat(capturingSender.chunkRequestCount.get()).isEqualTo(1);
+
+        manager.install(ByteBuffer.allocate(0),
+                new SnapshotMetadataRequest(leaderB, term, lastTerm, lastIndex, totalSize),
+                (idx, t) -> {});
+
+        assertThat(capturingSender.chunkRequestCount.get()).isEqualTo(2);
+        assertThat(metrics.numFailedChunkTransfers()).isEqualTo(1);
+    }
+
     public void testDifferentMetadataAbortsAndRestarts() throws Exception {
         Address leader = Util.createRandomAddress("leader");
         TestAsyncSnapshot target = new TestAsyncSnapshot(0);
