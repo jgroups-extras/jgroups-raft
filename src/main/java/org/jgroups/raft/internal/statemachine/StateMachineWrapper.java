@@ -119,7 +119,7 @@ public sealed interface StateMachineWrapper<T> extends StateMachine {
             }
 
             @Override
-            public final void readContentFrom(DataInput in) {
+            public void readContentFrom(DataInput in) {
                 delegate.readContentFrom(in);
             }
 
@@ -164,6 +164,11 @@ public sealed interface StateMachineWrapper<T> extends StateMachine {
             @Override
             public SnapshotHandle prepareSnapshot() throws Exception {
                 return delegate.prepareSnapshot();
+            }
+
+            @Override
+            public void readContentFrom(DataInput in) {
+                delegate.readContentFrom(in);
             }
         }
 

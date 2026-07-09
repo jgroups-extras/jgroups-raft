@@ -53,29 +53,32 @@ public final class JRaftTestCluster<T> {
 
     public void waitUntilLeaderElected() {
         assertThat(eventually(() -> Stream.of(delegate.rafts)
+                .filter(r -> r != null)
                 .anyMatch(r -> r.role() == JGroupsRaftRole.LEADER), 10, TimeUnit.SECONDS))
                 .isTrue();
         assertThat(eventually(() -> Stream.of(delegate.rafts)
+                .filter(r -> r != null)
                 .allMatch(r -> r.state().leader() != null), 10, TimeUnit.SECONDS))
                 .isTrue();
-        assertThat(Stream.of(delegate.rafts).filter(r -> r.role() == JGroupsRaftRole.LEADER).count()).isOne();
+        assertThat(Stream.of(delegate.rafts)
+                .filter(r -> r != null && r.role() == JGroupsRaftRole.LEADER).count()).isOne();
     }
 
     public JGroupsRaft<T> leader() {
         return Stream.of(delegate.rafts)
-                .filter(r -> r.role() == JGroupsRaftRole.LEADER)
+                .filter(r -> r != null && r.role() == JGroupsRaftRole.LEADER)
                 .findFirst().orElse(null);
     }
 
     public JGroupsRaft<T> follower() {
         return Stream.of(delegate.rafts)
-                .filter(r -> r.role() == JGroupsRaftRole.FOLLOWER)
+                .filter(r -> r != null && r.role() == JGroupsRaftRole.FOLLOWER)
                 .findAny().orElse(null);
     }
 
     public int leaderIndex() {
         for (int i = 0; i < delegate.rafts.length; i++) {
-            if (delegate.rafts[i].role() == JGroupsRaftRole.LEADER) {
+            if (delegate.rafts[i] != null && delegate.rafts[i].role() == JGroupsRaftRole.LEADER) {
                 return i;
             }
         }
@@ -94,9 +97,17 @@ public final class JRaftTestCluster<T> {
 
     public void close() throws Exception {
         for (JGroupsRaft<T> raft : delegate.rafts) {
-            raft.stop();
+            if (raft != null) raft.stop();
         }
         delegate.destroy();
+    }
+
+    public void stop(int index) throws Exception {
+        delegate.stop(index);
+    }
+
+    public void restart(int index) throws Exception {
+        delegate.restart(index);
     }
 
     private static final class JRaftTest<T> extends BaseRaftChannelTest {
@@ -106,40 +117,31 @@ public final class JRaftTestCluster<T> {
         private final Class<T> clazz;
         private final JGroupsRaft<T>[] rafts;
         private final String clusterName;
+        private final Supplier<T> stateMachineFactory;
+        private final Consumer<JGroupsRaft.Builder<T>> builderCustomizer;
+        private final List<String> participants;
 
         @SuppressWarnings("unchecked")
         JRaftTest(Supplier<T> stateMachineFactory, Class<T> clazz, int size, Consumer<JGroupsRaft.Builder<T>> builderCustomizer) throws Exception {
             this.clusterSize = size;
             this.clazz = clazz;
+            this.stateMachineFactory = stateMachineFactory;
+            this.builderCustomizer = builderCustomizer;
             this.clusterName = "cluster-test-" + CLUSTER_ID.getAndIncrement();
+
+            participants = new ArrayList<>();
+            for (int i = 0; i < size; i++) {
+                participants.add(Character.toString('A' + i));
+            }
+
             createCluster(size);
 
             stateMachines = (T[]) new Object[size];
             rafts = new JGroupsRaft[size];
             channels = new JChannel[size];
 
-            List<String> participants = new ArrayList<>();
             for (int i = 0; i < size; i++) {
-                participants.add(Character.toString('A' + i));
-            }
-
-            for (int i = 0; i < size; i++) {
-                T sm = stateMachineFactory.get();
-                channels[i] = channel(i);
-                JGroupsRaft.Builder<T> builder = JGroupsRaft.builder(sm, clazz)
-                        .withJChannel(channels[i])
-                        .configureRaft()
-                            .withRaftId(Character.toString('A' + i))
-                            .withMembers(participants)
-                            .withLogClass(InMemoryLog.class)
-                            .and();
-
-                builderCustomizer.accept(builder);
-                JGroupsRaft<T> raft = builder.build();
-
-                raft.start();
-                this.rafts[i] = raft;
-                this.stateMachines[i] = sm;
+                startNode(i);
             }
         }
 
@@ -150,6 +152,40 @@ public final class JRaftTestCluster<T> {
 
         public void destroy() throws Exception {
             destroyCluster();
+        }
+
+        public void stop(int index) throws Exception {
+            if (rafts[index] != null) {
+                rafts[index].stop();
+                rafts[index] = null;
+            }
+            stateMachines[index] = null;
+            channels[index] = null;
+            close(index);
+        }
+
+        public void restart(int index) throws Exception {
+            createCluster(clusterSize);
+            startNode(index);
+        }
+
+        private void startNode(int index) {
+            T sm = stateMachineFactory.get();
+            channels[index] = channel(index);
+            JGroupsRaft.Builder<T> builder = JGroupsRaft.builder(sm, clazz)
+                    .withJChannel(channels[index])
+                    .configureRaft()
+                        .withRaftId(Character.toString('A' + index))
+                        .withMembers(participants)
+                        .withLogClass(InMemoryLog.class)
+                        .and();
+
+            builderCustomizer.accept(builder);
+            JGroupsRaft<T> raft = builder.build();
+
+            raft.start();
+            rafts[index] = raft;
+            stateMachines[index] = sm;
         }
     }
 }
