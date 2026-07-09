@@ -1,0 +1,256 @@
+
+[[AsyncSnapshotsTutorial]]
+=== Adding Async Snapshot Support
+
+This tutorial walks through adding asynchronous snapshot support to an existing
+annotation-based state machine. By the end, the state machine will capture a frozen view
+on the event loop, serialize it on a background thread, and transfer snapshots to
+followers in chunks.
+
+
+==== Starting point
+
+We start with a simple key-value store state machine using the annotation-based API:
+
+[source,java]
+----
+@JGroupsRaftStateMachine
+public interface KeyValueStore {
+
+    @StateMachineWrite(id = 1)
+    void put(String key, String value);
+
+    @StateMachineWrite(id = 2)
+    void remove(String key);
+
+    @StateMachineRead(id = 1)
+    String get(String key);
+
+    @StateMachineRead(id = 2)
+    int size();
+}
+----
+
+With a straightforward implementation:
+
+[source,java]
+----
+public class KeyValueStoreImpl implements KeyValueStore {
+
+    private final Map<String, String> data = new HashMap<>();
+
+    @Override
+    public void put(String key, String value) {
+        data.put(key, value);
+    }
+
+    @Override
+    public void remove(String key) {
+        data.remove(key);
+    }
+
+    @Override
+    public String get(String key) {
+        return data.get(key);
+    }
+
+    @Override
+    public int size() {
+        return data.size();
+    }
+}
+----
+
+This state machine has no snapshot support. If a follower falls behind and needs to catch
+up, it can only do so by replaying log entries. Once the log is truncated, those entries
+are gone and the follower cannot recover.
+
+
+==== Implement `AsyncSnapshot`
+
+Add `AsyncSnapshot` to the implemented interfaces:
+
+[source,java]
+----
+public class KeyValueStoreImpl implements KeyValueStore, AsyncSnapshot { // <1>
+
+    private final Map<String, String> data = new HashMap<>();
+
+    // ... write and read methods unchanged ...
+}
+----
+<1> Adding `AsyncSnapshot` tells the framework to use the two-phase snapshot path.
+
+
+==== Implement `prepareSnapshot`
+
+The `prepareSnapshot` method must capture a frozen view and return quickly. For a
+`HashMap`, taking a shallow copy is the simplest approach:
+
+[source,java]
+----
+@Override
+public SnapshotHandle prepareSnapshot() throws Exception {
+    Map<String, String> frozen = Map.copyOf(data); // <1>
+
+    return new SnapshotHandle() {
+        @Override
+        public void writeTo(DataOutput out) throws Exception {
+            out.writeInt(frozen.size()); // <2>
+            for (Map.Entry<String, String> e : frozen.entrySet()) {
+                out.writeUTF(e.getKey());
+                out.writeUTF(e.getValue());
+            }
+        }
+
+        @Override
+        public void release() { } // <3>
+    };
+}
+----
+<1> `Map.copyOf` creates an immutable snapshot. After this line, mutations to `data` do
+not affect `frozen`.
+<2> `writeTo` runs on a background thread. It only reads from `frozen`, never from
+`data`.
+<3> No resources to release in this case. For database-backed state machines, this is
+where you would close the snapshot handle.
+
+NOTE: `Map.copyOf` iterates the entire map and allocates a new copy. For very large maps,
+consider using a copy-on-write structure so the capture is O(1). See
+<<AsyncSnapshotsExplanation, the consistency contract>> for strategies.
+
+
+==== Implement `readContentFrom`
+
+This method restores the full state from a snapshot stream. It is called when a follower
+installs a snapshot received from the leader:
+
+[source,java]
+----
+@Override
+public void readContentFrom(DataInput in) throws Exception {
+    data.clear(); // <1>
+    int size = in.readInt();
+    for (int i = 0; i < size; i++) {
+        data.put(in.readUTF(), in.readUTF());
+    }
+}
+----
+<1> Clear existing state before restoring. The snapshot represents the complete state of
+the leader at the time it was taken. Any local state must be discarded and fully replaced
+with the snapshot contents.
+
+The format must match what `writeTo` produces.
+
+
+==== Build and start the cluster
+
+Create a three-node cluster using the builder API:
+
+[source,java]
+----
+JGroupsRaft<KeyValueStore> raft = JGroupsRaft
+        .builder(new KeyValueStoreImpl(), KeyValueStore.class)
+        .withJChannel(new JChannel("raft.xml"))
+        .configureRaft()
+            .withRaftId("A")
+            .withMembers("A", "B", "C")
+            .and()
+        .build();
+
+raft.start();
+----
+
+Repeat for nodes B and C with their respective raft IDs. Once a majority is up, a leader
+is elected and the cluster is ready to accept writes.
+
+
+==== Trigger a snapshot and observe transfer
+
+Submit some writes through the leader, then trigger a snapshot:
+
+[source,java]
+----
+JGroupsRaft<KeyValueStore> leader = ...; // the elected leader
+
+leader.write(sm -> sm.put("color", "blue"));
+leader.write(sm -> sm.put("shape", "circle"));
+
+RAFT raft = leader.jChannel().getProtocolStack().findProtocol(RAFT.class);
+raft.snapshot(); // <1>
+----
+<1> Creates a snapshot asynchronously. The event loop continues processing while the state
+is serialized on a background thread.
+
+If a follower was behind (e.g., it was stopped and restarted after the snapshot was taken),
+it will receive the snapshot via chunked transfer instead of replaying individual log
+entries.
+
+You can observe the transfer through the JMX metrics on the follower:
+
+* `num_snapshot_received` increments when the snapshot is installed.
+* `active_transfer_chunks_received` and `active_transfer_total_chunks` show progress
+  during an active transfer.
+
+See <<AsyncSnapshotsReference, the reference>> for the full list of metrics.
+
+
+==== Complete implementation
+
+For reference, here is the complete state machine with async snapshot support:
+
+[source,java]
+----
+public class KeyValueStoreImpl implements KeyValueStore, AsyncSnapshot {
+
+    private final Map<String, String> data = new HashMap<>();
+
+    @Override
+    public void put(String key, String value) {
+        data.put(key, value);
+    }
+
+    @Override
+    public void remove(String key) {
+        data.remove(key);
+    }
+
+    @Override
+    public String get(String key) {
+        return data.get(key);
+    }
+
+    @Override
+    public int size() {
+        return data.size();
+    }
+
+    @Override
+    public SnapshotHandle prepareSnapshot() throws Exception {
+        Map<String, String> frozen = Map.copyOf(data);
+
+        return new SnapshotHandle() {
+            @Override
+            public void writeTo(DataOutput out) throws Exception {
+                out.writeInt(frozen.size());
+                for (Map.Entry<String, String> e : frozen.entrySet()) {
+                    out.writeUTF(e.getKey());
+                    out.writeUTF(e.getValue());
+                }
+            }
+
+            @Override
+            public void release() { }
+        };
+    }
+
+    @Override
+    public void readContentFrom(DataInput in) throws Exception {
+        data.clear();
+        int size = in.readInt();
+        for (int i = 0; i < size; i++) {
+            data.put(in.readUTF(), in.readUTF());
+        }
+    }
+}
+----

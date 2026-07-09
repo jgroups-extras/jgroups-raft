@@ -1,0 +1,7 @@
+
+== Reference
+
+Technical descriptions of interfaces, configuration properties, and runtime behavior.
+Use these pages when you need precise, complete information about a specific API or setting.
+
+include::./async-snapshots.adoc[Async Snapshots]

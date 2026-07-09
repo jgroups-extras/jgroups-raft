@@ -1,0 +1,154 @@
+[[AsyncSnapshotsExplanation]]
+=== Async Snapshots
+
+This section explains the design decisions behind asynchronous snapshots in JGroups Raft:
+why the synchronous path becomes a bottleneck, what the async model gains, what the
+consistency contract means in practice, and when asynchronous snapshots are worth the
+added complexity.
+
+==== Why Asynchronous
+
+In the synchronous path, snapshot creation runs entirely on the Raft event loop.
+The state machine serializes its full state to a byte array, and the leader sends the entire snapshot in a single message.
+While this happens, the single-threaded event loop is blocked, which means no commits, no appends, no client requests are processed.
+
+This has some consequences that grow with state machine size:
+
+* **Event loop stall.** Serialization time is proportional to state size.
+  For large state machines, this stall becomes a visible availability gap, substantially dropping the throughput.
+* **Full state in memory.** The entire snapshot must be held as a byte array before it can be sent to lagging nodes or written to disk.
+  For a multi-gigabyte state machine, this adds memory pressure during snapshot creation.
+  On the receiving side, the follower must buffer the full snapshot in memory before it can install it.
+  Both sender and receiver pay the cost of large allocations and the garbage collection pressure they create.
+  For some applications and workloads it is just impossible to work like this.
+* **No flow control.** A single large message gives neither side the ability to pace the transfer.
+  The sender allocates and transmits the full payload at once.
+  The receiver must absorb the entire message before it can process it.
+  Neither side can throttle, pause, nor resume.
+  For large snapshots, this creates memory spikes on both ends and leaves the receiver unable to apply backpressure.
+
+Asynchronous snapshots address all these concerns:
+
+* The event loop is released as soon as a frozen view of the state is captured.
+  Serialization happens on a background thread and release the event loop to handle requests.
+* The application streams the snapshot directly to disk.
+  Only the data being written/restored at any given moment needs to be in memory.
+* Transfer uses a chunked protocol with flow control.
+  The follower requests chunks at its own pace, and the leader serves them on demand.
+  Memory usage on both sides is bounded by the chunk size, not the snapshot size.
+
+==== The Two-Phase Model
+
+Snapshot creation is split into two phases:
+
+. **Prepare** (fast, event loop): The state machine captures a frozen, immutable view of its current state and returns a handle to the framework.
+  The event loop resumes immediately after, allowing operations to continue.
+. **Serialize** (slow, background thread): The frozen view is serialized to disk.
+  The framework serializes the state read from the handle, commits and client requests proceed concurrently on the event loop.
+
+The separation works because the prepare phase is supposed to be cheap.
+A reference swap to a copy-on-write structure, a database snapshot handle, or a shallow copy.
+The serialization is the expensive part that no longer needs to hold the event loop.
+
+==== The Consistency Contract
+
+The framework calls the prepare phase on the event loop with applies paused.
+After it returns, the event loop resumes applying commits immediately.
+Serialization runs on a background thread, concurrently with those applies.
+
+This means the captured view must represent a _frozen, point-in-time consistent state_.
+Mutations applied after the prepare phase returns must not be visible to serialization thread.
+
+The framework cannot enforce this for you.
+It does not know your data structures or what state machine is implementing, and the framework won't try to guess.
+It cannot deep-copy arbitrary objects or provide transactional isolation over user-defined types.
+It is the sole responsibility of the application to guarantee this isolated view.
+
+The contract is:
+
+* The framework guarantees the prepare phase is called with applies paused. There are no concurrent mutation during the prepare phase.
+* The application guarantees the returned handle is immune to subsequent mutations.
+* If this contract is violated, the snapshot captures an undefined mix of states.
+  A corruption that is silent, undetectable, and unrecoverable.
+
+CAUTION: The framework cannot detect a violated consistency contract.
+A snapshot that mixes pre- and post-capture state will install successfully on followers, producing a state machine in a state that never existed.
+There is no mechanism to detect or recover from this, the final result is undefined.
+
+Typical strategies for honoring the contract:
+
+Copy-on-write structures::
+The state machine uses immutable or copy-on-write collections internally.
+The prepare phase captures a reference to the current version.
+Subsequent mutations create new versions without affecting the captured reference.
+This is the cheapest strategy when the data structures support it.
+
+Database snapshot handles::
+For state machines backed by embedded databases (RocksDB, LMDB), the prepare phase opens a database snapshot handle.
+The database provides MVCC isolation.
+The handle is closed after serialization completes.
+
+Deep copy::
+The prepare phase copies the entire state.
+This is the simplest strategy to implement but the most expensive.
+The prepare phase must still return quickly, and deep-copying a very large state defeats the purpose of the two-phase design.
+Suitable for small to medium state machines where the copy is cheap, and the duplication is possible.
+
+==== Chunked Transfer and Flow Control
+
+Asynchronous snapshots also change how snapshot data reaches lagging followers.
+Instead of a single message containing the full state, the async path uses a chunked transfer protocol.
+
+===== Why the follower drives
+
+The leader does not know how fast the follower can receive, write to disk, and process chunks.
+If the leader pushed chunks at its own pace, a slow follower would accumulate a backlog of unprocessed messages.
+The leader could end up potentially drowning the follower in work it cannot keep up with.
+
+Instead, the follower controls the pace.
+The leader sends only metadata (index, term, total size).
+The follower decides when to request chunks and how many to request at a time.
+The leader is stateless with respect to transfers, its role is to serve chunk requests on demand and maintains no per-follower transfer state.
+
+This also simplifies cleanup.
+When a view change occurs (leader steps down, follower leaves), the follower discards its temp file.
+The leader has nothing to clean up.
+
+===== Why a sliding window
+
+A simple stop-and-wait protocol, request one chunk, wait for it, request the next, underutilizes the network.
+The round-trip latency between request and response becomes the bottleneck, regardless of available bandwidth.
+
+A sliding window allows multiple chunks to be in flight simultaneously.
+The follower requests a batch of chunks and begins processing them as they arrive.
+When the number of outstanding chunks drops below a low water mark, the follower requests more to refill the pipeline.
+
+The batch size and chunk size are configurable, and the low water mark is derived from the batch size.
+This keeps the pipeline full without requiring complex windowing state, only a bitset of received chunks and a request frontier are sufficient.
+
+===== Why deterministic offsets
+
+Each chunk's position in the snapshot is determined by its index multiplied by the chunk size.
+The offset is implicit in the chunk index without any agreement between leader and follower.
+This means chunks can arrive out of order and the follower writes each one at the correct file position without reordering.
+
+The follower knows the total number of chunks from the total snapshot size.
+Completion is simply: all bits set in the bitset.
+
+==== When to Use Async vs Sync
+
+Asynchronous snapshots add implementation complexity.
+The state machine must provide a point-in-time consistent capture mechanism, and the developer must reason about concurrent access between serialization and ongoing mutations.
+
+The synchronous path is simpler and correct.
+For state machines where snapshot creation completes in milliseconds, the event loop stall is invisible.
+Clients do not notice, and the added complexity of async snapshots is not justified.
+
+Asynchronous snapshots matter when:
+
+* Snapshot serialization takes long enough to visibly stall the event loop.
+* The state machine is large enough that the full state cannot comfortably fit as a byte array in memory alongside the live data.
+
+A useful heuristic: if you can measure the snapshot stall in your monitoring, it is probably worth going async.
+If you have never noticed it, stay synchronous.
+And obviously, if your serialized state machine can still fit in memory.

@@ -1,0 +1,7 @@
+
+== How-to guides
+
+Goal-oriented recipes for solving specific problems.
+Each guide assumes you already understand the basics and focuses on getting a particular task done.
+
+include::./async-snapshots.adoc[Async Snapshots]

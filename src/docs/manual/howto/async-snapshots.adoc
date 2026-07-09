@@ -1,0 +1,159 @@
+[[AsyncSnapshotsHowTo]]
+=== Async Snapshot How-to Guides
+
+==== Add async snapshot support to a state machine
+
+This guide shows how to add asynchronous snapshot support to an existing state machine.
+The state machine must implement the `AsyncSnapshot` interface alongside its existing interface.
+
+===== Implement `prepareSnapshot`
+
+The `prepareSnapshot` method captures a frozen view of the state and returns a `SnapshotHandle`.
+This method must be lightweight, should *never* block, and return quickly.
+
+The returned handle must be immune to mutations that happen after `prepareSnapshot` returns.
+See <<AsyncSnapshotsExplanation, the consistency contract>> for strategies.
+
+[source,java]
+----
+@Override
+public SnapshotHandle prepareSnapshot() throws Exception {
+    // Capture current state.
+    // Choose whatever strategy fits your data while keeping the method lightweight.
+    int capturedCounter = this.counter;
+
+    // Careful if performing a deep-copy of data.
+    // This could delay the method returning and be expensive.
+    Map<String, String> capturedMap = Map.copyOf(this.data);
+
+    return new SnapshotHandle() {
+        @Override
+        public void writeTo(DataOutput out) throws Exception {
+            // Serialize from captured values, NEVER from live fields.
+            out.writeInt(capturedCounter);
+            out.writeInt(capturedMap.size());
+            for (Map.Entry<String, String> e : capturedMap.entrySet()) {
+                out.writeUTF(e.getKey());
+                out.writeUTF(e.getValue());
+            }
+        }
+
+        @Override
+        public void release() {
+            // Release resources if needed (close database handles, etc.).
+        }
+    };
+}
+----
+
+The framework calls `release()` exactly once, regardless of whether `writeTo` succeeded, failed, or was never called.
+
+===== Implement `readContentFrom`
+
+The `readContentFrom` method restores the full state from a snapshot stream.
+It is called when a follower receives a snapshot from the leader.
+The method must *replace* the entire state, *not* merge into it.
+
+The framework guarantees this method is never called concurrently with `apply`.
+
+[source,java]
+----
+@Override
+public void readContentFrom(DataInput in) throws Exception {
+    this.counter = in.readInt();
+    int size = in.readInt();
+    this.data = new HashMap<>(size);
+    for (int i = 0; i < size; i++) {
+        data.put(in.readUTF(), in.readUTF());
+    }
+}
+----
+
+The serialization format must match between `writeTo` and `readContentFrom`.
+There is no versioning built into the framework, the application is responsible for handling backward compatibility.
+
+[NOTE]
+====
+When using the annotation-based API, the `@StateMachineField` annotation handles snapshot serialization automatically in the synchronous path.
+Implementing `AsyncSnapshot` overrides this behavior.
+The application takes full control of serialization through `prepareSnapshot` and `readContentFrom`.
+====
+
+==== Tune chunk transfer settings
+
+The chunked transfer protocol has two configurable parameters that control memory usage and transfer throughput.
+Both are set on the `RAFT` protocol instance.
+
+===== Chunk size
+
+Controls the size of each individual chunk in bytes. Default: 512 KB.
+
+Larger chunks reduce the total number of round-trips but increase memory usage per chunk on both leader and follower.
+Smaller chunks reduce memory pressure but increase the number of requests needed to complete a transfer.
+
+[source,xml]
+----
+<!-- 1 Mb chunk -->
+<RAFT snapshot_chunk_size="1048576" />
+----
+
+===== Batch size
+
+Controls how many chunks the follower requests at a time. Default: 16.
+
+Larger batches keep the pipeline fuller and improve throughput on high-latency links.
+The trade-off is that more chunks are in flight simultaneously, increasing memory usage on both sides.
+
+[source,xml]
+----
+<RAFT snapshot_batch_size="32" />
+----
+
+===== Choosing values
+
+The total memory footprint per transfer is approximately `chunk_size * batch_size` on each side.
+For example, the defaults (512 KB chunks, batch of 16) use roughly 8 MB per active transfer.
+
+Start with the defaults.
+Increase chunk size if snapshots are large and the network has high bandwidth.
+Increase batch size if latency is high and the pipeline is underutilized.
+Decrease either if memory is constrained on followers.
+
+==== Migrate from synchronous to asynchronous snapshots
+
+If you have an existing state machine using synchronous snapshots, you can migrate to asynchronous snapshots incrementally.
+
+===== Step 1: Implement `AsyncSnapshot`
+
+Add `AsyncSnapshot` to your state machine's implemented interfaces.
+Move or adapt the serialization logic from your existing `writeContentTo` into `prepareSnapshot`.
+The `readContentFrom` method likely already exists from implementing the `StateMachine` interface, it can remain unchanged if the serialization format stays the same.
+
+===== Step 2: Capture a frozen view
+
+The key change is in `prepareSnapshot`.
+Your existing synchronous serialization writes directly from live state.
+The async version must capture a frozen view first, then serialize from it.
+
+For simple state (a few primitives or small collections), capturing local copies in `prepareSnapshot` and closing over them in the `SnapshotHandle` is sufficient:
+
+[source,java]
+----
+@Override
+public SnapshotHandle prepareSnapshot() throws Exception {
+    // Same fields your writeContentTo was serializing.
+    int snap = this.counter;
+
+    return new SnapshotHandle() {
+        @Override
+        public void writeTo(DataOutput out) throws Exception {
+            out.writeInt(snap);
+        }
+
+        @Override
+        public void release() { }
+    };
+}
+----
+
+For larger or more complex state, consider copy-on-write structures or database snapshot handles as described in <<AsyncSnapshotsExplanation, the consistency contract>>.

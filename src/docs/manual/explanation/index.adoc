@@ -1,0 +1,7 @@
+
+== Explanation
+
+Discussion and background that helps you understand why things work the way they do.
+These pages cover design decisions, architectural trade-offs, and conceptual foundations.
+
+include::./async-snapshots.adoc[Async Snapshots]

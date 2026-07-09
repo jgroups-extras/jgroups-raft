@@ -32,6 +32,14 @@ include::./blocks.adoc[Building blocks]
 
 include::./log-integrity.adoc[Log Integrity and Recovery]
 
+include::./tutorials/index.adoc[Tutorials]
+
+include::./howto/index.adoc[How-to guides]
+
+include::./reference/index.adoc[Reference]
+
+include::./explanation/index.adoc[Explanation]
+
 include::./protocols-generated.adoc[Protocol list]
 
 include::./migration.adoc[Migration guide]

@@ -1,0 +1,227 @@
+[[AsyncSnapshotsReference]]
+=== Async Snapshot Reference
+
+==== `AsyncSnapshot`
+
+Optional interface a `StateMachine` can implement to opt into non-blocking snapshot creation and chunked snapshot transfer.
+When the framework detects that a state machine implements `AsyncSnapshot`, it uses the two-phase snapshot path instead of the synchronous one.
+
+[source,java]
+----
+public interface AsyncSnapshot {
+
+    SnapshotHandle prepareSnapshot() throws Exception; // <1>
+
+    void readContentFrom(DataInput in) throws Exception; // <2>
+}
+----
+<1> Called on the Raft event loop with applies paused.
+Must return a `SnapshotHandle` representing a frozen, point-in-time consistent view of the state machine.
+Must return quickly and never block.
+If this method throws and no `SnapshotHandle` is created, then `release()` is not called.
+<2> Restores the full state machine from a snapshot stream.
+Called when a follower installs a snapshot received from the leader.
+Must replace the entire state, not merge into it.
+The framework guarantees this method is never called concurrently with `apply()`.
+
+==== `SnapshotHandle`
+
+Represents a frozen point-in-time view of the state machine, returned by `prepareSnapshot()`.
+
+[source,java]
+----
+public interface SnapshotHandle {
+
+    void writeTo(DataOutput out) throws Exception; // <1>
+
+    void release(); // <2>
+}
+----
+<1> Serializes the frozen state.
+Runs on a background thread and may execute concurrently with `apply()` on the event loop.
+Must only read from the frozen state captured during `prepareSnapshot()`, never from live state machine fields.
+The framework signals cancellation by interrupting the thread, e.g., the system is stopping.
+<2> Releases any resources held by the handle (database snapshot handles, temp files, etc.).
+Called exactly once by the framework, regardless of whether `writeTo` was called, completed successfully, or failed.
+May be called from a different thread than `prepareSnapshot()` or `writeTo()`, but never concurrently with either.
+
+==== Interaction with `@StateMachineField`
+
+When using the annotation-based API, `@StateMachineField` handles snapshot serialization automatically in the synchronous path.
+Fields are serialized and restored in the order specified by the `order` attribute.
+
+Implementing `AsyncSnapshot` overrides this behavior entirely.
+The framework does not serialize annotated fields, and the application controls the full snapshot lifecycle through `prepareSnapshot()` and `readContentFrom()`.
+
+==== Configuration
+
+These properties are set on the `RAFT` protocol and only apply when the state machine implements `AsyncSnapshot`.
+They have no effect on the synchronous snapshot path.
+
+[cols="2,1,1,4"]
+|===
+| Property | Type | Default | Description
+
+| `snapshot_chunk_size`
+| `int`
+| `524288` (512 KB)
+| Size in bytes of each chunk during snapshot transfer.
+  Determines the granularity of flow control and the memory footprint per in-flight chunk.
+
+| `snapshot_batch_size`
+| `int`
+| `16`
+| Number of chunks the follower requests per batch.
+  Controls how many chunks can be in flight simultaneously.
+|===
+
+The approximate memory footprint per active snapshot transfer on each side is roughly `snapshot_chunk_size * snapshot_batch_size`.
+
+==== Lifecycle and Threading
+
+===== Snapshot creation
+
+[[SnapshotCreationFig]]
+.Async snapshot creation sequence.
+[ditaa, format="svg"]
+----
+  Event loop                         Background thread
+  ----------                         -----------------
+
++--------------------+
+|                    |
+|  prepareSnapshot() |
+|                    |
+|  (applies paused)  |
+|                    |
++--------+-----------+
+         |
+         | returns SnapshotHandle
+         v
++--------------------+
+|                    |
+|   resume applies   |              +--------------------+
+|                    +------------->|    writeTo(out)    |
+| (commits proceed)  |              |                    |
+|                    |              | (serializes state) |
++--------+-----------+              +--------+-----------+
+         |                                   |
+         |                                   |
+         |                                   v
+         |                          +--------------------+
+         |                          |     release()      |
+         |                          +--------+-----------+
+         |                                   |
+         v                                   |
++--------------------+                       |
+|  persist metadata  |                       |
+|                    |<----------------------+
+|    truncate log    |
++--------------------+
+----
+
+At most one snapshot creation can be in progress at a time. Requests to create a snapshot
+while one is already in progress are ignored.
+
+===== Snapshot installation (follower)
+
+. The leader sends snapshot metadata (index, term, total size) to the follower.
+. The follower requests chunks in batches, writing each chunk to a temporary file at the offset determined by its chunk index.
+. When all chunks are received, the follower reads the completed file and calls `readContentFrom(in)` to restore the state machine.
+. The follower reinitializes its log from the snapshot.
+
+===== View changes during transfer
+
+If a view change occurs during a chunked transfer (leader steps down, follower leaves the cluster), the follower discards its temporary file and any partial state.
+The leader maintains no per-follower transfer state and requires no cleanup.
+A new leader will initiate a fresh transfer if the follower still needs a snapshot.
+
+==== Metrics
+
+All metrics are exposed as JMX managed attributes on the `RAFT` protocol.
+
+===== General snapshot metrics
+
+These metrics apply to both synchronous and asynchronous snapshot paths.
+
+[cols="3,1,4"]
+|===
+| Attribute | Type | Description
+
+| `num_snapshots`
+| `int`
+| Number of snapshots created on this node.
+
+| `num_snapshot_received`
+| `int`
+| Number of snapshots successfully installed on this node.
+
+| `num_snapshots_create_failed`
+| `int`
+| Number of times snapshot creation failed.
+
+| `num_snapshot_install_failed`
+| `int`
+| Number of times snapshot installation failed.
+|===
+
+===== Chunked transfer metrics
+
+These metrics are specific to the asynchronous path. They return zero when the synchronous
+snapshot manager is in use.
+
+[cols="3,1,4"]
+|===
+| Attribute | Type | Description
+
+| `num_chunks_received`
+| `int`
+| Total snapshot chunks received across all completed and active transfers.
+
+| `num_bytes_received`
+| `long`
+| Total snapshot bytes received across all completed and active transfers.
+
+| `num_failed_chunk_transfers`
+| `int`
+| Chunked transfers that started but failed before completion.
+
+| `avg_chunk_interval_nanos`
+| `long`
+| Average interval in nanoseconds between consecutive chunk arrivals.
+
+| `last_transfer_duration_nanos`
+| `long`
+| Duration of the last completed chunked transfer in nanoseconds.
+|===
+
+===== Active transfer metrics
+
+These metrics describe the state of an in-progress chunked transfer. All return zero when
+no transfer is active.
+
+[cols="3,1,4"]
+|===
+| Attribute | Type | Description
+
+| `active_transfer_total_chunks`
+| `int`
+| Total chunks expected in the active transfer.
+
+| `active_transfer_chunks_received`
+| `int`
+| Chunks received so far in the active transfer.
+
+| `active_transfer_chunks_in_flight`
+| `int`
+| Chunks that have been requested but not yet received.
+
+| `active_transfer_highest_requested`
+| `int`
+| Highest chunk index requested (exclusive), the request frontier.
+
+| `active_transfer_missing_chunks`
+| `int[]`
+| Indices of chunks requested but not yet received. Returns a fresh copy on each
+  invocation.
+|===
