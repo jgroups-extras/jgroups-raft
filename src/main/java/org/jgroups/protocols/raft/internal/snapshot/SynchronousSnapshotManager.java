@@ -55,7 +55,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
     }
 
     @Override
-    public void create(long commitIndex, PostCreateAction action) throws Exception {
+    public boolean create(long commitIndex, PostCreateAction action) throws Exception {
         if (stateMachine == null)
             throw new IllegalStateException("State machine is not defined");
 
@@ -69,6 +69,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
             log.setSnapshot(buffer);
             action.onSnapshotDone(commitIndex);
             metrics.snapshotCreated();
+            return true;
         } catch (Exception e) {
             metrics.snapshotFailedCreate();
             throw e;

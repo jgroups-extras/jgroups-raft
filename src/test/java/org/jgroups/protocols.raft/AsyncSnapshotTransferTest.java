@@ -17,6 +17,7 @@ import org.jgroups.util.Util;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.Objects;
 
 import org.testng.annotations.AfterMethod;
@@ -152,6 +153,65 @@ public class AsyncSnapshotTransferTest extends BaseStateMachineTest<AsyncSnapsho
 
         waitForSnapshotCompletion(leader);
         assertStateMachineEventuallyMatch(0, 1);
+
+        createCluster();
+
+        assertStateMachineEventuallyMatch(0, 1, 2);
+
+        assertThat(stateMachine(2).counter())
+                .isEqualTo(stateMachine(0).counter());
+    }
+
+    public void testSnapshotBlocksUntilPersisted() throws Exception {
+        init();
+
+        RAFT leader = raft(0);
+        for (int i = 1; i <= 5; i++) {
+            byte[] data = new byte[Integer.BYTES];
+            Bits.writeInt(i, data, 0);
+            leader.set(data, 0, data.length, 5, SECONDS);
+        }
+
+        // Assert the method only returns after the full snapshot taking procedure is complete.
+        leader.snapshot();
+
+        assertThat(leader.log().firstAppended())
+                .as("Log should be truncated after snapshot() returns")
+                .isGreaterThan(0);
+        assertThat(leader.log().snapshotSize())
+                .as("Snapshot should be persisted after snapshot() returns")
+                .isGreaterThan(0);
+    }
+
+    /**
+     * When the leader's snapshot data is missing (e.g., lost on restart) but the log is already truncated,
+     * the leader must force a new snapshot creation before it can serve a lagging follower.
+     */
+    public void testForcedSnapshotOnMissingSnapshotData() throws Exception {
+        init();
+        close(2);
+
+        RAFT leader = raft(0);
+        for (int i = 1; i <= 5; i++) {
+            byte[] data = new byte[Integer.BYTES];
+            Bits.writeInt(i, data, 0);
+            leader.set(data, 0, data.length, 5, SECONDS);
+        }
+        assertStateMachineEventuallyMatch(0, 1);
+
+        leader.snapshot();
+        waitForSnapshotCompletion(leader);
+
+        assertThat(leader.log().firstAppended())
+                .as("Log should be truncated after snapshot")
+                .isGreaterThan(0);
+
+        // Force losing the snapshot.
+        leader.log().setSnapshot((ByteBuffer) null);
+
+        assertThat(leader.log().snapshotSize())
+                .as("Snapshot data should be cleared")
+                .isEqualTo(0);
 
         createCluster();
 

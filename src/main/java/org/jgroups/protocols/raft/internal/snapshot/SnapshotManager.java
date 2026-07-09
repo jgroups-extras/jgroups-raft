@@ -88,10 +88,11 @@ public sealed interface SnapshotManager permits AsynchronousSnapshotManager, Syn
      * </p>
      *
      * @param commitIndex the commit index at the time the snapshot is requested
-     * @param action receives the serialized snapshot on the event loop
+     * @param action      receives the serialized snapshot on the event loop
+     * @return <code>true</code> if taking a snapshot. <code>false</code>, otherwise.
      * @throws Exception if snapshot creation fails synchronously
      */
-    void create(long commitIndex, PostCreateAction action) throws Exception;
+    boolean create(long commitIndex, PostCreateAction action) throws Exception;
 
     /**
      * Sends a snapshot to a lagging follower.

@@ -97,9 +97,9 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
     }
 
     @Override
-    public void create(long commitIndex, PostCreateAction action) throws Exception {
+    public boolean create(long commitIndex, PostCreateAction action) throws Exception {
         if (inProgress)
-            return;
+            return false;
 
         inProgress = true;
 
@@ -120,6 +120,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         try {
             Executor executor = eventLoop.executor();
             executor.execute(new BackgroundSnapshotRunnable(commitIndex, out, action, handle));
+            return true;
         } catch (Exception e) {
             LOG.error("Failed submitting asynchronous snapshot task", e);
             handle.release();

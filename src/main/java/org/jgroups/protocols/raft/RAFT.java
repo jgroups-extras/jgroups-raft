@@ -739,12 +739,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     public CompletableFuture<Void> snapshotAsync() {
-        CompletableFuture<Void> f = new CompletableFuture<>();
-        offer(requestFactory.createCallableRequest(() -> {
-            takeSnapshot();
-            return null;
-        }, f));
-        return f;
+        return raftEventLoop.submit(this::takeSnapshot)
+                .thenCompose(Function.identity())
+                .toCompletableFuture();
     }
 
     /** Loads the log entries from [first .. commit_index] into the state machine */
@@ -1440,6 +1437,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if (snapshotManager == null)
             throw new IllegalStateException("Snapshot not available");
 
+        if (log_impl.snapshotSize() == 0) {
+            log.debug("Snapshot unavailable to send now to %s. Taking snapshot now", dest);
+            takeSnapshot();
+            return;
+        }
+
         LogEntry last_committed_entry = log_impl.get(commitIndex());
         long firstSnapshotIndex = log_impl.firstAppended();
         snapshotManager.transferTo(null, null, firstSnapshotIndex, last_committed_entry.term, dest);
@@ -1514,20 +1517,25 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
     }
 
-    protected void takeSnapshot() throws Exception {
+    protected CompletionStage<Void> takeSnapshot() throws Exception {
         if(state_machine == null)
             throw new IllegalStateException("state machine is null");
 
         if (snapshotManager == null)
             throw new IllegalStateException("Snapshot not available");
 
-        snapshotManager.create(commitIndex(), capturedIndex -> {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        boolean started = snapshotManager.create(commitIndex(), capturedIndex -> {
             log_impl.truncate(capturedIndex);
             // curr_log_size=logSizeInBytes();
             // this is faster than calling logSizeInBytes(), but may not be accurate: if commit-index is way
             // behind last-appended, then this may perform the next truncation later than it should
             curr_log_size=0;
+            cf.complete(null);
         });
+        if (!started)
+            cf.complete(null);
+        return cf;
     }
 
     /**
