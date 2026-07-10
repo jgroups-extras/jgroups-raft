@@ -217,6 +217,26 @@ public interface JGroupsRaftMetrics {
             public int getSnapshotsReceived() {
                 return -1;
             }
+
+            @Override
+            public int getFailedSnapshotCreations() {
+                return -1;
+            }
+
+            @Override
+            public int getFailedSnapshotInstallations() {
+                return -1;
+            }
+
+            @Override
+            public int getFailedSnapshotTransfers() {
+                return -1;
+            }
+
+            @Override
+            public Duration getLastSnapshotTransferDuration() {
+                return Duration.ZERO;
+            }
         };
         private static final LatencyMetrics LATENCY_METRICS = LatencyMetrics.disabled();
         private static final PerformanceMetrics PERFORMANCE_METRICS = new PerformanceMetrics() {

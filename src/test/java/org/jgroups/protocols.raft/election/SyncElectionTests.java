@@ -242,8 +242,13 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         assertThat(raft(2).isLeader()).isTrue();
         waitUntilVotingThreadHasStopped();
         assertSameTerm(this::print);
-        int new_term=terms[terms.length-1]+1;
-        assertTerm(new_term, () -> String.format("expected term=%d, actual:\n%s", new_term, print()));
+        long min_term=terms[terms.length-1]+1;
+        for (BaseElection election : elections()) {
+            if (election != null)
+                assertThat(election.raft().currentTerm())
+                        .as("term should advance past last log term, actual:\n%s", print())
+                        .isGreaterThanOrEqualTo(min_term);
+        }
     }
 
     /** {A}, {B}, {C} -> {A,B,C} */

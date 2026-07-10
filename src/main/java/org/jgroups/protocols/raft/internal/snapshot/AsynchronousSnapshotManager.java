@@ -13,12 +13,13 @@ import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkRespon
 import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotMetadataRequest;
 import org.jgroups.raft.AsyncSnapshot;
 import org.jgroups.raft.SnapshotHandle;
-import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
 import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.DataInput;
 import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
@@ -57,6 +58,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
     private static final int DEFAULT_BUFFER_SIZE = 1 << 20;
     private static final String PREFIX_SNAPSHOT_FILE = "snapshot-transfer.tmp";
+    private static final String PREFIX_SNAPSHOT_WRITE_FILE = "snapshot-write.tmp";
 
     private final RaftEventLoop eventLoop;
     private final AsyncSnapshot asyncSnapshot;
@@ -103,9 +105,13 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
         inProgress = true;
 
+        Path tempFile = temporaryWriteFileLocation();
+        FileChannel channel = FileChannel.open(tempFile,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);
+
         // We first copy over all the internal state necessary for RAFT itself.
         // We only offload the state machine to another thread.
-        ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(DEFAULT_BUFFER_SIZE, true);
+        DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(channel)));
         persistentState.writeTo(out);
 
         SnapshotHandle handle;
@@ -114,18 +120,20 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         } catch (Exception e) {
             inProgress = false;
             metrics.snapshotFailedCreate();
+            deleteSnapshotWriteFile(channel);
             throw e;
         }
 
         try {
             Executor executor = eventLoop.executor();
-            executor.execute(new BackgroundSnapshotRunnable(commitIndex, out, action, handle));
+            executor.execute(new BackgroundSnapshotRunnable(commitIndex, channel, out, action, handle));
             return true;
         } catch (Exception e) {
             LOG.error("Failed submitting asynchronous snapshot task", e);
             handle.release();
             inProgress = false;
             metrics.snapshotFailedCreate();
+            deleteSnapshotWriteFile(channel);
             throw e;
         }
     }
@@ -327,6 +335,10 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         return baseLogDir.resolve(PREFIX_SNAPSHOT_FILE);
     }
 
+    private Path temporaryWriteFileLocation() {
+        return baseLogDir.resolve(PREFIX_SNAPSHOT_WRITE_FILE);
+    }
+
     @Override
     public SnapshotMetrics metrics() {
         return metrics;
@@ -334,13 +346,15 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
     private final class BackgroundSnapshotRunnable implements Runnable {
 
-        private final ByteArrayDataOutputStream out;
+        private final FileChannel channel;
+        private final DataOutputStream out;
         private final SnapshotHandle handle;
         private final PostCreateAction action;
         private final long commitIndex;
 
-        private BackgroundSnapshotRunnable(long commitIndex, ByteArrayDataOutputStream out, PostCreateAction action, SnapshotHandle handle) {
+        private BackgroundSnapshotRunnable(long commitIndex, FileChannel channel, DataOutputStream out, PostCreateAction action, SnapshotHandle handle) {
             this.commitIndex = commitIndex;
+            this.channel = channel;
             this.out = out;
             this.action = action;
             this.handle = handle;
@@ -351,9 +365,9 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             try {
                 LOG.debug("Starting asynchronous snapshot on state machine");
                 handle.writeTo(out);
-                ByteBuffer buffer = ByteBuffer.wrap(out.buffer(), 0, out.position());
+                out.flush();
                 CompletionStage<Void> cs = eventLoop.submit(() -> {
-                    log.setSnapshot(buffer);
+                    log.setSnapshot(Channels.newInputStream(channel.position(0)));
                     action.onSnapshotDone(commitIndex);
                     return null;
                 });
@@ -365,16 +379,27 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
                     }
 
                     if (LOG.isDebugEnabled())
-                        LOG.debug("Finished taking async snapshot (%s bytes) index=%d", Util.printBytes(out.position()), commitIndex);
+                        LOG.debug("Finished taking async snapshot index=%d", commitIndex);
                     handle.release();
                     inProgress = false;
+                    deleteSnapshotWriteFile(channel);
                 });
             } catch (Exception e) {
                 LOG.error("Failed creating asynchronous snapshot", e);
                 metrics.snapshotFailedCreate();
                 handle.release();
                 inProgress = false;
+                deleteSnapshotWriteFile(channel);
             }
+        }
+    }
+
+    private void deleteSnapshotWriteFile(FileChannel channel) {
+        try {
+            channel.close();
+            Files.deleteIfExists(temporaryWriteFileLocation());
+        } catch (IOException e) {
+            LOG.error("Failed closing snapshot file at %s", temporaryWriteFileLocation(), e);
         }
     }
 

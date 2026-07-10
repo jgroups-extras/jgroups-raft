@@ -1,5 +1,7 @@
 package org.jgroups.raft.metrics;
 
+import java.time.Duration;
+
 import net.jcip.annotations.ThreadSafe;
 
 /**
@@ -141,4 +143,59 @@ public interface LogMetrics {
      * @return the number of snapshots received, or {@code -1} if metrics are disabled.
      */
     int getSnapshotsReceived();
+
+    /**
+     * The number of times snapshot creation failed on this node.
+     *
+     * <p>
+     * A snapshot creation failure means the node attempted to take a snapshot but the operation did not complete
+     * successfully. The snapshot is retried automatically when the log size threshold is reached again. Persistent
+     * failures may indicate a problem in the state machine's snapshot implementation.
+     * </p>
+     *
+     * @return the number of failed snapshot creations, or {@code -1} if metrics are disabled.
+     */
+    int getFailedSnapshotCreations();
+
+    /**
+     * The number of times snapshot installation failed on this node.
+     *
+     * <p>
+     * A snapshot installation failure means the node received a snapshot from the leader but could not apply it.
+     * The leader will retry the transfer on the next replication cycle. Repeated failures suggest a mismatch between
+     * the leader's snapshot format and the follower's state machine, or persistent I/O errors on the follower.
+     * </p>
+     *
+     * @return the number of failed snapshot installations, or {@code -1} if metrics are disabled.
+     */
+    int getFailedSnapshotInstallations();
+
+    /**
+     * The number of chunked snapshot transfers that started but failed before completion.
+     *
+     * <p>
+     * A chunked transfer fails when a view change interrupts the transfer (leader steps down, follower leaves) or
+     * when the leader takes a newer snapshot while a transfer is in progress. Occasional failures during membership
+     * changes are expected. A high value on a stable cluster may indicate network issues between the leader and
+     * this follower. Returns zero when synchronous snapshots are in use.
+     * </p>
+     *
+     * @return the number of failed chunked transfers, or {@code -1} if metrics are disabled.
+     */
+    int getFailedSnapshotTransfers();
+
+    /**
+     * The duration of the last completed chunked snapshot transfer on this node.
+     *
+     * <p>
+     * Measures wall-clock time from the first chunk request to the final chunk received. Use this metric to evaluate
+     * whether the current chunk size and batch size configuration provides adequate transfer throughput. A transfer
+     * that takes significantly longer than expected may benefit from larger chunks or batches. Returns
+     * {@link Duration#ZERO} when no chunked transfer has completed or when synchronous snapshots are in use.
+     * </p>
+     *
+     * @return the duration of the last chunked transfer, or {@link Duration#ZERO} if metrics are disabled or no
+     *         transfer has completed.
+     */
+    Duration getLastSnapshotTransferDuration();
 }

@@ -98,6 +98,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
         log.setSnapshot(data);
         data.position(pos);
 
+        metrics.chunkTransferStarted();
         try {
             DataInput in = new ByteArrayDataInputStream(data);
             persistentState.readFrom(in);
@@ -106,6 +107,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
             LogEntry le = new LogEntry(lastIncludedTerm, null);
             log.reinitializeTo(lastIncludedIndex, le);
             action.onSnapshotInstalled(lastIncludedIndex, lastIncludedTerm);
+            metrics.chunkTransferCompleted();
             metrics.snapshotReceived();
         } catch (Exception e) {
             metrics.snapshotFailedInstall();

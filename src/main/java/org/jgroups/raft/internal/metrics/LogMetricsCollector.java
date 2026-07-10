@@ -4,6 +4,8 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.metrics.LogMetrics;
 
+import java.time.Duration;
+
 /**
  * Reads log state lazily from the RAFT protocol.
  *
@@ -65,6 +67,26 @@ final class LogMetricsCollector implements LogMetrics {
     @Override
     public int getSnapshotsReceived() {
         return raft.numSnapshotReceived();
+    }
+
+    @Override
+    public int getFailedSnapshotCreations() {
+        return raft.numSnapshotsCreateFailed();
+    }
+
+    @Override
+    public int getFailedSnapshotInstallations() {
+        return raft.numSnapshotInstallFailed();
+    }
+
+    @Override
+    public int getFailedSnapshotTransfers() {
+        return raft.numFailedChunkTransfers();
+    }
+
+    @Override
+    public Duration getLastSnapshotTransferDuration() {
+        return Duration.ofNanos(raft.lastTransferDurationNanos());
     }
 
     @Override
