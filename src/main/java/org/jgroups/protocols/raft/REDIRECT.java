@@ -24,11 +24,11 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLongFieldUpdater;
@@ -57,7 +57,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
     protected final AtomicInteger request_ids = new AtomicInteger(1);
     // used to correlate redirect requests and responses: keys are request-ids and values futures
-    protected final Map<Integer, RedirectRequest> requests = new HashMap<>();
+    private final Map<Integer, RedirectRequest> requests = new ConcurrentHashMap<>();
     protected RAFT raft;
     private RedirectProtocolMetrics metrics;
     protected volatile View view;
@@ -91,9 +91,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         // add a unique ID to the request table, so we can correlate the response to the request
         int req_id = request_ids.getAndIncrement();
         RedirectRequest request = new RedirectRequest();
-        synchronized (requests) {
-            requests.put(req_id, request);
-        }
+        requests.put(req_id, request);
 
         // we're not the current leader -> redirect request to leader and wait for response or timeout
         log.trace("%s: redirecting request %d to leader %s", local_addr, req_id, leader);
@@ -209,10 +207,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     }
 
     private void handleUserResponse(Message msg, RedirectHeader hdr) {
-        RedirectRequest request;
-        synchronized (requests) {
-            request = requests.remove(hdr.corr_id);
-        }
+        RedirectRequest request = requests.remove(hdr.corr_id);
 
         if (request == null) {
             log.trace("%s: REDIRECT for %d id was not found", local_addr, hdr.corr_id);
@@ -255,9 +250,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
         // add a unique ID to the request table, so we can correlate the response to the request
         int req_id = request_ids.getAndIncrement();
         RedirectRequest request = new RedirectRequest();
-        synchronized (requests) {
-            requests.put(req_id, request);
-        }
+        requests.put(req_id, request);
 
         // we're not the current leader -> redirect request to leader and wait for response or timeout
         log.trace("%s: redirecting request %d to leader %s", local_addr, req_id, leader);
