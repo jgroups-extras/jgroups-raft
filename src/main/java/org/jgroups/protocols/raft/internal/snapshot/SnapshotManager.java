@@ -152,7 +152,7 @@ public sealed interface SnapshotManager permits AsynchronousSnapshotManager, Syn
         SnapshotSender sender = new JGroupsRaftSnapshotSender(raft);
         if (raft.stateMachine() instanceof AsyncSnapshot as) {
             return new AsynchronousSnapshotManager(eventLoop, as, persistentState, raft.log(), sender, metrics,
-                    Path.of(raft.logDir()), raft.snapshotChunkSize(), raft.snapshotBatchSize());
+                    Path.of(raft.logName()), raft.snapshotChunkSize(), raft.snapshotBatchSize());
         }
 
         return new SynchronousSnapshotManager(

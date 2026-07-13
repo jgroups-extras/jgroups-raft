@@ -262,8 +262,8 @@ final class FileStorage implements Closeable {
       final File tmpFile = new File(storageFile.getParentFile(), storageFile.getName() + ".tmp");
       try (FileChannel newChannel = tryCreatePMEMFileChannel(tmpFile, fileSize)) {
          if (prefixLength > 0)
-            existing.transferTo(0, prefixLength, newChannel);
-         existing.transferTo(position, fileSize, newChannel);
+            transferTo(existing, 0, prefixLength, newChannel);
+         transferTo(existing, position, fileSize - position, newChannel);
       }
       // TODO: it requires fsync on the parent folder and on the destination file?
       try {
@@ -286,6 +286,16 @@ final class FileStorage implements Closeable {
       existing.close();
       open();
       requiredFlush = Flush.Metadata;
+   }
+
+   private static void transferTo(FileChannel src, long position, long size, FileChannel target) throws IOException {
+      long transferred = 0;
+      while (transferred < size) {
+         long n = src.transferTo(transferred + position, size - transferred, target);
+         if (n <= 0)
+            throw new IOException("Transfer stalled at " + transferred + " of " + size);
+         transferred += n;
+      }
    }
 
    @Override
@@ -328,7 +338,7 @@ final class FileStorage implements Closeable {
             return pmemChannel;
          }
       }
-      return FileChannel.open(tmpFile.toPath(), StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+      return FileChannel.open(tmpFile.toPath(), StandardOpenOption.WRITE, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
    }
 
 }

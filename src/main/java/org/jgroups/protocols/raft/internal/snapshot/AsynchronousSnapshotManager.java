@@ -105,13 +105,14 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
         inProgress = true;
 
+        Files.createDirectories(baseLogDir);
         Path tempFile = temporaryWriteFileLocation();
         FileChannel channel = FileChannel.open(tempFile,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);
 
         // We first copy over all the internal state necessary for RAFT itself.
         // We only offload the state machine to another thread.
-        DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(channel)));
+        DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(channel), DEFAULT_BUFFER_SIZE));
         persistentState.writeTo(out);
 
         SnapshotHandle handle;
@@ -217,6 +218,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             abortActiveTransfer();
         }
 
+        Files.createDirectories(baseLogDir);
         Path tempFile = temporaryFileLocation();
         FileChannel channel = FileChannel.open(tempFile,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);

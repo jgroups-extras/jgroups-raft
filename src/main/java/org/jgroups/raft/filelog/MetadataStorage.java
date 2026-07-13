@@ -11,6 +11,7 @@ import java.io.DataOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
+import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
@@ -90,14 +91,15 @@ public class MetadataStorage {
            wrapper = new ReadWriteWrapper(rafw, rafw, rafw, rafw);
        } else {
            // This won't need a sys-call for frequently accessed data
-           MappedByteBuffer mmap = FileChannel.open(fileStorage.getStorageFile().toPath(), StandardOpenOption.READ, StandardOpenOption.WRITE)
-                   .map(FileChannel.MapMode.READ_WRITE, 0, VOTED_FOR_POS);
-           wrapper = new ReadWriteWrapper(
-                   mmap::putLong,
-                   mmap::getLong,
-                   mmap::force,
-                   () -> {}
-           ) ;
+           try (FileChannel ch = FileChannel.open(fileStorage.getStorageFile().toPath(), StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+               MappedByteBuffer mmap = ch.map(FileChannel.MapMode.READ_WRITE, 0, VOTED_FOR_POS);
+               wrapper = new ReadWriteWrapper(
+                       mmap::putLong,
+                       mmap::getLong,
+                       mmap::force,
+                       () -> {}
+               );
+           }
        }
 
        // Expand a fresh file to have the expected format already.
@@ -224,26 +226,27 @@ public class MetadataStorage {
         public long read(int position) {
             try {
                 buffer.rewind();
-                channel.read(buffer, position);
+                while (buffer.hasRemaining()) {
+                    int n = channel.read(buffer, position);
+                    if (n < 0)
+                        throw new IOException("Unexpected end of metadata file at position: " + position);
+                }
+
                 buffer.rewind();
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                throw new UncheckedIOException(e);
             }
             return buffer.getLong();
         }
 
         @Override
-        public void write(int position, long value) {
+        public void write(int position, long value) throws IOException {
             buffer.rewind();
             buffer.putLong(value);
-            try {
-                buffer.flip();
-                int w = channel.write(buffer, position);
-                if (w != Long.BYTES)
-                    throw new IllegalArgumentException("Unable to write value");
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+            buffer.flip();
+            int w = channel.write(buffer, position);
+            if (w != Long.BYTES)
+                throw new IOException("Unable to write value");
         }
 
         @Override
@@ -269,7 +272,7 @@ public class MetadataStorage {
          * @param position: File position to write to.
          * @param value: Value to write.
          */
-        void write(int position, long value);
+        void write(int position, long value) throws IOException;
     }
 
     /**

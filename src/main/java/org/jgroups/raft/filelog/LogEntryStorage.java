@@ -184,7 +184,17 @@ public final class LogEntryStorage {
       if (lastAppendedHeader == null) {
          throw new IllegalStateException();
       }
-      return appendWithoutOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
+      if (lastAppendedHeader.index != startIndex - 1) {
+         throw new AssertionError("stale lastAppendedHeader: header.index=" + lastAppendedHeader.index
+               + " expected=" + (startIndex - 1) + " position=" + lastAppendedHeader.position);
+      }
+      long writePosition = lastAppendedHeader.nextPosition();
+      if (writePosition > fileStorage.getCachedFileSize()) {
+         throw new AssertionError("write position beyond file: nextPosition=" + writePosition
+               + " fileSize=" + fileStorage.getCachedFileSize()
+               + " lastAppendedHeader.index=" + lastAppendedHeader.index);
+      }
+      return appendWithoutOverwriteCheck(entries, startIndex, writePosition);
    }
 
    private void setFilePosition(long index, long position) {
@@ -224,6 +234,19 @@ public final class LogEntryStorage {
       }
       batchBuffer.flip();
       fileStorage.write(startPosition);
+      if (startPosition + batchBytes != position) {
+         throw new AssertionError("position tracking inconsistency: startPosition=" + startPosition
+               + " + batchBytes=" + batchBytes + " != position=" + position);
+      }
+      if (lastAppendedHeader == null) {
+         throw new AssertionError("lastAppendedHeader null after appending " + entries.size()
+               + " entries starting at index " + (index - entries.size()));
+      }
+      if (lastAppendedHeader.nextPosition() > fileStorage.getCachedFileSize()) {
+         throw new AssertionError("last entry exceeds file after write: nextPos="
+               + lastAppendedHeader.nextPosition() + " fileSize=" + fileStorage.getCachedFileSize()
+               + " lastAppendedHeader.index=" + lastAppendedHeader.index);
+      }
       lastAppended = index - 1;
       if (positionCache.invalidateFrom(index)) {
          fileStorage.truncateTo(position);
@@ -270,9 +293,30 @@ public final class LogEntryStorage {
          fileStorage.truncateFrom(pos, entryStartOffset);
       }
       reload();
+      lastAppendedHeader = null;
       positionCache = positionCache.createDeleteCopyFrom(index, entryStartOffset);
       if (lastAppended < index) {
          lastAppended = index;
+      }
+      if (lastAppended > 0) {
+         long lastPos = positionCache.getPosition(lastAppended);
+         if (lastPos < entryStartOffset) {
+            throw new AssertionError("position of lastAppended=" + lastAppended + " is " + lastPos
+                  + " (before entryStartOffset=" + entryStartOffset + ") after removeOld(" + index + ")");
+         }
+         Header verifyHeader = readHeader(lastPos);
+         if (verifyHeader == null) {
+            throw new AssertionError("cannot read header for lastAppended=" + lastAppended
+                  + " at pos=" + lastPos + " after removeOld(" + index + ")");
+         }
+         if (verifyHeader.index != lastAppended) {
+            throw new AssertionError("header index mismatch: expected " + lastAppended
+                  + " found " + verifyHeader.index + " at pos=" + lastPos + " after removeOld(" + index + ")");
+         }
+         if (verifyHeader.nextPosition() > fileStorage.getCachedFileSize()) {
+            throw new AssertionError("last entry exceeds file: nextPos=" + verifyHeader.nextPosition()
+                  + " fileSize=" + fileStorage.getCachedFileSize() + " after removeOld(" + index + ")");
+         }
       }
    }
 

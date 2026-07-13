@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.zip.CRC32C;
-import java.util.zip.CheckedOutputStream;
 
 import net.jcip.annotations.NotThreadSafe;
 
@@ -58,6 +57,11 @@ public final class SnapshotStorage {
     private final File logDir;
     private final CRC32C crc;
 
+    // Initialized lazily on first access for reads.
+    private FileChannel readChannel;
+    private long dataStart;
+    private long dataSize;
+
     public SnapshotStorage(File logDir) {
         this.logDir = logDir;
         this.crc = new CRC32C();
@@ -75,6 +79,7 @@ public final class SnapshotStorage {
      * @throws IOException if the snapshot cannot be written
      */
     public void writeSnapshot(InputStream snapshot) throws IOException {
+        closeReadChannel();
         Path snapshotPath = snapshotPath();
         if (Files.exists(snapshotPath)) {
             // Since the file already exist, we keep it as is.
@@ -91,32 +96,17 @@ public final class SnapshotStorage {
     }
 
     public long snapshotSize() throws IOException {
-        Path snapshotPath = snapshotPath();
-        if (!Files.exists(snapshotPath)) {
-            return 0;
-        }
-
-        try (FileChannel channel = FileChannel.open(snapshotPath, StandardOpenOption.READ)) {
-            if (isSnapshotFile(channel))
-                return Files.size(snapshotPath) - SNAPSHOT_HEADER_SIZE - CRC_SIZE;
-
-            return Files.size(snapshotPath);
-        }
+        openReadChannel();
+        return dataSize;
     }
 
     public int region(long offset, byte[] dst, int dstOffset, int length) throws IOException {
-        Path snapshotPath = snapshotPath();
-        if (!Files.exists(snapshotPath)) {
+        openReadChannel();
+        if (readChannel == null)
             return 0;
-        }
-        try (FileChannel channel = FileChannel.open(snapshotPath, StandardOpenOption.READ)) {
-            long dataStart = 0;
-            if (isSnapshotFile(channel))
-                dataStart = SNAPSHOT_HEADER_SIZE;
 
-            ByteBuffer bb = ByteBuffer.wrap(dst, dstOffset, length);
-            return channel.read(bb, dataStart + offset);
-        }
+        ByteBuffer bb = ByteBuffer.wrap(dst, dstOffset, length);
+        return readChannel.read(bb, dataStart + offset);
     }
 
     private boolean isSnapshotFile(FileChannel channel) throws IOException {
@@ -127,6 +117,41 @@ public final class SnapshotStorage {
         channel.read(buf, 0);
         buf.flip();
         return isSnapshotFile(buf);
+    }
+
+    private void openReadChannel() throws IOException {
+        if (readChannel != null)
+            return;
+
+        Path snapshotPath = snapshotPath();
+
+        // If the snapshot file doesn't exist yet, nothing to read or initialize.
+        if (!Files.exists(snapshotPath))
+            return;
+
+        // Otherwise, create the channel and identify whether the snapshot file is following the newest version.
+        // The new version has a header and a trailing CRC.
+        readChannel = FileChannel.open(snapshotPath, StandardOpenOption.READ);
+        if (isSnapshotFile(readChannel)) {
+            dataStart = SNAPSHOT_HEADER_SIZE;
+            dataSize = readChannel.size() - SNAPSHOT_HEADER_SIZE - CRC_SIZE;
+        } else {
+            dataStart = 0;
+            dataSize = readChannel.size();
+        }
+    }
+
+    private void closeReadChannel() {
+        if (readChannel == null)
+            return;
+
+        try {
+            readChannel.close();
+        } catch (IOException ignored) { }
+
+        readChannel = null;
+        dataStart = 0;
+        dataSize = 0;
     }
 
     /**
@@ -195,17 +220,17 @@ public final class SnapshotStorage {
 
     private void write(InputStream snapshot, Path path) throws IOException {
         try (OutputStream out = Files.newOutputStream(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
-            // The buffer will always be at the end.
-            // We can just flip it to consume the content when writing.
-            HEADER_BUFFER.flip();
-
             // First bytes are the file header.
             out.write(HEADER_BUFFER.array(), 0, SNAPSHOT_HEADER_SIZE);
 
-            // We write the full snapshot utilizing the checked stream.
-            // The stream will update the underlying CRC automatically while writing.
-            CheckedOutputStream checked = new CheckedOutputStream(out, crc);
-            snapshot.transferTo(checked);
+            // We write and compute the CRC checksum simultaneously.
+            // We don't utilize a CheckOutputStream because we want to use a slightly larger buffer than the default 16384 bytes.
+            byte[] buf = new byte[1 << 20];
+            int read;
+            while ((read = snapshot.read(buf)) > 0) {
+                crc.update(buf, 0, read);
+                out.write(buf, 0, read);
+            }
 
             // The last 4 bytes will be the 32 bits checksum.
             int checksum = (int) (crc.getValue() & 0xFFFFFFFFL);
