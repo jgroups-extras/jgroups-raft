@@ -7,6 +7,7 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.protocols.raft.RaftHeader;
+import org.jgroups.protocols.raft.StagedSnapshotCapability;
 import org.jgroups.protocols.raft.internal.RaftEventLoop;
 import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkRequest;
 import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkResponse;
@@ -21,6 +22,7 @@ import java.io.DataInput;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
@@ -104,16 +106,30 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             return false;
 
         inProgress = true;
+        OutputStream out;
+        FileChannel channel;
 
-        Files.createDirectories(baseLogDir);
-        Path tempFile = temporaryWriteFileLocation();
-        FileChannel channel = FileChannel.open(tempFile,
-                StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);
+        StagedSnapshotCapability capability = log.findCapability(StagedSnapshotCapability.class);
+        if (capability != null) {
+            // Since the log supports a two-phase snapshot writing, we utilize the provided arena to write the snapshot.
+            // This way, we don't need to utilize a explicit file channel.
+            out = capability.stage();
+            channel = null;
+        } else {
+            Files.createDirectories(baseLogDir);
+            Path tempFile = temporaryWriteFileLocation();
+            channel = FileChannel.open(tempFile,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);
 
-        // We first copy over all the internal state necessary for RAFT itself.
-        // We only offload the state machine to another thread.
-        DataOutputStream out = new DataOutputStream(new BufferedOutputStream(Channels.newOutputStream(channel), DEFAULT_BUFFER_SIZE));
-        persistentState.writeTo(out);
+            // We first copy over all the internal state necessary for RAFT itself.
+            // We only offload the state machine to another thread.
+            out = Channels.newOutputStream(channel);
+        }
+
+        // Ensure the internal Raft state is serialized in the current event loop thread before delegating.
+        DataOutputStream dos = new DataOutputStream(out);
+        persistentState.writeTo(dos);
+        dos.flush();
 
         SnapshotHandle handle;
         try {
@@ -121,11 +137,13 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         } catch (Exception e) {
             inProgress = false;
             metrics.snapshotFailedCreate();
-            deleteSnapshotWriteFile(channel);
+            deleteSnapshotWriteFile(channel, dos);
             throw e;
         }
 
         try {
+            // We dispatch only the state machine serialization to a background thread.
+            // The provided action run at the end is guaranteed to run in the event loop.
             Executor executor = eventLoop.executor();
             executor.execute(new BackgroundSnapshotRunnable(commitIndex, channel, out, action, handle));
             return true;
@@ -134,13 +152,17 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             handle.release();
             inProgress = false;
             metrics.snapshotFailedCreate();
-            deleteSnapshotWriteFile(channel);
+            deleteSnapshotWriteFile(channel, dos);
             throw e;
         }
     }
 
     @Override
     public void transferTo(Message message, RaftHeader hdr, long lastIndex, long lastTerm, Address dest) throws Exception {
+        // The transfer mechanism is executed only at the Raft leader.
+        // The followers are the ones requesting the snapshot from the leader when they lag behind.
+        // If this is the first request, the leader only submits to the follower information about the snapshot.
+        // The follower is then responsible to continue requesting chunks of the snapshot, the leader doesn't hold any state for that.
         if (hdr == null) {
             long totalSize = log.snapshotSize();
 
@@ -154,6 +176,8 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             return;
         }
 
+        // The follower is the one for keeping state about the snapshot transfer state.
+        // The follower will request the specific chunks it needs to create the complete snapshot.
         int startChunk = scr.startChunk();
         int count = scr.count();
         long lastIncludedIndex = scr.lastIncludedIndex();
@@ -193,13 +217,21 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
     @Override
     public void install(ByteBuffer data, RaftHeader hdr, PostInstallAction action) throws Exception {
+        // Snapshot installation is only called at nodes that are lagging behind.
+        // These nodes will be responsible to contact the leader and request chunks.
         LOG.debug("Restoring state machine with snapshot (%d bytes) - %s", data.remaining(), hdr);
 
+        // Metadata contains only information about the snapshot.
+        // The follower utilizes the metdata to calculate the chunks and manage the requests.
+        // The metadata is the very first message sent from the leader to the follower before starting the transfer.
         if (hdr instanceof SnapshotMetadataRequest smr) {
             handleMetadata(smr, action);
             return;
         }
 
+        // The follower receives a chunk with data.
+        // This message will contain a piece of the full snapshot data.
+        // The follower is then responsible to flush this information to disk and continue requesting chunks.
         if (hdr instanceof SnapshotChunkResponse scr) {
             handleChunkResponse(data, scr);
             return;
@@ -210,19 +242,25 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
     private void handleMetadata(SnapshotMetadataRequest smr, PostInstallAction action) throws IOException {
         if (transfer != null) {
+            // Metadata is only ever received to START a transfer.
+            // A follower would only ever have a single transfer in progress at any given time.
+            // If there is a transfer in progress, we double-check whether it is the same transfer.
             if (transfer.lastIncludedIndex == smr.lastIncludedIndex() && Objects.equals(transfer.leader(), smr.leader())) {
                 LOG.debug("Repeated request for same index, and transfer already in progress, returning: %s", smr);
                 return;
             }
 
+            // If this is a request from another transfer, e.g., there was a leader change, we abort and start a new one.
             abortActiveTransfer();
         }
 
+        // Initialize the files to store the chunks while receiving them.
         Files.createDirectories(baseLogDir);
         Path tempFile = temporaryFileLocation();
         FileChannel channel = FileChannel.open(tempFile,
                 StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.READ, StandardOpenOption.TRUNCATE_EXISTING);
 
+        // Initialize the tracker to identify the missing chunks and calculate metrics.
         ChunkTracker tracker = new ChunkTracker(smr.totalSize(), chunkSize, batchSize);
         transfer = new ActiveSnapshotTransfer(
                 tracker, smr.lastIncludedIndex(), smr.lastIncludedTerm(), smr.currTerm(), smr.leader(), channel, action);
@@ -231,6 +269,8 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
         LOG.debug("Starting chunk transfer from %s -> %s", smr, transfer);
 
+        // Start requesting the chunks from the leader.
+        // The follower will request N chunks at a time to try and keep the pipeline busy with several smaller messages.
         int initialBatch = Math.min(batchSize, tracker.totalChunks());
         sender.sendChunkRequest(smr.leader(), smr.currTerm(), smr.lastIncludedIndex(), 0, initialBatch);
         tracker.markRequested(initialBatch);
@@ -242,13 +282,15 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             return;
         }
 
+        // Double-check that the chunk belongs to the current active transfer.
+        // The state machine progresses deterministically.
+        // A snapshot taken at an index N will always match, regardless of which node it was taken.
         if (scr.lastIncludedIndex() != transfer.lastIncludedIndex) {
             LOG.debug("Received chunk of a different snapshot recv=%s / transfer=%s", scr, transfer);
             return;
         }
 
         int chunkBytes = buffer.remaining();
-
         long writeOffset = scr.offset();
         while (buffer.hasRemaining()) {
             writeOffset += transfer.channel.write(buffer, writeOffset);
@@ -307,6 +349,9 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         try {
             LOG.debug("Completing active snapshot entry: %s", transfer);
 
+            // Copies the temporary file holding the snapshot chunks into its final location.
+            // The current transfer.channel holds only the raw data of the snapshot.
+            // After setting the snapshot, it will follow the internal format of the Log implementation.
             transfer.channel.position(0);
             log.setSnapshot(Channels.newInputStream(transfer.channel));
 
@@ -350,14 +395,16 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
         private final FileChannel channel;
         private final DataOutputStream out;
+        private final OutputStream originalOut;
         private final SnapshotHandle handle;
         private final PostCreateAction action;
         private final long commitIndex;
 
-        private BackgroundSnapshotRunnable(long commitIndex, FileChannel channel, DataOutputStream out, PostCreateAction action, SnapshotHandle handle) {
+        private BackgroundSnapshotRunnable(long commitIndex, FileChannel channel, OutputStream out, PostCreateAction action, SnapshotHandle handle) {
             this.commitIndex = commitIndex;
             this.channel = channel;
-            this.out = out;
+            this.out = new DataOutputStream(new BufferedOutputStream(out, DEFAULT_BUFFER_SIZE));
+            this.originalOut = out;
             this.action = action;
             this.handle = handle;
         }
@@ -368,11 +415,34 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
                 LOG.debug("Starting asynchronous snapshot on state machine");
                 handle.writeTo(out);
                 out.flush();
-                CompletionStage<Void> cs = eventLoop.submit(() -> {
-                    log.setSnapshot(Channels.newInputStream(channel.position(0)));
-                    action.onSnapshotDone(commitIndex);
-                    return null;
-                });
+
+                CompletionStage<Void> cs;
+
+                // After everything is written, we update the snapshot in the log.
+                // If the log supports a 2-phase snapshot write, we utilize it.
+                // This allows us to flush the snapshot into disk _outside_ of the event loop.
+                // And submit to the event loop only the file flip, which still ensures thread safety.
+                StagedSnapshotCapability capability = log.findCapability(StagedSnapshotCapability.class);
+                if (capability != null) {
+                    // Close only when the capability is available.
+                    // Otherwise, close will also close the underlying file channel.
+                    out.close();
+                    // Still on the background thread, write the data into the file.
+                    // Flip to the new file in the event loop, since it writes through the Log interface.
+                    cs = eventLoop.submit(() -> {
+                        capability.commit(originalOut);
+                        action.onSnapshotDone(commitIndex);
+                        return null;
+                    });
+                } else {
+                    // If the log implementation does support this 2-phase writes, we do everything in the event loop.
+                    // This inevitably stalls the event loop until all the write and swap finishes.
+                    cs = eventLoop.submit(() -> {
+                        log.setSnapshot(Channels.newInputStream(channel.position(0)));
+                        action.onSnapshotDone(commitIndex);
+                        return null;
+                    });
+                }
                 cs.whenComplete((ignore, t) -> {
                     if (t != null) {
                         metrics.snapshotFailedCreate();
@@ -384,22 +454,27 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
                         LOG.debug("Finished taking async snapshot index=%d", commitIndex);
                     handle.release();
                     inProgress = false;
-                    deleteSnapshotWriteFile(channel);
+                    deleteSnapshotWriteFile(channel, out);
                 });
             } catch (Exception e) {
                 LOG.error("Failed creating asynchronous snapshot", e);
                 metrics.snapshotFailedCreate();
                 handle.release();
                 inProgress = false;
-                deleteSnapshotWriteFile(channel);
+                deleteSnapshotWriteFile(channel, out);
             }
         }
     }
 
-    private void deleteSnapshotWriteFile(FileChannel channel) {
+    private void deleteSnapshotWriteFile(FileChannel channel, DataOutputStream dos) {
         try {
-            channel.close();
-            Files.deleteIfExists(temporaryWriteFileLocation());
+            if (channel != null) {
+                channel.close();
+                Files.deleteIfExists(temporaryWriteFileLocation());
+            }
+            if (dos != null) {
+                dos.close();
+            }
         } catch (IOException e) {
             LOG.error("Failed closing snapshot file at %s", temporaryWriteFileLocation(), e);
         }

@@ -6,6 +6,7 @@ import static org.assertj.core.api.AssertionsForInterfaceTypes.assertThat;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
+import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.InMemoryLog;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.protocols.raft.internal.RaftEventLoop;
@@ -24,6 +25,7 @@ import java.io.DataOutput;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -703,6 +705,108 @@ public class AsynchronousSnapshotManagerTest {
 
         assertThat(target.counter).isEqualTo(55);
         assertThat(metrics.numSnapshotsReceived()).isEqualTo(1);
+    }
+
+    public void testCreateWithStagedCapability() throws Exception {
+        try (FileBasedLog fileLog = createFileBasedLog()) {
+            TestSnapshotHandle handle = new TestSnapshotHandle(42);
+            TestAsyncSnapshot asyncSnapshot = new TestAsyncSnapshot(0);
+            asyncSnapshot.nextHandle = handle;
+
+            AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                    createEventLoop(), asyncSnapshot, persistentState, fileLog, noOpSender(), metrics,
+                    tempDir, 256 * 1024, 16);
+
+            AtomicBoolean actionCalled = new AtomicBoolean();
+            manager.create(5, idx -> {
+                assertThat(idx).isEqualTo(5);
+                actionCalled.set(true);
+            });
+
+            assertThat(handle.awaitRelease(5, SECONDS)).isTrue();
+
+            assertThat(actionCalled.get()).isTrue();
+            assertThat(metrics.numSnapshots()).isEqualTo(1);
+            assertThat(countStagedTempFiles()).isZero();
+
+            ByteBuffer snapshot = fileLog.getSnapshot();
+            assertThat(snapshot).isNotNull();
+
+            DataInput in = new ByteArrayDataInputStream(snapshot);
+            PersistentState restored = new PersistentState();
+            restored.readFrom(in);
+            assertThat(restored.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
+            assertThat(in.readInt()).isEqualTo(42);
+        }
+    }
+
+    public void testCreateWithStagedCapabilityWriteFailure() throws Exception {
+        try (FileBasedLog fileLog = createFileBasedLog()) {
+            TestSnapshotHandle handle = new TestSnapshotHandle(42);
+            handle.writeThrows = true;
+            TestAsyncSnapshot asyncSnapshot = new TestAsyncSnapshot(0);
+            asyncSnapshot.nextHandle = handle;
+
+            AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                    createEventLoop(), asyncSnapshot, persistentState, fileLog, noOpSender(), metrics,
+                    tempDir, 256 * 1024, 16);
+
+            manager.create(5, idx -> { });
+
+            assertThat(handle.awaitRelease(5, SECONDS)).isTrue();
+
+            assertThat(handle.released.get()).isTrue();
+            assertThat(metrics.numSnapshots()).isZero();
+            assertThat(metrics.numFailedSnapshotsTaken()).isEqualTo(1);
+            assertThat(fileLog.getSnapshot()).isNull();
+            assertThat(countStagedTempFiles()).isOne();
+        }
+    }
+
+    public void testCreateWithStagedCapabilityOverwritesExisting() throws Exception {
+        try (FileBasedLog fileLog = createFileBasedLog()) {
+            TestAsyncSnapshot asyncSnapshot = new TestAsyncSnapshot(0);
+            AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                    createEventLoop(), asyncSnapshot, persistentState, fileLog, noOpSender(), metrics,
+                    tempDir, 256 * 1024, 16);
+
+            TestSnapshotHandle first = new TestSnapshotHandle(10);
+            asyncSnapshot.nextHandle = first;
+            manager.create(1, idx -> { });
+            assertThat(first.awaitRelease(5, SECONDS)).isTrue();
+
+            TestSnapshotHandle second = new TestSnapshotHandle(20);
+            asyncSnapshot.nextHandle = second;
+            manager.create(2, idx -> { });
+            assertThat(second.awaitRelease(5, SECONDS)).isTrue();
+
+            assertThat(metrics.numSnapshots()).isEqualTo(2);
+            assertThat(countStagedTempFiles()).isZero();
+
+            ByteBuffer snapshot = fileLog.getSnapshot();
+            assertThat(snapshot).isNotNull();
+
+            DataInput in = new ByteArrayDataInputStream(snapshot);
+            PersistentState restored = new PersistentState();
+            restored.readFrom(in);
+            assertThat(in.readInt()).isEqualTo(20);
+        }
+    }
+
+    private FileBasedLog createFileBasedLog() throws Exception {
+        FileBasedLog fbl = new FileBasedLog();
+        fbl.init(tempDir.toString(), null);
+        return fbl;
+    }
+
+    private long countStagedTempFiles() throws IOException {
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(tempDir, "staged-snapshot-*.tmp")) {
+            long count = 0;
+            for (Path ignored : ds) {
+                count++;
+            }
+            return count;
+        }
     }
 
     private AsynchronousSnapshotManager createManager(TestAsyncSnapshot asyncSnapshot, RaftEventLoop eventLoop) {

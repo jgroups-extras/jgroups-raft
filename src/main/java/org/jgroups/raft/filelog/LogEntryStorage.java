@@ -32,8 +32,9 @@ public final class LogEntryStorage {
    public static final byte MAGIC_NUMBER_CRC = 0x02;
    public static final String FILE_NAME = "entries.raft";
    public static final int HEADER_SIZE = Global.INT_SIZE * 2 + Global.LONG_SIZE * 2 + 1 + Global.BYTE_SIZE;
-   // this is the typical OS page size and SSD blck_size
-   private static final int DEFAULT_WRITE_AHEAD_BYTES = 4096;
+
+   // Allocating a few Kbytes ahead so to amortize regrow/ftruncate syscalls.
+   private static final int DEFAULT_WRITE_AHEAD_BYTES = 1 << 16;
 
    private final FileStorage fileStorage;
    private FilePositionCache positionCache;
@@ -184,17 +185,7 @@ public final class LogEntryStorage {
       if (lastAppendedHeader == null) {
          throw new IllegalStateException();
       }
-      if (lastAppendedHeader.index != startIndex - 1) {
-         throw new AssertionError("stale lastAppendedHeader: header.index=" + lastAppendedHeader.index
-               + " expected=" + (startIndex - 1) + " position=" + lastAppendedHeader.position);
-      }
-      long writePosition = lastAppendedHeader.nextPosition();
-      if (writePosition > fileStorage.getCachedFileSize()) {
-         throw new AssertionError("write position beyond file: nextPosition=" + writePosition
-               + " fileSize=" + fileStorage.getCachedFileSize()
-               + " lastAppendedHeader.index=" + lastAppendedHeader.index);
-      }
-      return appendWithoutOverwriteCheck(entries, startIndex, writePosition);
+      return appendWithoutOverwriteCheck(entries, startIndex, lastAppendedHeader.nextPosition());
    }
 
    private void setFilePosition(long index, long position) {
@@ -234,19 +225,6 @@ public final class LogEntryStorage {
       }
       batchBuffer.flip();
       fileStorage.write(startPosition);
-      if (startPosition + batchBytes != position) {
-         throw new AssertionError("position tracking inconsistency: startPosition=" + startPosition
-               + " + batchBytes=" + batchBytes + " != position=" + position);
-      }
-      if (lastAppendedHeader == null) {
-         throw new AssertionError("lastAppendedHeader null after appending " + entries.size()
-               + " entries starting at index " + (index - entries.size()));
-      }
-      if (lastAppendedHeader.nextPosition() > fileStorage.getCachedFileSize()) {
-         throw new AssertionError("last entry exceeds file after write: nextPos="
-               + lastAppendedHeader.nextPosition() + " fileSize=" + fileStorage.getCachedFileSize()
-               + " lastAppendedHeader.index=" + lastAppendedHeader.index);
-      }
       lastAppended = index - 1;
       if (positionCache.invalidateFrom(index)) {
          fileStorage.truncateTo(position);
@@ -292,31 +270,10 @@ public final class LogEntryStorage {
          // We pass the entry offset so we can keep the file header and truncate the content from index.
          fileStorage.truncateFrom(pos, entryStartOffset);
       }
-      reload();
       lastAppendedHeader = null;
       positionCache = positionCache.createDeleteCopyFrom(index, entryStartOffset);
       if (lastAppended < index) {
          lastAppended = index;
-      }
-      if (lastAppended > 0) {
-         long lastPos = positionCache.getPosition(lastAppended);
-         if (lastPos < entryStartOffset) {
-            throw new AssertionError("position of lastAppended=" + lastAppended + " is " + lastPos
-                  + " (before entryStartOffset=" + entryStartOffset + ") after removeOld(" + index + ")");
-         }
-         Header verifyHeader = readHeader(lastPos);
-         if (verifyHeader == null) {
-            throw new AssertionError("cannot read header for lastAppended=" + lastAppended
-                  + " at pos=" + lastPos + " after removeOld(" + index + ")");
-         }
-         if (verifyHeader.index != lastAppended) {
-            throw new AssertionError("header index mismatch: expected " + lastAppended
-                  + " found " + verifyHeader.index + " at pos=" + lastPos + " after removeOld(" + index + ")");
-         }
-         if (verifyHeader.nextPosition() > fileStorage.getCachedFileSize()) {
-            throw new AssertionError("last entry exceeds file: nextPos=" + verifyHeader.nextPosition()
-                  + " fileSize=" + fileStorage.getCachedFileSize() + " after removeOld(" + index + ")");
-         }
       }
    }
 

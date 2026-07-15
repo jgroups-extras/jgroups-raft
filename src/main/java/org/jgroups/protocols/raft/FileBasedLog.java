@@ -259,9 +259,17 @@ public class FileBasedLog implements Log {
       forEach(function, firstAppended(), lastAppended());
    }
 
-
+   @Override
    public long sizeInBytes() {
       return logEntryStorage.getCachedFileSize();
+   }
+
+   @Override
+   public <T extends LogCapability> T findCapability(Class<T> capability) {
+      if (capability == StagedSnapshotCapability.class)
+         return capability.cast(snapshotStorage);
+
+      return null;
    }
 
    @Override

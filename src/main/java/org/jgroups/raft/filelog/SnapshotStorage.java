@@ -1,16 +1,21 @@
 package org.jgroups.raft.filelog;
 
+import org.jgroups.protocols.raft.StagedSnapshotCapability;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.nio.channels.Channels;
 import java.nio.channels.FileChannel;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.zip.CRC32C;
+import java.util.zip.CheckedOutputStream;
 
 import net.jcip.annotations.NotThreadSafe;
 
@@ -32,14 +37,13 @@ import net.jcip.annotations.NotThreadSafe;
  * @author José Bolina
  */
 @NotThreadSafe
-public final class SnapshotStorage {
+public final class SnapshotStorage implements StagedSnapshotCapability {
 
     public static final byte[] SNAPSHOT_HEADER_MAGIC = {'S', 'N', 'A', 'P'};
     public static final byte SNAPSHOT_HEADER_VERSION = 2;
     public static final int SNAPSHOT_HEADER_SIZE = 8;
     public static final int CRC_SIZE = 4;
     private static final ByteBuffer HEADER_BUFFER = ByteBuffer.allocate(SNAPSHOT_HEADER_SIZE);
-    private static final ByteBuffer CRC_BUFFER = ByteBuffer.allocate(CRC_SIZE);
 
     static {
         // First 4 bytes are the magic SNAP.
@@ -80,19 +84,7 @@ public final class SnapshotStorage {
      */
     public void writeSnapshot(InputStream snapshot) throws IOException {
         closeReadChannel();
-        Path snapshotPath = snapshotPath();
-        if (Files.exists(snapshotPath)) {
-            // Since the file already exist, we keep it as is.
-            // We write to a temporary file first.
-            Path tmp = Files.createTempFile(logDir.toPath(), null, null);
-            write(snapshot, tmp);
-            // Then we perform an atomic move to replace the existing file.
-            Files.move(tmp, snapshotPath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            return;
-        }
-
-        // If this is a new file, we just write it.
-        write(snapshot, snapshotPath);
+        write(snapshot);
     }
 
     public long snapshotSize() throws IOException {
@@ -218,30 +210,17 @@ public final class SnapshotStorage {
         return buf;
     }
 
-    private void write(InputStream snapshot, Path path) throws IOException {
-        try (OutputStream out = Files.newOutputStream(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE)) {
-            // First bytes are the file header.
-            out.write(HEADER_BUFFER.array(), 0, SNAPSHOT_HEADER_SIZE);
-
-            // We write and compute the CRC checksum simultaneously.
-            // We don't utilize a CheckOutputStream because we want to use a slightly larger buffer than the default 16384 bytes.
+    private void write(InputStream snapshot) throws IOException {
+        OutputStream os = stage();
+        try (os) {
             byte[] buf = new byte[1 << 20];
             int read;
-            while ((read = snapshot.read(buf)) > 0) {
-                crc.update(buf, 0, read);
-                out.write(buf, 0, read);
+            while (((read = snapshot.read(buf))) > 0) {
+                os.write(buf, 0, read);
             }
-
-            // The last 4 bytes will be the 32 bits checksum.
-            int checksum = (int) (crc.getValue() & 0xFFFFFFFFL);
-            CRC_BUFFER.position(0);
-            CRC_BUFFER.putInt(checksum);
-            CRC_BUFFER.flip();
-            out.write(CRC_BUFFER.array(), 0, CRC_SIZE);
-        } finally {
-            // Reset the CRC to be utilized again in the next call.
-            crc.reset();
         }
+
+        commit(os);
     }
 
     private Path snapshotPath() {
@@ -254,5 +233,109 @@ public final class SnapshotStorage {
                 && bb.get(1) == SNAPSHOT_HEADER_MAGIC[1]
                 && bb.get(2) == SNAPSHOT_HEADER_MAGIC[2]
                 && bb.get(3) == SNAPSHOT_HEADER_MAGIC[3];
+    }
+
+    @Override
+    public OutputStream stage() throws IOException {
+        // Cleanup files from failed previous attempts.
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(logDir.toPath(), "staged-snapshot-*.tmp")) {
+            for (Path path : ds) {
+                Files.deleteIfExists(path);
+            }
+        }
+
+        Path tempFile = Files.createTempFile(logDir.toPath(), "staged-snapshot-", ".tmp");
+        try {
+            return new SnapshotOutputStream(tempFile);
+        } catch (IOException e) {
+            Files.deleteIfExists(tempFile);
+            throw e;
+        }
+    }
+
+    @Override
+    public void commit(OutputStream staged) throws IOException {
+        if (!(staged instanceof SnapshotOutputStream sos))
+            throw new IllegalArgumentException("Unknown output stream type: " + staged);
+
+        closeReadChannel();
+        Files.move(sos.path(), snapshotPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    private static final class SnapshotOutputStream extends OutputStream {
+
+        private final Path path;
+        private final FileChannel channel;
+        private final OutputStream fileOut;
+        private final CheckedOutputStream checkedOut;
+        private boolean closed;
+
+        public SnapshotOutputStream(Path path) throws IOException {
+            FileChannel ch = FileChannel.open(path, StandardOpenOption.WRITE, StandardOpenOption.CREATE);
+
+            // First bytes are the file header.
+            ByteBuffer hdr = ByteBuffer.wrap(HEADER_BUFFER.array(), 0, SNAPSHOT_HEADER_SIZE);
+            while (hdr.hasRemaining()) {
+                ch.write(hdr);
+            }
+
+            this.path = path;
+            this.channel = ch;
+            this.fileOut = Channels.newOutputStream(ch);
+
+            // We utilize the checked stream with a CRC32 mechanism to validate.
+            // We validate only the snapshot content, it skips the header.
+            this.checkedOut = new CheckedOutputStream(fileOut, new CRC32C());
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            checkedOut.write(b);
+        }
+
+        @Override
+        public void write(byte[] b) throws IOException {
+            checkedOut.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            checkedOut.write(b, off, len);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            checkedOut.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (closed)
+                return;
+
+            closed = true;
+
+            // The last 4 bytes will be the 32 bits checksum.
+            int checksum = (int) (checkedOut.getChecksum().getValue() & 0xFFFFFFFFL);
+            byte[] trailer = new byte[CRC_SIZE];
+            trailer[0] = (byte) (checksum >>> 24);
+            trailer[1] = (byte) (checksum >>> 16);
+            trailer[2] = (byte) (checksum >>> 8);
+            trailer[3] = (byte) checksum;
+
+            // Trailer bytes goes directly into the file, they are not include through CRC checking.
+            fileOut.write(trailer);
+
+            // We ensure everything is flushed to disk on THIS thread.
+            // Therefore, we flush manually and we close the backing file channel to ensure everything goes to disk.
+            // This ensures that we don't have data in the page cache.
+            channel.force(false);
+            fileOut.close();
+            channel.close();
+        }
+
+        public Path path() {
+            return path;
+        }
     }
 }
