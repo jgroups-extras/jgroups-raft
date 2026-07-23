@@ -149,8 +149,8 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
             return true;
         } catch (Exception e) {
             LOG.error("Failed submitting asynchronous snapshot task", e);
-            handle.release();
             inProgress = false;
+            handle.release();
             metrics.snapshotFailedCreate();
             deleteSnapshotWriteFile(channel, dos);
             throw e;
@@ -452,15 +452,15 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
 
                     if (LOG.isDebugEnabled())
                         LOG.debug("Finished taking async snapshot index=%d", commitIndex);
-                    handle.release();
                     inProgress = false;
+                    handle.release();
                     deleteSnapshotWriteFile(channel, out);
                 });
             } catch (Exception e) {
                 LOG.error("Failed creating asynchronous snapshot", e);
                 metrics.snapshotFailedCreate();
-                handle.release();
                 inProgress = false;
+                handle.release();
                 deleteSnapshotWriteFile(channel, out);
             }
         }
