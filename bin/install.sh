@@ -5,7 +5,7 @@ set -e
 # ==========================================
 # Configuration & Constants
 # ==========================================
-DEFAULT_VERSION="2.0.0.Alpha1"
+DEFAULT_VERSION="2.0.0.Beta1"
 GITHUB_REPO="jgroups-extras/jgroups-raft"
 INSTALL_DIR="$HOME/.jgroups-raft"
 INIT_SCRIPT="$INSTALL_DIR/bin/raft-init.sh"
