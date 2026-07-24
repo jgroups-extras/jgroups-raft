@@ -700,7 +700,7 @@ public class LogRepairTest {
         byte[] snapshotData = "state-machine-snapshot".getBytes();
         byte[] d1 = "after-snapshot".getBytes();
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.setSnapshot(new java.io.ByteArrayInputStream(snapshotData));
             log.reinitializeTo(501, new LogEntry(5, d1));
             log.currentTerm(5);
             log.commitIndex(501);
@@ -729,7 +729,7 @@ public class LogRepairTest {
         byte[] snapshotData = "state-machine-snapshot-data".getBytes();
         byte[] d1 = "after-snapshot".getBytes();
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.setSnapshot(new java.io.ByteArrayInputStream(snapshotData));
             log.reinitializeTo(501, new LogEntry(5, d1));
             log.currentTerm(5);
             log.commitIndex(501);
@@ -751,7 +751,7 @@ public class LogRepairTest {
         byte[] d1 = "first-after".getBytes();
         byte[] d2 = "second-after".getBytes();
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.setSnapshot(new java.io.ByteArrayInputStream(snapshotData));
             log.reinitializeTo(501, new LogEntry(5, d1));
             log.append(502, LogEntries.create(new LogEntry(5, d2)));
             log.currentTerm(5);
@@ -781,7 +781,7 @@ public class LogRepairTest {
         byte[] d1 = "first-after".getBytes();
         byte[] d2 = "second-after".getBytes();
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(java.nio.ByteBuffer.wrap(snapshotData));
+            log.setSnapshot(new java.io.ByteArrayInputStream(snapshotData));
             log.reinitializeTo(501, new LogEntry(5, d1));
             log.append(502, LogEntries.create(new LogEntry(5, d2)));
             log.currentTerm(5);

@@ -38,7 +38,6 @@ import org.jgroups.raft.util.TimeService;
 import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.AverageMinMax;
-import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.DefaultThreadFactory;
 import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.MessageBatch;
@@ -46,9 +45,12 @@ import org.jgroups.util.Runner;
 import org.jgroups.util.ThreadFactory;
 import org.jgroups.util.Util;
 
+import java.io.BufferedInputStream;
+import java.io.DataInput;
+import java.io.DataInputStream;
 import java.io.File;
+import java.io.InputStream;
 import java.net.InetAddress;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -751,13 +753,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(state_machine == null || state_machine_loaded)
             return;
         int snapshot_offset=0;  // 0 when no snapshot is present, 1 otherwise
-        ByteBuffer sn=log_impl.getSnapshot();
-        if(sn != null) {
-            ByteArrayDataInputStream in=new ByteArrayDataInputStream(sn);
-            internal_state.readFrom(in);
-            state_machine.readContentFrom(in);
-            snapshot_offset=1;
-            log.debug("%s: initialized state machine from snapshot (%d bytes)", local_addr, sn.position());
+        try (InputStream sn  = log_impl.getSnapshot()) {
+            if (sn != null) {
+                DataInput in = new DataInputStream(new BufferedInputStream(sn));
+                internal_state.readFrom(in);
+                state_machine.readContentFrom(in);
+                snapshot_offset = 1;
+                log.debug("%s: initialized state machine from snapshot", local_addr);
+            }
         }
 
         long from=Math.max(1, log_impl.firstAppended()+snapshot_offset), to=commit_index, count=0;

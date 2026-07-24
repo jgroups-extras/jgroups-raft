@@ -16,14 +16,17 @@ import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotMetadataReq
 import org.jgroups.raft.AsyncSnapshot;
 import org.jgroups.raft.SnapshotHandle;
 import org.jgroups.raft.util.TimeService;
-import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.DataInput;
+import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -107,14 +110,15 @@ public class AsynchronousSnapshotManagerTest {
         assertThat(actionCalled.get()).isTrue();
         assertThat(metrics.numSnapshots()).isEqualTo(1);
 
-        ByteBuffer snapshot = log.getSnapshot();
-        assertThat(snapshot).isNotNull();
+        try (InputStream snapshot = log.getSnapshot()) {
+            assertThat(snapshot).isNotNull();
 
-        DataInput in = new ByteArrayDataInputStream(snapshot);
-        PersistentState restored = new PersistentState();
-        restored.readFrom(in);
-        assertThat(restored.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
-        assertThat(in.readInt()).isEqualTo(42);
+            DataInput in = new DataInputStream(new BufferedInputStream(snapshot));
+            PersistentState restored = new PersistentState();
+            restored.readFrom(in);
+            assertThat(restored.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
+            assertThat(in.readInt()).isEqualTo(42);
+        }
     }
 
     public void testCreateSkipsWhenInProgress() throws Exception {
@@ -474,7 +478,7 @@ public class AsynchronousSnapshotManagerTest {
 
     public void testTransferToSendsMetadata() throws Exception {
         ByteBuffer snapshot = createSnapshotBuffer(persistentState, 42);
-        log.setSnapshot(snapshot);
+        log.setSnapshot(new ByteArrayInputStream(snapshot.array(), snapshot.position(), snapshot.remaining()));
         log.currentTerm(3);
 
         Address dest = Util.createRandomAddress("target");
@@ -506,7 +510,7 @@ public class AsynchronousSnapshotManagerTest {
         ByteBuffer snapshot = createSnapshotBuffer(persistentState, 42);
         byte[] expected = new byte[snapshot.remaining()];
         snapshot.duplicate().get(expected);
-        log.setSnapshot(snapshot);
+        log.setSnapshot(new ByteArrayInputStream(snapshot.array(), snapshot.position(), snapshot.remaining()));
         log.currentTerm(3);
 
         Address dest = Util.createRandomAddress("target");
@@ -544,7 +548,7 @@ public class AsynchronousSnapshotManagerTest {
 
     public void testTransferToRequestBeyondSnapshotSize() throws Exception {
         ByteBuffer snapshot = createSnapshotBuffer(persistentState, 42);
-        log.setSnapshot(snapshot);
+        log.setSnapshot(new ByteArrayInputStream(snapshot.array(), snapshot.position(), snapshot.remaining()));
         log.currentTerm(3);
 
         Address dest = Util.createRandomAddress("target");
@@ -729,14 +733,15 @@ public class AsynchronousSnapshotManagerTest {
             assertThat(metrics.numSnapshots()).isEqualTo(1);
             assertThat(countStagedTempFiles()).isZero();
 
-            ByteBuffer snapshot = fileLog.getSnapshot();
-            assertThat(snapshot).isNotNull();
+            try (InputStream snapshot = fileLog.getSnapshot()) {
+                assertThat(snapshot).isNotNull();
 
-            DataInput in = new ByteArrayDataInputStream(snapshot);
-            PersistentState restored = new PersistentState();
-            restored.readFrom(in);
-            assertThat(restored.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
-            assertThat(in.readInt()).isEqualTo(42);
+                DataInput in = new DataInputStream(new BufferedInputStream(snapshot));
+                PersistentState restored = new PersistentState();
+                restored.readFrom(in);
+                assertThat(restored.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
+                assertThat(in.readInt()).isEqualTo(42);
+            }
         }
     }
 
@@ -783,13 +788,14 @@ public class AsynchronousSnapshotManagerTest {
             assertThat(metrics.numSnapshots()).isEqualTo(2);
             assertThat(countStagedTempFiles()).isZero();
 
-            ByteBuffer snapshot = fileLog.getSnapshot();
-            assertThat(snapshot).isNotNull();
+            try (InputStream snapshot = fileLog.getSnapshot()) {
+                assertThat(snapshot).isNotNull();
 
-            DataInput in = new ByteArrayDataInputStream(snapshot);
-            PersistentState restored = new PersistentState();
-            restored.readFrom(in);
-            assertThat(in.readInt()).isEqualTo(20);
+                DataInput in = new DataInputStream(new BufferedInputStream(snapshot));
+                PersistentState restored = new PersistentState();
+                restored.readFrom(in);
+                assertThat(in.readInt()).isEqualTo(20);
+            }
         }
     }
 

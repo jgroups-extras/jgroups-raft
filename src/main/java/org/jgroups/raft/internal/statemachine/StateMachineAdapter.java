@@ -14,6 +14,7 @@ import org.jgroups.util.ByteArrayDataInputStream;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 
 /**
@@ -107,10 +108,14 @@ final class StateMachineAdapter<T> implements StateMachine {
     public void readContentFrom(DataInput in) {
         byte[] buf;
         try {
-            ByteArrayDataInputStream badis = (ByteArrayDataInputStream) in;
-            int length = badis.available();
-            buf = new byte[length];
-            in.readFully(buf);
+            if (in instanceof ByteArrayDataInputStream badis) {
+                int length = badis.available();
+                buf = new byte[length];
+                in.readFully(buf);
+            } else {
+                InputStream is = (InputStream) in;
+                buf = is.readAllBytes();
+            }
         } catch (IOException e) {
             LOG.warn("Failed to restore state machine from snapshot. Not updating state.", e);
             return;

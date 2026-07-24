@@ -6,11 +6,12 @@ import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.raft.blocks.CounterService;
-import org.jgroups.util.ByteArrayDataInputStream;
 
+import java.io.BufferedInputStream;
 import java.io.DataInput;
+import java.io.DataInputStream;
+import java.io.InputStream;
 import java.lang.reflect.Method;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.StringJoiner;
@@ -75,13 +76,14 @@ public class AnalyzeLog {
             Address votedfor=l.votedFor();
 
             if(snapshot_reader != null) {
-                ByteBuffer sn=l.getSnapshot();
-                if(sn != null) {
-                    persistent_state=new PersistentState();
-                    DataInput snapshot=new ByteArrayDataInputStream(sn);
-                    persistent_state.readFrom(snapshot);
-                    System.out.printf("----------%npersistent state: %n%s%n-----------%n", persistent_state);
-                    System.out.printf("----------%nsnapshot: %s%n-----------%n", snapshot_reader.apply(snapshot));
+                try (InputStream sn = l.getSnapshot()) {
+                    if (sn != null) {
+                        persistent_state=new PersistentState();
+                        DataInput snapshot = new DataInputStream(new BufferedInputStream(sn));
+                        persistent_state.readFrom(snapshot);
+                        System.out.printf("----------%npersistent state: %n%s%n-----------%n", persistent_state);
+                        System.out.printf("----------%nsnapshot: %s%n-----------%n", snapshot_reader.apply(snapshot));
+                    }
                 }
             }
 

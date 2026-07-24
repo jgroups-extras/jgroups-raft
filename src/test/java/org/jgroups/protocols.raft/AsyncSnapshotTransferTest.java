@@ -17,7 +17,7 @@ import org.jgroups.util.Util;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
-import java.nio.ByteBuffer;
+import java.io.InputStream;
 import java.util.Objects;
 
 import org.testng.annotations.AfterMethod;
@@ -207,7 +207,7 @@ public class AsyncSnapshotTransferTest extends BaseStateMachineTest<AsyncSnapsho
                 .isGreaterThan(0);
 
         // Force losing the snapshot.
-        leader.log().setSnapshot((ByteBuffer) null);
+        leader.log().setSnapshot((InputStream) null);
 
         assertThat(leader.log().snapshotSize())
                 .as("Snapshot data should be cleared")

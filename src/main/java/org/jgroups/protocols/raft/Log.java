@@ -5,7 +5,6 @@ import org.jgroups.Address;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.function.ObjLongConsumer;
 
@@ -159,13 +158,9 @@ public interface Log extends Closeable {
     /**
      * Stores a snapshot of the state machine, replacing any previously stored snapshot.
      *
-     * @param sn the snapshot data
-     * @throws IOException if the snapshot cannot be stored
-     */
-    void setSnapshot(ByteBuffer sn) throws IOException;
-
-    /**
-     * Stores a snapshot of the state machine, replacing any previously stored snapshot.
+     * <p>
+     * Passing <code>null</code> clears the stored snapshot.
+     * </p>
      *
      * @param input an input stream to read the snapshot data from
      * @throws IOException if the snapshot cannot be stored
@@ -175,10 +170,14 @@ public interface Log extends Closeable {
     /**
      * Returns the most recently stored snapshot.
      *
-     * @return the snapshot data, or {@code null} if no snapshot has been stored
+     * <p>
+     * The returned stream is the caller's responsibility, and the caller should clean it up after use.
+     * </p>
+     *
+     * @return the snapshot data, or <code>null</code> if no snapshot has been stored
      * @throws IOException if the snapshot cannot be read
      */
-    ByteBuffer getSnapshot() throws IOException;
+    InputStream getSnapshot() throws IOException;
 
     /**
      * Returns the size of the snapshot.

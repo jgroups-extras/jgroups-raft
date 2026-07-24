@@ -8,6 +8,7 @@ import org.jgroups.Global;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
@@ -70,127 +71,6 @@ public class SnapshotCrcTest {
         int expectedCrc = computeCrc32c(snapshotData);
         int actualCrc = ByteBuffer.wrap(storedCrc).getInt();
         assertThat(actualCrc).isEqualTo(expectedCrc);
-    }
-
-    public void testSnapshotRoundtrip() throws IOException {
-        byte[] data = "roundtrip-snapshot".getBytes();
-        storage.writeSnapshot(new ByteArrayInputStream(data));
-
-        ByteBuffer loaded = storage.readSnapshot();
-        assertThat(loaded).isNotNull();
-        byte[] result = new byte[loaded.remaining()];
-        loaded.get(result);
-        assertThat(result).isEqualTo(data);
-    }
-
-    public void testLegacySnapshotReadWithoutHeader() throws IOException {
-        byte[] data = "legacy-snapshot-data".getBytes();
-        Files.write(snapshotPath(), data);
-
-        ByteBuffer loaded = storage.readSnapshot();
-        assertThat(loaded).isNotNull();
-        byte[] result = new byte[loaded.remaining()];
-        loaded.get(result);
-        assertThat(result).isEqualTo(data);
-    }
-
-    public void testCorruptedSnapshotDataDetectedByCrc() throws IOException {
-        byte[] data = "will-be-corrupted".getBytes();
-        storage.writeSnapshot(new ByteArrayInputStream(data));
-
-        corruptByteAt(SNAP_HEADER_SIZE);
-
-        assertThatThrownBy(() -> storage.readSnapshot())
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("CRC");
-    }
-
-    public void testCorruptedSnapshotCrcDetected() throws IOException {
-        byte[] data = "valid-data".getBytes();
-        storage.writeSnapshot(new ByteArrayInputStream(data));
-
-        long fileSize = Files.size(snapshotPath());
-        corruptByteAt(fileSize - CRC_SIZE);
-
-        assertThatThrownBy(() -> storage.readSnapshot())
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("CRC");
-    }
-
-    public void testUnknownSnapshotVersionRefusesToRead() throws IOException {
-        writeRawSnapshot((byte) 99, "some-data".getBytes());
-
-        assertThatThrownBy(() -> storage.readSnapshot())
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("version");
-    }
-
-    public void testVersionZeroRefusesToRead() throws IOException {
-        writeRawSnapshot((byte) 0, "some-data".getBytes());
-
-        assertThatThrownBy(() -> storage.readSnapshot())
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("version");
-    }
-
-    public void testEmptySnapshotRoundtrip() throws IOException {
-        storage.writeSnapshot(new ByteArrayInputStream(new byte[0]));
-
-        long fileSize = Files.size(snapshotPath());
-        assertThat(fileSize).isEqualTo(SNAP_HEADER_SIZE + CRC_SIZE);
-
-        ByteBuffer loaded = storage.readSnapshot();
-        assertThat(loaded).isNotNull();
-        assertThat(loaded.remaining()).isZero();
-    }
-
-    public void testSnapshotOverwritePreservesNewData() throws IOException {
-        storage.writeSnapshot(new ByteArrayInputStream("first-snapshot".getBytes()));
-        storage.writeSnapshot(new ByteArrayInputStream("second-snapshot".getBytes()));
-
-        ByteBuffer loaded = storage.readSnapshot();
-        assertThat(loaded).isNotNull();
-        byte[] result = new byte[loaded.remaining()];
-        loaded.get(result);
-        assertThat(new String(result)).isEqualTo("second-snapshot");
-    }
-
-    public void testNoSnapshotReturnsNull() throws IOException {
-        assertThat(storage.readSnapshot()).isNull();
-    }
-
-    public void testRepeatedWriteAndReadCycles() throws IOException {
-        String[] snapshots = {"first", "second-longer-data", "x", "fourth-snapshot-with-more-content", ""};
-        for (String data : snapshots) {
-            storage.writeSnapshot(new ByteArrayInputStream(data.getBytes()));
-
-            ByteBuffer loaded = storage.readSnapshot();
-            assertThat(loaded).isNotNull();
-            byte[] result = new byte[loaded.remaining()];
-            loaded.get(result);
-            assertThat(new String(result)).isEqualTo(data);
-        }
-    }
-
-    public void testTruncatedSnapshotFileDetected() throws IOException {
-        byte[] data = "truncated".getBytes();
-        storage.writeSnapshot(new ByteArrayInputStream(data));
-
-        try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {
-            raf.setLength(SNAP_HEADER_SIZE + 2);
-        }
-
-        assertThatThrownBy(() -> storage.readSnapshot())
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("truncated");
-    }
-
-    public void testHeaderOnlySnapshotFileDetected() throws IOException {
-        writeRawSnapshot((byte) 2, new byte[0]);
-
-        assertThatThrownBy(() -> storage.readSnapshot())
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("truncated");
     }
 
     public void testSnapshotSizeV2() throws IOException {
@@ -306,22 +186,147 @@ public class SnapshotCrcTest {
         assertThat(reassembled).isEqualTo(data);
     }
 
-    public void testLegacySnapshotOverwrittenWithNewFormat() throws IOException {
-        Files.write(snapshotPath(), "legacy-data".getBytes());
+    public void testStreamRoundtrip() throws IOException {
+        byte[] data = "roundtrip-stream-snapshot".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
 
-        storage.writeSnapshot(new ByteArrayInputStream("new-data".getBytes()));
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+            assertThat(stream.readAllBytes()).isEqualTo(data);
+        }
+    }
 
-        byte[] rawHeader = readRawBytes(0, SNAP_HEADER_SIZE);
-        assertThat(rawHeader[0]).isEqualTo(SNAP_MAGIC[0]);
-        assertThat(rawHeader[1]).isEqualTo(SNAP_MAGIC[1]);
-        assertThat(rawHeader[2]).isEqualTo(SNAP_MAGIC[2]);
-        assertThat(rawHeader[3]).isEqualTo(SNAP_MAGIC[3]);
+    public void testStreamNoFileReturnsNull() throws IOException {
+        assertThat(storage.readSnapshotStream()).isNull();
+    }
 
-        ByteBuffer loaded = storage.readSnapshot();
-        assertThat(loaded).isNotNull();
-        byte[] result = new byte[loaded.remaining()];
-        loaded.get(result);
-        assertThat(new String(result)).isEqualTo("new-data");
+    public void testStreamEmptySnapshot() throws IOException {
+        storage.writeSnapshot(new ByteArrayInputStream(new byte[0]));
+
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+            assertThat(stream.readAllBytes()).isEmpty();
+        }
+    }
+
+    public void testStreamCorruptedDataThrowsCrcFromRead() throws IOException {
+        storage.writeSnapshot(new ByteArrayInputStream("will-be-corrupted".getBytes()));
+        corruptByteAt(SNAP_HEADER_SIZE);
+
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+
+            assertThatThrownBy(stream::readAllBytes)
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("CRC");
+        }
+    }
+
+    public void testStreamCorruptedCrcTrailerThrowsFromRead() throws IOException {
+        byte[] data = "valid-data".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        long fileSize = Files.size(snapshotPath());
+        corruptByteAt(fileSize - CRC_SIZE);
+
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+
+            assertThatThrownBy(stream::readAllBytes)
+                    .isInstanceOf(IOException.class)
+                    .hasMessageContaining("CRC");
+        }
+    }
+
+    public void testStreamCloseWithoutConsumingDoesNotThrowOnCorruption() throws IOException {
+        storage.writeSnapshot(new ByteArrayInputStream("will-be-corrupted".getBytes()));
+        corruptByteAt(SNAP_HEADER_SIZE);
+
+        InputStream stream = storage.readSnapshotStream();
+        assertThat(stream).isNotNull();
+
+        stream.close();
+    }
+
+    public void testStreamUnsupportedVersionThrowsImmediately() throws IOException {
+        writeRawSnapshot((byte) 99, "some-data".getBytes());
+
+        assertThatThrownBy(() -> storage.readSnapshotStream())
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("version");
+    }
+
+    public void testStreamTruncatedFileThrowsImmediately() throws IOException {
+        storage.writeSnapshot(new ByteArrayInputStream("truncated".getBytes()));
+
+        try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {
+            raf.setLength(SNAP_HEADER_SIZE + 2);
+        }
+
+        assertThatThrownBy(() -> storage.readSnapshotStream())
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("truncated");
+    }
+
+    public void testStreamLegacySnapshotWithoutCrc() throws IOException {
+        byte[] data = "legacy-snapshot-data".getBytes();
+        Files.write(snapshotPath(), data);
+
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+            assertThat(stream.readAllBytes()).isEqualTo(data);
+        }
+    }
+
+    public void testStreamOverwriteReadsLatest() throws IOException {
+        storage.writeSnapshot(new ByteArrayInputStream("first-snapshot".getBytes()));
+        storage.writeSnapshot(new ByteArrayInputStream("second-snapshot".getBytes()));
+
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+            assertThat(new String(stream.readAllBytes())).isEqualTo("second-snapshot");
+        }
+    }
+
+    public void testStreamRepeatedReads() throws IOException {
+        byte[] data = "repeated-read-test".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        for (int i = 0; i < 3; i++) {
+            try (InputStream stream = storage.readSnapshotStream()) {
+                assertThat(stream).isNotNull();
+                assertThat(stream.readAllBytes()).isEqualTo(data);
+            }
+        }
+    }
+
+    public void testStreamZeroLengthReadDoesNotTriggerPrematureValidation() throws IOException {
+        byte[] data = "zero-length-read-test".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+
+            int result = stream.read(new byte[10], 0, 0);
+            assertThat(result).isZero();
+
+            assertThat(stream.readAllBytes()).isEqualTo(data);
+        }
+    }
+
+    public void testStreamSkipAccumulatesCrc() throws IOException {
+        byte[] data = "skip-then-read-data".getBytes();
+        storage.writeSnapshot(new ByteArrayInputStream(data));
+
+        try (InputStream stream = storage.readSnapshotStream()) {
+            assertThat(stream).isNotNull();
+
+            long skipped = stream.skip(5);
+            assertThat(skipped).isEqualTo(5);
+
+            byte[] rest = stream.readAllBytes();
+            assertThat(new String(rest)).isEqualTo("then-read-data");
+        }
     }
 
     private Path snapshotPath() {

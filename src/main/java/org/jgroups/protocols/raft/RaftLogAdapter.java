@@ -5,7 +5,6 @@ import org.jgroups.logging.LogFactory;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.ObjLongConsumer;
@@ -149,16 +148,6 @@ final class RaftLogAdapter implements Log, LogCapability {
     }
 
     @Override
-    public void setSnapshot(ByteBuffer sn) {
-        assertNotPoisoned();
-        try {
-            delegate.setSnapshot(sn);
-        } catch (IOException e) {
-            throw poison(e);
-        }
-    }
-
-    @Override
     public void setSnapshot(InputStream input) {
         assertNotPoisoned();
         try {
@@ -169,7 +158,7 @@ final class RaftLogAdapter implements Log, LogCapability {
     }
 
     @Override
-    public ByteBuffer getSnapshot() {
+    public InputStream getSnapshot() {
         assertNotPoisoned();
         try {
             return delegate.getSnapshot();

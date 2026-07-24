@@ -9,7 +9,6 @@ import org.jgroups.protocols.raft.LogEntry;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.ObjLongConsumer;
@@ -155,13 +154,8 @@ public final class LogCache implements Log, LogCacheControl {
     }
 
     @Override
-    public ByteBuffer getSnapshot() throws IOException {
+    public InputStream getSnapshot() throws IOException {
         return log.getSnapshot();
-    }
-
-    @Override
-    public void setSnapshot(ByteBuffer sn) throws IOException {
-        log.setSnapshot(sn); // the LogCache doesn't cache snapshots; this operation isn't frequent anyway
     }
 
     @Override

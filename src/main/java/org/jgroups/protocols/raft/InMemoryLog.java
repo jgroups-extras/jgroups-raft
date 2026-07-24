@@ -3,6 +3,7 @@ package org.jgroups.protocols.raft;
 import org.jgroups.Address;
 import org.jgroups.raft.util.ArrayRingBuffer;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -106,20 +107,18 @@ public class InMemoryLog implements Log {
     @Override
     public long lastAppended() {return last_appended;}
 
-
-    @Override
-    public void setSnapshot(ByteBuffer sn) {
-        this.snapshot=sn;
-    }
-
     @Override
     public void setSnapshot(InputStream input) throws IOException {
-        setSnapshot(ByteBuffer.wrap(input.readAllBytes()));
+        this.snapshot = input != null
+                ? ByteBuffer.wrap(input.readAllBytes())
+                : null;
     }
 
     @Override
-    public ByteBuffer getSnapshot() {
-        return snapshot != null? snapshot.duplicate() : null;
+    public InputStream getSnapshot() {
+        return snapshot != null
+                ? new ByteArrayInputStream(snapshot.array(), snapshot.position(), snapshot.remaining())
+                : null;
     }
 
     @Override

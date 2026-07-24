@@ -6,6 +6,7 @@ import org.jgroups.Global;
 import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.raft.filelog.SnapshotStorage;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -57,7 +58,7 @@ public class SnapshotFileRuleTest {
 
     public void testValidSnapshot() throws Exception {
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(ByteBuffer.wrap("state-machine-snapshot-data".getBytes()));
+            log.setSnapshot(new ByteArrayInputStream("state-machine-snapshot-data".getBytes()));
         }
 
         ValidationContext result = validate();
@@ -70,7 +71,7 @@ public class SnapshotFileRuleTest {
 
     public void testEmptySnapshotData() throws Exception {
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(ByteBuffer.wrap(new byte[0]));
+            log.setSnapshot(new ByteArrayInputStream(new byte[0]));
         }
 
         ValidationContext result = validate();
@@ -86,7 +87,7 @@ public class SnapshotFileRuleTest {
             data[i] = (byte) (i % 251);
         }
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(ByteBuffer.wrap(data));
+            log.setSnapshot(new ByteArrayInputStream(data));
         }
 
         ValidationContext result = validate();
@@ -98,7 +99,7 @@ public class SnapshotFileRuleTest {
 
     public void testCrcMismatch() throws Exception {
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(ByteBuffer.wrap("valid-snapshot-data".getBytes()));
+            log.setSnapshot(new ByteArrayInputStream("valid-snapshot-data".getBytes()));
         }
 
         try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {
@@ -116,7 +117,7 @@ public class SnapshotFileRuleTest {
 
     public void testTruncatedFile() throws Exception {
         try (FileBasedLog log = createLog()) {
-            log.setSnapshot(ByteBuffer.wrap("snapshot-to-truncate".getBytes()));
+            log.setSnapshot(new ByteArrayInputStream("snapshot-to-truncate".getBytes()));
         }
 
         try (RandomAccessFile raf = new RandomAccessFile(snapshotPath().toFile(), "rw")) {

@@ -10,10 +10,11 @@ import org.jgroups.protocols.raft.LogEntry;
 
 import org.jgroups.raft.filelog.LogDirectoryLock;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.RandomAccessFile;
-import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
@@ -57,17 +58,16 @@ public class FileBasedLogIntegrationTest {
         byte[] buf = new byte[10];
         append(1, buf, 1, 1, 1, 2, 2);
         log.commitIndex(5);
-        log.setSnapshot(ByteBuffer.wrap("snapshot-at-5".getBytes()));
+        log.setSnapshot(new ByteArrayInputStream("snapshot-at-5".getBytes()));
 
         log.close();
         log = createLog();
 
         assertIndices(0, 5, 5, 2);
-        ByteBuffer snapshot = log.getSnapshot();
-        assertThat(snapshot).isNotNull();
-        byte[] snapshotData = new byte[snapshot.remaining()];
-        snapshot.get(snapshotData);
-        assertThat(new String(snapshotData)).isEqualTo("snapshot-at-5");
+        try (InputStream snapshot = log.getSnapshot()) {
+            assertThat(snapshot).isNotNull();
+            assertThat(new String(snapshot.readAllBytes())).isEqualTo("snapshot-at-5");
+        }
 
         for (int i = 1; i <= 5; i++) {
             assertThat(log.get(i)).isNotNull();
@@ -87,14 +87,18 @@ public class FileBasedLogIntegrationTest {
         byte[] buf = "entry-data".getBytes();
         append(1, buf, 1, 1, 1);
         log.commitIndex(3);
-        log.setSnapshot(ByteBuffer.wrap("good-snapshot".getBytes()));
+        log.setSnapshot(new ByteArrayInputStream("good-snapshot".getBytes()));
         log.close();
 
         corruptByteAt(snapshotPath(), 12);
 
         log = createLog();
 
-        assertThatThrownBy(() -> log.getSnapshot())
+        assertThatThrownBy(() -> {
+            try (InputStream s = log.getSnapshot()) {
+                s.readAllBytes();
+            }
+        })
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("CRC");
 

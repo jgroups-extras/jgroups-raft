@@ -13,7 +13,9 @@ import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
+import java.io.ByteArrayInputStream;
 import java.io.DataInput;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 
 /**
@@ -65,8 +67,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
             persistentState.writeTo(out);
             stateMachine.writeContentTo(out);
 
-            ByteBuffer buffer = ByteBuffer.wrap(out.buffer(), 0, out.position());
-            log.setSnapshot(buffer);
+            log.setSnapshot(new ByteArrayInputStream(out.buffer(), 0, out.position()));
             action.onSnapshotDone(commitIndex);
             metrics.snapshotCreated();
             return true;
@@ -78,10 +79,13 @@ final class SynchronousSnapshotManager implements SnapshotManager {
 
     @Override
     public void transferTo(Message message, RaftHeader hdr, long lastIndex, long lastTerm, Address dest) throws Exception {
-        ByteBuffer data = log.getSnapshot();
+        byte[] data;
+        try (InputStream snapshot = log.getSnapshot()) {
+            data = snapshot.readAllBytes();
+        }
 
-        LOG.debug("Sending snapshot (%s), to %s (%d - %d)", Util.printBytes(data.position()), dest, lastIndex, lastTerm);
-        sender.send(dest, data, lastIndex, lastTerm);
+        LOG.debug("Sending snapshot (%s), to %s (%d - %d)", Util.printBytes(data.length), dest, lastIndex, lastTerm);
+        sender.send(dest, ByteBuffer.wrap(data), lastIndex, lastTerm);
     }
 
     @Override
@@ -95,7 +99,7 @@ final class SynchronousSnapshotManager implements SnapshotManager {
         LOG.debug("Restoring state machine with snapshot (%d bytes), (index=%d, term=%d)", data.remaining(), lastIncludedIndex, lastIncludedTerm);
 
         int pos = data.position();
-        log.setSnapshot(data);
+        log.setSnapshot(new ByteArrayInputStream(data.array(), data.position(), data.remaining()));
         data.position(pos);
 
         metrics.chunkTransferStarted();

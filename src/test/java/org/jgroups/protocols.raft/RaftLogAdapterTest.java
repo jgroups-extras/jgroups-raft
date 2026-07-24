@@ -6,7 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import org.jgroups.Global;
 import org.jgroups.raft.util.LogCache;
 
-import java.nio.ByteBuffer;
+import java.io.ByteArrayInputStream;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -96,9 +96,8 @@ public class RaftLogAdapterTest {
         assertThat(adapter.lastAppended()).isEqualTo(2);
     }
 
-    public void testDelegatesSnapshot() {
-        ByteBuffer snapshot = ByteBuffer.wrap(new byte[]{1, 2, 3});
-        adapter.setSnapshot(snapshot);
+    public void testDelegatesSnapshot() throws Exception {
+        adapter.setSnapshot(new ByteArrayInputStream(new byte[]{1, 2, 3}));
 
         assertThat(adapter.getSnapshot()).isNotNull();
     }
@@ -220,7 +219,7 @@ public class RaftLogAdapterTest {
     public void testPoisonedSetSnapshotThrows() {
         adapter.poison(new RuntimeException("disk full"));
 
-        assertThatThrownBy(() -> adapter.setSnapshot(ByteBuffer.wrap(new byte[]{1})))
+        assertThatThrownBy(() -> adapter.setSnapshot(new ByteArrayInputStream(new byte[]{1})))
                 .isInstanceOf(RaftLogException.class);
     }
 

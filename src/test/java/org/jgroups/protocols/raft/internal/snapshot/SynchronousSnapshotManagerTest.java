@@ -10,13 +10,16 @@ import org.jgroups.protocols.raft.InstallSnapshotRequest;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.util.TimeService;
-import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.DataInput;
+import java.io.DataInputStream;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -57,14 +60,15 @@ public class SynchronousSnapshotManagerTest {
 
         assertThat(metrics.numSnapshots()).isEqualTo(1);
 
-        ByteBuffer snapshot = log.getSnapshot();
-        assertThat(snapshot).isNotNull();
+        try (InputStream snapshot = log.getSnapshot()) {
+            assertThat(snapshot).isNotNull();
 
-        DataInput in = new ByteArrayDataInputStream(snapshot);
-        PersistentState restored = new PersistentState();
-        restored.readFrom(in);
-        assertThat(restored.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
-        assertThat(in.readInt()).isEqualTo(42);
+            DataInput in = new DataInputStream(new BufferedInputStream(snapshot));
+            PersistentState restored = new PersistentState();
+            restored.readFrom(in);
+            assertThat(restored.getMembers()).containsExactlyInAnyOrderElementsOf(MEMBERS);
+            assertThat(in.readInt()).isEqualTo(42);
+        }
     }
 
     public void testCreateWithNullStateMachine() {
@@ -132,7 +136,7 @@ public class SynchronousSnapshotManagerTest {
     public void testTransferTo() throws Exception {
         CounterStateMachine sm = new CounterStateMachine(42);
         ByteBuffer snapshot = createSnapshotBuffer(persistentState, sm);
-        log.setSnapshot(snapshot);
+        log.setSnapshot(new ByteArrayInputStream(snapshot.array(), snapshot.position(), snapshot.remaining()));
 
         Address dest = Util.createRandomAddress("target");
         AtomicBoolean senderCalled = new AtomicBoolean();

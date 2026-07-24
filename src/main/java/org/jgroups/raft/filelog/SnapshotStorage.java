@@ -87,6 +87,16 @@ public final class SnapshotStorage implements StagedSnapshotCapability {
         write(snapshot);
     }
 
+    /**
+     * Removes the stored snapshot, if any.
+     *
+     * @throws IOException if the file cannot be deleted
+     */
+    public void deleteSnapshot() throws IOException {
+        closeReadChannel();
+        Files.deleteIfExists(snapshotPath());
+    }
+
     public long snapshotSize() throws IOException {
         openReadChannel();
         return dataSize;
@@ -154,60 +164,63 @@ public final class SnapshotStorage implements StagedSnapshotCapability {
      * is verified against the snapshot data. Legacy snapshots (no header) are returned as-is without CRC validation.
      * </p>
      *
-     * @return the snapshot data, or {@code null} if no snapshot file exists
-     * @throws IOException if the file has an unsupported version, a CRC mismatch, or cannot be read
+     * <p>
+     * The returned stream is backed by an independent {@link FileChannel}, it does not interfere with the shared
+     * channel used by {@link #region} and {@link #snapshotSize}. Callers own the stream and must close it
+     * (try-with-resources). For versioned snapshots, the stream validates the trailing CRC-32C checksum lazily as data
+     * is consumed: a mismatch throws {@link IOException} from {@code read()}, not from {@code close()}.
+     * </p>
+     *
+     * @return an input stream over the snapshot data, or {@code null} if no snapshot file exists
+     * @throws IOException if the header version is unsupported or the file is truncated
      */
-    public ByteBuffer readSnapshot() throws IOException {
-        Path snapshotPath = snapshotPath();
-        if (!Files.exists(snapshotPath)) {
+    public InputStream readSnapshotStream() throws IOException {
+        Path path = snapshotPath();
+        if (!Files.exists(path))
             return null;
-        }
 
-        // Dangerously read the full snapshot into memory.
-        // This might contain the header and trailer information.
-        byte[] fileBytes = Files.readAllBytes(snapshotPath);
-        ByteBuffer buf = ByteBuffer.wrap(fileBytes);
+        FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
+        try {
+            long size = channel.size();
 
-        if (isSnapshotFile(buf)) {
-            // The file version is right after the magic bytes.
-            byte version = buf.get(SNAPSHOT_HEADER_MAGIC.length);
+            // Current content utilizes an older version without headers and trailing CRC.
+            // We can just return it as is.
+            if (size < SNAPSHOT_HEADER_SIZE)
+                return Channels.newInputStream(channel);
+
+            ByteBuffer header = ByteBuffer.allocate(SNAPSHOT_HEADER_SIZE);
+            channel.read(header, 0);
+            header.flip();
+
+            // The current snapshot has enough data to have a header.
+            // We check now if the initial bytes identify the file in the new format.
+            // If not a file in the new format, we just reset the channel position and return the stream.
+            if (!isSnapshotFile(header)) {
+                channel.position(0);
+                return Channels.newInputStream(channel);
+            }
+
+            byte version = header.get(SNAPSHOT_HEADER_MAGIC.length);
             if (version < 1 || version > SNAPSHOT_HEADER_VERSION) {
                 String message = String.format("Snapshot has version %d, but this release only supports up to version %d. " +
-                        "Upgrade to a compatible release.",
-                        version, SNAPSHOT_HEADER_VERSION);
+                        "Upgrade to a compatible release.", version, SNAPSHOT_HEADER_VERSION);
                 throw new IOException(message);
             }
 
-            if (fileBytes.length < SNAPSHOT_HEADER_SIZE + CRC_SIZE)
-                throw new IOException("Snapshot file is truncated, file too small to contain the header and CRC check");
+            if (size < SNAPSHOT_HEADER_SIZE + CRC_SIZE)
+                throw new IOException("Snapshot file is truncated, file too small to contain header and CRC check");
 
-            // Regenerate the checksum for the written snapshot data.
-            int dataLength = fileBytes.length - SNAPSHOT_HEADER_SIZE - CRC_SIZE;
-            crc.update(fileBytes, SNAPSHOT_HEADER_SIZE, dataLength);
-            int checksum = (int) (crc.getValue() & 0xFFFFFFFFL);
-
-            // Read the written checksum written at the end of file.
-            buf.position(fileBytes.length - CRC_SIZE);
-            int stored = buf.getInt();
-
-            // Reset the CRC before performing any checks to avoid leaving it dirty.
-            crc.reset();
-
-            if (stored != checksum) {
-                String message = String.format(
-                        "CRC mismatch in snapshot file: expected CRC 0x%08X, but found 0x%08X. " +
-                                "The snapshot may be corrupted. " +
-                                "Run 'raft log verify' for diagnostics before taking corrective action.",
-                        checksum, stored);
-                throw new IOException(message);
+            long dataSize = size - SNAPSHOT_HEADER_SIZE - CRC_SIZE;
+            channel.position(SNAPSHOT_HEADER_SIZE);
+            return new CrcValidatingInputStream(channel, dataSize);
+        } catch (Throwable t) {
+            try {
+                channel.close();
+            } catch (IOException e) {
+                t.addSuppressed(e);
             }
-
-            // Re-wrap the buffer to contain only the actual data.
-            // Discards the header 8 bytes, and trim the last 4 bytes.
-            buf = ByteBuffer.wrap(fileBytes, SNAPSHOT_HEADER_SIZE, dataLength);
+            throw t;
         }
-
-        return buf;
     }
 
     private void write(InputStream snapshot) throws IOException {
@@ -336,6 +349,90 @@ public final class SnapshotStorage implements StagedSnapshotCapability {
 
         public Path path() {
             return path;
+        }
+    }
+
+    /**
+     * Bounds reads to the data region and validates the trailing CRC checksum when the data is exhausted.
+     *
+     * <p>
+     * CRC validation fires from {@link #read()} when all data bytes have been consumed and the stream reads the trailing
+     * checksum. Closing without fully consuming the stream does not trigger a complete validation.
+     * </p>
+     */
+    private static final class CrcValidatingInputStream extends InputStream {
+
+        private final FileChannel channel;
+        private final InputStream delegate;
+        private final CRC32C crc;
+
+        private long remaining;
+        private boolean validated;
+
+        public CrcValidatingInputStream(FileChannel channel, long dataSize) {
+            this.channel = channel;
+            this.delegate = Channels.newInputStream(channel);
+            this.crc = new CRC32C();
+            this.remaining = dataSize;
+        }
+
+        @Override
+        public int read() throws IOException {
+            if (remaining <= 0)
+                return validateAndTerminate();
+
+            int b = delegate.read();
+            if (b < 0)
+                return validateAndTerminate();
+
+            crc.update(b);
+            remaining--;
+            return b;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            if (len == 0)
+                return 0;
+
+            if (remaining <= 0)
+                return validateAndTerminate();
+
+            int toRead = (int) Math.min(len, remaining);
+            int n = delegate.read(b, off, toRead);
+            if (n <= 0)
+                return validateAndTerminate();
+
+            crc.update(b, off, n);
+            remaining -= n;
+            return n;
+        }
+
+        @Override
+        public void close() throws IOException {
+            channel.close();
+        }
+
+        private int validateAndTerminate() throws IOException {
+            if (validated)
+                return -1;
+
+            validated = true;
+            byte[] trailer = delegate.readNBytes(CRC_SIZE);
+            if (trailer.length < CRC_SIZE)
+                throw new IOException("Snapshot file is truncated, unable to read CRC trailer");
+
+            int stored = ByteBuffer.wrap(trailer).getInt();
+            int computed = (int) (crc.getValue() & 0xFFFFFFFFL);
+
+            if (stored != computed) {
+                String message = String.format("CRC mismatch in snapshot file: expected CRC 0x%08X, but found 0x%08X. " +
+                                "The snapshot may be corrupted. " +
+                                "Run 'raft log verify' for diagnostics before taking corrective action.",
+                        computed, stored);
+                throw new IOException(message);
+            }
+            return -1;
         }
     }
 }
