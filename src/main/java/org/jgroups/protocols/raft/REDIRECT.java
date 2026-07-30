@@ -81,6 +81,9 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
     }
 
     private CompletableFuture<byte[]> readWriteAsync(byte[] buf, int offset, int length, Options options, boolean readOnly) throws Exception {
+        if (!raft.canHandleRequests())
+            throw new DegradedStateException("Node " + local_addr + " with id " + raft.raftId() + " is in degraded state");
+
         Address leader = leader(readOnly ? "get()" : "set()");
 
         // we are the current leader: pass the call to the RAFT protocol

@@ -149,6 +149,19 @@ public interface StateMachine {
 <3> This method is the opposite of `readContentFrom()` and writes the contents of this state machine to a stream
     (e.g. a file).
 
+===== Failure handling
+
+The `apply()` method should never throw an exception under normal operation.
+Business-logic errors (e.g., a key not found, a validation failure) should be serialised as return values so the client can handle them.
+
+If `apply()` throws, the node enters *degraded state*: it stops accepting new requests and steps down as leader.
+This is because the committed entry was applied successfully but failed locally, so the node's state could diverge from the cluster if we continued to operate.
+The node must be restarted to recover.
+You are responsible to following any recovery mechanism needed, and then restarting the node.
+
+Thrown exceptions should be reserved for infrastructure failures such as disk errors during a persistent write or corrupted local state.
+See <<Log Integrity and Recovery>> for more on how the node behaves in degraded state and the recovery options available.
+
 
 [[Snapshots]]
 ==== Snapshotting and state transfer

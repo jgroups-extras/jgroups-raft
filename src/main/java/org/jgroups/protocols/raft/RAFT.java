@@ -463,7 +463,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if (new_log == null) {
             this.log_impl = null;
         } else {
-            this.log_impl = new RaftLogAdapter(new_log, this::onLogFailure);
+            this.log_impl = new RaftLogAdapter(new_log, this::enterDegradedState);
         }
         return this;
     }
@@ -858,7 +858,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         LogCache lc = new LogCache(userConfigured, Math.max(_max_log_cache_size, 1));
         if(_max_log_cache_size <= 0)  // the log cache is disabled
             lc.disable();
-        log_impl = new RaftLogAdapter(lc, this::onLogFailure);
+        log_impl = new RaftLogAdapter(lc, this::enterDegradedState);
 
         last_appended=log_impl.lastAppended();
         commit_index=log_impl.commitIndex();
@@ -982,6 +982,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     private CompletableFuture<byte[]> submit(byte[] buf, int offset, int length, Options options, boolean internal, boolean readOnly) {
+        if (!canHandleRequests)
+            throw new DegradedStateException("Node " + local_addr + " with id " + raft_id + " is in degraded state");
+
         Address leader = leader();
         if(leader == null || (local_addr != null && !leader.equals(local_addr)))
             throw notCurrentLeader();
@@ -1262,8 +1265,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         snapshotIfNeeded(length);
     }
 
-    IllegalStateException notCurrentLeader() {
-        return new IllegalStateException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader() + ")");
+    RuntimeException notCurrentLeader() {
+        return new RaftLeaderException("I'm not the leader (local_addr=" + local_addr + ", leader=" + leader() + ")");
     }
 
     /** Populate with non-committed entries (from log) (https://github.com/jgroups-extras/jgroups-raft/issues/31) */
@@ -1586,18 +1589,20 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             if(opts != null && opts.ignoreReturnValue())
                 serialize_response=false;
             try {
-                rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length, serialize_response);
-            }
-            catch(Throwable t) {
+                if (state_machine != null)
+                    rsp=state_machine.apply(log_entry.command, log_entry.offset, log_entry.length, serialize_response);
+            } catch(Throwable t) {
+                enterDegradedState(t);
                 notify(entry, t);
+                return;
             }
         }
         notify(entry, rsp);
     }
 
-    private void onLogFailure(Throwable t) {
+    private void enterDegradedState(Throwable t) {
         canHandleRequests = false;
-        log.error("%s: storage failure, node entering into degraded mode", local_addr, t);
+        log.error("%s: node entering into degraded mode", local_addr, t);
         setLeaderAndTerm(null);
     }
 

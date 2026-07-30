@@ -252,7 +252,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         // Now try to make a change on A. This will fail as A is not leader anymore
         Assertions.assertThatThrownBy(() -> raft(0).set(new byte[]{'b', 'e', 'l', 'a'}, 0, 4, 500, TimeUnit.MILLISECONDS))
                 .as("Trying to set value without leader")
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(RaftLeaderException.class)
                 .hasMessageStartingWith("I'm not the leader ");
 
         // A now has last_applied=1 and commit_index=0:

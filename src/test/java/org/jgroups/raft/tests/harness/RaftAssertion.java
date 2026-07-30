@@ -16,6 +16,7 @@ import org.apache.logging.log4j.Logger;
 import org.assertj.core.api.Assertions;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.protocols.raft.RaftLeaderException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
@@ -40,7 +41,7 @@ public final class RaftAssertion {
                 .satisfiesAnyOf(
                         // In case the leader already received the view update and stepped down.
                         tc -> assertThat(tc)
-                                .isInstanceOf(IllegalStateException.class)
+                                .isInstanceOf(RaftLeaderException.class)
                                 .hasMessageContaining("I'm not the leader "),
 
                         // In case the request is sent before the leader step down.
@@ -50,7 +51,7 @@ public final class RaftAssertion {
                         // The request was sent but failed.
                         tc -> assertThat(tc).isInstanceOf(ExecutionException.class)
                                 .cause()
-                                .isInstanceOf(IllegalStateException.class)
+                                .isInstanceOf(RaftLeaderException.class)
                                 .hasMessageContaining("I'm not the leader ")
                 );
     }
