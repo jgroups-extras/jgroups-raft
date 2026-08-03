@@ -170,7 +170,7 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
             int curr_term=terms[curr_index-1];
             raft(index).currentTerm(curr_term);
             LogEntries entries=new LogEntries().add(new LogEntry(curr_term, DATA));
-            impl.handleAppendEntriesRequest(entries, leader, i, prev_term, curr_term, 0);
+            impl.handleAppendEntriesRequest(entries, leader, curr_term, i, prev_term, curr_term, 0);
         }
     }
 

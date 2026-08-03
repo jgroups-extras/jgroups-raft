@@ -67,7 +67,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
                 Log l=r.log();
                 long prev_term=l.get(i-1).term();
                 LogEntries entries=new LogEntries().add(new LogEntry(9, DATA));
-                AppendResult ar = r.impl().handleAppendEntriesRequest(entries, address(0),i-1, prev_term, 9, 4);
+                AppendResult ar = r.impl().handleAppendEntriesRequest(entries, address(0), 9, i-1, prev_term, 9, 4);
                 assertThat(ar)
                         .withFailMessage(String.format("%s failed on %d with %s", r.raftId(), i, ar))
                         .isNotNull()

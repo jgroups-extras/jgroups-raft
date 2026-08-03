@@ -320,13 +320,13 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
 
         // 7
         LogEntries entries=createLogEntries(10, val);
-        AppendResult result=impl.handleAppendEntriesRequest(entries, address(0), index - 1, 9, 10, 1);
+        AppendResult result=impl.handleAppendEntriesRequest(entries, address(0), 10, index - 1, 9, 10, 1);
         assertThat(result.success()).isTrue();
         raft_b.currentTerm(10);
         index++;
 
         // 8
-        result=impl.handleAppendEntriesRequest(entries, address(0), index-1, 10, 10, 1);
+        result=impl.handleAppendEntriesRequest(entries, address(0), 10, index-1, 10, 10, 1);
         assertThat(result.success()).isTrue();
         assertIndices(8, 5, 10, raft_b);
 

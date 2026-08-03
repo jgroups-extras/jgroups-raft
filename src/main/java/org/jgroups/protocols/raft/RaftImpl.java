@@ -38,9 +38,14 @@ public abstract class RaftImpl {
      * @param leader_commit The leader's commit_index
      * @return AppendResult A result (true or false), or null if the request was ignored (e.g. due to lower term)
      */
-    public AppendResult handleAppendEntriesRequest(LogEntries entries, Address leader,
+    public AppendResult handleAppendEntriesRequest(LogEntries entries, Address leader, long messageTerm,
                                                    long prev_index, long prev_term, long entry_term, long leader_commit) {
-        raft.leader(leader);
+        if (raft.trySetLeaderAndTerm(leader, messageTerm) < 0) {
+            // There was a change in leader while handling this request.
+            // It could be a new leader was elected or that this node received a vote request with higher term.
+            // We skip this entry altogether. The new leader would replicate it again.
+            return null;
+        }
         long curr_index=prev_index+1;
         // we got an empty AppendEntries message containing only leader_commit, or the index is below the commit index
         if(entries == null || entries.size() == 0 || curr_index <= raft.commitIndex()) {
@@ -87,7 +92,7 @@ public abstract class RaftImpl {
      * Called when a snapshot sent by the leader is received by a follower. The follower needs to overwrite its
      * snapshot file with the received bytes and reinitialize its log to last_inluded_index and create a dummy
      * LogEntry with last_included_term at last_included_index. This is needed by the next
-     * {@link RaftImpl#handleAppendEntriesRequest(LogEntries, Address, int, int, int, int)} call to compare to
+     * {@link RaftImpl#handleAppendEntriesRequest(LogEntries, Address, long, long, long, long, long)} call to compare to
      * the previous index and term.
      *
      * @param msg    The snapshot message sent by the leader

@@ -2,6 +2,7 @@ package org.jgroups.protocols.raft;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 import org.jgroups.Global;
 import org.jgroups.JChannel;
@@ -40,15 +41,16 @@ public class DegradedStateTest extends BaseStateMachineTest<DegradedStateTest.Fa
     @Override
     protected void afterClusterCreation() throws Exception {
         super.afterClusterCreation();
-        raft(0).setLeaderAndTerm(address(0));
-        raft(1).setLeaderAndTerm(address(0));
+        assertThat(eventually(() -> leader() != null, 10, TimeUnit.SECONDS))
+                .as("Leader election should complete")
+                .isTrue();
     }
 
     /**
      * When {@code state_machine.apply()} throws, the node enters degraded state.
      */
     public void testStateMachineFailureEntersDegradedState() throws Exception {
-        RAFT leader = raft(0);
+        RAFT leader = leader();
         assertThat(leader.isLeader()).isTrue();
         assertThat(leader.canHandleRequests()).isTrue();
 
@@ -66,7 +68,7 @@ public class DegradedStateTest extends BaseStateMachineTest<DegradedStateTest.Fa
     }
 
     public void testDegradedNodeRejectsNewWrites() throws Exception {
-        RAFT leader = raft(0);
+        RAFT leader = leader();
         stateMachine(0).armFailure(new RuntimeException("disk full"));
 
         byte[] data = new byte[]{1, 2, 3, 4};
@@ -80,13 +82,22 @@ public class DegradedStateTest extends BaseStateMachineTest<DegradedStateTest.Fa
                 .isInstanceOf(DegradedStateException.class);
     }
 
-    public void testNonLeaderRejectsWithRaftLeaderException() throws Exception {
-        RAFT follower = raft(1);
+    public void testNonLeaderRejectsWithRaftLeaderException() {
+        RAFT follower = follower();
         assertThat(follower.isLeader()).isFalse();
 
         byte[] data = new byte[]{1, 2, 3, 4};
         assertThatThrownBy(() -> follower.setAsync(data, 0, data.length))
                 .isInstanceOf(RaftLeaderException.class);
+    }
+
+    private RAFT follower() {
+        for (JChannel channel : channels()) {
+            RAFT r = raft(channel);
+            if (r != null && !r.isLeader())
+                return r;
+        }
+        throw new IllegalStateException("There are no followers!");
     }
 
     public static class FailingStateMachine implements StateMachine {

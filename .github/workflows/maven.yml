@@ -30,9 +30,9 @@ jobs:
         java: [ 17, 21, 25 ]
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Set up JDK ${{ matrix.java }}
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5
         with:
           java-version: ${{ matrix.java }}
           distribution: temurin
@@ -95,7 +95,7 @@ jobs:
       - name: Generate and upload test reports
         # Only upload reports if tests failed.
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: "test-report-${{ matrix.os }}-${{ matrix.java }}"
           # Once SUREFIRE-2219 is finished we can upload only the html report.
@@ -106,20 +106,20 @@ jobs:
 
       - name: Display surefire-reports
         if: failure()
-        uses: scacap/action-surefire-report@v1
+        uses: ScalableCapital/action-surefire-report@3b3f3f1178bc72d43fe062d5eb7fc316ee1663eb # v2
         with:
           check_name: "surefire-report-${{ matrix.os }}-${{ matrix.java }}"
 
       - name: Display SpotBugs report
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17
-        uses: github/codeql-action/upload-sarif@v4.37.3
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
         with:
           category: "spotbugs-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/spotbugs.sarif.json
 
       - name: Display PMD report
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17
-        uses: github/codeql-action/upload-sarif@v4.37.3
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38 # v4
         with:
           category: "pmd-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/pmd.sarif.json

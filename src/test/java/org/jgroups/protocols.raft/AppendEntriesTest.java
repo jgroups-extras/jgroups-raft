@@ -755,7 +755,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                                          long prev_log_index, long prev_log_term, long entry_term, long leader_commit) throws Exception {
         int len=data != null? data.length : 0;
         LogEntries entries=new LogEntries().add(new LogEntry(entry_term, data, 0, len));
-        return impl.handleAppendEntriesRequest(entries, leader, prev_log_index, prev_log_term, entry_term, leader_commit);
+        return impl.handleAppendEntriesRequest(entries, leader, impl.raft().currentTerm(), prev_log_index, prev_log_term, entry_term, leader_commit);
     }
 
 }

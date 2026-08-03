@@ -1094,9 +1094,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             long current_term = currentTerm();
             ObjectMessage om=(ObjectMessage)msg;
             log.trace("%s: from %s, %s header %s", local_addr, msg.src(), om, r);
-            AppendResult res=ri.handleAppendEntriesRequest(om.getObject(), r.leader,
+            AppendResult res=ri.handleAppendEntriesRequest(om.getObject(), r.leader, hdr.curr_term,
                     r.prev_log_index, r.prev_log_term, r.entry_term,
                     r.leader_commit);
+            if (res == null)
+                return;
+
             res.commitIndex(commit_index);
             Message rsp=new EmptyMessage(msg.src()).putHeader(id, new AppendEntriesResponse(current_term, res));
             down_prot.down(rsp);

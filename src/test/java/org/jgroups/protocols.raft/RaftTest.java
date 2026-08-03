@@ -307,13 +307,13 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
 
         // 7
         LogEntries entries=new LogEntries().add(new LogEntry(5, val));
-        AppendResult result=impl.handleAppendEntriesRequest(entries, address(0), index - 1, 4, 5, 1);
+        AppendResult result=impl.handleAppendEntriesRequest(entries, address(0), 5, index - 1, 4, 5, 1);
         assertThat(result.success()).isTrue();
         raft_b.currentTerm(5);
         index++;
 
         // 8
-        result=impl.handleAppendEntriesRequest(entries, address(0), index-1, 5, 5, 1);
+        result=impl.handleAppendEntriesRequest(entries, address(0), 5, index-1, 5, 5, 1);
         assertThat(result.success()).isTrue();
         assertIndices(8, 5, 5, raft_b);
 
