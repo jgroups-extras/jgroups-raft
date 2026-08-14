@@ -106,7 +106,7 @@ jobs:
 
       - name: Display surefire-reports
         if: failure()
-        uses: ScalableCapital/action-surefire-report@3b3f3f1178bc72d43fe062d5eb7fc316ee1663eb # v2
+        uses: ScalableCapital/action-surefire-report@4004a71652495d6ed111f5b717c2cf9aa0f37627 # v2
         with:
           check_name: "surefire-report-${{ matrix.os }}-${{ matrix.java }}"
 
