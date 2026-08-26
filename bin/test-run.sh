@@ -13,13 +13,12 @@ BIN_DIR=$(dirname "$0")
 LIB=${BIN_DIR}/../target/libs
 CLASSES=${BIN_DIR}/../target/classes
 TEST_CLASSES=${BIN_DIR}/../target/test-classes
-CONF=${BIN_DIR}/../conf
 
 check_if_exists_or_exit ${LIBS}
 check_if_exists_or_exit ${CLASSES}
 check_if_exists_or_exit ${TEST_CLASSES}
 
-CP="$CLASSES:$CONF:$TEST_CLASSES:$LIB/*"
+CP="$CLASSES:$TEST_CLASSES:$LIB/*"
 LOG="-Dlog4j.configurationFile=log4j2.xml"
 
 JG_FLAGS="-Djgroups.udp.mcast_addr=$MCAST_ADDR"

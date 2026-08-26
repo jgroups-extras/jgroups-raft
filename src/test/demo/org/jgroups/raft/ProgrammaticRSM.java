@@ -1,4 +1,4 @@
-package org.jgroups.raft.demos;
+package org.jgroups.raft;
 
 import org.jgroups.JChannel;
 import org.jgroups.Receiver;

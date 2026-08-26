@@ -1,5 +1,5 @@
 #!/bin/bash
 
 
-`dirname $0`/run.sh org.jgroups.raft.demos.CounterServiceDemo -props raft.xml  $*
+`dirname $0`/test-run.sh org.jgroups.raft.CounterServiceDemo -props raft.xml  $*
 

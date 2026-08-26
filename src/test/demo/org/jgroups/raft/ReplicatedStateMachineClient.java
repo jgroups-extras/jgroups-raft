@@ -1,22 +1,20 @@
-package org.jgroups.raft.client;
+package org.jgroups.raft;
 
 import org.jgroups.Address;
 import org.jgroups.blocks.cs.Connection;
 import org.jgroups.blocks.cs.ConnectionListener;
 import org.jgroups.blocks.cs.Receiver;
 import org.jgroups.blocks.cs.TcpClient;
+import org.jgroups.raft.ReplicatedStateMachineDemo.Command;
 import org.jgroups.util.ByteArrayDataInputStream;
 import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.net.InetAddress;
-import java.nio.ByteBuffer;
-
-import static org.jgroups.raft.demos.ReplicatedStateMachineDemo.Command;
 
 /**
- * Client connecting to a remote {@link org.jgroups.raft.demos.ReplicatedStateMachineDemo}.
+ * Client connecting to a remote {@link org.jgroups.raft.ReplicatedStateMachineDemo}.
  * @author Bela Ban
  * @since  1.0.0
  */
@@ -43,7 +41,7 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
             eventLoop();
         }
         catch(Exception ex) {
-            ex.printStackTrace();
+            ex.printStackTrace(System.err);
         }
         finally {
             Util.close(client);
@@ -54,20 +52,15 @@ public class ReplicatedStateMachineClient implements Receiver, ConnectionListene
     public void receive(Address sender, byte[] buf, int offset, int length) {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(buf, offset, length);
         try {
-            receive(sender, in);
+            receive(sender, in, length);
         }
         catch(Exception e) {
-            e.printStackTrace();
+            e.printStackTrace(System.err);
         }
     }
 
     @Override
-    public void receive(Address sender, ByteBuffer buf) {
-        Util.bufferToArray(sender, buf, this);
-    }
-
-    @Override
-    public void receive(Address sender, DataInput in) throws Exception {
+    public void receive(Address sender, DataInput in, int length) throws Exception {
         Object obj=Util.objectFromStream(in);
         if(obj instanceof Exception)
             throw (Exception)obj;

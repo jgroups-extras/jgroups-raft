@@ -1,4 +1,4 @@
-package org.jgroups.raft.demos;
+package org.jgroups.raft;
 
 import org.jgroups.Address;
 import org.jgroups.JChannel;
@@ -15,7 +15,6 @@ import org.jgroups.util.Util;
 
 import java.io.DataInput;
 import java.net.InetAddress;
-import java.nio.ByteBuffer;
 import java.util.Objects;
 
 /**
@@ -69,20 +68,15 @@ public class ReplicatedStateMachineDemo implements org.jgroups.blocks.cs.Receive
     public void receive(Address sender, byte[] buf, int offset, int length) {
         ByteArrayDataInputStream in=new ByteArrayDataInputStream(buf, offset, length);
         try {
-            receive(sender, in);
+            receive(sender, in, length);
         }
         catch(Exception e) {
-            e.printStackTrace();
+            e.printStackTrace(System.err);
         }
     }
 
     @Override
-    public void receive(Address sender, ByteBuffer buf) {
-        Util.bufferToArray(sender, buf, this);
-    }
-
-    @Override
-    public void receive(Address sender, DataInput in) throws Exception {
+    public void receive(Address sender, DataInput in, int length) throws Exception {
         int ordinal=in.readByte();
         ReplicatedStateMachineDemo.Command cmd=Command.values()[ordinal];
 

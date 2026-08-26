@@ -1,7 +1,6 @@
-### ReplicatedStateMachineClient
-
 #!/bin/bash
 
+### ReplicatedStateMachineClient
 
-`dirname $0`/run.sh org.jgroups.raft.client.ReplicatedStateMachineClient  $*
+`dirname $0`/test-run.sh org.jgroups.raft.ReplicatedStateMachineClient $*
 
