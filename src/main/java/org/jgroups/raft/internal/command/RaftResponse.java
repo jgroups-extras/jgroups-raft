@@ -1,6 +1,6 @@
 package org.jgroups.raft.internal.command;
 
-import org.jgroups.raft.exceptions.JRaftException;
+import org.jgroups.raft.exceptions.JGroupsRaftException;
 import org.jgroups.raft.internal.serialization.RaftTypeIds;
 import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
 import org.jgroups.raft.serialization.SerializationContextRead;
@@ -27,7 +27,7 @@ public final class RaftResponse {
     }
 
     private static RaftResponse failure(String exception) {
-        return failure(JRaftException.stackless(String.format("Failed apply command, see remote for stack trace: %s", exception)));
+        return failure(JGroupsRaftException.stackless(String.format("Failed apply command, see remote for stack trace: %s", exception)));
     }
 
     public boolean isSuccess() {

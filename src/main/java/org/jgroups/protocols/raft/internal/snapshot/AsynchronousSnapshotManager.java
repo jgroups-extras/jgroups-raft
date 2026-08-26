@@ -386,6 +386,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         return baseLogDir.resolve(PREFIX_SNAPSHOT_WRITE_FILE);
     }
 
+    @SuppressWarnings(value = "EI_EXPOSE_REP")
     @Override
     public SnapshotMetrics metrics() {
         return metrics;

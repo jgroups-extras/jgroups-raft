@@ -22,7 +22,7 @@ import java.util.zip.CRC32C;
  */
 public final class LogEntryStorage {
 
-   public static final byte[] FILE_HEADER_MAGIC = {'R', 'A', 'F', 'T'};
+   private static final byte[] FILE_HEADER_MAGIC = {'R', 'A', 'F', 'T'};
    public static final byte FILE_HEADER_VERSION = 2;
    public static final int FILE_HEADER_SIZE = 8;
    public static final int CRC_SIZE = 4;
@@ -48,6 +48,10 @@ public final class LogEntryStorage {
       this.fsync = fsync;
       positionCache = new FilePositionCache(0);
       fileStorage = new FileStorage(new File(parentDir, FILE_NAME), DEFAULT_WRITE_AHEAD_BYTES);
+   }
+
+   public static byte[] fileHeaderMagic() {
+      return FILE_HEADER_MAGIC.clone();
    }
 
    public static void writeFileHeaderTo(ByteBuffer buffer) {
@@ -357,7 +361,7 @@ public final class LogEntryStorage {
       fileStorage.flush();
    }
 
-   private static boolean isRaftFile(ByteBuffer bb) {
+   public static boolean isRaftFile(ByteBuffer bb) {
       return bb.remaining() >= 4
               && bb.get(0) == FILE_HEADER_MAGIC[0]
               && bb.get(1) == FILE_HEADER_MAGIC[1]
@@ -365,7 +369,7 @@ public final class LogEntryStorage {
               && bb.get(3) == FILE_HEADER_MAGIC[3];
    }
 
-   private static class Header {
+   private static final class Header {
       private static final byte SERIALIZED_TRUE = 0b1;
       private static final byte SERIALIZED_FALSE = 0b0;
       final long position;

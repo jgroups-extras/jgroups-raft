@@ -168,8 +168,7 @@ final class EntriesFileRule implements LogValidatorRule {
                 if (buf.get(0) == LogEntryStorage.MAGIC_NUMBER)
                     return Format.V1;
 
-                if (buf.get(0) == LogEntryStorage.FILE_HEADER_MAGIC[0] && buf.get(1) == LogEntryStorage.FILE_HEADER_MAGIC[1]
-                        && buf.get(2) == LogEntryStorage.FILE_HEADER_MAGIC[2] && buf.get(3) == LogEntryStorage.FILE_HEADER_MAGIC[3])
+                if (LogEntryStorage.isRaftFile(buf))
                     return Format.V2;
 
                 // There is file with content and it is neither legacy nor the new format.

@@ -19,7 +19,7 @@ import org.jgroups.raft.JGroupsRaftState;
 import org.jgroups.raft.Settable;
 import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
-import org.jgroups.raft.exceptions.JRaftException;
+import org.jgroups.raft.exceptions.JGroupsRaftException;
 import org.jgroups.raft.internal.metrics.JGroupsRaftMetricsCollector;
 import org.jgroups.raft.internal.probe.RaftProtocolProbe;
 import org.jgroups.raft.internal.registry.CommandRegistry;
@@ -164,7 +164,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
             try {
                 parameters.channel().connect(parameters.clusterName());
             } catch (Exception e) {
-                throw new JRaftException("Failed to connect to cluster", e);
+                throw new JGroupsRaftException("Failed to connect to cluster", e);
             }
         }
         healthCheck.start(raft);

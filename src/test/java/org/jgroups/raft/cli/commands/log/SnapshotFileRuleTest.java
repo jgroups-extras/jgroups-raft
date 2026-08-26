@@ -207,7 +207,7 @@ public class SnapshotFileRuleTest {
 
     private void writeSnapshotHeader(byte version) throws IOException {
         ByteBuffer header = ByteBuffer.allocate(SnapshotStorage.SNAPSHOT_HEADER_SIZE);
-        header.put(SnapshotStorage.SNAPSHOT_HEADER_MAGIC);
+        header.put(SnapshotStorage.snapshotHeaderMagic());
         header.put(version);
         header.put(new byte[3]);
         try (ByteChannel ch = Files.newByteChannel(snapshotPath(),

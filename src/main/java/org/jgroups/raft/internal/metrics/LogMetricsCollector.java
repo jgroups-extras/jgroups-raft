@@ -18,20 +18,19 @@ import java.time.Duration;
  */
 final class LogMetricsCollector implements LogMetrics {
     private final RAFT raft;
-    private final Log log;
 
     LogMetricsCollector(RAFT raft) {
         this.raft = raft;
-        this.log = raft.log();
     }
 
     @Override
     public long getTotalLogEntries() {
-        return log.size();
+        return log().size();
     }
 
     @Override
     public long getCommittedLogEntries() {
+        Log log = log();
         long first = log.firstAppended();
         long commit = log.commitIndex();
         if (commit == 0)
@@ -41,22 +40,23 @@ final class LogMetricsCollector implements LogMetrics {
 
     @Override
     public long getUncommittedLogEntries() {
+        Log log = log();
         return log.lastAppended() - log.commitIndex();
     }
 
     @Override
     public long getLogSizeInBytes() {
-        return log.sizeInBytes();
+        return log().sizeInBytes();
     }
 
     @Override
     public long getCurrentTerm() {
-        return log.currentTerm();
+        return log().currentTerm();
     }
 
     @Override
     public long getCommitIndex() {
-        return log.commitIndex();
+        return log().commitIndex();
     }
 
     @Override
@@ -94,4 +94,7 @@ final class LogMetricsCollector implements LogMetrics {
         return "LogMetricsCollector[raft=" + raft + ']';
     }
 
+    private Log log() {
+        return raft.log();
+    }
 }

@@ -6,7 +6,7 @@ import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.command.JGroupsRaftWriteCommandOptions;
 import org.jgroups.raft.configuration.RaftProtocolBuilder;
 import org.jgroups.raft.configuration.RuntimeProperties;
-import org.jgroups.raft.exceptions.JRaftException;
+import org.jgroups.raft.exceptions.JGroupsRaftException;
 import org.jgroups.raft.internal.JGroupsRaftFactory;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.serialization.binary.SerializationRegistry;
@@ -122,11 +122,77 @@ import net.jcip.annotations.ThreadSafe;
 @ThreadSafe
 public interface JGroupsRaft<T> {
 
+    /**
+     * First mandatory step in the {@link JGroupsRaft} builder chain.
+     *
+     * <p>
+     * Before any optional configuration is accessible, the builder requires one of the following to be
+     * provided:
+     * </p>
+     *
+     * <ul>
+     *     <li>A JGroups XML configuration file, either as an {@link InputStream} or a classpath resource name;</li>
+     *     <li>An existing {@link JChannel} with a valid protocol stack.</li>
+     * </ul>
+     *
+     * <p>
+     * Providing both a configuration file and a channel is not allowed, and will result in an
+     * {@link IllegalStateException} when {@code build()} is called.
+     * </p>
+     *
+     * <p>
+     * Once one of these methods is called, the builder advances to the next step, exposing the remaining
+     * configuration options.
+     * </p>
+     *
+     * @param <R> the type produced by the final {@code build()} call.
+     * @param <B> the type of the next builder step returned after supplying the JGroups configuration.
+     * @see JGroupsRaft.Builder
+     */
     interface JGroupsBuilderStep<R, B extends org.jgroups.raft.util.pattern.Builder<R>> {
+
+        /**
+         * Defines the JGroups configuration as an input stream.
+         *
+         * <p>
+         * The stream is used to construct the internal {@link JChannel}. The caller is responsible for
+         * opening the stream; the builder does not close it.
+         * </p>
+         *
+         * @param jgroupsConfig an open {@link InputStream} containing the JGroups XML configuration.
+         * @return the next builder step.
+         */
         B withJGroupsConfig(InputStream jgroupsConfig);
 
+        /**
+         * Defines the JGroups configuration by classpath resource name.
+         *
+         * <p>
+         * The resource is loaded from the context class loader. The file must be present on the classpath.
+         * </p>
+         *
+         * @param jgroupsConfig classpath-relative path to the JGroups XML configuration file.
+         * @return the next builder step.
+         */
         B withJGroupsConfig(String jgroupsConfig);
 
+        /**
+         * Provides an existing {@link JChannel} to use instead of creating one from a configuration file.
+         *
+         * <p>
+         * The channel must contain a valid protocol stack that includes {@link org.jgroups.protocols.raft.RAFT}
+         * and an election algorithm.
+         * </p>
+         *
+         * <p>
+         * If the channel is already connected, its lifecycle is not managed by the {@link JGroupsRaft}
+         * instance — it will not be disconnected when {@link JGroupsRaft#stop()} is called. If the channel
+         * is disconnected, the instance will connect and disconnect it as part of its own lifecycle.
+         * </p>
+         *
+         * @param channel an existing {@link JChannel} to use.
+         * @return the next builder step.
+         */
         B withJChannel(JChannel channel);
     }
 
@@ -291,7 +357,7 @@ public interface JGroupsRaft<T> {
          *
          * @return A new instance.
          * @throws IllegalStateException if the builder is not properly configured.
-         * @throws JRaftException if an error occurs while creating the instance.
+         * @throws JGroupsRaftException if an error occurs while creating the instance.
          */
         public JGroupsRaft<T> build() {
             validate();
@@ -306,7 +372,7 @@ public interface JGroupsRaft<T> {
                     if (r != null) raftBuilder.build(r);
                     return JGroupsRaftFactory.create(clusterName, ch, stateMachine, api, registry, runtimeProperties);
                 } catch (Exception e) {
-                    throw new JRaftException(e);
+                    throw new JGroupsRaftException(e);
                 }
             }
 

@@ -61,6 +61,7 @@ public abstract class BaseElection extends Protocol {
 
     protected RAFT raft;
 
+    private final Object lock = new Object();
     private final ElectionRunner voting_thread = new ElectionRunner("voting-thread", this::runVotingProcess);
     private final ResponseCollector<VoteResponse> votes = new ResponseCollector<>();
     private volatile boolean stopVoting;
@@ -110,8 +111,10 @@ public abstract class BaseElection extends Protocol {
     } // use for testing only!
 
     @ManagedAttribute(description = "Is the voting thread (only on the coordinator) running?")
-    public synchronized boolean isVotingThreadRunning() {
-        return voting_thread.isRunning();
+    public boolean isVotingThreadRunning() {
+        synchronized (lock) {
+            return voting_thread.isRunning();
+        }
     }
 
     @ManagedOperation(description = "Trigger the voting process (only on the coordinator)")
@@ -451,7 +454,7 @@ public abstract class BaseElection extends Protocol {
             // Hold intrinsic lock while verifying.
             // If a view updates while this verification happens, it could lead to liveness issue where the
             // voting thread does not continue to run, keeping a leader that left the cluster.
-            synchronized (this) {
+            synchronized (lock) {
                 // Check whether majority still in place between the collection of all votes to determining the leader.
                 // We must stop the voting thread and set the leader as null.
                 if (!isMajorityAvailable()) {
@@ -516,33 +519,37 @@ public abstract class BaseElection extends Protocol {
      * @param exclude the address to exclude from leader candidacy, or {@code null} for no exclusion.
      * @return a stage that completes with the newly elected leader's address.
      */
-    public synchronized CompletionStage<Address> startForcedElection(Address exclude) {
-        if (!isViewCoordinator())
-            return CompletableFuture.failedFuture(
-                    new IllegalStateException("forceLeaderElection() must be called on the view coordinator"));
+    public CompletionStage<Address> startForcedElection(Address exclude) {
+        synchronized (lock) {
+            if (!isViewCoordinator())
+                return CompletableFuture.failedFuture(
+                        new IllegalStateException("forceLeaderElection() must be called on the view coordinator"));
 
-        // Only update the fields if the thread is not running.
-        // Calling start will not initiate a second round, it will return the existent future for the running mechanism.
-        if (!isVotingThreadRunning()) {
-            log.debug("%s: starting forced election (exclude=%s)", local_addr, exclude);
-            TimeService time = raft.timeService();
-            electionStart = time.now();
-            electionStartNanos = time.nanos();
-            stopVoting = false;
+            // Only update the fields if the thread is not running.
+            // Calling start will not initiate a second round, it will return the existent future for the running mechanism.
+            if (!isVotingThreadRunning()) {
+                log.debug("%s: starting forced election (exclude=%s)", local_addr, exclude);
+                TimeService time = raft.timeService();
+                electionStart = time.now();
+                electionStartNanos = time.nanos();
+                stopVoting = false;
+            }
+            return voting_thread.start(exclude);
         }
-        return voting_thread.start(exclude);
     }
 
-    public synchronized BaseElection startVotingThread() {
-        if (!isVotingThreadRunning()) {
-            log.debug("%s: starting the voting thread", local_addr);
-            TimeService time = raft.timeService();
-            electionStart = time.now();
-            electionStartNanos = time.nanos();
-            stopVoting = false;
-            voting_thread.start();
+    public BaseElection startVotingThread() {
+        synchronized (lock) {
+            if (!isVotingThreadRunning()) {
+                log.debug("%s: starting the voting thread", local_addr);
+                TimeService time = raft.timeService();
+                electionStart = time.now();
+                electionStartNanos = time.nanos();
+                stopVoting = false;
+                voting_thread.start();
+            }
+            return this;
         }
-        return this;
     }
 
     protected void sendVoteRequest(long new_term) {
@@ -576,12 +583,14 @@ public abstract class BaseElection extends Protocol {
         down_prot.down(vote_rsp);
     }
 
-    public synchronized BaseElection stopVotingThread() {
-        if (isVotingThreadRunning()) {
-            log.debug("%s: mark the voting thread to stop", local_addr);
-            stopVoting = true;
+    public BaseElection stopVotingThread() {
+        synchronized (lock) {
+            if (isVotingThreadRunning()) {
+                log.debug("%s: mark the voting thread to stop", local_addr);
+                stopVoting = true;
+            }
+            return this;
         }
-        return this;
     }
 
     private void stopVotingThreadInternal() {

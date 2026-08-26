@@ -32,9 +32,9 @@ package org.jgroups.raft.exceptions;
  * @since 2.0
  * @see org.jgroups.raft.internal.serialization.binary.AbstractSerializationContextWrite
  * @see org.jgroups.raft.internal.serialization.binary.BinarySerializer
- * @see JRaftException
+ * @see JGroupsRaftException
  */
-public class JGroupsRaftSerializationException extends JRaftException {
+public class JGroupsRaftSerializationException extends JGroupsRaftException {
     public JGroupsRaftSerializationException(String message, Throwable cause) {
         super(message, cause);
     }

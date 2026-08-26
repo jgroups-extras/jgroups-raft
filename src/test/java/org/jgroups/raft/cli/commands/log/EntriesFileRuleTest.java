@@ -412,7 +412,7 @@ public class EntriesFileRuleTest {
 
     private void writeFileHeader(FileChannel ch) throws IOException {
         ByteBuffer header = ByteBuffer.allocate(LogEntryStorage.FILE_HEADER_SIZE);
-        header.put(LogEntryStorage.FILE_HEADER_MAGIC);
+        header.put(LogEntryStorage.fileHeaderMagic());
         header.put((byte) 2);
         header.put(new byte[3]);
         header.flip();

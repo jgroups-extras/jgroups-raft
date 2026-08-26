@@ -2,7 +2,7 @@ package org.jgroups.raft.util.io;
 
 import java.util.concurrent.atomic.AtomicReferenceArray;
 
-public class ConcurrentCustomByteBufferPool {
+public final class ConcurrentCustomByteBufferPool {
 
     /**
      * Array of buffer slots. null = empty slot, non-null = available buffer.

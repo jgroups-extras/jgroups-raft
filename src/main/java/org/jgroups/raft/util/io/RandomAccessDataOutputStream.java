@@ -18,7 +18,7 @@ import java.util.Objects;
  * @since 2.0
  * @see RandomAccessOutput
  */
-public class RandomAccessDataOutputStream implements RandomAccessOutput {
+public final class RandomAccessDataOutputStream implements RandomAccessOutput {
     private final ByteArrayDataOutputStream output;
 
     /**

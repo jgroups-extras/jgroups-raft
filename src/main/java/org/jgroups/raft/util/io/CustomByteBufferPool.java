@@ -19,7 +19,7 @@ package org.jgroups.raft.util.io;
  * @author José Bolina
  * @since 2.0
  */
-public class CustomByteBufferPool {
+public final class CustomByteBufferPool {
 
     /**
      * Simple slot to hold a buffer and track if it's in use.

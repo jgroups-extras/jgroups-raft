@@ -48,7 +48,7 @@ final class SnapshotFileRule extends BaseFileRule {
             return context.append(vr);
         }
 
-        byte version = buffer.get(SnapshotStorage.SNAPSHOT_HEADER_MAGIC.length);
+        byte version = buffer.get(SnapshotStorage.snapshotHeaderMagic().length);
         if (version < 1 || version > MAX_SUPPORTED_VERSION) {
             String message = String.format("Snapshot version %d is not supported. " +
                     "This CLI release supports up to version %d. Upgrade to a compatible release.", version, MAX_SUPPORTED_VERSION);

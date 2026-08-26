@@ -35,6 +35,7 @@
             <Class name="org.jgroups.raft.JGroupsRaftHealthCheck$HealthIssue"/>
             <Class name="org.jgroups.raft.RaftHandle"/>
             <Class name="org.jgroups.raft.blocks.AsyncCounterImpl"/>
+            <Class name="org.jgroups.raft.blocks.AsyncCounterImpl$Sync"/>
             <Class name="org.jgroups.raft.blocks.ReplicatedStateMachine"/>
             <Class name="org.jgroups.raft.cli.probe.ProbeArguments$ProbeArgumentsBuilder"/>
             <Class name="org.jgroups.raft.cli.probe.ProbeResponseWriter$ProbeResponse"/>
@@ -44,7 +45,14 @@
             <Class name="org.jgroups.raft.util.LogCache"/>
             <Class name="org.jgroups.raft.util.RequestTable"/>
             <Class name="org.jgroups.raft.util.RequestTable$Entry"/>
+            <Class name="org.jgroups.raft.filelog.FileHandleProvider$Handle"/>
         </Or>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Class name="org.jgroups.raft.internal.JGroupsRaftImpl"/>
+        <Method name="administration"/>
     </Match>
 
     <Match>
@@ -94,16 +102,31 @@
         <Method name="initialize"/>
     </Match>
 
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Or>
+            <Class name="org.jgroups.protocols.raft.internal.snapshot.AsynchronousSnapshotManager"/>
+            <Class name="org.jgroups.protocols.raft.internal.snapshot.SynchronousSnapshotManager"/>
+        </Or>
+        <Method name="metrics"/>
+    </Match>
+
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+        <Or>
+            <Class name="org.jgroups.raft.cli.probe.writer.JsonResponseWriter"/>
+            <Class name="org.jgroups.raft.cli.probe.writer.TableResponseWriter"/>
+            <Class name="org.jgroups.raft.cli.probe.writer.TextResponseWriter"/>
+        </Or>
+        <Method name="out"/>
+    </Match>
+
     <!-- CT_CONSTRUCTOR_THROW: constructors that throw are acceptable in these classes -->
     <Match>
         <Bug pattern="CT_CONSTRUCTOR_THROW"/>
         <Or>
             <Class name="org.jgroups.raft.RaftHandle"/>
-            <Class name="org.jgroups.raft.blocks.AsyncCounterImpl"/>
-            <Class name="org.jgroups.raft.filelog.FilePositionCache"/>
             <Class name="org.jgroups.raft.testfwk.RaftNode"/>
-            <Class name="org.jgroups.raft.util.io.ConcurrentCustomByteBufferPool"/>
-            <Class name="org.jgroups.raft.util.io.CustomByteBufferPool"/>
         </Or>
     </Match>
 

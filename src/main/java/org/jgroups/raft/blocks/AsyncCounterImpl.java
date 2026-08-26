@@ -16,7 +16,7 @@ import java.util.concurrent.CompletionStage;
  *
  * @since 1.0.9
  */
-public class AsyncCounterImpl implements RaftAsyncCounter {
+public final class AsyncCounterImpl implements RaftAsyncCounter {
     private final CounterService counterService;
     private final AsciiString    asciiName;
     private final Sync           sync;

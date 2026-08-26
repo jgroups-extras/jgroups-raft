@@ -39,7 +39,7 @@ import net.jcip.annotations.NotThreadSafe;
 @NotThreadSafe
 public final class SnapshotStorage implements StagedSnapshotCapability {
 
-    public static final byte[] SNAPSHOT_HEADER_MAGIC = {'S', 'N', 'A', 'P'};
+    private static final byte[] SNAPSHOT_HEADER_MAGIC = {'S', 'N', 'A', 'P'};
     public static final byte SNAPSHOT_HEADER_VERSION = 2;
     public static final int SNAPSHOT_HEADER_SIZE = 8;
     public static final int CRC_SIZE = 4;
@@ -56,10 +56,13 @@ public final class SnapshotStorage implements StagedSnapshotCapability {
         HEADER_BUFFER.put((byte) 0);
     }
 
+    public static byte[] snapshotHeaderMagic() {
+        return SNAPSHOT_HEADER_MAGIC.clone();
+    }
+
     public static final String SNAPSHOT_FILE_NAME = "state_snapshot.raft";
 
     private final File logDir;
-    private final CRC32C crc;
 
     // Initialized lazily on first access for reads.
     private FileChannel readChannel;
@@ -68,7 +71,6 @@ public final class SnapshotStorage implements StagedSnapshotCapability {
 
     public SnapshotStorage(File logDir) {
         this.logDir = logDir;
-        this.crc = new CRC32C();
     }
 
     /**
@@ -228,7 +230,7 @@ public final class SnapshotStorage implements StagedSnapshotCapability {
         try (os) {
             byte[] buf = new byte[1 << 20];
             int read;
-            while (((read = snapshot.read(buf))) > 0) {
+            while ((read = snapshot.read(buf)) > 0) {
                 os.write(buf, 0, read);
             }
         }
