@@ -37,7 +37,6 @@
         <defaultTestNGGroups>functional</defaultTestNGGroups>
         <defaultExcludedTestNGGroups>broken</defaultExcludedTestNGGroups>
         <testNGListeners>org.jgroups.raft.tests.listeners.TestNGTestListener</testNGListeners>
-        <jgroups.log.level>INFO</jgroups.log.level>
 
         <jgroups.bind_addr>localhost</jgroups.bind_addr>
         <jgroups.tcpping.initial_hosts>localhost[7800],localhost[7801]</jgroups.tcpping.initial_hosts>
@@ -507,7 +506,6 @@
                         <tcp.recv_buf_size>200000</tcp.recv_buf_size>
                         <tcp.send_buf_size>64000</tcp.send_buf_size>
                         <ansi.strip>${ansi.strip}</ansi.strip>
-                        <jgroups.log.level>${jgroups.log.level}</jgroups.log.level>
                     </systemPropertyVariables>
                     <trimStackTrace>false</trimStackTrace>
                     <properties>

@@ -48,7 +48,7 @@ public class BaseRaftChannelTest extends AbstractRaftTest {
         }
 
         Util.waitUntilAllChannelsHaveSameView(10_000, 100, actualChannels());
-        LOGGER.info("{}: current cluster {} of size {} view is:%n{}%n", getClass(), clusterName(), clusterSize, printCurrentCluster());
+        LOGGER.info("{}: current cluster {} of size {} view is: {}", getClass(), clusterName(), clusterSize, printCurrentCluster());
     }
 
     /**
@@ -97,7 +97,7 @@ public class BaseRaftChannelTest extends AbstractRaftTest {
     protected final void destroyCluster() throws Exception {
         beforeClusterDestroy();
 
-        LOGGER.info("{}: destroying cluster {} with size %d{}", getClass(), clusterName(), clusterSize);
+        LOGGER.info("{}: destroying cluster {} with size {}", getClass(), clusterName(), clusterSize);
         if (channels != null) {
             for (int i = clusterSize - 1; i >= 0; i--) {
                 close(i);
