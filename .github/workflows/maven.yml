@@ -112,14 +112,14 @@ jobs:
 
       - name: Display SpotBugs report
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
         with:
           category: "spotbugs-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/spotbugs.sarif.json
 
       - name: Display PMD report
         if: matrix.os == 'ubuntu-latest' && matrix.java == 17
-        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+        uses: github/codeql-action/upload-sarif@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
         with:
           category: "pmd-report-${{ matrix.os }}-${{ matrix.java }}"
           sarif_file: target/pmd.sarif.json
