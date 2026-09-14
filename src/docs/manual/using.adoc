@@ -1,19 +1,17 @@
+== Using JGroups Raft
 
-== Using jgroups-raft
-
-Since jgroups-raft build on JGroups, we follow similar http://www.jgroups.org/manual5/index.html#Requirements[requirements].
-Currently, jgroups-raft requires JDK 11. jgroups-raft can be included in the POM:
+Since JGroups Raft builds on JGroups, we follow similar http://www.jgroups.org/manual5/index.html#Requirements[requirements].
+JGroups Raft requires **Java 17** or higher. JGroups Raft can be included in your POM:
 
 [source,xml]
 ----
 <dependency>
     <groupId>org.jgroups</groupId>
     <artifactId>jgroups-raft</artifactId>
-    <version>X.Y.Z.Final</version>
+    <version>2.0.0.Final</version>
 </dependency>
 ----
 
-Where `X`=major, `Y`=minor, and `Z`=patch.
 The tags are available on https://github.com/jgroups-extras/jgroups-raft/tags[GitHub releases].
 
 === Cluster members and identity
@@ -22,23 +20,22 @@ Each cluster member has an address (a UUID) assigned by JGroups and a `raft_id` 
 The latter is a string (e.g. "A") which needs to be unique in the entire cluster. In other words, the `raft_id` is the
 _identity_ of a member for the sake of jgroups-raft.
 
-A Raft cluster has a fixed size, so that a majority can be computed for leader election and appending of entries. The
-members allowed into the cluster is defined in `RAFT.members`, e.g.
+A Raft cluster has a fixed voting size defined in `RAFT.members`, e.g.:
 
 [source,xml]
 ----
 <raft.RAFT members="A,B,C" raft_id="${raft_id:undefined}"/>
 ----
 
-This defines a cluster of 3 members: "A", "B" and "C" (whose majority is 2).
+This defines a voting cluster of 3 members: "A", "B" and "C" (whose majority is 2).
 
-These are the `raft_id` attributes of the 3 members, so attribute `raft_id` in the example above needs to be one of them.
-If we don't start this member with the system property `-Draft_id=X` (where X needs to be "A", "B", or "C"),
-then the member will start up as "undefined" is not a member of `{"A", "B", "C"}`.
+These are the `raft_id` attributes of the voting members.
+If a node starts with a `raft_id` that is not listed in `RAFT.members`, `RAFT` does not block the node from joining the cluster.
+Instead, it starts as a **learner** node, a non-voting member that receives log replication but does not count toward majority or leader elections.
 
-NOTE: Note that while `RAFT` ensures that non-members cannot join a cluster, the `NO_DUPES` protocol makes sure that
-no duplicate member can join. Example: if we have `RAFT.members="A,B,C"` and actual members "A" and "B" joined, then
-a join attempt by a member with duplicate name "B" will be rejected and that member won't be able to join.
+NOTE: Note that while `RAFT` allows non-members to join as learners, the `NO_DUPES` protocol makes sure that
+no duplicate member can join.
+Example: if we have `RAFT.members="A,B,C"` and actual members "A" and "B" joined, then a join attempt by a member with duplicate name "B" will be rejected.
 
 Attribute `raft_id` is also used to define the location of the persistent log; unless `log_name` is defined in
 `RAFT`, the location is computed as `<temp_dir>/<raft_id>.log`, e.g. `/tmp/A.log`.
@@ -46,25 +43,196 @@ Attribute `raft_id` is also used to define the location of the persistent log; u
 Note that members can be added and removed dynamically (without taking the entire cluster down, changing the configuration
 and restarting it), see <<DynamicMembership>>.
 
+=== Annotation-Driven State Machines
 
+The primary entry point to JGroups Raft is `JGroupsRaft<T>`, which provides type-safe state machine replication through annotations.
 
+==== Defining a State Machine Interface
 
-=== RaftHandle
-
-As shown in <<ArchitectureFig>>, `RaftHandle` is the main class users will be dealing with. It provides methods to change
-state (append entries) in the replicated state machines, and a state machine can be registered with it. The state machine
-will be initialized at startup and updated by jgroups-raft whenever there is a change.
-
-A successful change is committed to the persistent logs of all cluster members and applied to their state machines, so
-all state machines have exactly the same state.
-
-
-==== Creation
-An instance of RaftHandle is associated with exactly _one_ JGroups channel, and can be created as follows:
+You define your state machine interface with `@JGroupsRaftStateMachine`, decorating read and write methods with unique command IDs and optional versions:
 
 [source,java]
 ----
-JChannel ch=new JChannel("/home/bela/raft.xml"); // <1>
+@JGroupsRaftStateMachine                                       // <1>
+public interface MapStore {
+
+    @StateMachineRead(id = 1)                                  // <2>
+    String get(String key);
+
+    @StateMachineWrite(id = 2)                                 // <3>
+    void put(String key, String value);
+
+    @StateMachineWrite(id = 3)                                 // <4>
+    String remove(String key);
+}
+----
+<1> Marks the interface as a Raft state machine contract.
+<2> Declares a strongly consistent read operation identified by `id = 1`. Read operations are executed against committed state after leader confirmation without writing an entry to the Raft log.
+<3> Declares a replicated write operation identified by `id = 2`. Write operations are appended to the log, replicated across cluster members, and applied upon committing.
+<4> Declares another replicated write operation with a distinct `id = 3`.
+
+Implement the interface with your local storage logic.
+Because JGroups Raft manages execution ordering and thread-safety, standard data structures can be used without extra concurrency overhead:
+
+[source,java]
+----
+public class MapStoreImpl implements MapStore {
+    private final Map<String, String> data = new HashMap<>();  // <1>
+
+    @Override
+    public String get(String key) {
+        return data.get(key);                                  // <2>
+    }
+
+    @Override
+    public void put(String key, String value) {
+        data.put(key, value);                                  // <3>
+    }
+
+    @Override
+    public String remove(String key) {
+        return data.remove(key);                               // <4>
+    }
+}
+----
+<1> Plain collections like `HashMap` can be safely used because state modifications are dispatched sequentially by Raft commit order.
+<2> Reads values from local state.
+<3> Stores values in local state upon commit.
+<4> Removes entries from local state and returns the previous value.
+
+==== Creating and Starting JGroupsRaft
+
+Use `JGroupsRaft.builder(stateMachine, apiInterface)` to configure and build the instance.
+When overriding protocol configurations, use `configureRaft()` and return to the parent builder with `and()`:
+
+[source,java]
+----
+MapStore localStore = new MapStoreImpl();                      // <1>
+
+JGroupsRaft<MapStore> raft = JGroupsRaft.builder(localStore, MapStore.class) // <2>
+    .withJGroupsConfig("raft.xml")                             // <3>
+    .withClusterName("my-raft-cluster")                        // <4>
+    .configureRaft()                                           // <5>
+        .withRaftId("A")                                       // <6>
+        .and()                                                 // <7>
+    .build();                                                  // <8>
+
+raft.start();                                                  // <9>
+----
+<1> Instantiate the concrete local state machine implementation.
+<2> Initialise the typed builder with the local instance and the annotated interface class.
+<3> Provide the JGroups XML configuration file (loaded from classpath or stream). Alternatively, an existing `JChannel` can be supplied with `withJChannel(ch)`.
+<4> Set the JGroups cluster name to join.
+<5> Enter the nested `RaftProtocolBuilder` to override protocol-level settings programmatically.
+<6> Set the local node's `raft_id` (overrides XML configuration).
+<7> Return from `configureRaft()` back to the parent `JGroupsRaft.Builder`.
+<8> Validate configuration and construct the `JGroupsRaft<MapStore>` instance.
+<9> Start the instance, connect the channel, perform schema validation, and initiate consensus.
+
+==== Executing Read and Write Operations
+
+Commands are submitted through functional invocations on `write()` and `read()`:
+
+[source,java]
+----
+raft.write(store -> {                                          // <1>
+    store.put("greeting", "Hello Raft!");
+    return null;
+});
+
+String val = raft.read(store -> store.get("greeting"));        // <2>
+----
+<1> Submits a write command to the cluster. The lambda receives a proxy of the state machine, records the method invocation and arguments, replicates it across the quorum, and blocks until committed and applied.
+<2> Submits a read command. The leader confirms its lease with a majority of followers and evaluates the read against local state.
+
+==== Schema Evolution and Rolling Upgrades
+
+JGroups Raft verifies method signatures and annotations against the persisted `schema.raft` file before joining the cluster.
+When deprecating or removing operations over time, declare them in `retiredReads` or `retiredWrites` to ensure the state machine schema advances:
+
+[source,java]
+----
+@JGroupsRaftStateMachine(
+    retiredWrites = {
+        @StateMachineWrite(id = 3)                             // <1>
+    }
+)
+public interface MapStore {
+    @StateMachineRead(id = 1)
+    String get(String key);
+
+    @StateMachineWrite(id = 2)
+    void put(String key, String value);
+}
+----
+<1> Declares that write command `id = 3` (formerly `remove`) was retired. The startup validator accepts historic log entries containing this ID during replay without throwing an incompatible schema error.
+
+=== Administration, Health Checks, and Metrics
+
+The `JGroupsRaft` instance provides dedicated sub-interfaces for operational management and observability.
+
+==== Administrative Operations
+
+`JGroupsRaftAdministration` allows triggering maintenance operations programmatically:
+
+[source,java]
+----
+JGroupsRaftAdministration admin = raft.administration();       // <1>
+
+admin.forceLeaderElection();                                   // <2>
+admin.snapshot();                                              // <3>
+----
+<1> Obtain the administrative interface from the `JGroupsRaft` instance.
+<2> Triggers an election excluding the current leader (must be invoked on the view coordinator).
+<3> Triggers an on-demand snapshot of the state machine and log truncation.
+
+For dynamic cluster membership operations (`addNode`, `removeNode`, and `members`), see <<DynamicMembership>>.
+
+==== Health Checks
+
+`JGroupsRaftHealthCheck` provides node-local probes designed for container orchestrators like Kubernetes without issuing remote network calls:
+
+[source,java]
+----
+JGroupsRaftHealthCheck health = raft.healthCheck();            // <1>
+
+boolean isLive = health.isNodeLive();                          // <2>
+boolean isReady = health.isNodeReady();                        // <3>
+ClusterHealth status = health.getClusterHealth();              // <4>
+----
+<1> Access the health check interface (available even before `raft.start()`).
+<2> Liveness probe: returns `true` when the underlying JGroups channel is connected.
+<3> Readiness probe: returns `true` when the channel is connected, a leader is known, and the instance is started.
+<4> Coarse cluster health view (`HEALTHY`, `DEGRADED`, `FAILURE`, or `NOT_RUNNING`).
+
+==== Metrics
+
+`JGroupsRaftMetrics` provides detailed metrics covering membership, leader elections, log replication progress, and operation latencies:
+
+[source,java]
+----
+JGroupsRaftMetrics metrics = raft.metrics();                   // <1>
+
+int activeNodes = metrics.getActiveNodes();                    // <2>
+String leaderId = metrics.leaderMetrics().getLeaderRaftId();   // <3>
+long commitIndex = metrics.replicationMetrics().getCommitIndex(); // <4>
+----
+<1> Access the metrics interface (enabled via property `jgroups.raft.metrics.enabled=true`).
+<2> Live count of active nodes currently reachable in the cluster view.
+<3> Leader identification and election timing metrics.
+<4> Committed log entry index and snapshot tracking metrics.
+
+=== Low-Level API: RaftHandle
+
+`RaftHandle` provides low-level, raw byte-oriented access to the replicated log.
+It is useful when building custom framing protocols or when more control is needed.
+
+==== Creation
+An instance of `RaftHandle` is associated with a `JChannel`:
+
+[source,java]
+----
+JChannel ch=new JChannel("raft.xml");            // <1>
 RaftHandle handle=new RaftHandle(ch, this);      // <2>
 ch.connect("raft-cluster");                      // <3>
 ----
@@ -127,16 +295,16 @@ WARNING: Do *not* update the state machine using the `getX` methods. This could 
 
 
 [[ImplementingStateMachine]]
-==== Implementing a StateMachine
+==== Implementing a low-level StateMachine
 
-`StateMachine` is an interface and is defined as follows:
+The low-level `StateMachine` interface is defined as follows:
 
 [source,java]
 ----
 public interface StateMachine {
-    byte[] apply(byte[] data, int offset, int length) throws Exception;  // <1>
-    void   readContentFrom(DataInput in) throws Exception;               // <2>
-    void   writeContentTo(DataOutput out) throws Exception;              // <3>
+    byte[] apply(byte[] data, int offset, int length);      // <1>
+    void   readContentFrom(DataInput in);                   // <2>
+    void   writeContentTo(DataOutput out) throws Exception; // <3>
 }
 ----
 <1> This method is called whenever a log entry is _committed_. The buffer's contents are application specific (e.g this
@@ -177,47 +345,7 @@ they will catch up via the regular Raft mechanism.
 Logs can be snapshot automatically by setting `RAFT.max_log_size` to the max number of bytes that a log is allowed to
 grow to until a snapshot is taken.
 
-
-==== Miscellaneous methods
-
-Other methods in `RaftHandle` include:
-
-addServer(String server):: Asynchronously adds a new member to the cluster with id `server` and returns a
-`CompletableFuture<byte[]>`. See more about membership change in <<DynamicMembership>>.
-
-removeServer(String server):: Asynchronously removes a member from the cluster with id `server` and returns a
-`CompletableFuture<byte[]>`. See more about membership change in <<DynamicMembership>>.
-
-leader():: Returns the address of the current Raft leader, or null if there is no leader (e.g. in case there was no
-           majority to elect a leader)
-isLeader():: Whether or not the current member is the leader
-addRoleListener(RAFT.RoleChange listener):: Allows to register a  `RoleChange` listener which is notified when the current
-             member changes its role (`Leader`, `Follower`, `Candidate`)
-currentTerm():: Returns the current term (see Raft for details)
-lastApplied():: Returns the index of the last log entry that was appended to the log
-commitIndex():: Returns the index of the last log entry that was committed
-raft():: Returns a reference to the `RAFT` protocol in the current member's stack. Provided for experts who need to
-         access `RAFT` directly.
-
-raftId(String id):: Used to set the `raft_id` programmatically (note that this can also be done by setting `raft_id` in
-                    `RAFT` in the XML configuration. For example, the following code sets `raft_id` from the command line:
-[source,java]
-----
-protected void start(String raft_id) throws Exception {
-    JChannel ch=new JChannel("raft.xml").name(raft_id);   // <2>
-    RaftHandle handle=new RaftHandle(ch, this).raftId(raft_id); // <3>
-    ch.connect("raft-cluster");  // <4>
-}
-
-public static void main(String[] args) throws Exception {
-    new bla().start(args[0]);  // <1>
-}
-----
-<1> The `raft_id` can for example be passed to the program as an argument
-<2> The channel is created and its logical name set to be the same as `raft_id`. This is not necessary, but convenient.
-<3> Now `raft_id` can be set via `RaftHandle.raftId(String id)`.
-
-
+JGroups Raft supports both synchronous and asynchronous snapshot transfers. See <<Async Snapshots>> for detailed tutorials and reference guides.
 
 === Configuration
 
@@ -272,9 +400,36 @@ This is a regular JGroups XML configuration, except that jgroups-raft added a fe
 [[DynamicMembership]]
 === Adding and removing members dynamically
 
+Dynamic membership changes allow adding or removing nodes without restarting the cluster.
+Only one server at a time can be added or removed, and changes require a majority consensus ack.
+
+==== Using JGroupsRaftAdministration
+
+When using `JGroupsRaft<T>`, dynamic membership operations are executed through the administration interface:
+
+[source,java]
+----
+JGroupsRaftAdministration admin = raft.administration();       // <1>
+
+CompletionStage<Void> f1 = admin.addNode("D");                 // <2>
+CompletionStage<Void> f2 = admin.removeNode("D");              // <3>
+Set<String> members = admin.members();                         // <4>
+----
+<1> Access the administration interface from `JGroupsRaft`.
+<2> Asynchronously replicates a configuration change to add node `"D"` as a voting member. Returns a stage that completes when the change is committed by a quorum.
+<3> Asynchronously replicates a configuration change to remove node `"D"` from the voting membership.
+<4> Returns the committed set of active voting members as currently known by this node.
+
+==== Using RaftHandle and CLIENT
+
 The `RAFT` protocol provides methods `addServer(String raft_id)` and `removeServer(String raft_id)` to add and remove
-servers from the static membership (defined by `RAFT.members`). Only one server at a time can be added and removed, and
-adding or removing a server needs a majority ack to be committed.
+servers from the static membership (defined by `RAFT.members`):
+
+[source,java]
+----
+CompletableFuture<byte[]> f1 = handle.addServer("D");
+CompletableFuture<byte[]> f2 = handle.removeServer("D");
+----
 
 Both methods are exposed via JMX, so `jconsole` could be used. However, jgroups-raft also provides a script
 (`client.sh`) to do this in a more convenient way. The script uses `Client` to connect to a member's `CLIENT` protocol

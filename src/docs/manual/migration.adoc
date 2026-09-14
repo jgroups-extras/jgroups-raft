@@ -1,18 +1,80 @@
 == Migration Guide
 
-Guide to migrate your applications between different version.
-JGroups Raft follows the usual semantic versioning for releases.
-Patch releases should work out-of-the-box without further changes from the application's perspective.
-Major and minor might require some extra steps to continue working (migration scripts, public API updates, etc).
+Guide to migrate your applications between different versions.
+JGroups Raft follows semantic versioning for releases.
+Patch releases work out-of-the-box without changes from the application's perspective.
+Major and minor releases may require configuration updates, migration scripts, or adoption of updated APIs.
 
-=== 2.2.0
+=== 2.0.0
 
-For users migrating to 2.0.x.
+For users migrating from 1.x to 2.0.x.
 
-==== LevelDBLog was removed
+==== Minimum Java Requirement
 
-We removed the `LevelDBLog` implementation completely.
-You can see the migration guide between 1.0.x to 1.1.x to utilize the migration tool to move to the `FileBasedLog` implementation.
+JGroups Raft 2.0 requires **Java 17** or later (upgraded from Java 11 in 1.x).
+
+==== Annotation-Based State Machine API (v2)
+
+JGroups Raft 2.0 introduces an annotation-driven, strongly-typed state machine API centered around `JGroupsRaft<T>`.
+
+In 1.x, state machines required manual byte serialization, manual operation IDs, and boilerplate dispatching:
+
+[source,java]
+----
+// 1.x approach: manual byte dispatching
+public class MyStateMachine implements StateMachine {
+    public byte[] apply(byte[] data, int offset, int length) throws Exception {
+        // manual deserialization and method routing based on byte codes
+    }
+}
+----
+
+In 2.0, you define your state machine interface using `@JGroupsRaftStateMachine`, `@StateMachineRead`, and `@StateMachineWrite`:
+
+[source,java]
+----
+// 2.0 approach: declarative annotations
+@JGroupsRaftStateMachine
+public interface KeyValueStore {
+
+    @StateMachineRead(id = 1)
+    String get(String key);
+
+    @StateMachineWrite(id = 2)
+    void put(String key, String value);
+}
+----
+
+Instances are created using the builder pattern via `JGroupsRaft.builder()`:
+
+[source,java]
+----
+JChannel channel = new JChannel("raft.xml");
+KeyValueStore stateMachine = new KeyValueStoreImpl();
+
+JGroupsRaft<KeyValueStore> raft = JGroupsRaft.builder(channel, stateMachine)
+    .raftId("A")
+    .build();
+
+raft.start();
+----
+
+==== Schema Validation & Evolution
+
+With the annotation-driven API, JGroups Raft validates the state machine schema at startup against `schema.raft` stored in the log directory.
+This prevents replay corruptions during node restarts and rolling upgrades.
+
+* **Adding operations**: You can introduce new read or write methods with unique IDs.
+* **Retiring operations**: If an operation is removed from the interface, declare it under `@JGroupsRaftStateMachine(retiredReads = {...}, retiredWrites = {...})` so that historic entries can still be validated during replay.
+
+==== Stream-Based Snapshot API
+
+`StateMachine` snapshot methods have transitioned from byte buffers to streaming I/O (`InputStream` and `OutputStream`) to efficiently handle large snapshots without excessive heap allocations.
+
+==== LevelDBLog Removal
+
+The deprecated `LevelDBLog` implementation has been completely removed.
+Use `FileBasedLog` for persistent log storage. If you still have legacy LevelDB data directories from 1.0.x, use the `migrate_leveldb.java` migration tool described below before upgrading to 2.0.x.
 
 === 1.1.0
 
@@ -43,6 +105,5 @@ If there is already data files with the format expected by the `FileBasedLog` th
 To run the migration tool and ignore the existing files, use the `--force` flag when invoking the script.
 This will copy the existing data to a `temp` folder (`/home/raft/data/temp`, using the previous example) and will proceed with the migration.
 If there is a `temp` folder already, the script will not run.
-
 
 NOTE: JBang allows running remote scripts. See https://www.jbang.dev/documentation/guide/latest/usage.html#urls-from-trusted-sources[JBang] for more information.
