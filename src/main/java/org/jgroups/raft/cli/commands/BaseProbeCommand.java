@@ -172,9 +172,9 @@ abstract class BaseProbeCommand extends BaseRaftCLICommand {
             builder.withVerboseOutput();
 
         if (handler == null) {
-            handler = format.writer(out());
+            handler(format.writer(out()));
         } else if (handler.format() != format) {
-            handler = format.writer(out());
+            handler(format.writer(out()));
         }
 
         if (transport.isUDP()) {
@@ -231,7 +231,7 @@ abstract class BaseProbeCommand extends BaseRaftCLICommand {
         return handler;
     }
 
-    public final void handler(ProbeResponseWriter handler) {
+    public void handler(ProbeResponseWriter handler) {
         this.handler = handler;
     }
 

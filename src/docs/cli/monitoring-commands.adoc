@@ -139,24 +139,34 @@ raft metrics [OPTIONS]
     "raft-id":"A",
     "response":{
       "total-nodes":3,
-      "processing-metrics":{
+      "election-metrics":{
+        "leader-time-last-change":"PT8M16.15S",
+        "leader-election-time":"2026-01-31T22:12:55.004327532Z",
+        "leader-raft-id":"A"
+      },
+      "total-latency":{
         "p99":"4.19ms",
         "max-latency":"10.11ms",
         "avg-latency":"2.31ms",
         "p95":"3.45ms",
         "total-sample":351
       },
-      "replication-metrics":{
-        "p99":"4.12ms",
-        "max-latency":"9.77ms",
-        "avg-latency":"2.22ms",
-        "p95":"3.35ms",
+      "processing-latency":{
+        "p99":"3.89ms",
+        "max-latency":"9.12ms",
+        "avg-latency":"2.01ms",
+        "p95":"3.12ms",
         "total-sample":351
       },
-      "election-metrics":{
-        "leader-time-last-change":"PT8M16.15S",
-        "leader-election-time":"2026-01-31T22:12:55.004327532Z",
-        "leader-raft-id":"A"
+      "log-metrics":{
+        "total-entries":351,
+        "committed-entries":351,
+        "uncommitted-entries":0,
+        "log-size-bytes":45120,
+        "current-term":1,
+        "commit-index":351,
+        "snapshot-count":0,
+        "snapshots-received":0
       },
       "active-nodes":3
     }
@@ -168,22 +178,24 @@ raft metrics [OPTIONS]
 
 You can filter the output using `-category <name>` to focus on specific areas:
 
-* `processing-metrics`: Measures the time taken to process a user request from submission until applied in the state machine. High values here often heavy state machine load.
-* `replication-metrics`: Measures the time taken to replicate log entries to followers until committed. High values usually indicate network latency or slow disk I/O.
 * `election-metrics`: Provides data on the last leader election, including timestamps and the current leader's ID.
+* `total-latency`: Measures the end-to-end latency for processing a user request (from receive to commit).
+* `processing-latency`: Measures the local processing time (computation only, excludes replication wait).
+* `election-latency`: Measures the time taken to complete leader election rounds.
+* `redirect-latency`: Measures the overhead of follower-to-leader request forwarding.
+* `log-metrics`: Provides log statistics including entry counts, log size, commit index, and snapshot counts.
 
 **Examples:**
 
-. **Monitor Replication Latency:**
+. **Monitor Total Latency:**
 +
-Check the 99th percentile (p99) latency for log replication. This helps ensure that followers are acknowledging entries quickly enough for high-throughput commits.
+Check the 99th percentile (p99) latency for end-to-end request processing. This helps identify performance bottlenecks.
 +
 [source,bash]
 ----
-# Extract p99 replication latency for the active Leader
-# (Nodes with 0 samples are followers who don't replicate to others)
-raft metrics -category replication-metrics --format JSON | \
-  jq '.[] | select(.response["replication-metrics"]["total-sample"] > 0) | {id: .["raft-id"], p99: .response["replication-metrics"].p99}'
+# Extract p99 total latency for all nodes
+raft metrics -category total-latency --format JSON | \
+  jq '.[] | {id: .["raft-id"], p99: .response["total-latency"].p99}'
 ----
 
 . **Analyze Processing Delays:**
@@ -193,8 +205,8 @@ If the cluster feels sluggish, check the average local processing time.
 [source,bash]
 ----
 # Show average latency for all nodes
-raft metrics -category processing-metrics --format JSON | \
-  jq '.[] | {id: .["raft-id"], avg: .response["processing-metrics"]["avg-latency"]}'
+raft metrics -category processing-latency --format JSON | \
+  jq '.[] | {id: .["raft-id"], avg: .response["processing-latency"]["avg-latency"]}'
 ----
 
 . **Verify Last Leader Election:**
