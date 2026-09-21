@@ -6,6 +6,7 @@ import static org.jgroups.raft.tests.harness.RaftAssertion.assertCommitIndex;
 import static org.jgroups.raft.tests.harness.RaftAssertion.assertLeaderlessOperationThrows;
 import static org.jgroups.raft.tests.harness.RaftAssertion.waitUntilAllRaftsHaveLeader;
 
+import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.JChannel;
 import org.jgroups.protocols.DISCARD;
@@ -456,8 +457,16 @@ public class LearnerMemberTest extends BaseRaftChannelTest {
 
         // Transfer leadership to a different node.
         BaseElection election = RAFT.findProtocol(BaseElection.class, raft(0), true);
-        election.startForcedElection(oldLeader.getAddress())
+
+        // Wait until the organic formation election has fully torn down before forcing a new one.
+        // Otherwise, the forced election might join the still-registered organic round (exclude=null) and
+        // the exclusion is silently dropped, letting the coordinator win the election again.
+        assertThat(eventually(() -> !election.isVotingThreadRunning(), 10, TimeUnit.SECONDS)).isTrue();
+
+        // Assert on the election result directly: it is guaranteed to differ from the excluded leader.
+        Address newLeaderAddress = election.startForcedElection(oldLeader.getAddress())
                 .toCompletableFuture().get(30, TimeUnit.SECONDS);
+        assertThat(newLeaderAddress).isNotEqualTo(oldLeader.getAddress());
 
         waitUntilAllRaftsHaveLeader(channels(), this::raft);
         RAFT newLeader = leader();
