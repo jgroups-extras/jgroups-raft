@@ -3,6 +3,7 @@ package org.jgroups.raft.util;
 import static org.jgroups.protocols.raft.election.BaseElection.LEADER_ELECTED;
 import static org.jgroups.protocols.raft.election.BaseElection.PRE_VOTE_REQ;
 import static org.jgroups.protocols.raft.election.BaseElection.PRE_VOTE_RSP;
+import static org.jgroups.protocols.raft.election.BaseElection.RETRIEVE_LEADER_ELECTED;
 import static org.jgroups.protocols.raft.election.BaseElection.VOTE_REQ;
 import static org.jgroups.protocols.raft.election.BaseElection.VOTE_RSP;
 
@@ -20,6 +21,7 @@ import org.jgroups.protocols.raft.REDIRECT;
 import org.jgroups.protocols.raft.election.LeaderElected;
 import org.jgroups.protocols.raft.election.PreVoteRequest;
 import org.jgroups.protocols.raft.election.PreVoteResponse;
+import org.jgroups.protocols.raft.election.RetrieveLeaderElected;
 import org.jgroups.protocols.raft.election.VoteRequest;
 import org.jgroups.protocols.raft.election.VoteResponse;
 import org.jgroups.protocols.raft.internal.snapshot.SnapshotConstant;
@@ -117,6 +119,7 @@ public final class RaftClassConfigurator {
         add(LEADER_ELECTED, LeaderElected.class);
         add(PRE_VOTE_REQ, PreVoteRequest.class);
         add(PRE_VOTE_RSP, PreVoteResponse.class);
+        add(RETRIEVE_LEADER_ELECTED, RetrieveLeaderElected.class);
     }
 
     /**

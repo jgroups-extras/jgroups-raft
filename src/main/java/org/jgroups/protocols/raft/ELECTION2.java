@@ -89,6 +89,13 @@ public class ELECTION2 extends BaseElection {
                 }
                 break;
             case reached:
+                if (!isViewCoordinator() && has_new_members && joiners.contains(local_addr)) {
+                    // If this node is joining an existing cluster, it'll try to ask the coordinator for the leader.
+                    // Handle some corner cases where ELECTION is added programmatically to a FORK channel.
+                    // That is, cases where the leader elected broadcast was lost for some reason.
+                    askLeaderElected();
+                }
+                // Passthrough.
             case leader_lost:
                 // In case the leader is lost, we stop everything *before* starting again.
                 // This avoids cases where the leader is lost before the voting mechanism has stopped.

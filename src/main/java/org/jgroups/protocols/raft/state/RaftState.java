@@ -62,6 +62,10 @@ public class RaftState {
         return votedFor;
     }
 
+    public synchronized RaftProtocolState state() {
+        return new RaftProtocolState(leader(), currentTerm(), votedFor());
+    }
+
     /**
      * Advances the term for leader election.
      * <p>
@@ -208,4 +212,6 @@ public class RaftState {
 
         void onLeaderUpdate(Address member);
     }
+
+    public record RaftProtocolState(Address leader, long term, Address votedFor) { }
 }

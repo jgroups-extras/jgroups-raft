@@ -54,6 +54,7 @@ public abstract class BaseElection extends Protocol {
     public static final short LEADER_ELECTED = 3005;
     public static final short PRE_VOTE_REQ = 3006;
     public static final short PRE_VOTE_RSP = 3007;
+    public static final short RETRIEVE_LEADER_ELECTED = 3008;
 
     static {
         RaftClassConfigurator.initialize();
@@ -240,6 +241,11 @@ public abstract class BaseElection extends Protocol {
             return;
         }
 
+        if (hdr instanceof RetrieveLeaderElected) {
+            handleRetrieveLeaderElected();
+            return;
+        }
+
         if (hdr instanceof VoteRequest) {
             handleVoteRequest(msg, (VoteRequest) hdr);
             return;
@@ -279,6 +285,15 @@ public abstract class BaseElection extends Protocol {
         } else {
             log.trace("%s <- %s: %s after leader left (%s)", local_addr, msg.src(), hdr, v);
         }
+    }
+
+    private void handleRetrieveLeaderElected() {
+        Map.Entry<Address, Long> entry = raft.leaderAndTerm();
+        Address leader = entry.getKey();
+        if (leader == null)
+            return;
+
+        sendLeaderElectedMessageUntracked(leader, entry.getValue());
     }
 
     /**
@@ -560,11 +575,16 @@ public abstract class BaseElection extends Protocol {
     }
 
     // sent reliably, so if a newly joined member drops it, it will get retransmitted
-    protected void sendLeaderElectedMessage(Address leader, long term) {
+    private void sendLeaderElectedMessageUntracked(Address leader, long term) {
         RaftHeader hdr = new LeaderElected(leader).currTerm(term);
         Message msg = new EmptyMessage(null).putHeader(id, hdr).setFlag(DONT_LOOPBACK);
         log.trace("%s -> all (-self): %s", local_addr, hdr);
         down_prot.down(msg);
+    }
+
+
+    protected void sendLeaderElectedMessage(Address leader, long term) {
+        sendLeaderElectedMessageUntracked(leader, term);
 
         // Record election latency.
         if (electionStart != null) {
@@ -574,6 +594,14 @@ public abstract class BaseElection extends Protocol {
                 metrics.recordElectionLatency(time.interval(electionStartNanos));
             }
         }
+    }
+
+    protected final void askLeaderElected() {
+        RaftHeader hdr = new RetrieveLeaderElected();
+        Address coordinator = view.getCoord();
+        Message msg = new EmptyMessage(coordinator).putHeader(id, hdr);
+        log.trace("%s -> %s: ask who's leader and term", local_addr, coordinator);
+        down_prot.down(msg);
     }
 
     protected void sendVoteResponse(Address dest, long term, long last_log_term, long last_log_index) {

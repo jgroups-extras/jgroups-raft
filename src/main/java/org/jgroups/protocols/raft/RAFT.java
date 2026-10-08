@@ -415,6 +415,26 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
     public RAFT         leader(Address new_leader)    {this.raft_state.setLeader(new_leader); return this;}
 
+    public Map.Entry<Address, Long> leaderAndTerm() {
+        RaftState.RaftProtocolState rps = raft_state.state();
+        return new Map.Entry<>() {
+            @Override
+            public Address getKey() {
+                return rps.leader();
+            }
+
+            @Override
+            public Long getValue() {
+                return rps.term();
+            }
+
+            @Override
+            public Long setValue(Long value) {
+                throw new IllegalStateException("Entry not mutable");
+            }
+        };
+    }
+
     public boolean isLeader() {
         Address l = leader();
         return l != null && Objects.equals(l, local_addr);

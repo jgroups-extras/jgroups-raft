@@ -58,15 +58,22 @@ public class ELECTION extends BaseElection {
         switch(result) {
             case no_change:
                 // the leader resends its term/address for new members to set the term/leader.
-                if(raft.isLeader() && has_new_members)
+                if(raft.isLeader() && has_new_members) {
                     sendLeaderElectedMessage(raft.leader(), raft.currentTerm());
-
-                // Handle cases where the previous coordinator left *before* a leader was elected.
-                // See: https://github.com/jgroups-extras/jgroups-raft/issues/259
-                else if (coordinatorChanged && isViewCoordinator() && isMajorityAvailable() && raft.leader() == null)
+                } else if (coordinatorChanged && isViewCoordinator() && isMajorityAvailable() && raft.leader() == null) {
+                    // Handle cases where the previous coordinator left *before* a leader was elected.
+                    // See: https://github.com/jgroups-extras/jgroups-raft/issues/259
                     startVotingThread();
+                }
                 break;
             case reached:
+                if (!isViewCoordinator() && has_new_members && joiners.contains(local_addr)) {
+                    // If this node is joining an existing cluster, it'll try to ask the coordinator for the leader.
+                    // Handle some corner cases where ELECTION is added programmatically to a FORK channel.
+                    // That is, cases where the leader elected broadcast was lost for some reason.
+                    askLeaderElected();
+                }
+                // Passthrough.
             case leader_lost:
                 // In case the leader is lost, we stop everything *before* starting again.
                 // This avoids cases where the leader is lost before the voting mechanism has stopped.
