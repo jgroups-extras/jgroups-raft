@@ -1043,7 +1043,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         DownRequest dr = (DownRequest) requestFactory.createDownRequest(f, buf, offset, length, internal, opts, readOnly);
 
         if (readOnly) {
-            readOnlyRequests.register(commit_index, dr);
+            readOnlyRequests.register(commit_index, dr, raft_id);
             Message msg=new ObjectMessage(null, new LogEntries())
                     .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
                             current_term, commit_index))
@@ -1210,7 +1210,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     }
                     hasOperations = true;
                     if (dr.isReadOnly() && !dr.isInternal()) {
-                        readOnlyRequests.register(commit_index, dr);
+                        readOnlyRequests.register(commit_index, dr, raft_id);
                         continue;
                     }
 
@@ -1477,6 +1477,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     private void applyReadOnlyRequests(Collection<DownRequest> requests) {
         // Apply all read-only operations less than commit index to the state machine.
         for (DownRequest dr : requests) {
+            log.trace("%s: completing read-only request %s", local_addr, dr);
             Options opts = dr.options();
             boolean serializeResponse = opts == null || !opts.ignoreReturnValue();
             dr.completeProcessing();
@@ -1575,6 +1576,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         LogEntry log_entry=log_impl.get(index);
         if(log_entry == null)
             throw new IllegalStateException(local_addr + ": log entry for index " + index + " not found in log");
+
+        log.trace("%s: Applying commit at index %d", local_addr, index);
         byte[] rsp=null;
         RequestTable.Entry<String> entry=request_table != null? request_table.remove(index) : null;
         if(log_entry.internal) {

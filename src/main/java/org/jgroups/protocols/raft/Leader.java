@@ -58,7 +58,7 @@ public class Leader extends RaftImpl {
                 if (!Utils.isRaftMember(sender_raft_id, raft.members()))
                     break;
 
-                raft.readOnlyRequests.commit(raft.commit_index);
+                raft.readOnlyRequests.commit(raft.commit_index, sender_raft_id);
                 boolean done = reqtab.add(result.index, sender_raft_id, this.majority);
                 if(done) {
                     raft.commitLogTo(result.index, true);

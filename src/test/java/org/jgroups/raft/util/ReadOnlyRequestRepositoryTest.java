@@ -12,6 +12,30 @@ import org.testng.annotations.Test;
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class ReadOnlyRequestRepositoryTest {
 
+    public void testDuplicateSenderNeverSatisfiesQuorum() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        // 5-node cluster: majority = 3
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository =
+                ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 3)
+                        .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
+                        .build();
+
+        // Leader registers the read at index 10; the leader itself counts as vote #1.
+        repository.register(10, cf, "leader");
+        assertThat(cf.isDone()).isFalse();
+
+        // The one minority follower sends two heartbeat responses (as happens in production).
+        // Unique voters: {leader, follower-A} = 2, which is below majority=3.
+        repository.commit(10, "follower-A");
+        repository.commit(10, "follower-A");
+
+        // Advance at same index should not complete uncommitted entries.
+        repository.advance(10);
+
+        // Must NOT complete: only 2 unique voters, majority requires 3.
+        assertThat(cf.isDone()).isFalse();
+    }
+
     public void testMajorityReached() {
         AtomicInteger count = new AtomicInteger();
         CompletableFuture<Void> cf = new CompletableFuture<>();
@@ -23,20 +47,20 @@ public class ReadOnlyRequestRepositoryTest {
                 })
                 .build();
 
-        repository.register(10, cf);
+        repository.register(10, cf, "leader");
         assertThat(cf.isDone()).isFalse();
         assertThat(count.get()).isZero();
 
         // Lower commit index doesn't affect.
-        repository.commit(9);
+        repository.commit(9, "follower-A");
         assertThat(cf.isDone()).isFalse();
         assertThat(count.get()).isZero();
 
-        repository.commit(10);
+        repository.commit(10, "follower-A");
         assertThat(cf.isDone()).isTrue();
         assertThat(count.get()).isOne();
 
-        repository.commit(10);
+        repository.commit(10, "follower-B");
         assertThat(count.get()).isOne();
     }
 
@@ -49,10 +73,10 @@ public class ReadOnlyRequestRepositoryTest {
                 })
                 .build();
 
-        repository.register(10, cf);
+        repository.register(10, cf, "leader");
         assertThat(cf.isDone()).isFalse();
 
-        repository.commit(10);
+        repository.commit(10, "follower-A");
         assertThat(cf.isDone()).isFalse();
 
         repository.advance(11);
@@ -70,7 +94,7 @@ public class ReadOnlyRequestRepositoryTest {
                 })
                 .build();
 
-        repository.register(10, cf);
+        repository.register(10, cf, "leader");
         assertThat(cf.isDone()).isFalse();
 
         repository.destroy();
@@ -78,7 +102,7 @@ public class ReadOnlyRequestRepositoryTest {
         assertThat(counter.get()).isOne();
 
         // Registering after destroy will automatically invoke the destroyer.
-        repository.register(10, cf);
+        repository.register(10, cf, "leader");
         assertThat(counter.get()).isEqualTo(2);
     }
 
@@ -92,14 +116,14 @@ public class ReadOnlyRequestRepositoryTest {
                 })
                 .build();
 
-        repository.register(10, cf);
+        repository.register(10, cf, "leader");
 
         // Majority was initiated with 2, but now it updates to 3. This means it needs two commits.
         majority.set(3);
-        repository.commit(10);
+        repository.commit(10, "follower-A");
         assertThat(cf.isDone()).isFalse();
 
-        repository.commit(10);
+        repository.commit(10, "follower-B");
         assertThat(cf.isDone()).isTrue();
     }
 
@@ -116,10 +140,10 @@ public class ReadOnlyRequestRepositoryTest {
 
         assertThat(count.get()).isZero();
         // We register the request at index 5 and 8, but will commit with higher commits.
-        repository.register(5, cf);
-        repository.register(8, cf);
+        repository.register(5, cf, "leader");
+        repository.register(8, cf, "leader");
 
-        repository.commit(10);
+        repository.commit(10, "follower-A");
         assertThat(cf.isDone()).isTrue();
 
         // Since it committed up-to 10, listener is invoked for 5 and 8.

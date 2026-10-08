@@ -1,11 +1,16 @@
 package org.jgroups.raft.util;
 
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NavigableMap;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -24,6 +29,7 @@ import java.util.function.Supplier;
  * @since 1.1.2
  */
 public final class ReadOnlyRequestRepository<R> {
+    private static final Log LOG = LogFactory.getLog(ReadOnlyRequestRepository.class);
 
     private final NavigableMap<Long, Entry> requests = new TreeMap<>(Long::compareTo);
     private final Supplier<Integer> majority;
@@ -65,9 +71,12 @@ public final class ReadOnlyRequestRepository<R> {
     public void advance(long index) {
         Iterator<Map.Entry<Long, Entry>> it = requests.headMap(index, true).entrySet().iterator();
         while (it.hasNext()) {
-            Entry v = it.next().getValue();
-            listener.accept(v.requests);
-            it.remove();
+            Map.Entry<Long, Entry> me = it.next();
+            Entry v = me.getValue();
+            if (v.isCommitted() || me.getKey() < index) {
+                listener.accept(v.requests);
+                it.remove();
+            }
         }
     }
 
@@ -79,13 +88,14 @@ public final class ReadOnlyRequestRepository<R> {
      * </p>
      *
      * @param index The index accepted by the follower node.
+     * @param senderRaftId The RaftId of the node which is committing the entry.
      */
-    public void commit(long index) {
+    public void commit(long index, String senderRaftId) {
         Iterator<Map.Entry<Long, Entry>> it = requests.headMap(index, true).entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<Long, Entry> me = it.next();
             Entry v = me.getValue();
-            v.accepted();
+            v.accepted(senderRaftId);
             if (v.isCommitted()) {
                 listener.accept(v.requests);
                 it.remove();
@@ -102,15 +112,16 @@ public final class ReadOnlyRequestRepository<R> {
      *
      * @param index The commit index at the time the request was submitted.
      * @param request The request to store.
+     * @param leaderRaftId The RaftId of the current leader.
      */
-    public void register(long index, R request) {
+    public void register(long index, R request, String leaderRaftId) {
         if (destroyed) {
             destroyer.accept(Collections.singletonList(request));
             return;
         }
 
         requests.compute(index, (k, v) -> {
-            if (v == null) return new Entry(request);
+            if (v == null) return new Entry(request, leaderRaftId);
 
             v.include(request);
             return v;
@@ -123,25 +134,28 @@ public final class ReadOnlyRequestRepository<R> {
 
     private final class Entry {
         private final Collection<R> requests;
+        private final Set<String> votes;
 
-        // Leader creating the request already counts towards operation quorum.
-        private int acceptors = 1;
-
-        public Entry(R request) {
+        public Entry(R request, String leaderRaftId) {
             this.requests = new ArrayList<>();
+            this.votes = new HashSet<>();
             requests.add(request);
+            accepted(leaderRaftId);
         }
 
         public void include(R request) {
             requests.add(request);
         }
 
-        public void accepted() {
-            acceptors++;
+        public void accepted(String senderRaftId) {
+            if (LOG.isTraceEnabled()) {
+                LOG.trace("Registering vote from %s, total %s for %s", senderRaftId, votes, requests);
+            }
+            votes.add(senderRaftId);
         }
 
         public boolean isCommitted() {
-            return acceptors >= majority.get();
+            return votes.size() >= majority.get();
         }
     }
 
