@@ -580,6 +580,108 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
         assertCommitTableIndeces(address(1), raft_a, 9, 10, 11);
     }
 
+    @Test(dataProvider = "logProvider")
+    public void testSnapshotSentWhenLaggingFollowerNextIndexEqualsFirstAppended(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raft_a = raft(0);
+        raft_a.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+
+        CounterStateMachine sma = stateMachine(0);
+        CounterStateMachine smb = stateMachine(1);
+        CounterStateMachine smc = stateMachine(2);
+        expect(15, sma.counter());
+        expect(10, smb.counter());
+        expect(10, smc.counter());
+        assertIndices(5, 5, 20, raft_a);
+
+        RAFT raft_c = raft(2);
+        assertIndices(5, 4, 20, raft_c);
+        // Flush so C receives commit for index 5, updating C's match_index to 5 and next_index to 6
+        raft_a.flushCommitTable(address(2));
+        expect(15, smc.counter());
+        assertIndices(5, 5, 20, raft_c);
+        assertCommitTableIndeces(address(2), raft_a, 5, 5, 6);
+
+        // Drop traffic to C so C misses entry 6
+        cluster.dropTrafficTo(address(2));
+        add(6);
+        expect(21, sma.counter());
+        assertIndices(6, 6, 20, raft_a);
+        assertIndices(5, 5, 20, raft_c);
+        assertCommitTableIndeces(address(2), raft_a, 5, 5, 6);
+
+        // Leader snapshots at index 6. Truncation deletes entries 1..5.
+        raft_a.snapshot();
+        assertThat(raft_a.log().firstAppended()).isEqualTo(6);
+        assertThat(raft_a.log().get(5)).as("Predecessor entry 5 should be truncated").isNull();
+
+        // Resume traffic to C
+        cluster.clearDroppedTraffic();
+
+        // C's next_index is 6, which equals leader's firstAppended (6).
+        // Calling flushCommitTable must send a snapshot to C, bringing C's counter up to 21.
+        raft_a.flushCommitTable(address(2));
+        expect(21, smc.counter());
+        assertIndices(6, 6, 20, raft_c);
+        assertCommitTableIndeces(address(2), raft_a, 6, 6, 7);
+    }
+
+    @Test(dataProvider = "logProvider")
+    public void testFollowerCatchesUpWhenResendDetectsTruncatedPredecessor(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raft_a = raft(0);
+        raft_a.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+
+        CounterStateMachine sma = stateMachine(0);
+        CounterStateMachine smb = stateMachine(1);
+        CounterStateMachine smc = stateMachine(2);
+        expect(15, sma.counter());
+        expect(10, smb.counter());
+        expect(10, smc.counter());
+        assertIndices(5, 5, 20, raft_a);
+
+        RAFT raft_c = raft(2);
+        assertIndices(5, 4, 20, raft_c);
+        raft_a.flushCommitTable(address(2));
+        expect(15, smc.counter());
+        assertIndices(5, 5, 20, raft_c);
+        assertCommitTableIndeces(address(2), raft_a, 5, 5, 6);
+
+        // Drop traffic to C so C misses entry 6
+        cluster.dropTrafficTo(address(2));
+        add(6);
+        expect(21, sma.counter());
+        assertIndices(6, 6, 20, raft_a);
+        assertIndices(5, 5, 20, raft_c);
+
+        // Leader snapshots at index 6. Truncation deletes entries 1..5.
+        raft_a.snapshot();
+        assertThat(raft_a.log().firstAppended()).isEqualTo(6);
+        assertThat(raft_a.log().get(5)).as("Predecessor entry 5 should be truncated").isNull();
+
+        // Resume traffic to C
+        cluster.clearDroppedTraffic();
+
+        // Set C's next_index to 7 (beyond last_appended 6) while match_index is 5.
+        // This causes sendAppendEntriesMessage to bypass nextIndex <= firstAppended (7 > 6)
+        // and hit: last_appended (6) > match_index (5) -> resend(member, last_appended = 6).
+        CommitTable.Entry e = raft_a.commitTable().get(address(2));
+        e.nextIndex(7);
+
+        // Flush commit table to C.
+        // resend(member, 6) must detect that predecessor 5 is truncated and send a snapshot to C,
+        // allowing C to catch up to counter value 21.
+        raft_a.flushCommitTable(address(2));
+
+        expect(21, smc.counter());
+        assertIndices(6, 6, 20, raft_c);
+        assertCommitTableIndeces(address(2), raft_a, 6, 6, 7);
+    }
+
     public void testIgnoreResponse(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
         RAFT raft_a = raft(0);
         CompletableFuture<byte[]> f=addAsync(raft_a, 5, Options.create(false));

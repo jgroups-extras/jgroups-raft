@@ -78,7 +78,9 @@ public class Leader extends RaftImpl {
                 raft.commit_table.update(sender, result.index(), result.index()+1, result.commit_index, true);
                 break;
             case FAIL_CONFLICTING_PREV_TERM:
-                raft.commit_table.update(sender, result.index()-1, result.index(), result.commit_index, true, true);
+                long matchIndex = Math.max(result.commit_index, result.index() - 1);
+                long nextIndex = Math.max(result.commit_index + 1, result.index());
+                raft.commit_table.update(sender, matchIndex, nextIndex, result.commit_index, true, true);
                 break;
         }
     }

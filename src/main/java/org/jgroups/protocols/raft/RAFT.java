@@ -499,6 +499,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         return Util.bytesToString(extractRaftId(uuid));
     }
 
+    public static ExtendedUUID createRaftAddress(String raftId) {
+        return createRaftAddress(raftId, raftId);
+    }
+
+    public static ExtendedUUID createRaftAddress(String name, String raftId) {
+        ExtendedUUID.setPrintFunction(print_function);
+        return ExtendedUUID.randomUUID(name).put(raft_id_key, Util.stringToBytes(raftId));
+    }
+
     public static byte[] extractRaftId(ExtendedUUID uuid) {
         return uuid.get(raft_id_key);
     }
@@ -799,10 +808,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         // Set an AddressGenerator in channel which generates ExtendedUUIDs and adds the raft_id to the hashmap
         JChannel ch=stack != null? stack.getChannel() : null;
         if(ch != null) {
-            ch.addAddressGenerator(() -> {
-                ExtendedUUID.setPrintFunction(print_function);
-                return ExtendedUUID.randomUUID(ch.getName()).put(raft_id_key, Util.stringToBytes(raft_id));
-            });
+            ch.addAddressGenerator(() -> createRaftAddress(ch.getName(), raft_id));
         }
         processing_queue=new ArrayBlockingQueue<>(processing_queue_max_size);
         ThreadFactory tf = getThreadFactory();
@@ -1346,7 +1352,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * next-index is incremented (on reception of the AppendResult) and resending starts again.
      */
     protected void sendAppendEntriesMessage(Address member, CommitTable.Entry e) {
-        if(e.nextIndex() < log().firstAppended()) {
+        long firstAppended = log().firstAppended();
+        if(e.nextIndex() <= firstAppended && firstAppended > 1) {
             try {
                 sendSnapshotTo(member); // will reset snapshot_in_progress
             }
@@ -1410,6 +1417,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             return;
         }
         LogEntry prev=log_impl.get(index-1);
+        if (index - 1 > 0 && prev == null) {
+            log.debug("%s: predecessor %d not found in log for resend to %s; sending snapshot", local_addr, index, target);
+            try {
+                sendSnapshotTo(target);
+            } catch (Exception e) {
+                log.error("%s: failed sending snapshot to %s", local_addr, target, e);
+            }
+            return;
+        }
         long prev_term=prev != null? prev.term : 0;
         LogEntries entries=new LogEntries().add(entry);
         Message msg=new ObjectMessage(target, entries)
@@ -1435,6 +1451,16 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
 
         LogEntry prev=log_impl.get(from-1);
+        if (from - 1 > 0 && prev == null) {
+            log.debug("%s: predecessor %d not found in log to resend [%d..%d] to %s; sending snapshot",
+                    local_addr, from - 1, from, to, target);
+            try {
+                sendSnapshotTo(target);
+            } catch (Exception e) {
+                log.error("%s: failed sending snapshot to %s", local_addr, target);
+            }
+            return;
+        }
         long prev_term=prev != null? prev.term : 0;
         Message msg=new ObjectMessage(target, entries)
           .putHeader(id, new AppendEntriesRequest(this.local_addr, currentTerm(), from - 1, prev_term,
