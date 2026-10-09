@@ -1044,11 +1044,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         if (readOnly) {
             readOnlyRequests.register(commit_index, dr, raft_id);
-            Message msg=new ObjectMessage(null, new LogEntries())
-                    .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
-                            current_term, commit_index))
-                    .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
-            down_prot.down(msg);
+            if (majority > 1) {
+                Message msg=new ObjectMessage(null, new LogEntries())
+                        .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
+                                current_term, commit_index))
+                        .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+                down_prot.down(msg);
+            }
             return;
         }
 
@@ -1074,7 +1076,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         while(reqtab.isCommitted(highest_committed))
             highest_committed++;
         if(highest_committed > prev_index+1)
-            commitLogTo(highest_committed, true);
+            commitLogTo(highest_committed - 1, true);
     }
 
     public void handleUpRequest(Message msg, RaftHeader hdr) {
@@ -1263,8 +1265,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         long highest_committed=prev_index+1;
         while(request_table.isCommitted(highest_committed))
             highest_committed++;
-        if(highest_committed > prev_index+1 || entries.size() == 0)
-            commitLogTo(highest_committed, true);
+        if(highest_committed > prev_index+1)
+            commitLogTo(highest_committed - 1, true);
         snapshotIfNeeded(length);
     }
 

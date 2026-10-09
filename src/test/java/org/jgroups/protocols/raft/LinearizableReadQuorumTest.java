@@ -9,7 +9,7 @@ import org.jgroups.JChannel;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.DISCARD;
-import org.jgroups.protocols.pbcast.GMS;
+import org.jgroups.protocols.TP;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.raft.api.SimpleKVStateMachine;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
@@ -22,13 +22,6 @@ import java.util.concurrent.TimeoutException;
 
 import org.testng.annotations.Test;
 
-/**
- * Verifies that a linearizable read never completes when the leader is in a minority partition.
- * <p>
- * Regression test for the bug where {@code ReadOnlyRequestRepository.Entry} tracked acceptors
- * with a scalar counter, allowing repeated heartbeat responses from a single minority follower
- * to satisfy the majority threshold.
- */
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class LinearizableReadQuorumTest {
     private static final Log LOG = LogFactory.getLog(LinearizableReadQuorumTest.class);
@@ -52,7 +45,7 @@ public class LinearizableReadQuorumTest {
                 if (leaderIdx == i) continue;
                 JChannel ch = cluster.channel(i);
                 DISCARD discard = new DISCARD().discardAll(true).setAddress(ch.getAddress());
-                ch.getProtocolStack().insertProtocol(discard, ProtocolStack.Position.ABOVE, GMS.class);
+                ch.getProtocolStack().insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
                 LOG.info("Adding discard to channel %s", ch);
             }
 
@@ -81,6 +74,74 @@ public class LinearizableReadQuorumTest {
 
             // After healing, the pending read must eventually complete successfully.
             assertThat(eventually(readFuture::isDone, 10, TimeUnit.SECONDS)).isTrue();
+            assertThat(readFuture.isCompletedExceptionally()).isFalse();
+        } finally {
+            cluster.close();
+        }
+    }
+
+    /**
+     * Verifies that when a leader is in a minority partition with uncommitted writes,
+     * an incoming read operation (which has entries.size() == 0) does NOT commit
+     * the pending uncommitted writes without quorum.
+     */
+    public void testUncommittedWriteNotCommittedByRead() throws Exception {
+        JRaftTestCluster<SimpleKVStateMachine> cluster =
+                JRaftTestCluster.create(SimpleKVStateMachine.Impl::new, SimpleKVStateMachine.class, 3);
+        try {
+            cluster.waitUntilLeaderElected();
+
+            int leaderIdx = cluster.leaderIndex();
+
+            // Isolate the leader: insert DISCARD on both followers so writes cannot reach quorum.
+            for (int i = 0; i < 3; i++) {
+                if (leaderIdx == i) continue;
+                JChannel ch = cluster.channel(i);
+                DISCARD discard = new DISCARD().discardAll(true).setAddress(ch.getAddress());
+                ch.getProtocolStack().insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
+            }
+
+            // Submit an uncommitted write on the isolated leader asynchronously.
+            CompletableFuture<Void> writeFuture = CompletableFuture.supplyAsync(() ->
+                    cluster.leader().write(kv -> kv.handlePut("k1", "v1")));
+
+            // Wait until the leader has appended k1 to its log (lastAppended == 1)
+            RAFT leaderRaft = cluster.channel(leaderIdx).getProtocolStack().findProtocol(RAFT.class);
+            assertThat(eventually(() -> leaderRaft.lastAppended() == 1, 5, TimeUnit.SECONDS)).isTrue();
+
+            // The write cannot reach a majority, so it must NOT be completed.
+            assertThat(writeFuture.isDone()).isFalse();
+
+            // Now submit a read operation on the isolated leader asynchronously.
+            CompletableFuture<String> readFuture = CompletableFuture.supplyAsync(() ->
+                    cluster.leader().read(kv -> kv.handleGet("k1")));
+
+            // The linearizable read must NOT complete while isolated.
+            // Waiting for the read to time out ensures the leader's event loop has processed the request.
+            assertThatThrownBy(() -> readFuture.get(1, TimeUnit.SECONDS))
+                    .isInstanceOf(TimeoutException.class);
+
+            // CRITICAL: The pending write must STILL be uncommitted.
+            assertThat(leaderRaft.commitIndex())
+                    .as("Leader must not advance commitIndex for uncommitted entries")
+                    .isEqualTo(0L);
+            assertThat(writeFuture.isDone())
+                    .as("Uncommitted write must NOT be completed by an incoming read while isolated")
+                    .isFalse();
+
+            // Heal partition: remove DISCARD from the followers.
+            for (int i = 0; i < 3; i++) {
+                if (leaderIdx == i) continue;
+                cluster.channel(i).getProtocolStack().removeProtocol(DISCARD.class);
+            }
+
+            // After healing, replicate a write to advance and sync the cluster.
+            cluster.leader().write(kv -> kv.handlePut("k2", "v2"));
+
+            // Now both the write and read should complete successfully.
+            assertThat(eventually(writeFuture::isDone, 10, TimeUnit.SECONDS)).isTrue();
+            assertThat(eventually(readFuture::isDone, 10, TimeUnit.SECONDS)).isTrue();
+            assertThat(writeFuture.isCompletedExceptionally()).isFalse();
             assertThat(readFuture.isCompletedExceptionally()).isFalse();
         } finally {
             cluster.close();

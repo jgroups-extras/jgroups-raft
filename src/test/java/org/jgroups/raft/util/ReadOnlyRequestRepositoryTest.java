@@ -149,4 +149,17 @@ public class ReadOnlyRequestRepositoryTest {
         // Since it committed up-to 10, listener is invoked for 5 and 8.
         assertThat(count.get()).isEqualTo(2);
     }
+
+    public void testSingleNodeMajorityCompletesImmediately() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository =
+                ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 1)
+                        .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
+                        .build();
+
+        // Single-node: majority = 1.
+        // Registering the read should complete immediately without waiting for commit/advance.
+        repository.register(10, cf, "leader");
+        assertThat(cf.isDone()).isTrue();
+    }
 }

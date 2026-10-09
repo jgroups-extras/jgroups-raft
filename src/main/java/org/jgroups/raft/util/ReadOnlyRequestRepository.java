@@ -120,6 +120,13 @@ public final class ReadOnlyRequestRepository<R> {
             return;
         }
 
+        // Handle a case where the majority is made by a single node.
+        // The leader is enough to consider majority reached, so we complete the request inline.
+        if (majority.get() <= 1) {
+            listener.accept(Collections.singletonList(request));
+            return;
+        }
+
         requests.compute(index, (k, v) -> {
             if (v == null) return new Entry(request, leaderRaftId);
 
