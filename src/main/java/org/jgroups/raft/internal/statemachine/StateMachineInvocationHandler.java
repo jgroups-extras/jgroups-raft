@@ -17,8 +17,6 @@ import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Future;
 import java.util.function.Function;
 
 /**
@@ -65,7 +63,7 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
      * @param method  The method invoked by the user.
      * @param args    The arguments passed to the method.
      * @param options Execution-specific options (e.g., linearizability overrides).
-     * @return The result of the method execution (or a Future if async).
+     * @return The result of the method execution, after the command completes.
      */
     public Object invoke(Object ignore, Method method, Object[] args, JGroupsRaftCommandOptions options) throws InvocationTargetException, IllegalAccessException {
         JRaftCommand command = searchMethod(method);
@@ -98,22 +96,12 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
 
         // 4. Submit to Raft Cluster
         // This will replicate the entry through the cluster and apply to each state machine.
-        boolean isAsync = isAsync(method);
         CompletableFuture<Object> cf = submit(wrapper, options);
-
-        // Return the Future directly for async methods, otherwise block and wait for consensus.
-        return isAsync ? cf : cf.join();
+        return cf.join();
     }
 
     private JRaftCommand searchMethod(Method method) {
         return registry.getCommand(method);
-    }
-
-    private boolean isAsync(Method method) {
-        Class<?> clazz = method.getReturnType();
-        return Future.class.isAssignableFrom(clazz)
-                || CompletionStage.class.isAssignableFrom(clazz)
-                || CompletableFuture.class.isAssignableFrom(clazz);
     }
 
     /**

@@ -11,6 +11,9 @@ import org.jgroups.raft.StateMachineWrite;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Future;
 
 import org.testng.annotations.Test;
 
@@ -304,6 +307,67 @@ public class CommandRegistryTest {
         assertThatThrownBy(registry::initialize)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageStartingWith("Found duplicated method");
+    }
+
+    public void testAsyncWriteRejected() {
+        TestStateMachine sm = new TestStateMachine() {
+            @StateMachineWrite(id = 1)
+            public CompletionStage<String> put(String value) {
+                return CompletableFuture.completedFuture(value);
+            }
+        };
+
+        CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(sm, TestStateMachine.class);
+        assertThatThrownBy(registry::initialize)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("put");
+    }
+
+    public void testAsyncReadRejected() {
+        TestStateMachine sm = new TestStateMachine() {
+            @StateMachineRead(id = 1)
+            public CompletableFuture<String> get(String key) {
+                return CompletableFuture.completedFuture(key);
+            }
+        };
+
+        CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(sm, TestStateMachine.class);
+        assertThatThrownBy(registry::initialize)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("get");
+    }
+
+    public void testFutureReturnTypeRejected() {
+        TestStateMachine sm = new TestStateMachine() {
+            @StateMachineWrite(id = 1)
+            public Future<String> put(String value) {
+                return CompletableFuture.completedFuture(value);
+            }
+        };
+
+        CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(sm, TestStateMachine.class);
+        assertThatThrownBy(registry::initialize)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("put");
+    }
+
+    public void testUnannotatedAsyncMethodAllowed() throws Throwable {
+        TestStateMachine sm = new TestStateMachine() {
+            @StateMachineRead(id = 1)
+            public int add(int a) {
+                return a + 1;
+            }
+
+            // Unannotated methods run locally on the delegate and are outside the replicated contract.
+            public CompletionStage<Integer> localAdd(int a) {
+                return CompletableFuture.completedFuture(a + 1);
+            }
+        };
+
+        CommandRegistry<TestStateMachine> registry = new CommandRegistry<>(sm, TestStateMachine.class);
+        registry.initialize();
+
+        assertThat(registry.getCommand(1, 1).<Integer>submit(1)).isEqualTo(2);
     }
 
     public void testRetiredAnnotations() {

@@ -21,7 +21,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Future;
 
 /**
  * Registry of commands that can be executed on a {@link StateMachine}.
@@ -158,6 +160,15 @@ public class CommandRegistry<T> {
     }
 
     private CommandMetadata createCommandMetadata(int id, int version, Method method, Annotation annotation) {
+        // Replicated methods run inside the single-threaded apply loop and their result is serialized as the response.
+        // An asynchronous return type cannot be serialized, and suggests the state machine may defer work, which breaks determinism.
+        if (isAsync(method.getReturnType())) {
+            String message = String.format("Method '%s' annotated with @%s must not return asynchronous type (%s). " +
+                    "State machine operations must complete synchronously and deterministically",
+                    method.getName(), annotation.annotationType().getSimpleName(), method.getReturnType().getName());
+            throw new IllegalStateException(message);
+        }
+
         if (!method.canAccess(stateMachine)) {
             method.setAccessible(true);
         }
@@ -171,5 +182,10 @@ public class CommandRegistry<T> {
 
     private CommandSchema createCommandSchema(Type type) {
         return new CommandSchema(type);
+    }
+
+    private static boolean isAsync(Class<?> type) {
+        return Future.class.isAssignableFrom(type)
+                || CompletionStage.class.isAssignableFrom(type);
     }
 }
