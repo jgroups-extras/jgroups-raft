@@ -68,6 +68,9 @@ public class ELECTION2 extends BaseElection {
 
     @Override
     protected void handleView(View v) {
+        if (local_addr == null)
+            return;
+
         View previousView = this.view;
         this.view = v;
         Majority result = Utils.computeMajority(previousView, v, raft);
