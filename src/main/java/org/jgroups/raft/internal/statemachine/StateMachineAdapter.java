@@ -1,7 +1,5 @@
 package org.jgroups.raft.internal.statemachine;
 
-import org.jgroups.logging.Log;
-import org.jgroups.logging.LogFactory;
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
 import org.jgroups.raft.internal.command.JRaftCommand;
@@ -15,6 +13,7 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.lang.reflect.InvocationTargetException;
 
 /**
@@ -36,7 +35,6 @@ import java.lang.reflect.InvocationTargetException;
  * @param <T> The type of the concrete state machine implementation.
  */
 final class StateMachineAdapter<T> implements StateMachine {
-    private static final Log LOG = LogFactory.getLog(StateMachineAdapter.class);
 
     private final T delegate;
     private final CommandRegistry<T> registry;
@@ -104,6 +102,16 @@ final class StateMachineAdapter<T> implements StateMachine {
         }
     }
 
+    /**
+     * Restores the state machine from a snapshot.
+     *
+     * <p>
+     * A failure to read the snapshot is propagated instead of leaving the state machine untouched.
+     * </p>
+     *
+     * @param in The snapshot content.
+     * @throws UncheckedIOException If reading the snapshot fails.
+     */
     @Override
     public void readContentFrom(DataInput in) {
         byte[] buf;
@@ -117,8 +125,7 @@ final class StateMachineAdapter<T> implements StateMachine {
                 buf = is.readAllBytes();
             }
         } catch (IOException e) {
-            LOG.warn("Failed to restore state machine from snapshot. Not updating state.", e);
-            return;
+            throw new UncheckedIOException("Failed to read state machine snapshot", e);
         }
         snapshotter.readSnapshot(buf);
     }

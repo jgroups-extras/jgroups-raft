@@ -31,6 +31,7 @@ import java.nio.ByteBuffer;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -312,6 +313,43 @@ public class AsynchronousSnapshotManagerTest {
         assertThat(metrics.numSnapshotsReceived()).isZero();
         assertThat(metrics.numFailedSnapshotsInstalled()).isEqualTo(1);
         assertThat(metrics.numFailedChunkTransfers()).isEqualTo(1);
+    }
+
+    public void testFailedChunkedInstallKeepsPreviousSnapshot() throws Exception {
+        ByteBuffer previous = createSnapshotBuffer(persistentState, 1);
+        byte[] previousBytes = Arrays.copyOfRange(previous.array(), previous.position(), previous.limit());
+        log.setSnapshot(new ByteArrayInputStream(previousBytes));
+
+        ByteBuffer snapshotData = createSnapshotBuffer(persistentState, 42);
+        byte[] raw = new byte[snapshotData.remaining()];
+        snapshotData.get(raw);
+
+        Address leader = Util.createRandomAddress("leader");
+        TestAsyncSnapshot failing = new TestAsyncSnapshot(0);
+        failing.readThrows = true;
+
+        AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                createEventLoop(), failing, persistentState, log, noOpSender(), metrics,
+                tempDir, raw.length + 1, 1);
+
+        long term = 1;
+        long lastIndex = 5;
+        long lastTerm = 2;
+
+        manager.install(ByteBuffer.allocate(0),
+                new SnapshotMetadataRequest(leader, term, lastTerm, lastIndex, raw.length),
+                (idx, t) -> {});
+
+        assertThatThrownBy(() -> manager.install(ByteBuffer.wrap(raw),
+                new SnapshotChunkResponse(term, lastIndex, 0, true),
+                (idx, t) -> {}))
+                .isInstanceOf(RuntimeException.class);
+
+        // The state machine never applied the incoming snapshot, so persisting it would make a restart replay the
+        // current log entries on top of a snapshot that already contains them.
+        try (InputStream snapshot = log.getSnapshot()) {
+            assertThat(snapshot.readAllBytes()).isEqualTo(previousBytes);
+        }
     }
 
     public void testDuplicateMetadataIgnored() throws Exception {

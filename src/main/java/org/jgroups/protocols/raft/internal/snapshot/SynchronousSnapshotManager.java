@@ -98,15 +98,21 @@ final class SynchronousSnapshotManager implements SnapshotManager {
         long lastIncludedTerm = isr.lastIncludedTerm();
         LOG.debug("Restoring state machine with snapshot (%d bytes), (index=%d, term=%d)", data.remaining(), lastIncludedIndex, lastIncludedTerm);
 
-        int pos = data.position();
-        log.setSnapshot(new ByteArrayInputStream(data.array(), data.position(), data.remaining()));
-        data.position(pos);
+        // Capture the bounds before reading the snapshot.
+        // We recover the snapshot and then persist it, we track the bounds before consuming.
+        int offset = data.position();
+        int length = data.remaining();
 
         metrics.chunkTransferStarted();
         try {
             DataInput in = new ByteArrayDataInputStream(data);
             persistentState.readFrom(in);
             stateMachine.readContentFrom(in);
+
+            // Persist the snapshot only after successfully recovering.
+            // This avoids a scenario where we set the snapshot, but fail to perform the recovery.
+            // It would leave the node stuck with an invalid snapshot, with this, we at least could fall back to the previous.
+            log.setSnapshot(new ByteArrayInputStream(data.array(), offset, length));
 
             LogEntry le = new LogEntry(lastIncludedTerm, null);
             log.reinitializeTo(lastIncludedIndex, le);

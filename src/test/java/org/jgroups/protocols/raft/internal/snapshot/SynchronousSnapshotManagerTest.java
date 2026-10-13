@@ -21,6 +21,7 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -131,6 +132,25 @@ public class SynchronousSnapshotManagerTest {
         assertThat(actionCalled.get()).isFalse();
         assertThat(metrics.numSnapshotsReceived()).isZero();
         assertThat(metrics.numFailedSnapshotsInstalled()).isEqualTo(1);
+    }
+
+    public void testFailedInstallKeepsPreviousSnapshot() throws Exception {
+        ByteBuffer previous = createSnapshotBuffer(persistentState, new CounterStateMachine(1));
+        byte[] previousBytes = Arrays.copyOfRange(previous.array(), previous.position(), previous.limit());
+        log.setSnapshot(new ByteArrayInputStream(previousBytes));
+
+        ByteBuffer incoming = createSnapshotBuffer(persistentState, new CounterStateMachine(42));
+        StateMachine failing = new FailingStateMachine(false, true);
+        SynchronousSnapshotManager manager = createManager(failing, noOpSender());
+
+        assertThatThrownBy(() -> manager.install(incoming, new InstallSnapshotRequest(1, null, 5, 2), (idx, term) -> {}))
+                .isInstanceOf(RuntimeException.class);
+
+        // The state machine never applied the incoming snapshot, so persisting it would make a restart replay the
+        // current log entries on top of a snapshot that already contains them.
+        try (InputStream snapshot = log.getSnapshot()) {
+            assertThat(snapshot.readAllBytes()).isEqualTo(previousBytes);
+        }
     }
 
     public void testTransferTo() throws Exception {

@@ -349,16 +349,17 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         try {
             LOG.debug("Completing active snapshot entry: %s", transfer);
 
-            // Copies the temporary file holding the snapshot chunks into its final location.
-            // The current transfer.channel holds only the raw data of the snapshot.
-            // After setting the snapshot, it will follow the internal format of the Log implementation.
-            transfer.channel.position(0);
-            log.setSnapshot(Channels.newInputStream(transfer.channel));
-
             transfer.channel.position(0);
             DataInput in = new DataInputStream(new BufferedInputStream(Channels.newInputStream(transfer.channel)));
             persistentState.readFrom(in);
             asyncSnapshot.readContentFrom(in);
+
+            // Copies the temporary file holding the snapshot chunks into its final location.
+            // The current transfer.channel holds only the raw data of the snapshot.
+            // After setting the snapshot, it will follow the internal format of the Log implementation.
+            // Persist the snapshot only after the state machine was recovered, so we know the snapshot is valid.
+            transfer.channel.position(0);
+            log.setSnapshot(Channels.newInputStream(transfer.channel));
 
             LogEntry le = new LogEntry(transfer.lastIncludedTerm, null);
             log.reinitializeTo(transfer.lastIncludedIndex, le);
