@@ -9,8 +9,8 @@ module org.jgroups.raft {
     // Extra optional dependency to utilize mmap files.
     requires static mashona.logwriting;
 
-    // Optional dependency to collect metrics.
-    requires static HdrHistogram;
+    // Dependency to collect metrics.
+    requires HdrHistogram;
 
     // Optional dependency utilized only by the CLI JAR that shades Picocli
     requires static info.picocli;

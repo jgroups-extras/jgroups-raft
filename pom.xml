@@ -178,12 +178,11 @@
             <optional>true</optional>
         </dependency>
 
-        <!-- Optional utilized to collect metrics. -->
+        <!-- Utilized to collect metrics. -->
         <dependency>
             <groupId>org.hdrhistogram</groupId>
             <artifactId>HdrHistogram</artifactId>
             <version>${hdrhistogram.version}</version>
-            <optional>true</optional>
         </dependency>
 
         <!-- Optional utilized by the CLI. -->

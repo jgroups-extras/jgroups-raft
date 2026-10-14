@@ -14,6 +14,9 @@ JGroups Raft requires **Java 17** or higher. JGroups Raft can be included in you
 
 The tags are available on https://github.com/jgroups-extras/jgroups-raft/tags[GitHub releases].
 
+New to JGroups Raft? Start with <<GettingStartedTutorial>>, which builds and runs a three-member cluster.
+For a complete application, see the https://github.com/jabolina/jgroups-raft-example[JGroups Raft example]: a Quarkus voting service with a RocksDB-backed state machine, async snapshots, custom marshallers, health probes, metrics, and a Kubernetes deployment.
+
 === Cluster members and identity
 
 Each cluster member has an address (a UUID) assigned by JGroups and a `raft_id` which needs to be assigned by the user.
@@ -77,7 +80,8 @@ Because JGroups Raft manages execution ordering and thread-safety, standard data
 [source,java]
 ----
 public class MapStoreImpl implements MapStore {
-    private final Map<String, String> data = new HashMap<>();  // <1>
+    @StateMachineField(order = 0)                              // <1>
+    Map<String, String> data = new HashMap<>();
 
     @Override
     public String get(String key) {
@@ -96,6 +100,8 @@ public class MapStoreImpl implements MapStore {
 }
 ----
 <1> Plain collections like `HashMap` can be safely used because state modifications are dispatched sequentially by Raft commit order.
+The `@StateMachineField` annotation includes the map in snapshots; see <<StateMachineSnapshotState>>.
+The field cannot be `final`, because restoring a snapshot replaces its value.
 <2> Reads values from local state.
 <3> Stores values in local state upon commit.
 <4> Removes entries from local state and returns the previous value.
@@ -143,7 +149,99 @@ raft.write(store -> {                                          // <1>
 String val = raft.read(store -> store.get("greeting"));        // <2>
 ----
 <1> Submits a write command to the cluster. The lambda receives a proxy of the state machine, records the method invocation and arguments, replicates it across the quorum, and blocks until committed and applied.
-<2> Submits a read command. The leader confirms its lease with a majority of followers and evaluates the read against local state.
+<2> Submits a read command. The read is not written to the log, but the leader confirms with a majority of members that it is still the leader before evaluating the read against its local state.
+
+Both methods can be called on any member.
+On a follower, the command is forwarded to the leader, which requires the `REDIRECT` protocol in the stack.
+
+===== Command options
+
+`write()` and `read()` accept options that change the behavior of a single invocation:
+
+[source,java]
+----
+String val = raft.read(store -> store.get("greeting"),
+        JGroupsRaftReadCommandOptions.options()
+            .linearizable(false)                               // <1>
+            .build());
+
+raft.write(store -> store.remove("greeting"),
+        JGroupsRaftWriteCommandOptions.options()
+            .ignoreReturnValue(true)                           // <2>
+            .build());
+----
+<1> Executes the read against the local state machine without contacting the leader.
+The read is faster but may return stale data, for example on a follower that has not applied the latest commits yet.
+Reads are linearizable by default.
+<2> Skips serializing and returning the method's result; the call returns `null`.
+Useful for writes whose result the caller does not need.
+
+===== Threading
+
+`write()` and `read()` block the calling thread until the result is available, and the lambda runs on the calling thread.
+The state machine methods run elsewhere: on every member, commands are applied one at a time by a single internal thread.
+Non-linearizable reads are the exception; they run on the calling thread, synchronized on the state machine instance, so they never overlap with applied commands.
+
+State machine methods must be fast and must never block.
+Commands are applied in log order, so a slow method delays every following command and can stall replication for the whole cluster.
+
+[[StateMachineSnapshotState]]
+==== Snapshot State
+
+The log cannot grow forever.
+Once it exceeds `RAFT.max_log_size`, or when an operator calls `snapshot()`, JGroups Raft writes a snapshot of the state machine and truncates the log (see <<Snapshots>>).
+A member that falls too far behind, or joins with an empty log, receives the snapshot instead of the truncated entries.
+The snapshot must therefore contain the entire state of the state machine.
+
+There are two ways to provide that state:
+
+* *Annotate the fields that hold state with `@StateMachineField`.*
+JGroups Raft reads the annotated fields when writing a snapshot and assigns them when restoring one.
+Each field needs a unique `order`, must not be `final` or `static`, and its type must be serializable (built-in types, or a registered custom marshaller, see <<CustomTypes>>).
+This is the simplest option and fits state that lives in plain Java objects.
+* *Implement `AsyncSnapshot`.*
+The state machine writes and reads the snapshot itself, and writing happens off the consensus thread.
+Use it for large state, or for state that lives outside the instance, such as an embedded database or cache.
+See <<AsyncSnapshotsTutorial>> and <<AsyncSnapshotsHowTo>>.
+
+[WARNING]
+====
+A state machine that has no `@StateMachineField` and does not implement `AsyncSnapshot` produces *empty* snapshots.
+Members that install such a snapshot lose all previously committed state, silently.
+JGroups Raft logs a warning at startup when it detects this case.
+Implementing the low-level `StateMachine` interface does not help: its `writeContentTo()` and `readContentFrom()` are not used for annotation-driven state machines.
+====
+
+[[CustomTypes]]
+==== Custom Types
+
+Command arguments, return values, and `@StateMachineField` values are serialized with a compact binary format.
+Primitives, boxed primitives, `String`, primitive arrays, and the common JDK collections and maps are supported out of the box.
+Any other type, including your own classes and records, needs a `JGroupsRaftCustomMarshaller` registered on the builder.
+Otherwise, the command fails with `Serializer not found for type ...`.
+See <<CustomMarshallerHowTo>>.
+
+[[RoleChanges]]
+==== Role Changes and Leader-Only Work
+
+`role()` returns the current role of the member (`LEADER`, `FOLLOWER`, `LEARNER`, or `NONE`), and `listenRoleChanges()` registers a listener called with the previous and the new role on every change:
+
+[source,java]
+----
+raft.listenRoleChanges((previous, current) -> {
+    if (current == JGroupsRaftRole.LEADER)
+        executor.submit(this::startLeaderTasks);               // <1>
+});
+----
+<1> Hand the work off to your own executor and return.
+
+The listener runs on an internal thread that takes part in leader election.
+It must return quickly, and it must never call `read()` or `write()`: the call waits for that same thread and deadlocks.
+
+Both `role()` and the listener report the role at one point in time, and two members can briefly both consider themselves leader around an election.
+Use the role to avoid redundant work, not for correctness.
+For example, a background task that only the leader should run can check `role()` before submitting a write, as long as the write is idempotent: applying it twice must leave the same state as applying it once.
+A write submitted by a member that is no longer the leader is forwarded to the current leader like any other write.
 
 ==== Schema Evolution and Rolling Upgrades
 
@@ -165,7 +263,10 @@ public interface MapStore {
     void put(String key, String value);
 }
 ----
-<1> Declares that write command `id = 3` (formerly `remove`) was retired. The startup validator accepts historic log entries containing this ID during replay without throwing an incompatible schema error.
+<1> Declares that write command `id = 3` (formerly `remove`) was retired. Without this declaration, the startup validator rejects the interface because the command disappeared. The ID can never be reused.
+
+Retiring a command does not make old log entries replayable: entries that use it must already be behind a snapshot.
+See <<SchemaEvolutionHowTo>> for adding, versioning, and retiring commands safely.
 
 === Administration, Health Checks, and Metrics
 
@@ -204,6 +305,8 @@ ClusterHealth status = health.getClusterHealth();              // <4>
 <2> Liveness probe: returns `true` when the underlying JGroups channel is connected.
 <3> Readiness probe: returns `true` when the channel is connected, a leader is known, and the instance is started.
 <4> Coarse cluster health view (`HEALTHY`, `DEGRADED`, `FAILURE`, or `NOT_RUNNING`).
+
+See <<KubernetesHealthChecksHowTo>> for exposing these probes to Kubernetes.
 
 ==== Metrics
 
@@ -341,6 +444,8 @@ logs from growing indefinitely, a _snapshot_ of the state machine can be made an
 This method calls `StateMachine.writeContentTo()` to dump the state of the state machine into a snapshot file and then
 truncates the log. New members who don't have a log yet are initialized by sending them the snapshot first. After that,
 they will catch up via the regular Raft mechanism.
+
+For annotation-driven state machines, the snapshot content comes from `@StateMachineField` or `AsyncSnapshot` instead; see <<StateMachineSnapshotState>>.
 
 Logs can be snapshot automatically by setting `RAFT.max_log_size` to the max number of bytes that a log is allowed to
 grow to until a snapshot is taken.

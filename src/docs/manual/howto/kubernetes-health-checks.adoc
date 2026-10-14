@@ -1,0 +1,186 @@
+[[KubernetesHealthChecksHowTo]]
+=== Configure Kubernetes Health Probes
+
+This guide shows how to connect `JGroupsRaftHealthCheck` to Kubernetes liveness, readiness, and startup probes for a cluster running as a `StatefulSet`.
+JGroups Raft does not include an HTTP server, so the application exposes the probes itself.
+The https://github.com/jabolina/jgroups-raft-example[JGroups Raft example] contains a complete, deployable version of this setup.
+
+==== Expose the probes over HTTP
+
+Serve each probe on its own path, returning `200` when it passes and `503` otherwise.
+This example uses the HTTP server included in the JDK:
+
+[source,java]
+----
+JGroupsRaft<MapStore> raft = JGroupsRaft.builder(new MapStoreImpl(), MapStore.class)
+    .withJGroupsConfig("raft-kubernetes.xml")
+    .withClusterName("my-raft-cluster")
+    .configureRaft()
+        .withRaftId(System.getenv("RAFT_ID"))                  // <1>
+        .withMembers(List.of("raft-0", "raft-1", "raft-2"))
+        .withLogDirectory("/var/lib/raft")                     // <2>
+        .and()
+    .build();
+
+JGroupsRaftHealthCheck health = raft.healthCheck();
+HttpServer server = HttpServer.create(new InetSocketAddress(8080), 0);
+server.createContext("/health/live", exchange -> respond(exchange, health.isNodeLive()));
+server.createContext("/health/ready", exchange -> respond(exchange, health.isNodeReady()));
+server.start();                                                // <3>
+
+Runtime.getRuntime().addShutdownHook(new Thread(raft::stop));  // <4>
+raft.start();
+----
+
+[source,java]
+----
+private static void respond(HttpExchange exchange, boolean passing) throws IOException {
+    exchange.sendResponseHeaders(passing ? 200 : 503, -1);     // <5>
+    exchange.close();
+}
+----
+<1> The pod name is stable in a `StatefulSet` (`raft-0`, `raft-1`, ...), so it can serve as the `raft_id`. The manifest below passes it as `RAFT_ID`.
+<2> Point the log directory to a persistent volume, so a restarted pod keeps its log.
+<3> Start the HTTP server before `raft.start()`. The health check works before start and reports the member as not live and not ready.
+<4> Leave the cluster cleanly when Kubernetes stops the pod.
+<5> `-1` sends the status code without a body.
+
+If your framework has its own health checks, such as MicroProfile Health in Quarkus, return `isNodeLive()` and `isNodeReady()` from a liveness and a readiness check instead.
+
+The probes only read local state and never contact other members, so frequent polling is cheap.
+
+==== Map the probes
+
+[cols="1,2,3",options="header"]
+|===
+| Kubernetes probe | Path | Why
+
+| Startup
+| `/health/live`
+| Gives the member time to connect before the liveness probe takes over.
+
+| Liveness
+| `/health/live`
+| Passes while the member is connected to the cluster. A failure means the process should be restarted.
+
+| Readiness
+| `/health/ready`
+| Passes while the member is started, connected, and knows the current leader. A failure only removes the pod from the service endpoints.
+|===
+
+Do not use `/health/ready` for liveness.
+Readiness fails on every member during a leader election, and on the minority side of a network partition.
+Restarting pods in those cases makes recovery slower, not faster.
+
+==== Configure the services and the StatefulSet
+
+The cluster needs two services: a headless service through which members discover each other, and a regular service that routes client traffic to ready members only.
+
+[source,yaml]
+----
+apiVersion: v1
+kind: Service
+metadata:
+  name: raft-headless
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true            # <1>
+  selector:
+    app: raft
+  ports:
+    - name: jgroups
+      port: 7800
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: raft
+spec:
+  selector:
+    app: raft
+  ports:
+    - name: http
+      port: 8080                            # <2>
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: raft
+spec:
+  serviceName: raft-headless
+  replicas: 3
+  podManagementPolicy: Parallel             # <3>
+  selector:
+    matchLabels:
+      app: raft
+  template:
+    metadata:
+      labels:
+        app: raft
+    spec:
+      terminationGracePeriodSeconds: 30     # <4>
+      containers:
+        - name: raft
+          image: my-raft-app:1.0
+          env:
+            - name: RAFT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          ports:
+            - name: jgroups
+              containerPort: 7800
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60            # <5>
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            periodSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/raft
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: 1Gi
+----
+<1> Members must discover each other before any of them is ready. Without this setting, DNS only returns ready pods, and no member ever becomes ready.
+<2> Clients use this service. Unlike the headless service, it only routes to pods whose readiness probe passes.
+<3> Readiness needs a leader, and electing one needs a majority of members running. With the default `OrderedReady` policy, Kubernetes waits for `raft-0` to be ready before creating `raft-1`, so the cluster never starts. Rolling updates still replace one pod at a time, which keeps a majority running.
+<4> Gives the member time to leave the cluster and close its log on shutdown.
+<5> Allows up to five minutes for the member to connect, for example while it replays a large log.
+
+For discovery, use `DNS_PING` with the headless service in the JGroups configuration, replacing the default discovery protocol:
+
+[source,xml]
+----
+<dns.DNS_PING dns_query="raft-headless" dns_record_type="A"/>
+----
+
+The member list passed to `withMembers()` must match the replica count.
+To grow the cluster, scale the `StatefulSet` first: the new pod is not in the member list, so it joins as a learner and catches up.
+Then promote it with `addNode()`; see <<DynamicMembership>>.
+
+==== Monitor the whole cluster
+
+`getClusterHealth()` reports `HEALTHY`, `DEGRADED`, `FAILURE`, or `NOT_RUNNING` from the local member's point of view.
+It is not suited for a probe, because a pod should not be restarted or removed when a different member fails.
+Export it as a metric or a status endpoint instead, and alert on `DEGRADED` (a member is missing, but the cluster still accepts commands) and `FAILURE` (no leader or no majority).

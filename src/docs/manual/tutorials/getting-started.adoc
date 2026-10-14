@@ -1,0 +1,330 @@
+[[GettingStartedTutorial]]
+=== Getting Started: A Replicated Key-Value Store
+
+In this tutorial, we build a small key-value store, replicate it across three members running on our machine, and watch the cluster keep working while a member is down.
+Along the way, we meet the main pieces of JGroups Raft: an annotated state machine, the `JGroupsRaft` instance, and the leader that coordinates writes.
+
+We need Java 17 or later and Maven.
+
+==== Create the project
+
+We start with an empty Maven project. Create a directory `raft-tutorial` with this `pom.xml`:
+
+[source,xml]
+----
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>tutorial</groupId>
+    <artifactId>raft-tutorial</artifactId>
+    <version>1.0</version>
+
+    <properties>
+        <maven.compiler.release>17</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jgroups</groupId>
+            <artifactId>jgroups-raft</artifactId>
+            <version>2.0.0.Final</version>
+        </dependency>
+    </dependencies>
+</project>
+----
+
+==== Define the state machine
+
+The state machine is the data we replicate.
+We describe its operations in an interface. Create `src/main/java/tutorial/KeyValueStore.java`:
+
+[source,java]
+----
+package tutorial;
+
+import org.jgroups.raft.JGroupsRaftStateMachine;
+import org.jgroups.raft.StateMachineRead;
+import org.jgroups.raft.StateMachineWrite;
+
+@JGroupsRaftStateMachine
+public interface KeyValueStore {
+
+    @StateMachineWrite(id = 1)
+    void put(String key, String value);
+
+    @StateMachineRead(id = 2)
+    String get(String key);
+}
+----
+
+`put` changes the state, so it is a write, and every member applies it.
+`get` only reads the state, so it is a read.
+Each operation gets an ID, which identifies it in the replicated log.
+
+Now we implement it. Create `src/main/java/tutorial/KeyValueStoreImpl.java`:
+
+[source,java]
+----
+package tutorial;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import org.jgroups.raft.StateMachineField;
+
+public class KeyValueStoreImpl implements KeyValueStore {
+
+    @StateMachineField(order = 0)
+    Map<String, String> data = new HashMap<>();
+
+    @Override
+    public void put(String key, String value) {
+        data.put(key, value);
+    }
+
+    @Override
+    public String get(String key) {
+        return data.get(key);
+    }
+}
+----
+
+The implementation is plain Java: JGroups Raft applies operations one at a time, so a `HashMap` is enough.
+`@StateMachineField` marks the map as the state to include in snapshots.
+
+==== Configure the network
+
+The members talk to each other with JGroups.
+We use TCP on the loopback address, so the cluster stays on our machine.
+Create `src/main/resources/tutorial.xml`:
+
+[source,xml]
+----
+<config xmlns="urn:org:jgroups"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="urn:org:jgroups http://www.jgroups.org/schema/jgroups.xsd">
+    <TCP bind_addr="127.0.0.1" bind_port="7800" port_range="2"/>
+    <TCPPING initial_hosts="127.0.0.1[7800]" port_range="2"/>
+    <MERGE3/>
+    <FD_ALL3/>
+    <VERIFY_SUSPECT/>
+    <pbcast.NAKACK2 use_mcast_xmit="false"/>
+    <UNICAST3/>
+    <pbcast.STABLE/>
+    <raft.NO_DUPES/>
+    <pbcast.GMS print_local_addr="false" join_timeout="2000"/>
+    <UFC/>
+    <MFC/>
+    <FRAG4/>
+    <raft.ELECTION/>
+    <raft.RAFT/>
+    <raft.REDIRECT/>
+</config>
+----
+
+The last three protocols are JGroups Raft: `ELECTION` elects a leader, `RAFT` replicates the log, and `REDIRECT` forwards requests from any member to the leader.
+
+==== Write the member
+
+Each member is the same program, started with a different ID.
+It reads commands from the console and runs them against the cluster.
+Create `src/main/java/tutorial/KvNode.java`:
+
+[source,java]
+----
+package tutorial;
+
+import java.util.List;
+import java.util.Scanner;
+
+import org.jgroups.raft.JGroupsRaft;
+
+public class KvNode {
+
+    public static void main(String[] args) throws Exception {
+        String id = args[0];
+
+        JGroupsRaft<KeyValueStore> raft = JGroupsRaft.builder(new KeyValueStoreImpl(), KeyValueStore.class)
+            .withJGroupsConfig("tutorial.xml")
+            .withClusterName("tutorial")
+            .configureRaft()
+                .withRaftId(id)
+                .withMembers(List.of("A", "B", "C"))
+                .withLogDirectory("raft-data")
+                .and()
+            .build();
+
+        raft.start();
+        System.out.println("Member " + id + " started");
+
+        Scanner console = new Scanner(System.in);
+        while (true) {
+            System.out.print(id + "> ");
+            String[] cmd = console.nextLine().trim().split("\\s+");
+            try {
+                switch (cmd[0]) {
+                    case "put" -> {
+                        raft.write(kv -> {
+                            kv.put(cmd[1], cmd[2]);
+                            return null;
+                        });
+                        System.out.println("OK");
+                    }
+                    case "get" -> {
+                        String value = raft.read(kv -> kv.get(cmd[1]));
+                        System.out.println(value);
+                    }
+                    case "leader" -> System.out.println("Leader: " + raft.state().leader());
+                    case "quit" -> {
+                        raft.stop();
+                        return;
+                    }
+                    default -> System.out.println("Commands: put <key> <value>, get <key>, leader, quit");
+                }
+            } catch (RuntimeException e) {
+                System.out.println("Failed: " + e.getMessage());
+            }
+        }
+    }
+}
+----
+
+The builder ties everything together: our state machine, the network configuration, and the member's identity.
+Every member lists the same three members, `A`, `B`, and `C`, and stores its log under `raft-data`.
+
+`raft.write()` and `raft.read()` receive the state machine and call one of its operations.
+The call is replicated through the cluster, and the method returns once the result is ready.
+
+==== Start the cluster
+
+We compile the project and save its classpath, so we can start members with plain `java`:
+
+[source,shell]
+----
+mvn -q compile dependency:build-classpath -Dmdep.outputFile=cp.txt
+----
+
+Open three terminals in the `raft-tutorial` directory, and start one member in each:
+
+[source,shell]
+----
+java -cp "target/classes:$(cat cp.txt)" tutorial.KvNode A
+----
+
+[source,shell]
+----
+java -cp "target/classes:$(cat cp.txt)" tutorial.KvNode B
+----
+
+[source,shell]
+----
+java -cp "target/classes:$(cat cp.txt)" tutorial.KvNode C
+----
+
+Each terminal shows something like this, possibly with some JGroups log lines:
+
+----
+Member A started
+A>
+----
+
+A leader is elected as soon as two members are up.
+Type `leader` in any terminal:
+
+----
+A> leader
+Leader: B
+----
+
+The leader may be a different member on your machine; every member reports the same one.
+
+==== Replicate a value
+
+In terminal `A`, store a value:
+
+----
+A> put greeting hello
+OK
+----
+
+`OK` means a majority of the members stored the write and applied it.
+Now read it in terminal `C`:
+
+----
+C> get greeting
+hello
+----
+
+The value was written on `A` and is available on `C`.
+It does not matter which member the leader is: writes on a follower are forwarded to the leader.
+
+==== Keep working while a member is down
+
+In terminal `C`, stop the member:
+
+----
+C> quit
+----
+
+Two of three members are still running, which is a majority, so the cluster keeps accepting writes.
+If `C` was the leader, the other two elect a new one within a moment; `leader` in terminal `A` shows it.
+In terminal `A`:
+
+----
+A> put color blue
+OK
+----
+
+Now restart `C` in its terminal, with the same command as before:
+
+[source,shell]
+----
+java -cp "target/classes:$(cat cp.txt)" tutorial.KvNode C
+----
+
+`C` loads its log from `raft-data`, and the leader sends it the write it missed.
+Read the new value on `C`:
+
+----
+C> get color
+blue
+----
+
+`C` caught up on its own.
+
+==== Lose the majority
+
+Stop `B` and `C` with `quit`.
+`A` is now alone, one member out of three, which is not a majority:
+
+----
+A> leader
+Leader: null
+----
+
+Without a majority, no leader can be elected, and writes are rejected:
+
+----
+A> put color red
+Failed: ...
+----
+
+The exact message varies; what matters is that `A` does not accept the write on its own.
+This is how Raft keeps every member consistent: a change is only accepted when a majority agrees.
+Start `B` again, and `A` accepts writes once a leader is elected.
+
+Type `quit` in every terminal when done, and delete the `raft-data` directory to start over with an empty cluster.
+
+==== What we built
+
+We replicated a state machine across three members, read on one member what another wrote, restarted a member that caught up by itself, and saw that changes need a majority.
+
+To continue:
+
+* <<StateMachineSnapshotState>> explains how state gets into snapshots, and <<AsyncSnapshotsTutorial>> adds asynchronous snapshots to a key-value store like this one.
+* <<CustomMarshallerHowTo>> shows how to use your own classes as arguments and state.
+* <<SchemaEvolutionHowTo>> shows how to change the interface once the cluster has data.
+* The https://github.com/jabolina/jgroups-raft-example[JGroups Raft example] is a complete application built on the same API.

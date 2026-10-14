@@ -1,0 +1,241 @@
+[[CustomMarshallerHowTo]]
+=== Serialize Custom Types
+
+This guide shows how to use your own classes as command arguments, return values, or `@StateMachineField` values.
+Built-in types (primitives, boxed primitives, `String`, primitive arrays, JDK collections and maps) need no setup.
+Any other type fails at runtime with `Serializer not found for type ...` until you register a marshaller for it.
+
+The examples use this record:
+
+[source,java]
+----
+public record Account(String id, long balance) { }
+----
+
+==== Implement the marshaller
+
+Implement `JGroupsRaftCustomMarshaller` for exactly one concrete class:
+
+[source,java]
+----
+public final class AccountMarshaller implements JGroupsRaftCustomMarshaller<Account> {
+
+    @Override
+    public void write(SerializationContextWrite ctx, Account account) {
+        ctx.writeUTF(account.id());
+        ctx.writeLong(account.balance());
+    }
+
+    @Override
+    public Account read(SerializationContextRead ctx, byte version) {
+        String id = ctx.readUTF();
+        long balance = ctx.readLong();
+        return new Account(id, balance);
+    }
+
+    @Override
+    public Class<Account> javaClass() {
+        return Account.class;
+    }
+
+    @Override
+    public int type() {
+        return TypeIds.ACCOUNT;
+    }
+
+    @Override
+    public byte version() {
+        return 1;
+    }
+}
+----
+
+Read the fields in exactly the order they were written.
+The marshaller may be called from several threads at once, so keep it stateless.
+Null values are handled by the framework: `write` never receives `null`, and `read` must never return `null`.
+
+==== Choose a type ID
+
+The type ID identifies the class in the serialized bytes, including bytes already stored in the log and in snapshots.
+
+* Use values from `JGroupsRaftCustomMarshaller.MINIMUM_TYPE_ID` (1000) upwards. Lower values are reserved and rejected.
+* Never change or reuse an ID once it reached production. Doing so makes the stored data unreadable.
+
+Keep all IDs in one place, so a new type does not accidentally take an existing ID:
+
+[source,java]
+----
+public final class TypeIds {
+    public static final int ACCOUNT = 1000;
+    public static final int TRANSFER = 1001;
+
+    private TypeIds() { }
+}
+----
+
+==== Register the marshaller
+
+Register the marshaller on the builder:
+
+[source,java]
+----
+JGroupsRaft<Bank> raft = JGroupsRaft.builder(new BankImpl(), Bank.class)
+    .withJGroupsConfig("raft.xml")
+    .registerMarshaller(new AccountMarshaller())
+    .build();
+----
+
+Every member must register the same marshallers with the same type IDs.
+A member missing a marshaller fails to apply commands that use the type.
+
+==== Serialize nested types
+
+If a type contains another custom type, write it with `writeObject` and read it with `readObject`.
+The nested type's own marshaller is used, and `null` values are handled:
+
+[source,java]
+----
+public record Transfer(Account from, Account to, long amount) { }
+
+public final class TransferMarshaller implements JGroupsRaftCustomMarshaller<Transfer> {
+
+    @Override
+    public void write(SerializationContextWrite ctx, Transfer transfer) {
+        ctx.writeObject(transfer.from());
+        ctx.writeObject(transfer.to());
+        ctx.writeLong(transfer.amount());
+    }
+
+    @Override
+    public Transfer read(SerializationContextRead ctx, byte version) {
+        Account from = ctx.readObject();
+        Account to = ctx.readObject();
+        long amount = ctx.readLong();
+        return new Transfer(from, to, amount);
+    }
+
+    // javaClass(), type() returning TypeIds.TRANSFER, and version() as before.
+}
+----
+
+Register both marshallers.
+Collections and maps of custom types, such as `List<Account>`, work once the element type has a marshaller.
+
+==== Serialize a type hierarchy
+
+Marshallers are looked up by the exact class of the value.
+A marshaller for an interface or a parent class does not cover its implementations, so a method returning a sealed `Poll` with the implementations `OpenPoll` and `ClosedPoll` needs one marshaller for each implementation.
+
+When the implementations serialize the same way, write one generic marshaller and register one instance per class, each with its own type ID:
+
+[source,java]
+----
+public final class PollMarshaller<P extends Poll> implements JGroupsRaftCustomMarshaller<P> {
+
+    private final Class<P> type;
+    private final int typeId;
+
+    public PollMarshaller(Class<P> type, int typeId) {
+        this.type = type;
+        this.typeId = typeId;
+    }
+
+    @Override
+    public Class<P> javaClass() {
+        return type;
+    }
+
+    @Override
+    public int type() {
+        return typeId;
+    }
+
+    // write(), read(), and version() as usual.
+}
+
+JGroupsRaft<PollService> raft = JGroupsRaft.builder(new PollServiceImpl(), PollService.class)
+    .withJGroupsConfig("raft.xml")
+    .registerMarshaller(new PollMarshaller<>(OpenPoll.class, TypeIds.OPEN_POLL))
+    .registerMarshaller(new PollMarshaller<>(ClosedPoll.class, TypeIds.CLOSED_POLL))
+    .build();
+----
+
+==== Reuse an existing serializer
+
+If your application already serializes the type, for example to JSON for storage, the marshaller can delegate to it and store the bytes with a length prefix:
+
+[source,java]
+----
+@Override
+public void write(SerializationContextWrite ctx, Account account) {
+    byte[] bytes = json.toBytes(account);
+    ctx.writeInt(bytes.length);
+    ctx.writeBytes(bytes);
+}
+
+@Override
+public Account read(SerializationContextRead ctx, byte version) {
+    byte[] bytes = ctx.readBytes(ctx.readInt());
+    return json.fromBytes(bytes, Account.class);
+}
+----
+
+This keeps a single serialization format for the type, at the cost of larger and slower messages than writing the fields directly.
+Compatibility then follows the rules of that serializer instead of `version()`.
+
+==== Change the format of a type
+
+Old log entries and snapshots keep the old format, so a marshaller must keep reading it.
+To add a field:
+
+. Append the new field at the end of `write`.
+. Increment `version()`.
+. In `read`, read the new field only when the stored version has it, and use a default otherwise.
+
+[source,java]
+----
+public record Account(String id, long balance, String currency) { }
+
+@Override
+public void write(SerializationContextWrite ctx, Account account) {
+    ctx.writeUTF(account.id());
+    ctx.writeLong(account.balance());
+    ctx.writeUTF(account.currency()); // <1>
+}
+
+@Override
+public Account read(SerializationContextRead ctx, byte version) {
+    String id = ctx.readUTF();
+    long balance = ctx.readLong();
+    String currency = "EUR";          // <2>
+    if (version >= 2) {
+        currency = ctx.readUTF();     // <3>
+    }
+    return new Account(id, balance, currency);
+}
+
+@Override
+public byte version() {
+    return 2;                         // <4>
+}
+----
+<1> The new field is written last, after all existing fields.
+<2> The default for data written by version 1, which has no currency.
+<3> Only data written by version 2 or later contains the field.
+<4> Incremented from 1, so `read` receives the version the data was written with.
+
+A member still running the old marshaller skips the trailing fields it does not know, so mixed versions can read each other's data during an upgrade.
+
+[WARNING]
+====
+Never remove, reorder, or change the type of an existing field.
+The framework does not detect these changes, and they corrupt the data read from the log and from snapshots.
+====
+
+==== Limits
+
+* `writeUTF` stores strings of up to 32 KB of encoded bytes.
+Store larger text with `writeBytes`, after writing its length.
+* Serialization runs on the replication path. A slow marshaller lowers throughput for the whole cluster.
+
+The `JGroupsRaftCustomMarshaller` Javadoc describes the full contract.

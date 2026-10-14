@@ -1,0 +1,141 @@
+[[SchemaEvolutionHowTo]]
+=== Evolve a State Machine Interface
+
+This guide shows how to add, change, and remove commands of an annotation-driven state machine without breaking members that already have data.
+
+The log stores each write as a command ID, a command version, and the serialized arguments.
+Every member replays these entries on restart, so a command must stay compatible for as long as entries using it are in the log.
+To catch mistakes early, each member keeps the schema of its state machine in `schema.raft`, in the log directory.
+On `start()`, the current interface is compared with that file, and an incompatible change makes `start()` fail before the member joins the cluster.
+Members with an in-memory log skip this check, because they have no data to protect.
+
+==== Add a command
+
+Add a method with an ID that the interface does not use:
+
+[source,java]
+----
+@JGroupsRaftStateMachine
+public interface MapStore {
+
+    @StateMachineRead(id = 1)
+    String get(String key);
+
+    @StateMachineWrite(id = 2)
+    void put(String key, String value);
+
+    @StateMachineWrite(id = 3)                                 // <1>
+    void clear();
+}
+----
+<1> New command. Do not reuse the `(id, version)` of a retired command.
+
+No other step is needed for the schema, but see <<SchemaEvolutionRollingUpgrade>> before calling the new method in a running cluster.
+
+==== Change the parameters of a command
+
+The parameter types of an existing `(id, version)` cannot change, because entries in the log hold arguments of the old types.
+Add a new version of the command instead and keep the old one:
+
+[source,java]
+----
+@JGroupsRaftStateMachine
+public interface MapStore {
+
+    @StateMachineWrite(id = 2)                                 // <1>
+    void put(String key, String value);
+
+    @StateMachineWrite(id = 2, version = 2)                    // <2>
+    void put(String key, String value, long ttl);
+}
+----
+<1> Version 1 stays, so old log entries can still be applied. `version` defaults to `1`.
+<2> New callers use version 2.
+
+Renaming a method is not a schema change; only the ID, version, kind (read or write), and parameter types are compared.
+Moving a parameter class to another package is detected as a parameter change, because classes are compared by their fully qualified name.
+Handle it like any parameter change, with a new version.
+
+==== Remove an old version of a command
+
+You can drop version 1 once a higher version exists and no log entry uses version 1 anymore:
+
+. Make sure no client calls the old version.
+. On every member, take a snapshot, so the log is truncated past the last entry of the old version:
++
+[source,java]
+----
+raft.administration().snapshot().toCompletableFuture().join();
+----
+. Remove the old method from the interface and deploy.
+
+No retired declaration is needed, because the higher version replaces the old one.
+The validator cannot check that the old entries are gone.
+If one is still in the log, applying it fails on restart.
+
+==== Remove a command entirely
+
+To remove every version of a command, take a snapshot on every member as above, then remove the methods and declare each removed `(id, version)` as retired:
+
+[source,java]
+----
+@JGroupsRaftStateMachine(
+    retiredWrites = {
+        @StateMachineWrite(id = 2, version = 1),               // <1>
+        @StateMachineWrite(id = 2, version = 2)
+    }
+)
+public interface MapStore {
+
+    @StateMachineRead(id = 1)
+    String get(String key);
+}
+----
+<1> Use the same annotation type as the removed method: `retiredReads` with `@StateMachineRead`, `retiredWrites` with `@StateMachineWrite`.
+
+The retired declaration tells the validator the removal is intentional.
+A retired `(id, version)` is reserved forever and cannot be brought back.
+
+[[SchemaEvolutionRollingUpgrade]]
+==== Upgrade a running cluster
+
+A member that receives a log entry for a command it does not know cannot apply it, and fails.
+During a rolling upgrade, deploy in two steps:
+
+. Upgrade every member to the new interface, without calling the new commands or versions yet.
+. Once all members run the new code, start calling them.
+
+This applies to new commands and to new versions of existing commands.
+
+==== Fix a startup failure
+
+When `start()` rejects the interface, the error message names the command and the fix.
+
+[cols="2,3",options="header"]
+|===
+| Message mentions | Fix
+
+| A command was removed without being retired
+| Restore the method if the removal was a mistake. Otherwise, add it to `retiredReads` or `retiredWrites`.
+
+| Parameter types changed between restarts
+| Restore the old parameters and add the new signature as a new version.
+
+| The kind changed (read became write, or the opposite)
+| Restore the original kind, and add the new command with a new ID or a higher version.
+
+| A version was removed and only lower versions remain
+| Restore the removed version. A command can only move to higher versions.
+
+| A retired command does not exist, or has a different kind
+| Fix the retired declaration: the `(id, version)` and the annotation type must match the removed method.
+
+| A retired command is used again
+| Use a new ID or a higher version. A retired `(id, version)` cannot be reused.
+
+| A command is declared both as active and as retired
+| Remove it from either the method annotations or the retired list.
+|===
+
+Deleting `schema.raft` makes the check pass, but does not make the old log entries compatible.
+Only do it when the member's log and snapshot are deleted too.

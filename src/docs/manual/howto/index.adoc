@@ -4,4 +4,10 @@
 Goal-oriented recipes for solving specific problems.
 Each guide assumes you already understand the basics and focuses on getting a particular task done.
 
+include::./custom-marshaller.adoc[Serialize Custom Types]
+
+include::./schema-evolution.adoc[Evolve a State Machine Interface]
+
+include::./kubernetes-health-checks.adoc[Configure Kubernetes Health Probes]
+
 include::./async-snapshots.adoc[Async Snapshots]
