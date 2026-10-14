@@ -977,7 +977,7 @@ public class AsynchronousSnapshotManagerTest {
         }
 
         @Override
-        public void writeTo(DataOutput out) throws Exception {
+        public void writeContentTo(DataOutput out) throws Exception {
             writeStarted.countDown();
             writeGate.await();
             if (writeThrows) throw new IOException("simulated write failure");

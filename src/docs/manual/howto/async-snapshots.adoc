@@ -28,7 +28,7 @@ public SnapshotHandle prepareSnapshot() throws Exception {
 
     return new SnapshotHandle() {
         @Override
-        public void writeTo(DataOutput out) throws Exception {
+        public void writeContentTo(DataOutput out) throws Exception {
             // Serialize from captured values, NEVER from live fields.
             out.writeInt(capturedCounter);
             out.writeInt(capturedMap.size());
@@ -46,7 +46,7 @@ public SnapshotHandle prepareSnapshot() throws Exception {
 }
 ----
 
-The framework calls `release()` exactly once, regardless of whether `writeTo` succeeded, failed, or was never called.
+The framework calls `release()` exactly once, regardless of whether `writeContentTo` succeeded, failed, or was never called.
 
 ===== Implement `readContentFrom`
 
@@ -69,7 +69,7 @@ public void readContentFrom(DataInput in) throws Exception {
 }
 ----
 
-The serialization format must match between `writeTo` and `readContentFrom`.
+The serialization format must match between `writeContentTo` and `readContentFrom`.
 There is no versioning built into the framework, the application is responsible for handling backward compatibility.
 
 [NOTE]
@@ -146,7 +146,7 @@ public SnapshotHandle prepareSnapshot() throws Exception {
 
     return new SnapshotHandle() {
         @Override
-        public void writeTo(DataOutput out) throws Exception {
+        public void writeContentTo(DataOutput out) throws Exception {
             out.writeInt(snap);
         }
 

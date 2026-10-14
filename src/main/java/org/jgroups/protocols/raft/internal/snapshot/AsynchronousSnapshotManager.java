@@ -40,7 +40,7 @@ import java.util.concurrent.Executor;
  * Snapshot creation is split into two phases. The first phase runs on the RAFT event loop: it serializes the persistent
  * state and captures a frozen view of the state machine via {@link AsyncSnapshot#prepareSnapshot()}. The second phase runs
  * on a background thread obtained from {@link RaftEventLoop#executor()}: it serializes the captured state via
- * {@link SnapshotHandle#writeTo(java.io.DataOutput)} and submits the result back to the event loop for persistence. The
+ * {@link SnapshotHandle#writeContentTo(java.io.DataOutput)} and submits the result back to the event loop for persistence. The
  * event loop is free to process commits and appends during the second phase.
  * </p>
  *
@@ -415,7 +415,7 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         public void run() {
             try {
                 LOG.debug("Starting asynchronous snapshot on state machine");
-                handle.writeTo(out);
+                handle.writeContentTo(out);
                 out.flush();
 
                 CompletionStage<Void> cs;

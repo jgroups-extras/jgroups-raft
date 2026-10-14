@@ -95,7 +95,7 @@ public SnapshotHandle prepareSnapshot() throws Exception {
 
     return new SnapshotHandle() {
         @Override
-        public void writeTo(DataOutput out) throws Exception {
+        public void writeContentTo(DataOutput out) throws Exception {
             out.writeInt(frozen.size()); // <2>
             for (Map.Entry<String, String> e : frozen.entrySet()) {
                 out.writeUTF(e.getKey());
@@ -110,7 +110,7 @@ public SnapshotHandle prepareSnapshot() throws Exception {
 ----
 <1> `Map.copyOf` creates an immutable snapshot. After this line, mutations to `data` do
 not affect `frozen`.
-<2> `writeTo` runs on a background thread. It only reads from `frozen`, never from
+<2> `writeContentTo` runs on a background thread. It only reads from `frozen`, never from
 `data`.
 <3> No resources to release in this case. For database-backed state machines, this is
 where you would close the snapshot handle.
@@ -140,7 +140,7 @@ public void readContentFrom(DataInput in) throws Exception {
 the leader at the time it was taken. Any local state must be discarded and fully replaced
 with the snapshot contents.
 
-The format must match what `writeTo` produces.
+The format must match what `writeContentTo` produces.
 
 
 ==== Build and start the cluster
@@ -231,7 +231,7 @@ public class KeyValueStoreImpl implements KeyValueStore, AsyncSnapshot {
 
         return new SnapshotHandle() {
             @Override
-            public void writeTo(DataOutput out) throws Exception {
+            public void writeContentTo(DataOutput out) throws Exception {
                 out.writeInt(frozen.size());
                 for (Map.Entry<String, String> e : frozen.entrySet()) {
                     out.writeUTF(e.getKey());

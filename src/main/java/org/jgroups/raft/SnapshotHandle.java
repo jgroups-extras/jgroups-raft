@@ -12,7 +12,7 @@ import java.io.DataOutput;
  *
  * <h3>Lifecycle</h3>
  * <p>
- * The framework guarantees that {@link #release()} is called exactly once, regardless of whether {@link #writeTo(DataOutput)}
+ * The framework guarantees that {@link #release()} is called exactly once, regardless of whether {@link #writeContentTo(DataOutput)}
  * was invoked, completed, or failed. Implementations must release all held resources in {@link #release()}, database snapshot
  * handles, pinned memory, file descriptors, etc.
  * </p>
@@ -48,13 +48,13 @@ public interface SnapshotHandle {
      * @param out the output stream
      * @throws Exception on serialization failure
      */
-    void writeTo(DataOutput out) throws Exception;
+    void writeContentTo(DataOutput out) throws Exception;
 
     /**
      * Releases resources held by this snapshot handle.
      *
      * <p>
-     * Always called exactly once by the framework, regardless of whether {@link #writeTo(DataOutput)} was called, completed
+     * Always called exactly once by the framework, regardless of whether {@link #writeContentTo(DataOutput)} was called, completed
      * successfully, or threw an exception. After this method returns, the handle must not hold any resources. This method
      * can be called by a different thread, but not concurrently.
      * </p>

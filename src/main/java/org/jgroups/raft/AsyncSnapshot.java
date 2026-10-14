@@ -8,7 +8,7 @@ import java.io.DataInput;
  * <p>
  * A {@link StateMachine} that also implements this interface opts into a two-phase snapshot lifecycle: a fast capture
  * phase ({@link #prepareSnapshot()}) that freezes a consistent view of the state, followed by a slow serialization phase
- * ({@link SnapshotHandle#writeTo(java.io.DataOutput)}) that runs without blocking new commits from being applied.
+ * ({@link SnapshotHandle#writeContentTo(java.io.DataOutput)}) that runs without blocking new commits from being applied.
  * </p>
  *
  * <p>
@@ -42,7 +42,7 @@ public interface AsyncSnapshot {
      *
      * <p>
      * This method must return quickly. Expensive work, such as serialization, I/O, compression, belongs in
-     * {@link SnapshotHandle#writeTo(java.io.DataOutput)}, not here. This method serves as only a mechanism to prepare
+     * {@link SnapshotHandle#writeContentTo(java.io.DataOutput)}, not here. This method serves as only a mechanism to prepare
      * the underlying state machine for a read of a point in time.
      * </p>
      *
@@ -73,7 +73,7 @@ public interface AsyncSnapshot {
      *
      * <p>
      * Replaces the entire state machine contents with the state serialized by a prior
-     * {@link SnapshotHandle#writeTo(java.io.DataOutput)} call. The implementation must completely read the stream and
+     * {@link SnapshotHandle#writeContentTo(java.io.DataOutput)} call. The implementation must completely read the stream and
      * restore its internal state deterministically before returning. The implementation may need to clear all existing
      * state before populating from the stream.
      * </p>

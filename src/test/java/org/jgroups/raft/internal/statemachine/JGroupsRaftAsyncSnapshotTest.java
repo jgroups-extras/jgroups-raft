@@ -105,7 +105,7 @@ public class JGroupsRaftAsyncSnapshotTest {
             int captured = counter;
             return new SnapshotHandle() {
                 @Override
-                public void writeTo(DataOutput out) throws Exception {
+                public void writeContentTo(DataOutput out) throws Exception {
                     out.writeInt(captured);
                 }
 

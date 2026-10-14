@@ -32,7 +32,7 @@ Represents a frozen point-in-time view of the state machine, returned by `prepar
 ----
 public interface SnapshotHandle {
 
-    void writeTo(DataOutput out) throws Exception; // <1>
+    void writeContentTo(DataOutput out) throws Exception; // <1>
 
     void release(); // <2>
 }
@@ -42,8 +42,8 @@ Runs on a background thread and may execute concurrently with `apply()` on the e
 Must only read from the frozen state captured during `prepareSnapshot()`, never from live state machine fields.
 The framework signals cancellation by interrupting the thread, e.g., the system is stopping.
 <2> Releases any resources held by the handle (database snapshot handles, temp files, etc.).
-Called exactly once by the framework, regardless of whether `writeTo` was called, completed successfully, or failed.
-May be called from a different thread than `prepareSnapshot()` or `writeTo()`, but never concurrently with either.
+Called exactly once by the framework, regardless of whether `writeContentTo` was called, completed successfully, or failed.
+May be called from a different thread than `prepareSnapshot()` or `writeContentTo()`, but never concurrently with either.
 
 ==== Interaction with `@StateMachineField`
 
@@ -101,7 +101,7 @@ The approximate memory footprint per active snapshot transfer on each side is ro
 +--------------------+
 |                    |
 |   resume applies   |              +--------------------+
-|                    +------------->|    writeTo(out)    |
+|                    +------------->| writeContentTo(out)|
 | (commits proceed)  |              |                    |
 |                    |              | (serializes state) |
 +--------+-----------+              +--------+-----------+
