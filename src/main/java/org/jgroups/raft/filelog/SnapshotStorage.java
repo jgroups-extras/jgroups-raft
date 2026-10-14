@@ -1,6 +1,7 @@
 package org.jgroups.raft.filelog;
 
 import org.jgroups.protocols.raft.StagedSnapshotCapability;
+import org.jgroups.raft.util.internal.DirectorySync;
 
 import java.io.File;
 import java.io.IOException;
@@ -275,6 +276,9 @@ public final class SnapshotStorage implements StagedSnapshotCapability {
 
         closeReadChannel();
         Files.move(sos.path(), snapshotPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        // Syncing the directory to persist the file rename.
+        // Ensures the snapshot is durable before the log is compacted.
+        DirectorySync.sync(logDir.toPath());
     }
 
     private static final class SnapshotOutputStream extends OutputStream {

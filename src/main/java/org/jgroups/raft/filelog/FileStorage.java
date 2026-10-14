@@ -1,5 +1,6 @@
 package org.jgroups.raft.filelog;
 
+import org.jgroups.raft.util.internal.DirectorySync;
 import org.jgroups.raft.util.pmem.FileProvider;
 import org.jgroups.util.Util;
 
@@ -108,10 +109,15 @@ final class FileStorage implements Closeable {
 
    public void open() throws IOException {
       if (channel == null) {
+         boolean created = !storageFile.exists();
          FileHandleProvider.Handle handle = fileHandleProvider.open(storageFile);
          this.channel = handle.channel();
          this.raf = handle.raf();
          fileSize = channel.size();
+
+         // The file is freshly created, sync it to avoid a case the directory is dropped after a crash.
+         if (created)
+            DirectorySync.sync(storageFile.getParentFile().toPath());
       }
    }
 
@@ -264,13 +270,17 @@ final class FileStorage implements Closeable {
          if (prefixLength > 0)
             transferTo(existing, 0, prefixLength, newChannel);
          transferTo(existing, position, fileSize - position, newChannel);
+
+         // Ensure the data reach the disk before renaming the file.
+         // Otherwise, a crash could persist the rename and leave a partial file in place of the log.
+         newChannel.force(true);
       }
-      // TODO: it requires fsync on the parent folder and on the destination file?
+
       try {
          // If running in Windows, first release other file holder before overwriting.
          if (isWindowsOS)
             close();
-         Files.move(tmpFile.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+         Files.move(tmpFile.toPath(), storageFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       } catch (IOException failedMove) {
          try {
             Files.deleteIfExists(tmpFile.toPath());
@@ -286,6 +296,8 @@ final class FileStorage implements Closeable {
       existing.close();
       open();
       requiredFlush = Flush.Metadata;
+      // Persist the rename itself. Otherwise, a crash may bring back the file before the truncation happened.
+      DirectorySync.sync(storageFile.getParentFile().toPath());
    }
 
    private static void transferTo(FileChannel src, long position, long size, FileChannel target) throws IOException {

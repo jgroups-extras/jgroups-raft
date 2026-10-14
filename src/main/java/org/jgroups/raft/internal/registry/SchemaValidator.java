@@ -3,13 +3,19 @@ package org.jgroups.raft.internal.registry;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.raft.util.internal.DirectorySync;
 import org.jgroups.raft.util.internal.Json;
 
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -239,10 +245,29 @@ final class SchemaValidator {
 
             try {
                 Path directory = Objects.requireNonNull(file.toPath().getParent(), "The schema file always has a parent");
-                if (Files.notExists(directory)) {
+                boolean createdDirectory = Files.notExists(directory);
+                if (createdDirectory) {
                     Files.createDirectories(directory);
                 }
-                Files.writeString(file.toPath(), Json.toPrettyJson(envelope));
+
+                // Write a temporary file and move into place so a crash doesn't leave a truncated schema behind.
+                // A leftover file is fine, but a truncated one would require manual intervention to start.
+                Path tmp = directory.resolve(SCHEMA_FILE + ".tmp");
+                ByteBuffer content = ByteBuffer.wrap(Json.toPrettyJson(envelope).getBytes(StandardCharsets.UTF_8));
+                try (FileChannel channel = FileChannel.open(tmp, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                        StandardOpenOption.TRUNCATE_EXISTING)) {
+                    while (content.hasRemaining()) {
+                        channel.write(content);
+                    }
+                    channel.force(true);
+                }
+                Files.move(tmp, file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                DirectorySync.sync(directory);
+
+                // If the directory is newly created, also ensure it is flushed and synced.
+                if (createdDirectory) {
+                    DirectorySync.sync(directory.toAbsolutePath().getParent());
+                }
             } catch (IOException e) {
                 throw new UncheckedIOException("Failed writing updated schema file: " + file, e);
             }

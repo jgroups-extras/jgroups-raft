@@ -5,6 +5,7 @@ import org.jgroups.raft.filelog.LogDirectoryLock;
 import org.jgroups.raft.filelog.LogEntryStorage;
 import org.jgroups.raft.filelog.MetadataStorage;
 import org.jgroups.raft.filelog.SnapshotStorage;
+import org.jgroups.raft.util.internal.DirectorySync;
 
 import java.io.File;
 import java.io.IOException;
@@ -35,8 +36,12 @@ public class FileBasedLog implements Log {
    @Override
    public void init(String log_name, Map<String, String> args) throws Exception {
       logDir = new File(log_name);
-      if (!logDir.exists() && !logDir.mkdirs()) {
-         throw new IllegalArgumentException("Unable to create directory " + logDir.getAbsolutePath());
+      if (!logDir.exists()) {
+         if (!logDir.mkdirs())
+            throw new IllegalArgumentException("Unable to create directory " + logDir.getAbsolutePath());
+
+         // Persist the new directory.
+         DirectorySync.sync(logDir.getAbsoluteFile().getParentFile().toPath());
       } else if (!logDir.isDirectory()) {
          throw new IllegalArgumentException("File " + logDir.getAbsolutePath() + " is not a directory!");
       }
