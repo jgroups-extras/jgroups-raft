@@ -5,14 +5,35 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Interface to make changes to the Raft state machine. All changes are made through the leader, which appends the change
- * to its log and then sends it to all followers. When the majority has acked the change, it will be committed to the log.
+ * Interface to make changes to the Raft state machine.
+ *
+ * <p>
+ * All changes are made through the leader, which appends the change to its log and then sends it to all followers. When
+ * the majority has acked the change, it will be committed to the log.
+ * </p>
+ *
+ * <h2>Asynchronous Operations</h2>
+ *
+ * <p>
+ * The thread that complete asynchronous operations, e.g., {@link #setAsync(byte[], int, int)}, is unspecified. It may be
+ * an internal thread that drives replication internally, so dependent stages registered with the non-async methods
+ * (e.g., {@code thenApply}, {@code whenComplete}, etc.) must be short and never block. Otherwise, blocking the thread
+ * can stall replication of entries to the whole cluster. For non-trivial or blocking operations, with the {@code *Async}
+ * variants and an executor you control, e.g., {@code thenApplyAsync(fn, executor)}.
+ * </p>
+ *
+ * <p>
+ * Callbacks have no ordering or mutual-exclusion guarantees. Callbacks of different operations may run in any order and
+ * concurrently. The identity of the completing thread is free to change between releases.
+ * </p>
+ *
  * @author Bela Ban
  * @since  0.1
  */
 public interface Settable {
     /**
      * Synchronous set. Blocks until the change has been committed.
+     *
      * @param buf The buffer (usually a serialized command) which represent the change to be applied to all state machines
      * @param offset The offset into the buffer
      * @param length The number of bytes to be used in the buffer, starting at offset
@@ -27,6 +48,7 @@ public interface Settable {
 
     /**
      * Synchronous set bounded by a timeout. Blocks until the change has been committed or a timeout occurred
+     *
      * @param buf The buffer (usually a serialized command) which represent the change to be applied to all state machines
      * @param offset The offset into the buffer
      * @param length The number of bytes to be used in the buffer, starting at offset
@@ -90,6 +112,11 @@ public interface Settable {
     /**
      * Asynchronous set, returns immediately with a CompletableFuture. To wait for the result,
      * {@link CompletableFuture#get()} or {@link CompletableFuture#get(long, TimeUnit)} can be called.
+     *
+     * <p>
+     * Dependent stages registered on the return future must <b>not</b> block. See class documentation.
+     * </p>
+     *
      * @param buf The buffer (usually a serialized command) which represent the change to be applied to all state machines
      * @param offset The offset into the buffer
      * @param length he number of bytes to be used in the buffer, starting at offset
@@ -109,6 +136,10 @@ public interface Settable {
      * <p>
      * <b>Warning:</b> Do not change the state-machine state by operations submitted through this method. Otherwise, the
      * state-machine will diverge and lead to an undefined state.
+     * </p>
+     *
+     * <p>
+     * Dependent stages registered on the return future must <b>not</b> block. See class documentation.
      * </p>
      *
      * @param buf The buffer representing the read-only operation to submit to the state machine.

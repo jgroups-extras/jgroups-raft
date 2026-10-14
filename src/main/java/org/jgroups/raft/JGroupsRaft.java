@@ -97,6 +97,16 @@ import net.jcip.annotations.ThreadSafe;
  * method is used for commands that only read the state machine's state.
  * </p>
  *
+ * <h3>Threading</h3>
+ *
+ * <p>
+ * {@link #write(Function)} and {@link #read(Function)} block the calling thread until the result is available, and the
+ * function itself runs on the calling thread. The state machine methods it invokes run elsewhere: on every node, commands
+ * are applied one at a time by a single internal thread, without requiring locking mechanism for replicated commands.
+ * Non-linearizable reads are the <i>exceptions</i>. They run on the calling thread, and also do not require external
+ * synchronization from the implementation.
+ * </p>
+ *
  * <h2>Administration</h2>
  *
  * <p>

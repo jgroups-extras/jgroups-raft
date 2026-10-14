@@ -29,7 +29,13 @@ import java.io.DataOutput;
  * <p>
  * Internally, the Raft protocol guarantees that commands are passed to this interface sequentially by a single event-loop thread.
  * Because it is invoked by a single thread, the {@link #apply} method is inherently thread-safe from the perspective of log
- * replication. You do not need to implement any locking mechanism.
+ * replication. You do not need to implement any locking mechanism. Which thread that is remains unspecified; do not rely
+ * on the thread identity or thread-local state.
+ * </p>
+ *
+ * <p>
+ * Keep {@link #apply(byte[], int, int, boolean)} fast and never block for long periods. Commands are applied in log
+ * order, so a slow apply delays every following command and can stall replication for the whole cluster.
  * </p>
  *
  * <h3>Failure Handling</h3>
