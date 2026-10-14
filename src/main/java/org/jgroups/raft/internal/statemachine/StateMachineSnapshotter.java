@@ -1,5 +1,8 @@
 package org.jgroups.raft.internal.statemachine;
 
+import org.jgroups.logging.Log;
+import org.jgroups.logging.LogFactory;
+import org.jgroups.raft.AsyncSnapshot;
 import org.jgroups.raft.StateMachineField;
 import org.jgroups.raft.internal.serialization.Serializer;
 
@@ -23,6 +26,8 @@ import java.util.Map;
  * @param <T> The type of the concrete state machine instance.
  */
 final class StateMachineSnapshotter<T> {
+    private static final Log LOG = LogFactory.getLog(StateMachineSnapshotter.class);
+
     private final T concrete;
     private final Snapshotter snapshotter;
     private final Serializer serializer;
@@ -74,6 +79,13 @@ final class StateMachineSnapshotter<T> {
                 }
             }
             clazz = clazz.getSuperclass();
+        }
+
+        // Not a failure, maybe the state machine really doesn't need to create an snapshot after truncating.
+        if (fields.isEmpty() && !(concrete instanceof AsyncSnapshot)) {
+            LOG.warn("State machine %s does not declare any `@StateMachineField` nor implement AsyncSnapshot. " +
+                    "Snapshots will contain no state, and nodes will lose data after log compaction or when catching up. " +
+                    "Ensure this is the intended implementation before production usage", concrete.getClass().getName());
         }
 
         this.snapshotter = new Snapshotter(fields);
