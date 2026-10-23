@@ -23,12 +23,14 @@ import org.jgroups.raft.util.Utils;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.ResponseCollector;
+import org.jgroups.util.Tuple;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -180,6 +182,7 @@ public abstract class BaseElection extends Protocol {
         stopVotingThreadInternal();
         if (raft != null)
             raft.setLeaderAndTerm(null);
+        this.view = null;
     }
 
     @Override
@@ -242,7 +245,7 @@ public abstract class BaseElection extends Protocol {
         }
 
         if (hdr instanceof RetrieveLeaderElected) {
-            handleRetrieveLeaderElected();
+            handleRetrieveLeaderElected(msg.src());
             return;
         }
 
@@ -278,7 +281,8 @@ public abstract class BaseElection extends Protocol {
                 stopVotingThread(); // only on the coord
 
                 // Non-coordinator members do not initiate the voting process, so we only track the instant it ended.
-                if (v == null || Objects.equals(v.getCoord(), local_addr)) {
+                // A node without a view is not the coordinator, and on a FORK stack, RAFT may not be started yet.
+                if (v != null && Objects.equals(v.getCoord(), local_addr)) {
                     electionEnd = raft.timeService().now();
                 }
             }
@@ -287,13 +291,25 @@ public abstract class BaseElection extends Protocol {
         }
     }
 
-    private void handleRetrieveLeaderElected() {
-        Map.Entry<Address, Long> entry = raft.leaderAndTerm();
-        Address leader = entry.getKey();
+    private void handleRetrieveLeaderElected(Address sender) {
+        Tuple<Address, Long> entry = raft.leaderAndTerm();
+        Address leader = entry.val1();
         if (leader == null)
             return;
 
-        sendLeaderElectedMessageUntracked(leader, entry.getValue());
+        if (Objects.equals(leader, sender)) {
+            // The leader restarted its stack without leaving the view, no there was no view change revealing it.
+            // This could happen when running with FORK, and stopping only the raft part, and the underlying channel still runs.
+            // Handle it as a lost leader, forget it and elect a new one in a higher term.
+            if (isViewCoordinator()) {
+                log.debug("%s: leader %s restarted its stack, starting a new election", local_addr, sender);
+                raft.setLeaderAndTerm(null);
+                startVotingThread();
+            }
+            return;
+        }
+
+        sendLeaderElectedMessageUntracked(sender, leader, entry.val2());
     }
 
     /**
@@ -575,16 +591,16 @@ public abstract class BaseElection extends Protocol {
     }
 
     // sent reliably, so if a newly joined member drops it, it will get retransmitted
-    private void sendLeaderElectedMessageUntracked(Address leader, long term) {
+    private void sendLeaderElectedMessageUntracked(Address reply, Address leader, long term) {
         RaftHeader hdr = new LeaderElected(leader).currTerm(term);
-        Message msg = new EmptyMessage(null).putHeader(id, hdr).setFlag(DONT_LOOPBACK);
-        log.trace("%s -> all (-self): %s", local_addr, hdr);
+        Message msg = new EmptyMessage(reply).putHeader(id, hdr).setFlag(DONT_LOOPBACK);
+        if (log.isTraceEnabled())
+            log.trace("%s -> %s: %s", local_addr, reply == null ? "all  (-self)" : reply, hdr);
         down_prot.down(msg);
     }
 
-
     protected void sendLeaderElectedMessage(Address leader, long term) {
-        sendLeaderElectedMessageUntracked(leader, term);
+        sendLeaderElectedMessageUntracked(null, leader, term);
 
         // Record election latency.
         if (electionStart != null) {
@@ -596,11 +612,24 @@ public abstract class BaseElection extends Protocol {
         }
     }
 
-    protected final void askLeaderElected() {
-        RaftHeader hdr = new RetrieveLeaderElected();
+    /**
+     * Asks the view coordinator for the elected leader when this node is one of the view's new members.
+     * <p>
+     * A leader announces itself to new members when the view changes. A member that installs its Raft stack after
+     * joining the cluster, e.g., on a fork channel, misses that announcement and would not learn the leader until the
+     * next election. The coordinator answers with the leader it knows, or starts a new election if the member asking
+     * is that leader.
+     * </p>
+     *
+     * @param joiners the members in the current view that were not in the previous one.
+     */
+    protected final void askLeaderIfJoining(List<Address> joiners) {
+        if (isViewCoordinator() || joiners == null || !joiners.contains(local_addr))
+            return;
+
         Address coordinator = view.getCoord();
-        Message msg = new EmptyMessage(coordinator).putHeader(id, hdr);
-        log.trace("%s -> %s: ask who's leader and term", local_addr, coordinator);
+        Message msg = new EmptyMessage(coordinator).putHeader(id, new RetrieveLeaderElected());
+        log.trace("%s -> %s: who's leader and term", local_addr, coordinator);
         down_prot.down(msg);
     }
 

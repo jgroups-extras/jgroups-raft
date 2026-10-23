@@ -44,7 +44,7 @@ public class InMemoryLog implements Log {
     @Override
     public void init(String log_name, Map<String,String> args) throws Exception {
         name=log_name;
-        InMemoryLog existing=(InMemoryLog)logs.putIfAbsent(name, this);
+        InMemoryLog existing=(InMemoryLog)logs.put(name, this);
         if(existing != null) {
             voted_for=existing.voted_for;
             this.current_term = existing.current_term;
@@ -52,6 +52,7 @@ public class InMemoryLog implements Log {
             this.last_appended = existing.last_appended;
             this.commit_index = existing.commit_index;
             this.entries = existing.entries;
+            this.snapshot = existing.snapshot;
         }
         else {
             voted_for=null;

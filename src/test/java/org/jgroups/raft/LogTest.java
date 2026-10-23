@@ -12,11 +12,14 @@ import org.jgroups.protocols.raft.LogEntry;
 import org.jgroups.raft.util.LogCache;
 import org.jgroups.util.Util;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 import org.assertj.core.api.SoftAssertions;
@@ -42,6 +45,17 @@ public class LogTest {
           // TODO The LogCache's constructor calls methods on the underlying log without calling init(..) first,
           // which won't work with Log impls that expect proper lifecycle contract.
           {new LogCache(new InMemoryLog().useFsync(true), 512)}
+        };
+    }
+
+    /**
+     * Creates a new instance per call, the way a restarting node does. {@link LogCache} is left out since it wraps
+     * one of these.
+     */
+    @DataProvider static Object[][] logFactoryProvider() {
+        return new Object[][] {
+          {(Supplier<Log>) InMemoryLog::new},
+          {(Supplier<Log>) FileBasedLog::new}
         };
     }
 
@@ -230,6 +244,65 @@ public class LogTest {
         for(int i=1; i <= 10; i++)
             assertThat(log.get(i)).isNull();
         assertThat(log.get(11)).isNotNull();
+    }
+
+    /**
+     * A node that restarts creates a new log instance each time, and every restart must load the latest metadata.
+     */
+    @Test(dataProvider = "logFactoryProvider")
+    public void testMetadataSurvivesRepeatedRestarts(Supplier<Log> factory) throws Exception {
+        Address voted = Util.createRandomAddress("A");
+        byte[] buf = new byte[10];
+
+        this.log = factory.get();
+        log.init(filename, null);
+        append(log, 1, buf, 1);
+        log.currentTerm(1);
+        log.close();
+
+        // First restart: progress made by the new instance.
+        this.log = factory.get();
+        log.init(filename, null);
+        append(log, 2, buf, 2, 3);
+        log.commitIndex(3);
+        log.currentTerm(3);
+        log.votedFor(voted);
+        log.close();
+
+        // Second restart: must see what the previous instance wrote, not what the first one had.
+        this.log = factory.get();
+        log.init(filename, null);
+        assertThat(log.currentTerm()).isEqualTo(3);
+        assertThat(log.lastAppended()).isEqualTo(3);
+        assertThat(log.commitIndex()).isEqualTo(3);
+        assertThat(log.votedFor().toString()).isEqualTo(voted.toString());
+    }
+
+    /**
+     * A snapshot replaces the truncated entries, so a restarted log without it could not restore that state.
+     */
+    @Test(dataProvider = "logFactoryProvider")
+    public void testSnapshotSurvivesRestart(Supplier<Log> factory) throws Exception {
+        byte[] snapshot = {1, 2, 3, 4};
+        byte[] buf = new byte[10];
+
+        this.log = factory.get();
+        log.init(filename, null);
+        append(log, 1, buf, 1, 1, 1);
+        log.commitIndex(3);
+        log.setSnapshot(new ByteArrayInputStream(snapshot));
+        log.truncate(3);
+        log.close();
+
+        this.log = factory.get();
+        log.init(filename, null);
+        assertThat(log.firstAppended()).isEqualTo(3);
+        try (InputStream in = log.getSnapshot()) {
+            assertThat(in)
+                    .as("Snapshot after restart")
+                    .isNotNull();
+            assertThat(in.readAllBytes()).isEqualTo(snapshot);
+        }
     }
 
     public void testTruncateAndReopen(Log log) throws Exception {

@@ -37,11 +37,12 @@ public class NetworkPartitionElectionTest extends BaseRaftElectionTest.ClusterBa
 
         View view = createView(id++, 0, 1, 2, 3, 4);
 
-        // We intercept the first `LeaderElected` message.
+        // We intercept the first `LeaderElected` message announcing the election.
+        // The announcement goes to all members; answers to members asking for the leader are unicast and pass through.
         AtomicBoolean onlyOnce = new AtomicBoolean(true);
         BlockingMessageInterceptor interceptor = cluster.addCommandInterceptor(m -> {
             for (Map.Entry<Short, Header> h : m.getHeaders().entrySet()) {
-                if (h.getValue() instanceof LeaderElected && onlyOnce.getAndSet(false)) {
+                if (m.getDest() == null && h.getValue() instanceof LeaderElected && onlyOnce.getAndSet(false)) {
                     // Assert that node A was elected
                     LeaderElected le = (LeaderElected) h.getValue();
                     assertThat(le.leader()).isEqualTo(address(0));

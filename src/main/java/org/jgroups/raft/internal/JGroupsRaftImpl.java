@@ -27,6 +27,7 @@ import org.jgroups.raft.internal.serialization.Serializer;
 import org.jgroups.raft.internal.statemachine.StateMachineWrapper;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
@@ -43,19 +44,46 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
 
     private static final Log LOG = LogFactory.getLog(JGroupsRaftImpl.class);
 
+    /**
+     * The lifecycle of a {@link JGroupsRaft} instance.
+     * <p>
+     * An instance starts once and stops once. Restarting is not supported because a stopped instance may still hold an
+     * application-owned channel that keeps running, so the channel state alone cannot tell whether the instance was
+     * already used.
+     * </p>
+     */
+    private enum Lifecycle {
+        /**
+         * Created and not started yet. Stopping in this state has no effect.
+         */
+        NEW,
+
+        /**
+         * Started and accepting commands.
+         */
+        STARTED,
+
+        /**
+         * Stopped. The state is terminal, and a later start is rejected.
+         */
+        STOPPED
+    }
+
     private final JGroupsRaftParameters<T> parameters;
     private final boolean attachedChannel;
     private final CommandRegistry<T> registry;
     private final StateMachineWrapper<T> wrapper;
     private final DefaultJGroupsRaftHealthCheck healthCheck;
+    private final RAFT.RoleChange roleListener = this::handleRoleUpdate;
 
     private final List<BiConsumer<JGroupsRaftRole, JGroupsRaftRole>> listeners = new CopyOnWriteArrayList<>();
 
     private JGroupsRaftMetrics metrics;
     private JGroupsRaftState state;
     private JGroupsRaftAdministration administration;
-    private volatile JGroupsRaftRole role;
-    private volatile boolean started;
+    private volatile RAFT raft;
+    private volatile JGroupsRaftRole lastNotifiedRole = JGroupsRaftRole.NONE;
+    private volatile Lifecycle lifecycle = Lifecycle.NEW;
 
     JGroupsRaftImpl(JGroupsRaftParameters<T> parameters) {
         this.parameters = parameters;
@@ -63,13 +91,17 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         this.registry = new CommandRegistry<>(parameters.sm(), parameters.api());
         Serializer serializer = Serializer.create(parameters.registry());
         this.wrapper = StateMachineWrapper.create(parameters.sm(), parameters.api(), registry, serializer);
-        this.role = JGroupsRaftRole.NONE;
         this.healthCheck = new DefaultJGroupsRaftHealthCheck(parameters.channel());
     }
 
     @Override
     public void start() {
-        if (started) return;
+        if (lifecycle == Lifecycle.STARTED) return;
+
+        // Checked before touching anything.
+        // An application-owned channel stays open after stop(), so the channel state alone does not reveal a stop.
+        if (lifecycle == Lifecycle.STOPPED)
+            throw new IllegalStateException("Instance can not be restarted after it was stopped");
 
         JChannel channel = parameters.channel();
 
@@ -83,6 +115,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         RAFT raft;
         if ((raft = RAFT.findProtocol(RAFT.class, channel.getProtocolStack().getTopProtocol(), true)) == null)
             throw new IllegalStateException("RAFT protocol was not found");
+        this.raft = raft;
 
         // Find the election protocol to collect election metrics.
         // The election protocol is also a required mechanism for RAFT to work.
@@ -98,8 +131,8 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
 
         // Query the current role and then register a listener.
         // In case the channel is already initialized, we wouldn't receive the initial role update.
-        handleRoleUpdate(raft.role());
-        raft.addRoleListener(this::handleRoleUpdate);
+        raft.addRoleListener(roleListener);
+        notifyRoleListeners(toJGroupsRaftRole(raft.role()));
 
         // Initialize the command registry based on the given state machine.
         // The initialization will parse the methods and generate the appropriate schemas for the annotated methods.
@@ -169,56 +202,44 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
         }
         healthCheck.start(raft);
 
-        started = true;
+        lifecycle = Lifecycle.STARTED;
     }
 
     JChannel channel() {
         return parameters.channel();
     }
 
-    private void handleRoleUpdate(String clazz) {
-        if (clazz.equals(Leader.class.getSimpleName())) {
-            handleRoleUpdate(Role.Leader);
-            return;
-        }
-
-        if (clazz.equals(Follower.class.getSimpleName())) {
-            handleRoleUpdate(Role.Follower);
-            return;
-        }
-
-        if (clazz.equals(Learner.class.getSimpleName())) {
-            handleRoleUpdate(Role.Learner);
-            return;
-        }
-
-        role = JGroupsRaftRole.NONE;
+    private void handleRoleUpdate(Role r) {
+        notifyRoleListeners(toJGroupsRaftRole(r));
     }
 
-    private void handleRoleUpdate(Role r) {
-        JGroupsRaftRole before = this.role;
-        this.role = switch (r) {
-            case Leader -> JGroupsRaftRole.LEADER;
-            case Follower -> JGroupsRaftRole.FOLLOWER;
-            case Learner -> JGroupsRaftRole.LEARNER;
-        };
+    private void notifyRoleListeners(JGroupsRaftRole current) {
+        // Best effort.
+        // A notification already in flight when stop unregisters the listener is dropped here.
+        if (lifecycle == Lifecycle.STOPPED)
+            return;
 
-        if (before != this.role) {
-            listeners.forEach(l -> {
-                try {
-                    l.accept(before, this.role);
-                } catch (Throwable t) {
-                    LOG.error("Failed to invoke role listener", t);
-                }
-            });
-        }
+        JGroupsRaftRole before = lastNotifiedRole;
+        lastNotifiedRole = current;
+        if (before == current)
+            return;
+
+        listeners.forEach(l -> {
+            try {
+                l.accept(before, current);
+            } catch (Throwable t) {
+                LOG.error("Failed to invoke role listener", t);
+            }
+        });
     }
 
     @Override
     public void stop() {
-        if (!started) return;
+        if (lifecycle != Lifecycle.STARTED)
+            return;
 
-        started = false;
+        lifecycle = Lifecycle.STOPPED;
+        raft.remRoleListener(roleListener);
 
         // If the channel is created by the RAFT instance, we close it.
         // If the channel was provided, it is the application's responsibility to close it.
@@ -227,14 +248,14 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
             channel.close();
         }
 
-        // Reset the role to identify it was not started.
-        role = JGroupsRaftRole.NONE;
         healthCheck.stop();
     }
 
     @Override
     public JGroupsRaftRole role() {
-        return role;
+        if (lifecycle != Lifecycle.STARTED)
+            return JGroupsRaftRole.NONE;
+        return toJGroupsRaftRole(raft.role());
     }
 
     @Override
@@ -282,7 +303,28 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
     }
 
     private void ensureInstanceInitialized() {
-        if (!started)
+        if (lifecycle != Lifecycle.STARTED)
             throw new IllegalStateException("JGroupsRaft instance is not started");
+    }
+
+    private static JGroupsRaftRole toJGroupsRaftRole(Role r) {
+        return switch (r) {
+            case Leader -> JGroupsRaftRole.LEADER;
+            case Follower -> JGroupsRaftRole.FOLLOWER;
+            case Learner -> JGroupsRaftRole.LEARNER;
+        };
+    }
+
+    private static JGroupsRaftRole toJGroupsRaftRole(String clazz) {
+        if (Objects.equals(Leader.class.getSimpleName(), clazz))
+            return JGroupsRaftRole.LEADER;
+
+        if (Objects.equals(Follower.class.getSimpleName(), clazz))
+            return JGroupsRaftRole.FOLLOWER;
+
+        if (Objects.equals(Learner.class.getSimpleName(), clazz))
+            return JGroupsRaftRole.LEARNER;
+
+        return JGroupsRaftRole.NONE;
     }
 }

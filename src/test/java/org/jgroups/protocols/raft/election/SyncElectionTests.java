@@ -365,7 +365,8 @@ public class SyncElectionTests extends BaseRaftElectionTest.ClusterBased<RaftClu
         AtomicBoolean onlyOnce = new AtomicBoolean(true);
         BlockingMessageInterceptor interceptor = cluster.addCommandInterceptor(m -> {
             for (Map.Entry<Short, Header> h : m.getHeaders().entrySet()) {
-                if (h.getValue() instanceof LeaderElected && onlyOnce.getAndSet(false))
+                // Only the announcement to all members; answers to members asking for the leader are unicast.
+                if (m.getDest() == null && h.getValue() instanceof LeaderElected && onlyOnce.getAndSet(false))
                     return true;
             }
             return false;

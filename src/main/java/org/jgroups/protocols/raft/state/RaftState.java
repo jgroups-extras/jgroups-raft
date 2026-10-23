@@ -4,6 +4,7 @@ import org.jgroups.Address;
 import org.jgroups.logging.LogFactory;
 import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.RAFT;
+import org.jgroups.util.Tuple;
 
 import java.util.Objects;
 
@@ -62,8 +63,17 @@ public class RaftState {
         return votedFor;
     }
 
-    public synchronized RaftProtocolState state() {
-        return new RaftProtocolState(leader(), currentTerm(), votedFor());
+    /**
+     * Returns the leader and the current term read together.
+     *
+     * <p>
+     * Reading them separately could pair a leader with a term it does not lead.
+     * </p>
+     *
+     * @return the leader, or {@code null} if none is known, and the current term.
+     */
+    public synchronized Tuple<Address, Long> leaderAndTerm() {
+        return new Tuple<>(leader, term);
     }
 
     /**
@@ -145,11 +155,12 @@ public class RaftState {
             throw new IllegalStateException(String.format("Changing leader %s to %s illegally", this.leader, newLeader));
 
         boolean updated = newLeader == null || this.leader == null;
+        Address previous = this.leader;
         this.leader = newLeader;
 
         // We only should invoke the listener when a new leader is set/step down.
         if (updated) {
-            LOG.trace("change leader from %s -> %s", leader, newLeader);
+            LOG.trace("change leader from %s -> %s", previous, newLeader);
             mutator.onLeaderUpdate(this.leader);
         }
     }
@@ -175,6 +186,8 @@ public class RaftState {
             synchronized (this) {
                 term = log.currentTerm();
                 votedFor = log.votedFor();
+                // A leader learned before the log was loaded might belong to a different term than the loaded one.
+                setLeader(null);
             }
         }
     }
@@ -212,6 +225,4 @@ public class RaftState {
 
         void onLeaderUpdate(Address member);
     }
-
-    public record RaftProtocolState(Address leader, long term, Address votedFor) { }
 }

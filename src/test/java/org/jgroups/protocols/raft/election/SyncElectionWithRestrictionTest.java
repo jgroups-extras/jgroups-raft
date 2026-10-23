@@ -107,6 +107,10 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         View v=createView(view_id++, 0, 1, 2, 3, 4);
         cluster.handleView(v);
 
+        // The view starts a voting round on the coordinator even though S1 is already leader, and the round's term
+        // bump briefly makes S1 a follower. Wait for it to finish before acting as the leader.
+        waitUntilVotingThreadStops(5_000, 0);
+
         // append term 4 on S2 and S3:
         RAFT r1=waitUntilNodeLeader(0);
         LOGGER.info("-- flushing tables");

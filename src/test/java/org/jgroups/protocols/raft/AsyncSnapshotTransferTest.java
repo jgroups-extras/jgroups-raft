@@ -89,9 +89,10 @@ public class AsyncSnapshotTransferTest extends BaseStateMachineTest<AsyncSnapsho
         assertThat(stateMachine(2).counter())
                 .isEqualTo(stateMachine(0).counter());
 
-        assertThat(raft(2).numSnapshotReceived())
+        // The state machine is restored before the installation completes and counts the snapshot.
+        assertThat(eventually(() -> raft(2).numSnapshotReceived() >= 1, 10, SECONDS))
                 .as("Follower C should have received a snapshot")
-                .isGreaterThanOrEqualTo(1);
+                .isTrue();
     }
 
     /**
@@ -116,6 +117,12 @@ public class AsyncSnapshotTransferTest extends BaseStateMachineTest<AsyncSnapsho
         createCluster();
 
         assertStateMachineEventuallyMatch(0, 1, 2);
+
+        // The state machine is restored before the installation completes and counts the snapshot.
+        // Read the count only once the installation is done, otherwise it is 0 and later changes to 1.
+        assertThat(eventually(() -> raft(2).numSnapshotReceived() >= 1, 10, SECONDS))
+                .as("Follower C should have received a snapshot")
+                .isTrue();
         long snapshotsAfterCatchUp = raft(2).numSnapshotReceived();
 
         for (int i = 6; i <= 10; i++) {

@@ -8,6 +8,7 @@ import org.jgroups.Message;
 import org.jgroups.View;
 import org.jgroups.annotations.MBean;
 import org.jgroups.annotations.ManagedAttribute;
+import org.jgroups.fork.ForkProtocolStack;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.protocols.raft.election.PreVoteRequest;
 import org.jgroups.protocols.raft.election.PreVoteResponse;
@@ -92,12 +93,7 @@ public class ELECTION2 extends BaseElection {
                 }
                 break;
             case reached:
-                if (!isViewCoordinator() && has_new_members && joiners.contains(local_addr)) {
-                    // If this node is joining an existing cluster, it'll try to ask the coordinator for the leader.
-                    // Handle some corner cases where ELECTION is added programmatically to a FORK channel.
-                    // That is, cases where the leader elected broadcast was lost for some reason.
-                    askLeaderElected();
-                }
+                askLeaderIfJoining(joiners);
                 // Passthrough.
             case leader_lost:
                 // In case the leader is lost, we stop everything *before* starting again.
@@ -115,6 +111,15 @@ public class ELECTION2 extends BaseElection {
                 raft.setLeaderAndTerm(null);
                 break;
         }
+    }
+
+    @Override
+    public void init() throws Exception {
+        super.init();
+        // The pre-vote waits for every member in the view, and members without the fork stack never answer.
+        if (getProtocolStack() instanceof ForkProtocolStack)
+            log.warn("%s does not support fork channels: elections stall while members lack the fork stack; use %s instead",
+                    getClass().getSimpleName(), ELECTION.class.getSimpleName());
     }
 
     @Override

@@ -43,6 +43,7 @@ import org.jgroups.util.ExtendedUUID;
 import org.jgroups.util.MessageBatch;
 import org.jgroups.util.Runner;
 import org.jgroups.util.ThreadFactory;
+import org.jgroups.util.Tuple;
 import org.jgroups.util.Util;
 
 import java.io.BufferedInputStream;
@@ -65,6 +66,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -209,7 +211,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     protected CommitTable               commit_table;
     protected ReadOnlyRequestRepository<DownRequest> readOnlyRequests;
 
-    protected final List<RoleChange>    role_change_listeners=new ArrayList<>();
+    // Listeners are added and removed by application thread while RAFT notifies from the event loop thread.
+    protected final List<RoleChange>    role_change_listeners=new CopyOnWriteArrayList<>();
 
     // Set to true during an addServer()/removeServer() op until the change has been committed
     // protected final AtomicBoolean       members_being_changed = new AtomicBoolean(false);
@@ -415,24 +418,13 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
     public RAFT         leader(Address new_leader)    {this.raft_state.setLeader(new_leader); return this;}
 
-    public Map.Entry<Address, Long> leaderAndTerm() {
-        RaftState.RaftProtocolState rps = raft_state.state();
-        return new Map.Entry<>() {
-            @Override
-            public Address getKey() {
-                return rps.leader();
-            }
-
-            @Override
-            public Long getValue() {
-                return rps.term();
-            }
-
-            @Override
-            public Long setValue(Long value) {
-                throw new IllegalStateException("Entry not mutable");
-            }
-        };
+    /**
+     * Returns the current leader and term as a consistent pair.
+     *
+     * @return the leader, or {@code null} if none is known, and the current term.
+     */
+    public Tuple<Address, Long> leaderAndTerm() {
+        return raft_state.leaderAndTerm();
     }
 
     public boolean isLeader() {

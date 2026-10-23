@@ -80,6 +80,10 @@ By design, <<ELECTION>> uses view changes to start election rounds and should be
 `ELECTION2` is an alternative in networks with recurrent partitions that could lead to more disruptions with unnecessary election rounds.
 More information about how it works is available in the design documents.
 
+WARNING: `ELECTION2` does not work on a `ForkChannel`.
+The pre-vote waits for a reply from every member in the view, and members that have not created the fork stack never reply, so no election runs.
+Use <<ELECTION>> when the Raft protocols run on a fork channel.
+
 
 ${ELECTION2}
 

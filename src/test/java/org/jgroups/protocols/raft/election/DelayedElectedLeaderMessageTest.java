@@ -9,9 +9,7 @@ import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.raft.tests.harness.RaftAssertion;
 
 import java.util.Arrays;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 
 import org.testng.annotations.AfterMethod;
@@ -55,13 +53,13 @@ public class DelayedElectedLeaderMessageTest extends BaseRaftElectionTest.Cluste
         // Run asynchronously to allow the voting thread to stop.
         cluster.async(true);
 
-        // Intercept the first `LeaderElected` message.
-        AtomicBoolean onlyOnce = new AtomicBoolean(true);
+        // Intercept every `LeaderElected` message.
+        // Besides the coordinator's announcement, the coordinator answers the members asking for the leader, and any of
+        // those answers would tell C, D, and E about the leader before the majority is lost.
         BlockingMessageInterceptor interceptor = cluster.addCommandInterceptor(m -> {
-            for (Map.Entry<Short, Header> h : m.getHeaders().entrySet()) {
-                if (h.getValue() instanceof LeaderElected && onlyOnce.getAndSet(false)) {
+            for (Header h : m.getHeaders().values()) {
+                if (h instanceof LeaderElected le) {
                     // Assert the coordinator was elected.
-                    LeaderElected le = (LeaderElected) h.getValue();
                     assertThat(le.leader()).isEqualTo(address(0));
                     return true;
                 }
@@ -84,8 +82,9 @@ public class DelayedElectedLeaderMessageTest extends BaseRaftElectionTest.Cluste
 
         // Release the leader elected message.
         // The node should not install the new leader.
-        LOGGER.info("-- release leader elected message");
-        interceptor.releaseNext();
+        LOGGER.info("-- release leader elected messages");
+        while (interceptor.numberOfBlockedMessages() > 0)
+            interceptor.releaseNext();
         interceptor.assertNoBlockedMessages();
 
         // Make sure the leader stays null for the whole time.
