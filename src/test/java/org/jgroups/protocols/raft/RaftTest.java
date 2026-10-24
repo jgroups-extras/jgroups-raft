@@ -168,15 +168,15 @@ public class RaftTest extends BaseStateMachineTest<CounterStateMachine> {
         expect(5, stateMachine(0).counter());
         expect(4, stateMachine(1).counter());
 
-        // this will append the same entry, but because index 4 is < last_appended (5), it will not get appended
-        // Note though that the commit-index will be updated
+        // B already has entry 4, so nothing is appended. The request only proves that B's log matches A's up to
+        // index 4, so B commits at most up to 4, even though A's commit index is 5 (Figure 2, AppendEntries rule 5).
+        // B answers with index 4, which moves next-index back to 5: the next resend sends entry 5 again.
         sendAppendEntriesRequest(raft_a, 3, 20, 20, 5);
-        Util.waitUntil(5000, 50, () -> raft_b.commitIndex() == 5);
+        assertCommitTableIndeces(address(1), raft_a, 4, 5, 5);
         assertIndices(5, 5, 20, raft_a);
-        assertIndices(5, 5, 20, raft_b);
-        assertCommitTableIndeces(address(1), raft_a, 5, 5, 6);
+        assertIndices(5, 4, 20, raft_b);
         assertThat(stateMachine(0).counter()).isEqualTo(5);
-        assertThat(stateMachine(1).counter()).isEqualTo(5);
+        assertThat(stateMachine(1).counter()).isEqualTo(4);
     }
 
     public void testAppendBeyondLast() throws Exception {

@@ -1391,10 +1391,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             }
             return;
         }
-        if(this.commit_index > e.commitIndex()) { // send an empty AppendEntries message as commit message
+        if (this.commit_index > e.commitIndex()) {
+            // Commit message: the member has all our entries (last_appended <= match_index).
+            // It verifies our last entry and commits up to it (paper, Fig. 2, AppendEntries RPC rule #5).
             long current_term = currentTerm();
+            LogEntry last = log_impl.get(last_appended);
+            long lastTerm = last != null ? last.term() : 0;
             Message msg=new ObjectMessage(member, null)
-              .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, 0, 0,
+              .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, last_appended, lastTerm,
                                                       current_term, this.commit_index));
             down_prot.down(msg);
             return;
@@ -1681,15 +1685,42 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     private void leaderUpdated(Address new_leader) {
-        if(Objects.equals(local_addr, new_leader)) {
-            if(!isLeader())
+        if (Objects.equals(local_addr, new_leader)) {
+            boolean wasLeader = impl instanceof Leader;
+            if (!isLeader())
                 log.debug("%s: becoming Leader", local_addr);
             changeRole(Role.Leader);   // no-op if already a leader
+            if (!wasLeader)
+                appendNoOpIfNeeded();
         } else {
             Role r = Utils.isRaftMember(raft_id, members())
                     ? Role.Follower
                     : Role.Learner;
             changeRole(r); // no-op if already a follower
+        }
+    }
+
+    /**
+     * Appends a no-op entry of the current term when this new leader has entries it does not know to be committed.
+     *
+     * <p>
+     * A leader commits an entry from a previous term only together with a later entry of its own term (Raft paper,
+     * §5.4.2). Without new requests, those entries would stay uncommitted, including membership changes. The no-op
+     * entry commits them, so the leader learns which entries are committed at the start of its term (§8).
+     * </p>
+     */
+    private void appendNoOpIfNeeded() {
+        if (commit_index >= last_appended) {
+            // Every entry in our log is committed and the log holds all committed entries (§5.4)
+            return;
+        }
+
+        try {
+            byte[] buf = Util.streamableToByteBuffer(new InternalCommand(InternalCommand.Type.noop, null));
+            setAsync(buf, 0, buf.length, true, null);
+        } catch (Exception e) {
+            log.warn("%s: failed appending a no-op entry; entries from previous terms will be committed with " +
+                    "the next request: %s", local_addr, e);
         }
     }
 

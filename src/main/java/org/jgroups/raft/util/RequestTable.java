@@ -70,8 +70,9 @@ public class RequestTable<T> {
      * @return True if a majority has been reached, false otherwise. Note that this is done <em>exactly once</em>
      */
     public boolean add(long index, T sender, Supplier<Integer> majority) {
-        // we're getting an ack for index, but we also need to ack entries lower than index (if any, should only
-        // happen on leader change): https://github.com/jgroups-extras/jgroups-raft/issues/122
+        // An ack for index also acks the entries below it: the follower's log matches ours up to index (Fig. 2).
+        // Entries from previous terms are counted too, but the leader commits them only through an entry of its
+        // own term (§5.4.2): https://github.com/jgroups-extras/jgroups-raft/issues/122
         if (requests == null) {
             return false;
         }

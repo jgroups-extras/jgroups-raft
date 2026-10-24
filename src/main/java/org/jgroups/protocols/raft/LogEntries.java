@@ -42,6 +42,19 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
         return this;
     }
 
+    /**
+     * Returns the entry at the given position in this list.
+     *
+     * @param index the position of the entry, starting at 0.
+     * @return the entry at {@code index}.
+     * @throws IndexOutOfBoundsException if {@code index} is negative or not lower than {@link #size()}.
+     */
+    public LogEntry get(int index) {
+        Objects.checkIndex(index, size());
+        return entries.get(index);
+    }
+
+    @Override
     public Iterator<LogEntry> iterator() {
         if(entries == null)
             entries=new ArrayList<>();
@@ -76,6 +89,7 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
         return length;
     }
 
+    @Override
     public int serializedSize() {
         int size=size();
         int retval=Bits.size(size);
@@ -86,6 +100,7 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
         return retval;
     }
 
+    @Override
     public void writeTo(DataOutput out) throws IOException {
         int size=size();
         Bits.writeIntCompressed(size, out);
@@ -95,6 +110,7 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
         }
     }
 
+    @Override
     public void readFrom(DataInput in) throws IOException, ClassNotFoundException {
         int size=Bits.readIntCompressed(in);
         if(size > 0) {
@@ -107,10 +123,8 @@ public class LogEntries implements SizeStreamable, Iterable<LogEntry> {
         }
     }
 
+    @Override
     public String toString() {
         return String.format("%d entries", size());
     }
-
-
-
 }

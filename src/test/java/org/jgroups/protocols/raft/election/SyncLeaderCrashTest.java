@@ -79,17 +79,18 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         cluster.handleView(v);
         waitUntilLeaderElected(5_000, 1, 2);
         LOGGER.info("-- Terms after leader A left:%n{}%n-- Indices:%n{}", printTerms(), printIndices(null));
-        assertIndices(7, 4);
 
         RAFT leader=Stream.of(rafts()).filter(r -> r != null && r.isLeader()).findFirst().orElse(null);
         LOGGER.info("-- new leader: {}", leader);
         assertThat(leader).isNotNull();
         LOGGER.info("-- Leader: {}, commit-table:%n{}", leader.getAddress(), leader.commitTable());
 
+        // Entries 5..7 are from a previous term: the new leader commits them only together with an entry of its own
+        // term (Raft paper, §5.4.2), its no-op entry 8 (§8). The no-op does not change the state machines.
         leader.flushCommitTable();
         leader.flushCommitTable();
         LOGGER.info("-- Indices:%n{}", printIndices(null));
-        assertIndices(7, 7);
+        assertIndices(8, 8);
 
         LOGGER.info("-- State machines:%n{}", printStateMachines());
         assertThat(Arrays.stream(rafts())
@@ -111,7 +112,7 @@ public class SyncLeaderCrashTest extends BaseRaftElectionTest.ClusterBased<RaftC
         leader.flushCommitTable();
 
         LOGGER.info("-- Indices:%n{}", printIndices(null));
-        assertIndices(7, 7);
+        assertIndices(8, 8);
 
         LOGGER.info("-- State machines:%n{}", printStateMachines());
         assertThat(Arrays.stream(rafts())

@@ -564,8 +564,9 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                 .returns(12L, AppendResult::index);
         assertLogIndices(log, 12, 10, 8);
 
-        // commit 12
-        result=append(impl, null, leader, 0, 0, 0, 12);
+        // commit 12: a request without entries whose previous entry is 12, the follower commits up to it at most
+        // (Figure 2, AppendEntries rule 5)
+        result=impl.handleAppendEntriesRequest(null, leader, impl.raft().currentTerm(), 12, 8, 8, 12);
         assertThat(result)
                 .as("Verifying: " + result)
                 .returns(true, AppendResult::success)

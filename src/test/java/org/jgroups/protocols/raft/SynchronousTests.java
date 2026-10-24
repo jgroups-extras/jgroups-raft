@@ -191,15 +191,15 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
         expect(5, sma.counter());
         expect(4, smb.counter());
 
-        // this will append the same entry, but because index 4 is < last_appended (5), it will not get appended
-        // Note though that the commit-index will be updated
+        // B already has entry 4, so nothing is appended. The request only proves that B's log matches A's up to
+        // index 4, so B commits at most up to 4, even though A's commit index is 5 (Figure 2, AppendEntries rule 5).
+        // B answers with index 4, which moves next-index back to 5: the next resend sends entry 5 again.
         sendAppendEntriesRequest(raft_a, 3, 20, 20, 5);
-        Util.waitUntil(5000, 50, () -> raft_b.commitIndex() == 5);
+        assertCommitTableIndeces(address(1), raft_a, 4, 5, 5);
         assertIndices(5, 5, 20, raft_a);
-        assertIndices(5, 5, 20, raft_b);
-        assertCommitTableIndeces(address(1), raft_a, 5, 5, 6);
+        assertIndices(5, 4, 20, raft_b);
         assertThat(sma.counter()).isEqualTo(5);
-        assertThat(smb.counter()).isEqualTo(5);
+        assertThat(smb.counter()).isEqualTo(4);
     }
 
     public void testAppendBeyondLast(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
@@ -819,6 +819,151 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
         assertCommitTableIndeces(address(2), raft_a, 11, 11, 12);
     }
 
+    /**
+     * A follower holding uncommitted entries from an older leader does not apply them when the current leader
+     * advertises a higher commit index without sending entries (e.g. for a linearizable read).
+     */
+    public void testFollowerDoesNotApplyEntriesMissingFromLeaderLog(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        prepareFollowerWithStaleEntries();
+        RAFT raft_a = raft(0);
+        RAFT raft_c = raft(2);
+        CounterStateMachine smc = stateMachine(2);
+
+        // A and B commit A's entries 6..9 while C is unreachable
+        cluster.dropTrafficTo(address(2));
+        for(int i=6; i <= 9; i++)
+            add(i);
+        cluster.clearDroppedTraffic();
+
+        // A read sends an AppendEntries without entries, carrying A's commit index 9
+        raft_a.getAsync(num(0), 0, Integer.BYTES, null).get(10, TimeUnit.SECONDS);
+
+        // State machine safety: every entry C applied must be the entry A has at that index
+        for(long i=1; i <= raft_c.commitIndex(); i++)
+            assertThat(raft_c.log().get(i).term()).as("term of applied entry %d on C", i).isEqualTo(raft_a.log().get(i).term());
+        // C has none of A's entries after 5, so it can only have applied entries 1..5
+        expect(15, smc.counter());
+    }
+
+    /**
+     * The leader does not count a follower towards the commit of entries the follower does not have, when the
+     * follower answers an AppendEntries without entries (e.g. for a linearizable read).
+     */
+    public void testLeaderDoesNotCountFollowerWithoutItsEntries(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        prepareFollowerWithStaleEntries();
+        RAFT raft_a = raft(0);
+        CounterStateMachine sma = stateMachine(0);
+
+        // A appends entries 6 and 7 of term 25, but neither B nor C receives them
+        cluster.dropTrafficTo(address(1)).dropTrafficTo(address(2));
+        CompletableFuture<byte[]> f6=addAsync(raft_a, 6, Options.create(false));
+        CompletableFuture<byte[]> f7=addAsync(raft_a, 7, Options.create(false));
+        cluster.clearDroppedTrafficTo(address(2));
+
+        // C, holding B's entries 6 and 7 of term 21, answers the AppendEntries without entries of a read
+        raft_a.getAsync(num(0), 0, Integer.BYTES, null);
+
+        // Only A has its entries 6 and 7: they are not committed
+        assertThat(raft_a.commitIndex()).as("commit index of A").isEqualTo(5);
+        assertThat(f6).as("write of entry 6").isNotDone();
+        assertThat(f7).as("write of entry 7").isNotDone();
+        expect(15, sma.counter());
+    }
+
+    /**
+     * A leader does not commit an entry from a previous term by counting the members that store it, only by committing
+     * an entry of its own term after it (Raft paper, §5.4.2 and Figure 8). Otherwise, a later leader holding a
+     * different entry at the same index replaces it, and two members apply different entries at the same index.
+     */
+    public void testLeaderDoesNotCommitEntriesFromPreviousTermsByCounting(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raft_a = raft(0);
+        raft_a.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+
+        RAFT raft_b = raft(1);
+        RAFT raft_c = raft(2);
+        CounterStateMachine sma = stateMachine(0);
+        CounterStateMachine smc = stateMachine(2);
+
+        // All members have committed entries 1..5
+        raft_a.flushCommitTable(address(1));
+        raft_a.flushCommitTable(address(2));
+        assertIndices(5, 5, 20, raft_a, raft_b, raft_c);
+
+        // A, leader of term 21, appends entry 6 (+6) and nobody else receives it
+        raft_a.setLeaderAndTerm(address(0), 21);
+        cluster.dropTrafficTo(address(1)).dropTrafficTo(address(2));
+        addAsync(raft_a, 6, Options.create(false));
+        cluster.clearDroppedTraffic();
+
+        // B, leader of term 22 with C's vote, appends entry 6 (+7) and nobody else receives it
+        raft_a.setLeaderAndTerm(address(1), 22);
+        raft_b.setLeaderAndTerm(address(1), 22);
+        cluster.dropTrafficTo(address(0)).dropTrafficTo(address(2));
+        addAsync(raft_b, 7, Options.create(false));
+        cluster.clearDroppedTraffic();
+        assertThat(raft_a.log().get(6).term()).as("term of entry 6 on A").isEqualTo(21);
+        assertThat(raft_b.log().get(6).term()).as("term of entry 6 on B").isEqualTo(22);
+
+        // A, leader of term 23 with C's vote, appends its no-op entry 7, which nobody receives. Then it replicates only
+        // its entry 6 of term 21 to C while B is unreachable: A and C now form a majority storing it, but it is from a
+        // previous term.
+        cluster.dropTrafficTo(address(1)).dropTrafficTo(address(2));
+        raft_b.setLeaderAndTerm(address(0), 23);
+        raft_a.setLeaderAndTerm(address(0), 23);
+        cluster.clearDroppedTrafficTo(address(2));
+        sendAppendEntriesRequest(raft_a, 5, 20, 23, 21, 5);
+        cluster.clearDroppedTraffic();
+        assertThat(raft_c.log().get(6).term()).as("term of entry 6 on C").isEqualTo(21);
+
+        // B, leader of term 24 with C's vote (B's last entry has a higher term than C's), while A is unreachable.
+        // B replaces entry 6 on C with its own and commits it together with its no-op entry 7 and entry 8 (+8).
+        cluster.dropTrafficTo(address(0));
+        raft_b.setLeaderAndTerm(address(1), 24);
+        raft_b.flushCommitTable(address(2));
+        addAsync(raft_b, 8, Options.create(false)).get(10, TimeUnit.SECONDS);
+        raft_b.flushCommitTable(address(2));
+        cluster.clearDroppedTraffic();
+        assertIndices(8, 8, 24, raft_b, raft_c);
+        expect(30, smc.counter());
+
+        // State machine safety: A and C apply the same entry at every index both have applied
+        for(long i=1; i <= Math.min(raft_a.commitIndex(), raft_c.commitIndex()); i++)
+            assertThat(raft_a.log().get(i).term()).as("term of applied entry %d on A", i).isEqualTo(raft_c.log().get(i).term());
+        // A never committed its entry 6 of term 21
+        expect(15, sma.counter());
+    }
+
+    /**
+     * All members commit entries 1..5 in term 20. B then acts as the leader of term 21 and replicates entries 6 and 7
+     * only to C before it is gone: these entries are never committed and A never sees them. A becomes the leader of
+     * term 25.
+     * <p>
+     * In a real cluster this needs 5 members, e.g. the leader of term 21 reaches only C before a partition, and the
+     * leader of term 25 is elected by the other 3 members.
+     * </p>
+     */
+    private void prepareFollowerWithStaleEntries() throws Exception {
+        RAFT raft_a = raft(0);
+        raft_a.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+        raft_a.flushCommitTable(address(2));
+        assertIndices(5, 5, 20, raft(2));
+
+        cluster.dropTrafficTo(address(0));
+        sendAppendEntriesRequest(raft(1), 5, 20, 21, 5);
+        sendAppendEntriesRequest(raft(1), 6, 21, 21, 5);
+        cluster.clearDroppedTraffic();
+        assertIndices(7, 5, 21, raft(2));
+        expect(15, stateMachine(2).counter());
+
+        raft_a.setLeaderAndTerm(address(0), 25);
+    }
+
     public void testIgnoreResponse(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
         RAFT raft_a = raft(0);
         CompletableFuture<byte[]> f=addAsync(raft_a, 5, Options.create(false));
@@ -870,13 +1015,19 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
     }
 
     protected static void sendAppendEntriesRequest(RAFT r, long prev_index, long prev_term, long curr_term, long commit_index) {
+        sendAppendEntriesRequest(r, prev_index, prev_term, curr_term, curr_term, commit_index);
+    }
+
+    /** Sends an entry of term {@code entryTerm}, e.g. a leader replicating an entry it received in a previous term */
+    protected static void sendAppendEntriesRequest(RAFT r, long prev_index, long prev_term, long curr_term, long entryTerm,
+                                                   long commit_index) {
         byte[] val=new byte[Integer.BYTES];
         Bits.writeInt(1, val, 0);
 
-        LogEntries entries=createLogEntries(curr_term, val);
+        LogEntries entries=createLogEntries(entryTerm, val);
         Message msg=new ObjectMessage(null, entries)
           .putHeader(r.getId(), new AppendEntriesRequest(r.getAddress(), curr_term,
-                                                         prev_index, prev_term, curr_term, commit_index))
+                                                         prev_index, prev_term, entryTerm, commit_index))
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         r.getDownProtocol().down(msg);
     }

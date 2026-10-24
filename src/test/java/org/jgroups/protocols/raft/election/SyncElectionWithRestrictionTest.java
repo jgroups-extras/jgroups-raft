@@ -81,12 +81,11 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         View v=createView(view_id++, 4, 1, 2, 3);
         cluster.handleView(v);
         LOGGER.info("-- After killing S1 and making S5 leader:%n{}", printTerms());
-        assertTerms(null, new long[]{1,2}, new long[]{1,2}, new long[]{1}, new long[]{1,3});
         RAFT r5 = waitUntilNodeLeader(4);
-        r5.flushCommitTable();
-        LOGGER.info("-- After S1 resending messages:%n{}", printTerms());
-        long[] expected={1,3};
-        assertTerms(null, expected, expected, expected, expected);
+        // S5 overwrites the uncommitted entry 2 of S2 and S3. Its log ends with the no-op entries it appended as
+        // leader, which are replicated as soon as it is elected (Raft paper, §8).
+        waitUntilAllHaveLeaderLog(r5, 1, 3);
+        LOGGER.info("-- After S5 resending messages:%n{}", printTerms());
     }
 
     /** Tests scenario E in fig.8 5.4.1 [1]: S1 replicates term=4 to S2 and S3, then crashes: either S2 or S3 will be
@@ -104,6 +103,8 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
      */
     public void testScenarioE(Class<?> ignore) throws Exception {
         createScenarioC();
+        // S1 reaches only S2 and S3 before crashing
+        cluster.dropTrafficTo(address(3)).dropTrafficTo(address(4));
         View v=createView(view_id++, 0, 1, 2, 3, 4);
         cluster.handleView(v);
 
@@ -111,18 +112,23 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         // bump briefly makes S1 a follower. Wait for it to finish before acting as the leader.
         waitUntilVotingThreadStops(5_000, 0);
 
-        // append term 4 on S2 and S3:
-        RAFT r1=waitUntilNodeLeader(0);
+        // append term 4 on S2 and S3, followed by the no-op entry S1 appended when it became leader again (§8).
+        // S4 and S5 do not receive S1's messages, so they keep their terms.
+        RAFT r1=waitUntilNodeLeader(0, 0, 1, 2);
         LOGGER.info("-- flushing tables");
         r1.flushCommitTable(address(1));
         r1.flushCommitTable(address(2));
+        long[] s1Terms=terms(r1);
+        assertThat(s1Terms).as("terms on S1").startsWith(1, 2, 4);
+        assertTerms(s1Terms, s1Terms, s1Terms, new long[]{1}, new long[]{1,3});
 
         LOGGER.info("-- Initial:%n{}", printTerms());
         close(0);
+        cluster.clearDroppedTraffic();
+        // The new view can elect a leader right away, whose no-op entry changes the logs: no assertion until the end
         v=createView(view_id++, 1, 2, 3, 4);
         cluster.handleView(v);
         LOGGER.info("-- After killing S1:%n{}", printTerms());
-        assertTerms(null, new long[]{1,2,4}, new long[]{1,2,4}, new long[]{1}, new long[]{1,3});
 
         // start voting to find current leader:
         BaseElection e2=election(1);
@@ -143,12 +149,8 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
                 .isNotNull()
                 .satisfies(r -> assertThat(r.isLeader()).isTrue());
 
-        // first round adjusts match-index for S4 and deletes term=3 at index 2 on S5
-        // second round sends term=2 at index 2
-        // third round sends term=4 at index 3
-        long[] expected={1,2,4};
-        waitUntilTerms(10000,1000, expected, leader_raft::flushCommitTable);
-        assertTerms(null, expected, expected, expected, expected);
+        // S4 and S5 receive S1's entries from the new leader, which deletes term=3 at index 2 on S5
+        waitUntilAllHaveLeaderLog(leader_raft, s1Terms);
         LOGGER.info("-- final terms:%n{}", printTerms());
     }
 
@@ -159,7 +161,12 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         createCluster();
         makeLeader(0); // S1 is leader
         Address leader=raft(0).getAddress();
+        // S1 becomes leader again on every term change. Its no-op entries (Raft paper, §8) take the place of the
+        // entries appended here, with the same terms. Nobody receives them, so the other logs stay as in the scenario.
+        for(int i=1; i < rafts().length; i++)
+            cluster.dropTrafficTo(address(i));
         append(leader, 0, 1, 2, 4);
+        cluster.clearDroppedTraffic();
         append(leader, 1, 1,2);
         append(leader, 2, 1,2);
         append(leader, 3, 1);
@@ -192,18 +199,23 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         }
     }
 
-    protected void waitUntilTerms(long timeout, long interval, long[] expexted_terms, Runnable action) {
+    /**
+     * Resends the leader's entries until every member has the same log as the leader, then checks the leader's log
+     * starts with the given terms. The rest of the log holds the no-op entries of later leaders.
+     */
+    protected void waitUntilAllHaveLeaderLog(RAFT leader, long... expectedPrefix) throws Exception {
         BooleanSupplier bs = () -> Stream.of(rafts()).filter(Objects::nonNull)
                 .allMatch(r -> {
                     try {
-                        return Arrays.equals(terms(r),expexted_terms);
+                        return Arrays.equals(terms(r), terms(leader));
                     } catch (Exception e) {
                         throw new AssertionError(e);
                     }
                 });
-        assertThat(waitUntilTrue(timeout, interval, bs, action))
+        assertThat(waitUntilTrue(10_000, 100, bs, leader::flushCommitTable))
                 .as(this::dumpLeaderAndTerms)
                 .isTrue();
+        assertThat(terms(leader)).as(this::dumpLeaderAndTerms).startsWith(expectedPrefix);
     }
 
     public static boolean waitUntilTrue(long timeout, long interval, BooleanSupplier condition,
@@ -266,13 +278,23 @@ public class SyncElectionWithRestrictionTest extends BaseRaftElectionTest.Cluste
         return list.stream().mapToLong(Long::longValue).toArray();
     }
 
+    /** Waits until all running members have the node at index {@code node} as leader, in the node's current term. */
     private RAFT waitUntilNodeLeader(int node) {
+        return waitUntilNodeLeader(node, rafts());
+    }
+
+    /** Waits until the given members have the node at index {@code node} as leader, in the node's current term. */
+    private RAFT waitUntilNodeLeader(int node, int... members) {
+        return waitUntilNodeLeader(node, Arrays.stream(members).mapToObj(this::raft).toArray(RAFT[]::new));
+    }
+
+    private RAFT waitUntilNodeLeader(int node, RAFT[] members) {
         RAFT raft = raft(node);
         assertThat(raft).as("Node at index " + node + " is null").isNotNull();
 
         Address leaderAddress = raft.getAddress();
-        BooleanSupplier bs = () -> Arrays.stream(rafts())
-                .allMatch(r -> raft(node).currentTerm() == r.currentTerm() && leaderAddress.equals(r.leader()));
+        BooleanSupplier bs = () -> Arrays.stream(members)
+                .allMatch(r -> raft.currentTerm() == r.currentTerm() && leaderAddress.equals(r.leader()));
         assertThat(eventually(bs, 5, TimeUnit.SECONDS))
                 .as(this::dumpLeaderAndTerms)
                 .isTrue();

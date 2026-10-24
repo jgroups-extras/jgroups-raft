@@ -44,6 +44,9 @@ public class InternalCommand implements Streamable {
             case removeServer:
                 raft._removeServer(name);
                 break;
+            case noop:
+                // Only commits the entries before it, (Raft paper, §8, Client interaction)
+                break;
             default:
                 throw new IllegalStateException("Unknown operation type: " + type);
         }

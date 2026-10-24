@@ -7,6 +7,7 @@ import org.jgroups.logging.Log;
 import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.raft.util.Utils;
+import org.jgroups.util.Tuple;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -18,7 +19,7 @@ import java.util.function.Supplier;
  * @since  0.1
  */
 public class Leader extends RaftImpl {
-    protected final Supplier<Integer> majority=() -> raft.majority();
+    protected final Supplier<Integer> majority = raft::majority;
 
     // Members that are delayed and currently catching up (FAIL_ENTRY_NOT_FOUND).
     // A member stays here at most until its next response.
@@ -29,6 +30,7 @@ public class Leader extends RaftImpl {
         super(raft);
     }
 
+    @Override
     public void init() {
         super.init();
         raft.createRequestTable();
@@ -36,6 +38,7 @@ public class Leader extends RaftImpl {
         raft.createReadOnlyRequestRepository();
     }
 
+    @Override
     public void destroy() {
         super.destroy();
         RequestTable<String> reqTable = raft.request_table;
@@ -45,7 +48,6 @@ public class Leader extends RaftImpl {
         if (reqTable != null) reqTable.destroy(raft.notCurrentLeader());
         if (raft.readOnlyRequests != null) raft.readOnlyRequests.destroy();
     }
-
 
     @Override
     public void handleAppendEntriesResponse(Address sender, long term, AppendResult result) {
@@ -67,7 +69,13 @@ public class Leader extends RaftImpl {
 
                 raft.readOnlyRequests.commit(raft.commit_index, sender_raft_id);
                 boolean done = reqtab.add(result.index, sender_raft_id, this.majority);
-                if(done) {
+
+                // Raft paper, Fig. 2, Rules for Servers, Leaders point #4.
+                // If there exists an N such that N > commitIndex, a majority of matchIndex[i] >= N, and log[N].term == currentTerm,
+                // set commitIndex = N.
+                // Entries from previous terms are committed together with an entry of this term, never by only counting
+                // the members that store them (paper §5.4.2, Figure 8).
+                if (done &&isFromCurrentTerm(result.index)) {
                     raft.commitLogTo(result.index, true);
                 }
 
@@ -111,13 +119,37 @@ public class Leader extends RaftImpl {
     }
 
     private void sendCommitMessageToFollower(Address member, CommitTable.Entry entry) {
-        if(raft.commit_index > entry.commitIndex()) {
-            long cterm=raft.currentTerm();
-            short id=raft.getId();
-            Address leader=raft.getAddress();
-            Message msg=new ObjectMessage(member, null)
-              .putHeader(id, new AppendEntriesRequest(leader, cterm, 0, 0, cterm, raft.commit_index));
-            raft.down(msg);
+        // The follower commits at most up to the last entry if verified against the leader's log.
+        // This is the rule from raft paper, Fig. 2, AppendEntries RPC, rule #5.
+        // We send our entry at its match index, so the message only helps when that is above its commit index.
+        long matchIndex = entry.matchIndex();
+        if (Math.min(raft.commit_index, matchIndex) <= entry.commitIndex())
+            return;
+
+        LogEntry prev = raft.log_impl.get(matchIndex);
+        if (prev == null) {
+            // Truncated by a snapshot.
+            // The resend round takes care of this member.
+            return;
         }
+
+        Tuple<Address, Long> tuple = raft.leaderAndTerm();
+        Address leader = tuple.val1();
+        long cterm = tuple.val2();
+        short id = raft.getId();
+        Message msg=new ObjectMessage(member, null)
+                .putHeader(id, new AppendEntriesRequest(leader, cterm, matchIndex, prev.term(), cterm, raft.commit_index));
+        raft.down(msg);
+    }
+
+    /**
+     * Checks whether the entry at the given index was created in the current term.
+     *
+     * @param index the index of an entry in the leader's log.
+     * @return {@code true} if the entry exists and belongs to the current term, {@code false} otherwise.
+     */
+    private boolean isFromCurrentTerm(long index) {
+        LogEntry entry = raft.log_impl.get(index);
+        return entry != null && entry.term() == raft.currentTerm();
     }
 }
