@@ -61,20 +61,36 @@
     ** [optimization]
     *** Send AppendEntries in range [P.match-index+1 .. last_appended] to P
       // 1 message ? otherwise we'll send all msgs in this range to P, which causes more traffic than necessary
-* Failure:
-    ** Set P.next-index=rsp.index
+* Failure, entry not found (P's log is shorter than the request's prev-index, rsp.index is P's last-appended):
+    ** Set P.next-index=rsp.index+1
+    ** If last-appended >= P.next-index and no catch-up to P is in flight:
+        *** Send AppendEntries in range [P.next-index .. last-appended] to P, or a snapshot if P.next-index is at or
+            below log.first_applied
+        *** Consider the catch-up in flight until P answers with success or with a conflicting term
+        // Retrying right away, instead of waiting for the periodic resend, matters under load: P rejects every new
+        // entry multicast by the leader until it receives the missing ones.
+        // Rejections already on their way describe the same gap, so they do not send the range again.
+    ** P still verifies prev-index and prev-term of the catch-up, so a conflicting term at P's last entry turns into
+       the failure below
+* Failure, conflicting term (rsp.index is the first index of the conflicting term in P's log):
+    ** Set P.match-index=max(rsp.commit-index, rsp.index-1) and P.next-index=max(rsp.commit-index+1, rsp.index)
+    ** The next periodic resends send a single entry at a time, until P accepts one (probing for the match point)
+    ** P deleted its entries from rsp.index on, so the next rejection of a multicast is an entry not found failure,
+       which sends the whole range again
 
 
 === Periodic resending of AppendEntries requests
 
 * Performed on the *leader* only
-* Executed every RAFT.resend_interval ms
+* Executed when no request was received for RAFT.resend_interval ms
 * For each member P in the CommitTable (RAFT.commit_table):
     ** If P.next-index < log.first_applied: // e.g. my log is [15 .. 120], but P.next-index is 10
         *** Send snapshot to P
         *** continue
     ** If last_appended >= P.next-index:
-        *** Send AppendEntries request with entry at index P.next-index and commit-index
+        *** If probing for the match point (see conflicting term above): send AppendEntries request with the entry at
+            index P.next-index and commit-index
+        *** Else: send AppendEntries request with the entries in range [P.next-index .. last_appended] and commit-index
         *** continue
     ** If commit-index > P.commit-index:
         *** Send AppendEntries message with empty entry and commit-index

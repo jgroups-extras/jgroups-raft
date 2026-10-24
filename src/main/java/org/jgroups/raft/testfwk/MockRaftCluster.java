@@ -117,6 +117,21 @@ public abstract class MockRaftCluster {
     }
 
     /**
+     * Installs an interceptor that defers the messages matching the predicate until released.
+     * <p>
+     * Contrary to {@link #addCommandInterceptor(Predicate)}, a synchronous cluster does not block the sender. The
+     * deferred messages are delivered by the thread calling {@link BlockingMessageInterceptor#releaseNext()}, in
+     * sending order.
+     * </p>
+     *
+     * @param predicate The predicate to check whether to defer a message.
+     * @return A new {@link BlockingMessageInterceptor} instance to release the deferred messages.
+     */
+    public BlockingMessageInterceptor addDeferringInterceptor(Predicate<Message> predicate) {
+        return this.interceptor = BlockingMessageInterceptor.deferring(predicate);
+    }
+
+    /**
      * Utility to create a fluent use.
      *
      * @return The fluent current class.

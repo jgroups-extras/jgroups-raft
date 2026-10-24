@@ -8,6 +8,8 @@ import org.jgroups.raft.util.CommitTable;
 import org.jgroups.raft.util.RequestTable;
 import org.jgroups.raft.util.Utils;
 
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
 
 /**
@@ -18,10 +20,14 @@ import java.util.function.Supplier;
 public class Leader extends RaftImpl {
     protected final Supplier<Integer> majority=() -> raft.majority();
 
+    // Members that are delayed and currently catching up (FAIL_ENTRY_NOT_FOUND).
+    // A member stays here at most until its next response.
+    // The idea is to avoid resending a batch of entries that was already retransmitted.
+    private final Set<Address> catchingUp = ConcurrentHashMap.newKeySet();
+
     public Leader(RAFT raft) {
         super(raft);
     }
-
 
     public void init() {
         super.init();
@@ -53,6 +59,7 @@ public class Leader extends RaftImpl {
         switch(result.result) {
             case OK:
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
+                catchingUp.remove(sender);
 
                 // Learner members do not count to an entry commit.
                 if (!Utils.isRaftMember(sender_raft_id, raft.members()))
@@ -73,14 +80,28 @@ public class Leader extends RaftImpl {
                     sendCommitMessageToFollowers();
                 }
                 break;
-                // todo: change
             case FAIL_ENTRY_NOT_FOUND:
-                raft.commit_table.update(sender, result.index(), result.index()+1, result.commit_index, true);
+                // The follower's log is shorter than prev_index and result.index() is its last appended entry.
+                // We know where its log ends, so we don't need to probe one entry at a time.
+                // The next resend carries [next_index .. last_appended] (Paper, Fig. 2).
+                // The follower still checks prev_index/prev_term on that resend.
+                // If the term at its last entry conflicts with ours, it answers FAIL_CONFLICTING_PREV_TERM, which moves to single-entry probing.
+                raft.commit_table.update(sender, result.index(), result.index() + 1, result.commitIndex(), false);
+
+                // Figure 2 in paper: "If last log index >= next index for a follower".
+                // We retry now instead of waiting for the next resend round, which only runs with `resend_interval` when idle.
+                // Under constant writes, that can take a long time, and the follower keeps rejecting every multicast.
+                CommitTable.Entry entry = raft.commit_table.get(sender);
+                if (entry != null && raft.lastAppended() >= entry.nextIndex() && catchingUp.add(sender))
+                    raft.sendAppendEntriesMessage(sender, entry);
                 break;
             case FAIL_CONFLICTING_PREV_TERM:
                 long matchIndex = Math.max(result.commit_index, result.index() - 1);
                 long nextIndex = Math.max(result.commit_index + 1, result.index());
                 raft.commit_table.update(sender, matchIndex, nextIndex, result.commit_index, true, true);
+                // The member answered.
+                // Probing for the match point is left to what was resent.
+                catchingUp.remove(sender);
                 break;
         }
     }

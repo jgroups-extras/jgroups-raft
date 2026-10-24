@@ -43,12 +43,35 @@ public final class BlockingMessageInterceptor {
 
     private final Predicate<Message> predicate;
 
+    // When true, message are never delivered while blocking, they wait in the queue and wait for release.
+    private final boolean deferring;
+
     @GuardedBy("this")
     private final Queue<Waiter> waiters;
 
     public BlockingMessageInterceptor(Predicate<Message> predicate) {
+        this(predicate, false);
+    }
+
+    public BlockingMessageInterceptor(Predicate<Message> predicate, boolean deferring) {
         this.predicate = predicate;
+        this.deferring = deferring;
         this.waiters = new ArrayDeque<>();
+    }
+
+    /**
+     * Creates an interceptor that defers matching messages instead of blocking the sender.
+     * <p>
+     * The sender never blocks, even in a synchronous cluster. Each call to {@link #releaseNext()} delivers the oldest
+     * deferred message on the calling thread. A synchronous cluster therefore keeps a single-threaded execution and
+     * the sending order, which allows a test to deliver messages late without losing FIFO order.
+     * </p>
+     *
+     * @param predicate Selects the messages to defer.
+     * @return A new interceptor deferring the messages that match the predicate.
+     */
+    public static BlockingMessageInterceptor deferring(Predicate<Message> predicate) {
+        return new BlockingMessageInterceptor(predicate, true);
     }
 
     /**
@@ -77,14 +100,16 @@ public final class BlockingMessageInterceptor {
      * @throws AssertionError If the execution is async and there is no runnable to run on completion.
      */
     public void blockMessage(Message message, boolean async, Runnable onComplete) {
-        assert !async || onComplete != null : "Async operations need to pass runnable on complete";
-        Waiter waiter = new Waiter(message, async);
+        // A deferring interceptor never blocks the sender, the message is delivered when released.
+        boolean nonBlocking = async || deferring;
+        assert !nonBlocking || onComplete != null : "Async operations need to pass runnable on complete";
+        Waiter waiter = new Waiter(message, nonBlocking);
         synchronized (this) {
             waiters.offer(waiter);
         }
 
         CompletableFuture<Void> cf = waiter.block();
-        if (async) cf.thenRun(onComplete);
+        if (nonBlocking) cf.thenRun(onComplete);
     }
 
     /**

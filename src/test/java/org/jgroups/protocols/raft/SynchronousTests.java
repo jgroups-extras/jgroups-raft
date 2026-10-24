@@ -8,6 +8,7 @@ import org.jgroups.Message;
 import org.jgroups.ObjectMessage;
 import org.jgroups.View;
 import org.jgroups.raft.Options;
+import org.jgroups.raft.testfwk.BlockingMessageInterceptor;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.testfwk.RaftTestUtils;
@@ -680,6 +681,142 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
         expect(21, smc.counter());
         assertIndices(6, 6, 20, raft_c);
         assertCommitTableIndeces(address(2), raft_a, 6, 6, 7);
+    }
+
+    /**
+     * A lagging follower catches up while the leader keeps receiving writes, without waiting for a resend round.
+     * The other follower keeps committing in the meantime.
+     */
+    public void testLaggingFollowerCatchesUpUnderWrites(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raft_a = raft(0);
+        raft_a.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+
+        CounterStateMachine sma = stateMachine(0);
+        CounterStateMachine smb = stateMachine(1);
+        CounterStateMachine smc = stateMachine(2);
+        RAFT raft_b = raft(1);
+        RAFT raft_c = raft(2);
+
+        // C misses entries 6..8; A and B still form a majority and commit them
+        cluster.dropTrafficTo(address(2));
+        for(int i=6; i <= 8; i++)
+            add(i);
+        cluster.clearDroppedTraffic();
+        assertIndices(5, 4, 20, raft_c);
+
+        // Only writes from now on: resend_interval is too large for a resend round to happen during the test.
+        // C rejects the multicast of entry 9, the leader must reply with the missing entries straight away,
+        // so that C accepts the multicast of entry 10.
+        add(9);
+        add(10);
+
+        expect(55, sma.counter());
+        assertIndices(10, 10, 20, raft_a);
+
+        // Followers learn about commit index 9 with entry 10, so both lag one commit behind the leader
+        expect(45, smb.counter());
+        expect(45, smc.counter());
+        assertIndices(10, 9, 20, raft_b, raft_c);
+        assertCommitTableIndeces(address(1), raft_a, 9, 10, 11);
+        assertCommitTableIndeces(address(2), raft_a, 9, 10, 11);
+    }
+
+    /**
+     * A lagging follower that rejects several multicasts before the leader handles the first rejection receives the
+     * missing entries once, not once per rejection.
+     */
+    public void testLaggingFollowerReceivesOneCatchUpPerRound(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raft_a = raft(0);
+        raft_a.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+
+        CounterStateMachine smc = stateMachine(2);
+        RAFT raft_c = raft(2);
+
+        // C misses entries 6..8; A and B still form a majority and commit them
+        cluster.dropTrafficTo(address(2));
+        for(int i=6; i <= 8; i++)
+            add(i);
+        cluster.clearDroppedTraffic();
+        assertIndices(5, 4, 20, raft_c);
+
+        // C rejects the multicasts of 9, 10 and 11, but its responses reach A only later.
+        // This is what happens under load: the rejections are in flight while the leader keeps multicasting.
+        BlockingMessageInterceptor interceptor=cluster.addDeferringInterceptor(
+              m -> address(2).equals(m.src()) && address(0).equals(m.dest()));
+        for(int i=9; i <= 11; i++)
+            add(i);
+        interceptor.assertNumberOfBlockedMessages(3);
+        assertIndices(5, 4, 20, raft_c);
+
+        // Deliver C's responses in order. The responses C sends to the catch-up batch are deferred too, so the loop
+        // delivers them after the 2nd and 3rd rejections. The batch is in flight while A handles those rejections,
+        // so they must not trigger another batch.
+        int resendsBefore=raft_a.num_resends;
+        while(interceptor.numberOfBlockedMessages() > 0)
+            interceptor.releaseNext();
+        assertThat(raft_a.num_resends - resendsBefore).as("catch-up batches sent to C").isEqualTo(1);
+
+        expect(66, smc.counter());
+        assertIndices(11, 11, 20, raft_c);
+        assertCommitTableIndeces(address(2), raft_a, 11, 11, 12);
+    }
+
+    /**
+     * A lagging follower that also holds uncommitted entries from an older leader ends up with exactly the leader's
+     * log, and never applies the older leader's entries.
+     */
+    public void testLaggingFollowerWithStaleEntriesConvergesToLeaderLog(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raft_a = raft(0);
+        raft_a.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for(int i=1; i <= 5; i++)
+            add(i);
+
+        CounterStateMachine sma = stateMachine(0);
+        CounterStateMachine smc = stateMachine(2);
+        RAFT raft_b = raft(1);
+        RAFT raft_c = raft(2);
+
+        // All members have committed entries 1..5
+        raft_a.flushCommitTable(address(2));
+        expect(15, smc.counter());
+        assertIndices(5, 5, 20, raft_c);
+
+        // B acts as the leader of term 21 and replicates entries 6 and 7 only to C, then it is gone.
+        // The entries are never committed, and A never sees them.
+        cluster.dropTrafficTo(address(0));
+        sendAppendEntriesRequest(raft_b, 5, 20, 21, 5);
+        sendAppendEntriesRequest(raft_b, 6, 21, 21, 5);
+        cluster.clearDroppedTraffic();
+        assertIndices(7, 5, 21, raft_c);
+        expect(15, smc.counter());
+
+        // A is the leader of term 25. C misses entries 6..9, which A and B commit.
+        raft_a.setLeaderAndTerm(address(0), 25);
+        cluster.dropTrafficTo(address(2));
+        for(int i=6; i <= 9; i++)
+            add(i);
+        cluster.clearDroppedTraffic();
+
+        // C rejects the multicasts: it lacks entries, and the entries it has at 6 and 7 conflict with A's log
+        add(10);
+        add(11);
+        // Delivers the latest commit index to C
+        raft_a.flushCommitTable(address(2));
+
+        expect(66, sma.counter());
+        // C applied only A's entries: applying B's entries 6 and 7 (+1 each) would give a different counter
+        expect(66, smc.counter());
+        assertIndices(11, 11, 25, raft_a, raft_c);
+        for(long i=1; i <= 11; i++)
+            assertThat(raft_c.log().get(i).term()).as("term of entry %d on C", i).isEqualTo(raft_a.log().get(i).term());
+        assertCommitTableIndeces(address(2), raft_a, 11, 11, 12);
     }
 
     public void testIgnoreResponse(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
