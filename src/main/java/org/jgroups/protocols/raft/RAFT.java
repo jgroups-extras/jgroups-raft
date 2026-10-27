@@ -1061,11 +1061,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         DownRequest dr = (DownRequest) requestFactory.createDownRequest(f, buf, offset, length, internal, opts, readOnly);
 
         if (readOnly) {
-            readOnlyRequests.register(commit_index, dr, raft_id);
+            long round = readOnlyRequests.register(commit_index, List.of(dr), raft_id);
             if (majority > 1) {
                 Message msg=new ObjectMessage(null, new LogEntries())
                         .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
-                                current_term, commit_index))
+                                current_term, commit_index).round(round))
                         .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
                 down_prot.down(msg);
             }
@@ -1121,14 +1121,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 return;
 
             res.commitIndex(commit_index);
-            Message rsp=new EmptyMessage(msg.src()).putHeader(id, new AppendEntriesResponse(current_term, res));
+            Message rsp=new EmptyMessage(msg.src()).putHeader(id, new AppendEntriesResponse(current_term, res).round(r.round()));
             down_prot.down(rsp);
             return;
         }
 
         if (hdr instanceof AppendEntriesResponse rsp) {
             log.trace("%s: from %s res %s", local_addr, msg.src(), rsp);
-            ri.handleAppendEntriesResponse(msg.src(),rsp.curr_term, rsp.result);
+            ri.handleAppendEntriesResponse(msg.src(), rsp.curr_term, rsp.round(), rsp.result);
             return;
         }
 
@@ -1214,13 +1214,15 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         Address              leader = leader();
         boolean              hasOperations = false;
 
+        // We create the read list lazily when a read operation is identified.
+        List<DownRequest> reads = null;
+
         for(BaseRequest r: q) {
             try {
                 r.startProcessing();
-                if(r instanceof UpRequest up) {
+                if (r instanceof UpRequest up) {
                     handleUpRequest(up.message(), up.header());
-                }
-                else if(r instanceof DownRequest dr) {
+                } else if (r instanceof DownRequest dr) {
                     // Complete the request exceptionally.
                     // The request could either be lost in the reqtab reference or fail with an NPE below.
                     // It would only complete in case a timeout is associated.
@@ -1230,7 +1232,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     }
                     hasOperations = true;
                     if (dr.isReadOnly() && !dr.isInternal()) {
-                        readOnlyRequests.register(commit_index, dr, raft_id);
+                        if (reads == null)
+                            reads = new ArrayList<>(q.size());
+                        reads.add(dr);
                         continue;
                     }
 
@@ -1240,16 +1244,20 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                     // Add the request to the client table, so we can return results to clients when done
                     request_table.create(index++, raft_id, dr, this::majority, dr.options());
                     length+=dr.length();
-                }
-                else if (r instanceof CallableDownRequest<?> cr) {
+                } else if (r instanceof CallableDownRequest<?> cr) {
                     cr.complete();
                 }
-            }
-            catch(Throwable ex) {
+            } catch(Throwable ex) {
                 log.error("%s: failed handling request %s: %s", local_addr, r, ex);
                 r.failed(ex);
             }
         }
+
+        // The reads share the round carried by the multicast below.
+        // If this member stepped down during the batch, the repository is destroyed and fails the reads.
+        long round = reads != null
+                ? readOnlyRequests.register(commit_index, reads, raft_id)
+                : 0;
 
         if(!hasOperations)
             return;
@@ -1267,7 +1275,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         // Multicast an AppendEntries message (exclude self)
         Message msg=new ObjectMessage(null, entries)
           .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
-                                                  current_term, commit_index))
+                                                  current_term, commit_index).round(round))
           .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
         down_prot.down(msg);
 
@@ -1310,6 +1318,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         this.readOnlyRequests = ReadOnlyRequestRepository.<DownRequest>builder(this::majority)
                 .withCommitter(this::applyReadOnlyRequests)
                 .withDestroyer(this::failReadOnlyRequests)
+                // Called from Leader.init, before the new leader appends the no-op after election.
+                .withMinimumIndex(last_appended)
                 .build();
     }
 

@@ -50,7 +50,7 @@ public class Leader extends RaftImpl {
     }
 
     @Override
-    public void handleAppendEntriesResponse(Address sender, long term, AppendResult result) {
+    public void handleAppendEntriesResponse(Address sender, long term, long round, AppendResult result) {
         RequestTable<String> reqtab=raft.request_table;
         if(reqtab == null)
             throw new IllegalStateException("request table cannot be null in leader");
@@ -58,6 +58,13 @@ public class Leader extends RaftImpl {
         Log log=raft.getLog();
         if(log.isTraceEnabled())
             log.trace("%s: received AppendEntries response from %s for term %d: %s", raft.getAddress(), sender, term, result);
+
+        // Any response received in this term proves the sender still follows this leader, even failures confirm reads, too.
+        // Responses from older terms never reach this point, the up handler drops them.
+        if (Utils.isRaftMember(sender_raft_id, raft.members())) {
+            raft.readOnlyRequests.confirm(round, sender_raft_id, raft.commit_index);
+        }
+
         switch(result.result) {
             case OK:
                 raft.commit_table.update(sender, result.index(), result.index() + 1, result.commit_index, false);
@@ -67,7 +74,6 @@ public class Leader extends RaftImpl {
                 if (!Utils.isRaftMember(sender_raft_id, raft.members()))
                     break;
 
-                raft.readOnlyRequests.commit(raft.commit_index, sender_raft_id);
                 boolean done = reqtab.add(result.index, sender_raft_id, this.majority);
 
                 // Raft paper, Fig. 2, Rules for Servers, Leaders point #4.

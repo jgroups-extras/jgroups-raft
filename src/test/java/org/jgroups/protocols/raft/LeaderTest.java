@@ -26,6 +26,7 @@ public class LeaderTest {
         raft.setAddress(leaderAddr);
         raft.request_table = new RequestTable<>();
         raft.commit_table = new CommitTable(Collections.singletonList(followerAddr), 6);
+        raft.createReadOnlyRequestRepository();
         Leader leader = new Leader(raft);
 
         // Follower previously committed up to 5
@@ -35,7 +36,7 @@ public class LeaderTest {
         AppendResult result = new AppendResult(FAIL_CONFLICTING_PREV_TERM, 5, 1).commitIndex(5);
 
         // When leader handles this response, match_index must not be set below commit_index (5)
-        leader.handleAppendEntriesResponse(followerAddr, 1, result);
+        leader.handleAppendEntriesResponse(followerAddr, 1, 0, result);
 
         CommitTable.Entry entry = raft.commit_table.get(followerAddr);
         assertThat(entry.commitIndex()).isEqualTo(5);

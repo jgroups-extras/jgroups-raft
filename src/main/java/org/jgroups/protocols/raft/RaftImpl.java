@@ -172,9 +172,10 @@ public abstract class RaftImpl {
      *
      * @param sender the member that sent the response.
      * @param term   the sender's current term.
+     * @param round  the logical round a read operation was performed.
      * @param result the outcome of the request on the sender.
      */
-    public void handleAppendEntriesResponse(Address sender, long term, AppendResult result) { }
+    public void handleAppendEntriesResponse(Address sender, long term, long round, AppendResult result) { }
 
     /**
      * Handles an InstallSnapshot request from the leader (Raft paper, §7 and Figure 13). The leader sends one when the

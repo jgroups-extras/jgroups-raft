@@ -3,12 +3,9 @@ package org.jgroups.raft.util;
 import org.jgroups.logging.Log;
 import org.jgroups.logging.LogFactory;
 
-import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.Map;
 import java.util.NavigableMap;
 import java.util.Set;
 import java.util.TreeMap;
@@ -19,9 +16,14 @@ import java.util.function.Supplier;
  * Repository for read-only operations.
  *
  * <p>
- * This repository utilizes an ordered set to map between a log index and multiple pending requests. Read-only operations
- * in {@link org.jgroups.protocols.raft.RAFT} do not update the log index, in contrast with {@link RequestTable}. This
- * maps multiple requests to the same index in the log, or the same key in the requests map.
+ * Read-only operations do not go through the log. The leader serves a read once it confirms it is still the leader
+ * and its commit index reaches the read index (Raft dissertation, §6.4). Leadership is confirmed by a majority
+ * answering a request the leader sent after the read arrived. Requests carry a round number which the response
+ * echoes, so the leader knows which request a response answers.
+ * </p>
+ *
+ * <p>
+ * Reads waiting for the same request share a round and complete together.
  * </p>
  *
  * @param <R> The type of requests.
@@ -35,9 +37,14 @@ public final class ReadOnlyRequestRepository<R> {
     private final Supplier<Integer> majority;
     private final Consumer<Collection<R>> listener;
     private final Consumer<Collection<R>> destroyer;
+    private final long minimumIndex;
+
+    // Round 0 is never handed out, so a response without a round never confirms a read.
+    private long round;
     private boolean destroyed;
 
-    private ReadOnlyRequestRepository(Supplier<Integer> majority, Consumer<Collection<R>> listener, Consumer<Collection<R>> destroyer) {
+    private ReadOnlyRequestRepository(long minimumIndex, Supplier<Integer> majority, Consumer<Collection<R>> listener, Consumer<Collection<R>> destroyer) {
+        this.minimumIndex = minimumIndex;
         this.majority = majority;
         this.listener = listener;
         this.destroyer = destroyer;
@@ -60,79 +67,70 @@ public final class ReadOnlyRequestRepository<R> {
     }
 
     /**
-     * Advances the commit index.
-     * <p>
-     * Once the commit index advances, this method will complete the requests up-to, and including, the index. The listener
-     * is invoked for all requests in the range.
-     * </p>
+     * Completes the reads confirmed by a majority with a read index up to the given commit index.
      *
-     * @param index The current index the log was advanced to.
+     * @param index The leader's current commit index.
      */
     public void advance(long index) {
-        Iterator<Map.Entry<Long, Entry>> it = requests.headMap(index, true).entrySet().iterator();
+        Iterator<Entry> it = requests.values().iterator();
         while (it.hasNext()) {
-            Map.Entry<Long, Entry> me = it.next();
-            Entry v = me.getValue();
-            if (v.isCommitted() || me.getKey() < index) {
-                listener.accept(v.requests);
+            Entry entry = it.next();
+            if (entry.isConfirmed() && entry.readIndex <= index) {
+                listener.accept(entry.requests);
                 it.remove();
             }
         }
     }
 
     /**
-     * Register an accept from a follower to the given index.
+     * Registers a follower's response to a request carrying the given round.
+     *
      * <p>
-     * Register the accept response of a single follower node to all requests of a given index and below. The completion
-     * listener is invoked once a majority of accepts is registered.
+     * The response proves the follower still accepted this leader after the reads of that round, and of every earlier
+     * round, were registered (Raft dissertation, §6.4, step 3).
      * </p>
      *
-     * @param index The index accepted by the follower node.
-     * @param senderRaftId The RaftId of the node which is committing the entry.
+     * @param round The round echoed in the response.
+     * @param senderRaftId The RaftId of the responding follower.
+     * @param commitIndex The leader's current commit index.
      */
-    public void commit(long index, String senderRaftId) {
-        Iterator<Map.Entry<Long, Entry>> it = requests.headMap(index, true).entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Long, Entry> me = it.next();
-            Entry v = me.getValue();
-            v.accepted(senderRaftId);
-            if (v.isCommitted()) {
-                listener.accept(v.requests);
-                it.remove();
-            }
+    public void confirm(long round, String senderRaftId, long commitIndex) {
+        for (Entry entry : requests.headMap(round, true).values()) {
+            entry.accepted(senderRaftId);
         }
+        advance(commitIndex);
     }
 
     /**
-     * Register a new request submitted at the given index.
+     * Registers new reads and returns the round the request sent for them must carry.
+     *
      * <p>
-     * If the repository was already destroyed by invoking {@link #destroy()}, the destroyer listener is invoked with
-     * the provided request.
+     * Only responses echoing this round, or a later one, confirm the reads. If the repository was already destroyed by
+     * invoking {@link #destroy()}, or the leader alone is a majority, the reads complete immediately and the returned
+     * round is 0.
      * </p>
      *
-     * @param index The commit index at the time the request was submitted.
-     * @param request The request to store.
+     * @param commitIndex The commit index at the time the requests were submitted.
+     * @param reads The requests to store.
      * @param leaderRaftId The RaftId of the current leader.
+     * @return the round for the request sent after the registration.
      */
-    public void register(long index, R request, String leaderRaftId) {
+    public long register(long commitIndex, Collection<R> reads, String leaderRaftId) {
         if (destroyed) {
-            destroyer.accept(Collections.singletonList(request));
-            return;
+            destroyer.accept(reads);
+            return 0;
         }
 
         // Handle a case where the majority is made by a single node.
         // The leader is enough to consider majority reached, so we complete the request inline.
         if (majority.get() <= 1) {
-            listener.accept(Collections.singletonList(request));
-            return;
+            listener.accept(reads);
+            return 0;
         }
 
-        requests.compute(index, (k, v) -> {
-            if (v == null) return new Entry(request, leaderRaftId);
-
-            v.include(request);
-            return v;
-        });
+        long readIndex = Math.max(commitIndex, minimumIndex);
+        requests.put(++round, new Entry(reads, readIndex, leaderRaftId));
+        return round;
     }
 
     public static <R> Builder<R> builder(Supplier<Integer> majority) {
@@ -141,17 +139,15 @@ public final class ReadOnlyRequestRepository<R> {
 
     private final class Entry {
         private final Collection<R> requests;
+        private final long readIndex;
         private final Set<String> votes;
 
-        public Entry(R request, String leaderRaftId) {
-            this.requests = new ArrayList<>();
+        public Entry(Collection<R> requests, long readIndex, String leaderRaftId) {
+            // No need to copy the requests collections since this class is the sole owner now.
+            this.requests = requests;
             this.votes = new HashSet<>();
-            requests.add(request);
+            this.readIndex = readIndex;
             accepted(leaderRaftId);
-        }
-
-        public void include(R request) {
-            requests.add(request);
         }
 
         public void accepted(String senderRaftId) {
@@ -161,7 +157,7 @@ public final class ReadOnlyRequestRepository<R> {
             votes.add(senderRaftId);
         }
 
-        public boolean isCommitted() {
+        public boolean isConfirmed() {
             return votes.size() >= majority.get();
         }
     }
@@ -170,6 +166,7 @@ public final class ReadOnlyRequestRepository<R> {
         private final Supplier<Integer> majority;
         private Consumer<Collection<R>> listener = ignore -> {};
         private Consumer<Collection<R>> destroyer = ignore -> {};
+        private long minimumIndex;
 
         private Builder(Supplier<Integer> majority) {
             this.majority = majority;
@@ -185,8 +182,25 @@ public final class ReadOnlyRequestRepository<R> {
             return this;
         }
 
+        /**
+         * Sets the lowest index a request is registered at.
+         *
+         * <p>
+         * A request must see every entry committed before it was submitted. A new leader may hold committed entries
+         * without knowing they are committed, and learns it only by committing an entry of its own term (Raft paper,
+         * §8). Passing the leader's last log index at election delays requests until those entries are committed.
+         * </p>
+         *
+         * @param minimumIndex the last log index when the member became leader.
+         * @return this builder.
+         */
+        public Builder<R> withMinimumIndex(long minimumIndex) {
+            this.minimumIndex = minimumIndex;
+            return this;
+        }
+
         public ReadOnlyRequestRepository<R> build() {
-            return new ReadOnlyRequestRepository<>(majority, listener, destroyer);
+            return new ReadOnlyRequestRepository<>(minimumIndex, majority, listener, destroyer);
         }
     }
 }

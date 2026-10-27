@@ -4,83 +4,176 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.jgroups.Global;
 
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 
 import org.testng.annotations.Test;
 
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class ReadOnlyRequestRepositoryTest {
 
+    public void testReadCompletesWhenMajorityConfirmsItsRound() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 2);
+
+        long round = repository.register(10, List.of(cf), "leader");
+        assertThat(cf).isNotDone();
+
+        repository.confirm(round, "follower-A", 10);
+        assertThat(cf).isDone();
+    }
+
+    public void testConfirmationOfEarlierRoundIgnoresLaterRead() {
+        CompletableFuture<Void> first = new CompletableFuture<>();
+        CompletableFuture<Void> second = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 2);
+
+        long firstRound = repository.register(10, List.of(first), "leader");
+        long secondRound = repository.register(10, List.of(second), "leader");
+
+        // The response answers a request sent before the second read arrived.
+        repository.confirm(firstRound, "follower-A", 10);
+        assertThat(first).isDone();
+        assertThat(second).as("confirmed by a response to a request sent before the read").isNotDone();
+
+        repository.confirm(secondRound, "follower-A", 10);
+        assertThat(second).isDone();
+    }
+
+    public void testResponseWithoutRoundConfirmsNothing() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 2);
+
+        repository.register(10, List.of(cf), "leader");
+
+        // Responses to requests that do not carry a round, e.g., a snapshot install.
+        repository.confirm(0, "follower-A", 10);
+        assertThat(cf).isNotDone();
+    }
+
+    public void testAdvanceAloneDoesNotCompleteRead() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 3);
+
+        repository.register(10, List.of(cf), "leader");
+
+        // A commit index past the read says nothing about the leader still being the leader.
+        repository.advance(11);
+        assertThat(cf).isNotDone();
+    }
+
+    public void testConfirmedReadWaitsForLeaderStartIndex() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 2)
+                .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
+                .withMinimumIndex(12)
+                .build();
+
+        // The new leader's log holds entries up to 12, possibly committed without the leader knowing it yet.
+        long round = repository.register(10, List.of(cf), "leader");
+        repository.confirm(round, "follower-A", 10);
+        assertThat(cf).as("confirmed, but the commit index is behind the leader's start index").isNotDone();
+
+        repository.advance(11);
+        assertThat(cf).isNotDone();
+
+        repository.advance(12);
+        assertThat(cf).isDone();
+    }
+
+    public void testConfirmationAfterCommitReachedCompletesRead() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 2)
+                .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
+                .withMinimumIndex(12)
+                .build();
+
+        long round = repository.register(10, List.of(cf), "leader");
+
+        repository.advance(12);
+        assertThat(cf).isNotDone();
+
+        // The commit index has already reached the read index, so the confirmation alone completes the read.
+        repository.confirm(round, "follower-A", 12);
+        assertThat(cf).isDone();
+    }
+
     public void testDuplicateSenderNeverSatisfiesQuorum() {
         CompletableFuture<Void> cf = new CompletableFuture<>();
         // 5-node cluster: majority = 3
-        ReadOnlyRequestRepository<CompletableFuture<Void>> repository =
-                ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 3)
-                        .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
-                        .build();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 3);
 
-        // Leader registers the read at index 10; the leader itself counts as vote #1.
-        repository.register(10, cf, "leader");
-        assertThat(cf.isDone()).isFalse();
+        // The leader itself counts as vote #1.
+        long round = repository.register(10, List.of(cf), "leader");
 
-        // The one minority follower sends two heartbeat responses (as happens in production).
+        // The one minority follower answers twice.
         // Unique voters: {leader, follower-A} = 2, which is below majority=3.
-        repository.commit(10, "follower-A");
-        repository.commit(10, "follower-A");
-
-        // Advance at same index should not complete uncommitted entries.
+        repository.confirm(round, "follower-A", 10);
+        repository.confirm(round, "follower-A", 10);
         repository.advance(10);
 
-        // Must NOT complete: only 2 unique voters, majority requires 3.
-        assertThat(cf.isDone()).isFalse();
+        assertThat(cf).isNotDone();
     }
 
-    public void testMajorityReached() {
+    public void testReadsRegisteredTogetherCompleteTogether() {
         AtomicInteger count = new AtomicInteger();
-        CompletableFuture<Void> cf = new CompletableFuture<>();
+        CompletableFuture<Void> first = new CompletableFuture<>();
+        CompletableFuture<Void> second = new CompletableFuture<>();
         ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 2)
                 .withCommitter(cfs -> {
-                    assertThat(cfs.size()).isOne();
+                    assertThat(cfs).hasSize(2);
                     cfs.forEach(c -> c.complete(null));
                     count.incrementAndGet();
                 })
                 .build();
 
-        repository.register(10, cf, "leader");
-        assertThat(cf.isDone()).isFalse();
-        assertThat(count.get()).isZero();
+        // Both reads arrive in the same batch.
+        long round = repository.register(10, List.of(first, second), "leader");
 
-        // Lower commit index doesn't affect.
-        repository.commit(9, "follower-A");
-        assertThat(cf.isDone()).isFalse();
-        assertThat(count.get()).isZero();
-
-        repository.commit(10, "follower-A");
-        assertThat(cf.isDone()).isTrue();
-        assertThat(count.get()).isOne();
-
-        repository.commit(10, "follower-B");
+        repository.confirm(round, "follower-A", 10);
+        assertThat(first).isDone();
+        assertThat(second).isDone();
         assertThat(count.get()).isOne();
     }
 
-    public void testCommitAdvance() {
-        CompletableFuture<Void> cf = new CompletableFuture<>();
-        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 20)
+    public void testConfirmationCoversEarlierRounds() {
+        AtomicInteger count = new AtomicInteger();
+        CompletableFuture<Void> first = new CompletableFuture<>();
+        CompletableFuture<Void> second = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 2)
                 .withCommitter(cfs -> {
-                    assertThat(cfs.size()).isOne();
+                    assertThat(cfs).hasSize(1);
                     cfs.forEach(c -> c.complete(null));
+                    count.incrementAndGet();
                 })
                 .build();
 
-        repository.register(10, cf, "leader");
-        assertThat(cf.isDone()).isFalse();
+        repository.register(5, List.of(first), "leader");
+        long latest = repository.register(8, List.of(second), "leader");
 
-        repository.commit(10, "follower-A");
-        assertThat(cf.isDone()).isFalse();
+        // A response to the latest request was sent after both reads arrived.
+        repository.confirm(latest, "follower-A", 8);
+        assertThat(first).isDone();
+        assertThat(second).isDone();
+        assertThat(count.get()).isEqualTo(2);
+    }
 
-        repository.advance(11);
-        assertThat(cf.isDone()).isTrue();
+    public void testMajorityChange() {
+        AtomicInteger majority = new AtomicInteger(2);
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(majority::get);
+
+        long round = repository.register(10, List.of(cf), "leader");
+
+        // Majority was initiated with 2, but now it updates to 3. This means it needs two confirmations.
+        majority.set(3);
+        repository.confirm(round, "follower-A", 10);
+        assertThat(cf).isNotDone();
+
+        repository.confirm(round, "follower-B", 10);
+        assertThat(cf).isDone();
     }
 
     public void testDestroyCompletePendingRequests() {
@@ -94,7 +187,7 @@ public class ReadOnlyRequestRepositoryTest {
                 })
                 .build();
 
-        repository.register(10, cf, "leader");
+        repository.register(10, List.of(cf), "leader");
         assertThat(cf.isDone()).isFalse();
 
         repository.destroy();
@@ -102,64 +195,23 @@ public class ReadOnlyRequestRepositoryTest {
         assertThat(counter.get()).isOne();
 
         // Registering after destroy will automatically invoke the destroyer.
-        repository.register(10, cf, "leader");
+        repository.register(10, List.of(cf), "leader");
         assertThat(counter.get()).isEqualTo(2);
-    }
-
-    public void testMajorityChange() {
-        AtomicInteger majority = new AtomicInteger(2);
-        CompletableFuture<Void> cf = new CompletableFuture<>();
-        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(majority::get)
-                .withCommitter(cfs -> {
-                    assertThat(cfs.size()).isOne();
-                    cfs.forEach(c -> c.complete(null));
-                })
-                .build();
-
-        repository.register(10, cf, "leader");
-
-        // Majority was initiated with 2, but now it updates to 3. This means it needs two commits.
-        majority.set(3);
-        repository.commit(10, "follower-A");
-        assertThat(cf.isDone()).isFalse();
-
-        repository.commit(10, "follower-B");
-        assertThat(cf.isDone()).isTrue();
-    }
-
-    public void testCommitIsUpTo() {
-        AtomicInteger count = new AtomicInteger();
-        CompletableFuture<Void> cf = new CompletableFuture<>();
-        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 2)
-                .withCommitter(cfs -> {
-                    assertThat(cfs.size()).isOne();
-                    cfs.forEach(c -> c.complete(null));
-                    count.incrementAndGet();
-                })
-                .build();
-
-        assertThat(count.get()).isZero();
-        // We register the request at index 5 and 8, but will commit with higher commits.
-        repository.register(5, cf, "leader");
-        repository.register(8, cf, "leader");
-
-        repository.commit(10, "follower-A");
-        assertThat(cf.isDone()).isTrue();
-
-        // Since it committed up-to 10, listener is invoked for 5 and 8.
-        assertThat(count.get()).isEqualTo(2);
     }
 
     public void testSingleNodeMajorityCompletesImmediately() {
         CompletableFuture<Void> cf = new CompletableFuture<>();
-        ReadOnlyRequestRepository<CompletableFuture<Void>> repository =
-                ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 1)
-                        .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
-                        .build();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 1);
 
         // Single-node: majority = 1.
-        // Registering the read should complete immediately without waiting for commit/advance.
-        repository.register(10, cf, "leader");
+        // Registering the read should complete immediately without waiting for confirmations.
+        repository.register(10, List.of(cf), "leader");
         assertThat(cf.isDone()).isTrue();
+    }
+
+    private static ReadOnlyRequestRepository<CompletableFuture<Void>> repository(Supplier<Integer> majority) {
+        return ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(majority)
+                .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
+                .build();
     }
 }

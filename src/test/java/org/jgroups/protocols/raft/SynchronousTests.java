@@ -937,6 +937,129 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
     }
 
     /**
+     * A new leader serves a linearizable read only after it knows which entries are committed. B has entry 1 from A,
+     * but A acknowledges the write before B learns it is committed. B becomes leader, and a read on B must return the
+     * value written through A.
+     * <p>
+     * The leader learns which entries are committed by committing an entry of its own term (Raft paper, §8). Before
+     * that, it must not answer read-only requests (Raft dissertation, §6.4, step 1).
+     * </p>
+     */
+    public void testNewLeaderReadSeesEntriesCommittedInPreviousTerm(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raftA = raft(0);
+        RAFT raftB = raft(1);
+
+        // A commits entry 1 (+1) with B, and the write returns. B has the entry but not the commit.
+        expect(0, add(1));
+        expect(1, stateMachine(0).counter());
+        assertIndices(1, 0, TERM, raftB);
+
+        // B becomes leader of the next term. Its no-op entry 2 does not reach A, so B does not know entry 1 is committed.
+        cluster.dropTrafficTo(address(0));
+        raftA.setLeaderAndTerm(address(1), TERM + 1);
+        raftB.setLeaderAndTerm(address(1), TERM + 1);
+        cluster.clearDroppedTraffic();
+        assertIndices(2, 0, TERM + 1, raftB);
+
+        // The read starts after the write returned, so it must see the write
+        byte[] rsp = raftB.getAsync(num(0), 0, Integer.BYTES, null).get(10, TimeUnit.SECONDS);
+        expect(1, Bits.readInt(rsp, 0));
+    }
+
+    /**
+     * A leader confirms a linearizable read only with responses to messages it sent after the read arrived. A response
+     * sent earlier shows the member followed the leader at that time, not that the leader is still the leader when the
+     * read arrives. Meanwhile, the members can elect another leader, which commits writes the old leader does not have.
+     * <p>
+     * A read on the new leader returns the new value, and a later read on the old leader must not return the value
+     * before it. The leader sends a new round of heartbeats and waits for a majority to acknowledge them (Raft
+     * dissertation, §6.4, step 3).
+     * </p>
+     */
+    public void testReadNotConfirmedByResponseSentBeforeIt(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raftA = raft(0);
+        raftA.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        RAFT raftB = raft(1);
+        RAFT raftC = raft(2);
+
+        // A commits entry 1 (+1) with B and C
+        add(1);
+        raftA.flushCommitTable(address(1));
+        raftA.flushCommitTable(address(2));
+        assertIndices(1, 1, 20, raftA, raftB, raftC);
+
+        // A commits entry 2 (+2) with B. C appends it, but its response to A is delayed in the network.
+        BlockingMessageInterceptor interceptor=cluster.addDeferringInterceptor(
+              m -> address(2).equals(m.src()) && address(0).equals(m.dest()));
+        add(2);
+        interceptor.assertNumberOfBlockedMessages(1);
+        expect(3, stateMachine(0).counter());
+
+        // A is unreachable.
+        // B becomes leader of term 21 with C's vote, commits its no-op entry 3 and entry 4 (+10) with C, and the write returns.
+        cluster.dropTrafficTo(address(0));
+        raftC.setLeaderAndTerm(address(1), 21);
+        raftB.setLeaderAndTerm(address(1), 21);
+        addAsync(raftB, 10, Options.create(false)).get(10, TimeUnit.SECONDS);
+        assertIndices(4, 4, 21, raftB);
+
+        // A read on B, still with A unreachable, returns the value with B's write
+        byte[] rsp = raftB.getAsync(num(0), 0, Integer.BYTES, null).get(10, TimeUnit.SECONDS);
+        expect(13, Bits.readInt(rsp, 0));
+        cluster.clearDroppedTraffic();
+
+        // A, still leader of term 20, receives a read after the read on B returned, and cannot reach B or C
+        cluster.dropTrafficTo(address(1)).dropTrafficTo(address(2));
+        CompletableFuture<byte[]> readOnA = raftA.getAsync(num(0), 0, Integer.BYTES, null);
+        assertThat(readOnA).as("read on A without a majority").isNotDone();
+
+        // C's response to entry 2 finally reaches A.
+        // C sent it in term 20, before the read and before it voted for B.
+        interceptor.releaseNext();
+
+        // A learns about term 21 and steps down
+        cluster.clearDroppedTraffic();
+        raftB.flushCommitTable(address(0));
+        assertThat(raftA.isLeader()).as("A is leader").isFalse();
+
+        // A does not have B's write, so the read on A either fails or returns 13. It never returns 3, the value before
+        // the write the read on B already returned.
+        assertThat(readOnA)
+              .as("read on A, submitted after the read on B returned 13")
+              .satisfiesAnyOf(
+                    f -> assertThat(f).isCompletedExceptionally(),
+                    f -> assertThat(f).isCompletedWithValueMatching(v -> Bits.readInt(v, 0) == 13, "value 13"));
+    }
+
+    /**
+     * A follower whose log is behind rejects the AppendEntries sent for a read, and the rejection still confirms the
+     * read. The follower answers only after accepting the leader of the current term, which is what the leader needs
+     * to know before serving the read (Raft dissertation, §6.4, step 3).
+     */
+    public void testFollowerRejectionConfirmsRead(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raftA = raft(0);
+        raftA.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        RAFT raftC = raft(2);
+
+        // A commits entry 1 (+1) with B. C does not receive it.
+        cluster.dropTrafficTo(address(2));
+        add(1);
+        cluster.clearDroppedTrafficTo(address(2));
+        assertThat(raftC.lastAppended()).as("last appended of C").isLessThan(raftA.lastAppended());
+
+        // B is unreachable, so only C can confirm the read.
+        // C misses entry 1 and rejects the AppendEntries of the read. The entries A sends to catch C up confirm nothing.
+        cluster.dropTrafficTo(address(1));
+        CompletableFuture<byte[]> read = raftA.getAsync(num(0), 0, Integer.BYTES, null);
+
+        assertThat(read)
+              .as("read on A, confirmed by the rejection from C")
+              .isCompletedWithValueMatching(v -> Bits.readInt(v, 0) == 1, "value 1");
+    }
+
+    /**
      * All members commit entries 1..5 in term 20. B then acts as the leader of term 21 and replicates entries 6 and 7
      * only to C before it is gone: these entries are never committed and A never sees them. A becomes the leader of
      * term 25.

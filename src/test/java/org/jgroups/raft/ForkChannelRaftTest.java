@@ -212,7 +212,7 @@ public class ForkChannelRaftTest {
      * <p>
      * The leader is not the view coordinator, so the coordinator still remembers the restarted node as the leader.
      * A restarted node must come back as a follower: the cluster runs a new election instead of handing the node its
-     * previous leadership back.
+     * previous leadership back. The new leader must then serve reads of entries committed in the previous term.
      * </p>
      */
     public void testLeaderRestartsRaftStack() throws Exception {
@@ -230,6 +230,10 @@ public class ForkChannelRaftTest {
         assertThat(leaderId).isNotEqualTo("A");
         assertLeaderAgreement(cluster);
         long term = cluster[0].raft.state().term();
+
+        // Committed before the leader restarts, read after the election in the next term.
+        String before = "before-restart";
+        cluster[0].raft.write(kv -> kv.handlePut("before", before));
 
         int index = indexOf(leaderId, cluster);
         RaftForkNode leader = cluster[index];
@@ -252,7 +256,14 @@ public class ForkChannelRaftTest {
                 .isTrue();
         assertLeaderAgreement(cluster);
 
-        // Reads of entries from earlier terms are not checked here, see the read-index task.
+        // The new leader must know the write of the previous term is committed before serving reads
+        // (Raft dissertation, §6.4, step 1).
+        for (RaftForkNode node : cluster) {
+            assertThat(node.raft.<String>read(kv -> kv.handleGet("before")))
+                    .withFailMessage("Node %s did not read the write committed before the restart", node.raftId)
+                    .isEqualTo(before);
+        }
+
         String after = "after-restart";
         restarted.raft.write(kv -> kv.handlePut("key", after));
         for (RaftForkNode node : cluster) {

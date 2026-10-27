@@ -44,6 +44,28 @@ public class RaftHeaderTest {
         _testSize(rsp, AppendEntriesResponse.class);
     }
 
+    public void testAppendEntriesRequestKeepsRound() throws Exception {
+        AppendEntriesRequest req=new AppendEntriesRequest(Util.createRandomAddress("A"), 22, 4, 21, 22, 18).round(7);
+        _testSize(req, AppendEntriesRequest.class);
+
+        AppendEntriesRequest copy=roundTrip(req, AppendEntriesRequest.class);
+        assertThat(copy.round()).isEqualTo(7);
+    }
+
+    public void testAppendEntriesResponseKeepsRound() throws Exception {
+        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(FAIL_ENTRY_NOT_FOUND, 22, 5)).round(7);
+        _testSize(rsp, AppendEntriesResponse.class);
+
+        AppendEntriesResponse copy=roundTrip(rsp, AppendEntriesResponse.class);
+        assertThat(copy.round()).isEqualTo(7);
+    }
+
+    private static <T extends RaftHeader> T roundTrip(T hdr, Class<T> clazz) throws Exception {
+        ByteArrayDataOutputStream out=new ByteArrayDataOutputStream(hdr.serializedSize());
+        hdr.writeTo(out);
+        return Util.streamableFromByteBuffer(clazz, out.buffer(), 0, out.position());
+    }
+
     public void testInstallSnapshotHeader() throws Exception {
         InstallSnapshotRequest hdr=new InstallSnapshotRequest(5);
         _testSize(hdr, InstallSnapshotRequest.class);
