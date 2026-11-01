@@ -93,7 +93,7 @@ public class ELECTION2 extends BaseElection {
                 }
                 break;
             case reached:
-                askLeaderIfJoining(joiners);
+                askLeaderIfUnknown(joiners);
                 // Passthrough.
             case leader_lost:
                 // In case the leader is lost, we stop everything *before* starting again.

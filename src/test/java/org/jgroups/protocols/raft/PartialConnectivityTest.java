@@ -6,14 +6,12 @@ import org.jgroups.View;
 import org.jgroups.raft.testfwk.PartitionedRaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
 import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
-import org.jgroups.util.Util;
 
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 
@@ -66,21 +64,18 @@ public class PartialConnectivityTest extends BaseRaftElectionTest.ClusterBased<P
                     .isFalse();
         }
 
-        // Node `E` is the new view coordinator.
+        // Node `E` is the new view coordinator and still trusts the leader that stepped down.
+        long staleTerm = raft(4).currentTerm();
         View after = createView(id++, 4, 3, 0, 1, 2);
         LOGGER.info("after restored network: {}", after);
         cluster.handleView(after);
 
-        boolean elected = Util.waitUntilTrue(3000, 200, () -> Stream.of(nodes()).allMatch(n -> n.raft().leader() != null));
-        if (election(0).getClass().equals(ELECTION2.class)) {
-            assertThat(elected).as("leader was never elected again").isTrue();
-            leaders = leaders();
-            assertThat(leaders).hasSize(1);
-            LOGGER.info("Leader after restored network: {}", leaders.get(0));
-        } else {
-            assertThat(elected).as("Leader was elected again").isFalse();
-            assertThat(election(0)).isInstanceOf(ELECTION.class);
-        }
+        // The members that saw the leader step down reveal it to the coordinator, which elects a new leader.
+        waitUntilAllHaveLeaderElected(rafts(), 10_000);
+        leaders = leaders();
+        assertThat(leaders).hasSize(1);
+        assertThat(rafts()).allSatisfy(r -> assertThat(r.currentTerm()).isGreaterThan(staleTerm));
+        LOGGER.info("Leader after restored network: {}", leaders.get(0));
     }
 
     @Override

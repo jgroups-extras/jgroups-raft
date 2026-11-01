@@ -30,7 +30,6 @@ import java.time.Instant;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -613,18 +612,25 @@ public abstract class BaseElection extends Protocol {
     }
 
     /**
-     * Asks the view coordinator for the elected leader when this node is one of the view's new members.
+     * Asks the view coordinator for the elected leader when this node joined the view or does not know the leader.
      * <p>
-     * A leader announces itself to new members when the view changes. A member that installs its Raft stack after
-     * joining the cluster, e.g., on a fork channel, misses that announcement and would not learn the leader until the
-     * next election. The coordinator answers with the leader it knows, or starts a new election if the member asking
+     * Only the coordinator starts elections, and it does not know what the other members have seen. A member that
+     * installs its Raft stack after joining, e.g., on a fork channel, misses the leader's announcement. After a
+     * partition heals, the coordinator may still trust a leader that stepped down in a minority it never saw. Asking
+     * covers both: the coordinator answers with the leader it knows, or starts a new election if the member asking
      * is that leader.
      * </p>
      *
      * @param joiners the members in the current view that were not in the previous one.
      */
-    protected final void askLeaderIfJoining(List<Address> joiners) {
-        if (isViewCoordinator() || joiners == null || !joiners.contains(local_addr))
+    protected final void askLeaderIfUnknown(Collection<Address> joiners) {
+        if (isViewCoordinator())
+            return;
+
+        // A joiner may hold a leader from an older term.
+        // The answer brings it to the current one.
+        boolean joining = joiners != null && joiners.contains(local_addr);
+        if (!joining && raft.leader() != null)
             return;
 
         Address coordinator = view.getCoord();

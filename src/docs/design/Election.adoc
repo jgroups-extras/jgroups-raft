@@ -28,6 +28,8 @@ By rewriting that part to reuse JGroups functionality, the following advantages 
 * Once a leader is elected, there won't be any elections until a new view (not including the leader, or dropping below
   the majority) is installed
 * New members get the term and the leader's address via a message from the current leader (LeaderElected)
+* Members that join or know no leader when the majority is reached ask the coordinator for the leader. This reveals a
+  leader that stepped down in a partition the coordinator never saw, so the coordinator elects a new one
 
 Voting is started by the coordinator; it increments its term and solicits the votes of all members (including itself).
 The vote responses contain the term of the last log entry and the last log index for the responding member.
@@ -53,7 +55,14 @@ voting is stopped and a LeaderElected message (with the new term and leader) is 
 
 - Coordinator: if the majority is reached or the leader left -> start the voting thread
 - Leader: new members joined -> send a LeaderElected msg to new members
+- Non-coordinator: majority reached and joined the view or has no leader -> send RetrieveLeaderElected to the coordinator
 - If the majority is lost -> leader=null
+
+=== On reception of RetrieveLeaderElected (on coordinator)
+
+- No leader known -> ignore, the coordinator elects one
+- The sender is the known leader -> it restarted or stepped down: leader=null, start the voting thread
+- Otherwise -> reply with a LeaderElected msg (leader and term) to the sender
 
 === Voting thread
 

@@ -505,6 +505,13 @@ public class LearnerMemberTest extends BaseRaftChannelTest {
         assertThat(eventually(() -> leader.role().equals("Learner"), 10, TimeUnit.SECONDS)).isTrue();
 
         waitUntilAllRaftsHaveLeader(channels(), this::raft);
+
+        // A new leader appends a no-op entry of its term right after taking the role when it has uncommitted entries
+        // (§8). Wait until it commits everything it appended, so its last index is final before comparing against it.
+        assertThat(eventually(() -> {
+            RAFT current = leader();
+            return current != null && current.commitIndex() == current.lastAppended();
+        }, 10, TimeUnit.SECONDS)).isTrue();
         RAFT newLeader = leader();
         assertThat(newLeader.raftId()).isNotEqualTo(removedRaftId);
 

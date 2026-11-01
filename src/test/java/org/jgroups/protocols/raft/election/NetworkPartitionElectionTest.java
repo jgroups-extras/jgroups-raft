@@ -10,6 +10,7 @@ import org.jgroups.raft.testfwk.PartitionedRaftCluster;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
@@ -87,6 +88,91 @@ public class NetworkPartitionElectionTest extends BaseRaftElectionTest.ClusterBa
         // Wait until A and B receive the leader information.
         BaseRaftElectionTest.waitUntilAllHaveLeaderElected(rafts(), 10_000);
         LOGGER.info("-- state after merge%n{}", dumpLeaderAndTerms());
+    }
+
+    /**
+     * A merged cluster elects a leader even when its coordinator missed the old leader stepping down.
+     * <p>
+     * Mirrors a bridge partition: the merge coordinator still trusts the old leader, while every other member knows
+     * there is no leader. Raft expects a new election once followers stop hearing from the leader (Figure 2).
+     * </p>
+     */
+    public void testMergeElectsLeaderWhenCoordinatorTrustsSteppedDownLeader(Class<?> ignore) throws Exception {
+        withClusterSize(5);
+        createCluster();
+        long id = 0;
+
+        // Node 2 coordinates the first view and wins the tie among empty logs.
+        cluster.handleView(createView(id++, 2, 0, 1, 3, 4));
+        BaseRaftElectionTest.waitUntilAllHaveLeaderElected(rafts(), 10_000);
+        assertThat(raft(2).isLeader()).isTrue();
+        long staleTerm = raft(2).currentTerm();
+
+        // Node 4 splits away; the leader keeps a majority that includes node 0.
+        cluster.handleView(createView(id++, 2, 0, 1, 3));
+        cluster.handleView(createView(id++, 4));
+
+        // Node 0 misses every view from here on. The leader drops to a minority and steps down.
+        cluster.handleView(createView(id++, 2, 3));
+        cluster.handleView(createView(id++, 1));
+        assertThat(raft(2).isLeader()).isFalse();
+        assertThat(raft(0).leader()).isEqualTo(address(2));
+
+        // The partitions heal with node 0 as coordinator, still trusting the stepped-down leader.
+        cluster.handleView(createView(id++, 0, 1, 2, 3, 4));
+
+        assertNewLeaderElectedAfter(staleTerm);
+    }
+
+    /**
+     * A merged cluster elects a leader when its coordinator trusts a stepped-down leader, even if the coordinator is
+     * the same before and after the merge.
+     * <p>
+     * The leader is not the coordinator after a leadership transfer. Nothing in the merged view changes from the
+     * coordinator's perspective, so only the members that saw the leader step down can reveal it.
+     * </p>
+     */
+    public void testMergeElectsLeaderWhenSameCoordinatorTrustsSteppedDownLeader(Class<?> ignore) throws Exception {
+        withClusterSize(5);
+        createCluster();
+        long id = 0;
+
+        // Node 0 coordinates every view. It wins the first election and then hands the leadership to node 1.
+        cluster.handleView(createView(id++, 0, 1, 2, 3, 4));
+        BaseRaftElectionTest.waitUntilAllHaveLeaderElected(rafts(), 10_000);
+        Address transferred = election(0).startForcedElection(address(0))
+                .toCompletableFuture()
+                .get(10, TimeUnit.SECONDS);
+        assertThat(transferred).isEqualTo(address(1));
+        assertThat(RaftTestUtils.eventually(() -> Arrays.stream(rafts()).allMatch(r -> Objects.equals(r.leader(), address(1))), 10, TimeUnit.SECONDS)).isTrue();
+        long staleTerm = raft(1).currentTerm();
+
+        // Node 4 splits away; the leader keeps a majority with the coordinator.
+        cluster.handleView(createView(id++, 0, 1, 2, 3));
+        cluster.handleView(createView(id++, 4));
+
+        // Node 0 misses every view from here on. The leader drops to a minority and steps down.
+        cluster.handleView(createView(id++, 1, 2));
+        cluster.handleView(createView(id++, 3));
+        assertThat(raft(1).isLeader()).isFalse();
+        assertThat(raft(0).leader()).isEqualTo(address(1));
+
+        // The partitions heal under the same coordinator, which still trusts the stepped-down leader.
+        cluster.handleView(createView(id++, 0, 1, 2, 3, 4));
+
+        assertNewLeaderElectedAfter(staleTerm);
+    }
+
+    /**
+     * Asserts every member agrees on a single leader elected after the given term.
+     *
+     * @param staleTerm the term of the leader that stepped down.
+     */
+    private void assertNewLeaderElectedAfter(long staleTerm) {
+        BaseRaftElectionTest.waitUntilAllHaveLeaderElected(rafts(), 10_000);
+        LOGGER.info("-- state after merge%n{}", dumpLeaderAndTerms());
+        assertThat(leaders()).hasSize(1);
+        assertThat(rafts()).allSatisfy(r -> assertThat(r.currentTerm()).isGreaterThan(staleTerm));
     }
 
     private RAFT raft(Address address) {
