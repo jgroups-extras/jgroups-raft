@@ -2,6 +2,7 @@ package org.jgroups.protocols.raft;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.jgroups.protocols.raft.AppendResult.Result.FAIL_CONFLICTING_PREV_TERM;
+import static org.jgroups.protocols.raft.AppendResult.Result.OK;
 
 import org.jgroups.Address;
 import org.jgroups.Global;
@@ -19,21 +20,24 @@ import org.testng.annotations.Test;
 @Test(groups = Global.FUNCTIONAL)
 public class LeaderTest {
 
-    public void testConflictingPrevTermDoesNotViolateCommitTableInvariant() {
+    public void testConflictingPrevTermDoesNotViolateCommitTableInvariant() throws Exception {
         RAFT raft = new RAFT();
         Address leaderAddr = RAFT.createRaftAddress("A");
         Address followerAddr = RAFT.createRaftAddress("B");
         raft.setAddress(leaderAddr);
         raft.request_table = new RequestTable<>();
-        raft.commit_table = new CommitTable(Collections.singletonList(followerAddr), 6);
+        InMemoryLog log = new InMemoryLog();
+        log.init("test-log-" + System.nanoTime(), null);
+        raft.log(log);
+        raft.commit_table = new CommitTable(Collections.singletonList(followerAddr), log);
         raft.createReadOnlyRequestRepository();
         Leader leader = new Leader(raft);
 
         // Follower previously committed up to 5
-        raft.commit_table.update(followerAddr, 5, 6, 5, false);
+        raft.commit_table.received(followerAddr, new AppendResult(OK, 5).commitIndex(5));
 
         // Follower rejects append with FAIL_CONFLICTING_PREV_TERM where result.index() == 5, commit_index == 5
-        AppendResult result = new AppendResult(FAIL_CONFLICTING_PREV_TERM, 5, 1).commitIndex(5);
+        AppendResult result = new AppendResult(FAIL_CONFLICTING_PREV_TERM, 5, 5).commitIndex(5);
 
         // When leader handles this response, match_index must not be set below commit_index (5)
         leader.handleAppendEntriesResponse(followerAddr, 1, 0, result);
@@ -92,50 +96,38 @@ public class LeaderTest {
         assertThat(sentMessage.get()).as("Should not send AppendEntries with prev_term=0").isNull();
     }
 
-    public void testResendSingleWithTruncatedPredecessorTriggersSnapshot() throws Exception {
-        AtomicBoolean snapshotSent = new AtomicBoolean(false);
+    /**
+     * A heartbeat asks the follower to check its entry at an index against the leader's entry there. With the term of
+     * another entry, a follower holding the entry sees a conflict and deletes it, together with the entries after it.
+     */
+    public void testHeartbeatCarriesTermOfEntryItChecks() throws Exception {
         AtomicReference<Message> sentMessage = new AtomicReference<>();
-        RAFT raft = new RAFT() {
-            @Override
-            protected void sendSnapshotTo(Address dest) {
-                snapshotSent.set(true);
-            }
-        };
-        Address leaderAddr = RAFT.createRaftAddress("A");
+        RAFT raft = new RAFT();
+        raft.setAddress(RAFT.createRaftAddress("A"));
         Address followerAddr = RAFT.createRaftAddress("B");
-        raft.setAddress(leaderAddr);
-
-        Protocol downProt = new Protocol() {
+        raft.setDownProtocol(new Protocol() {
             @Override
             public Object down(Message msg) {
                 sentMessage.set(msg);
                 return null;
             }
-        };
-        raft.setDownProtocol(downProt);
+        });
 
+        // Entries 1 and 2 are from term 20, entry 3 from term 21.
         InMemoryLog log = new InMemoryLog();
-        log.init("test-log-single-" + System.nanoTime(), null);
+        log.init("test-log-" + System.nanoTime(), null);
         byte[] data = new byte[]{1, 2, 3};
         log.append(1, new LogEntries()
-                .add(new LogEntry(2, data))
-                .add(new LogEntry(2, data))
-                .add(new LogEntry(2, data))
-                .add(new LogEntry(2, data))
-                .add(new LogEntry(2, data)));
-        log.commitIndex(5);
-        log.truncate(5);
-
+                .add(new LogEntry(20, data))
+                .add(new LogEntry(20, data))
+                .add(new LogEntry(21, data)));
         raft.log(log);
 
-        assertThat(raft.log().firstAppended()).isEqualTo(5);
-        assertThat(raft.log().get(4)).isNull();
-        assertThat(raft.log().get(5)).isNotNull();
+        // The follower acknowledged entry 2 and learns it is committed.
+        raft.send(followerAddr, new CommitTable.Send.Heartbeat(2));
 
-        // Call resend single index 5
-        raft.resend(followerAddr, 5);
-
-        assertThat(snapshotSent.get()).as("Snapshot should have been triggered").isTrue();
-        assertThat(sentMessage.get()).as("Should not send AppendEntries with prev_term=0").isNull();
+        AppendEntriesRequest hdr = sentMessage.get().getHeader(raft.getId());
+        assertThat(hdr.prev_log_index).isEqualTo(2);
+        assertThat(hdr.prev_log_term).as("term of entry 2").isEqualTo(20);
     }
 }

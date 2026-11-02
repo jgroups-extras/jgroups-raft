@@ -9,68 +9,104 @@ import java.io.IOException;
 
 /**
  * The result of an AppendEntries request
+ *
  * @author Bela Ban
- * @since  0.1
+ * @since 0.1
  */
 public class AppendResult implements Streamable {
 
-    public enum Result {OK, FAIL_ENTRY_NOT_FOUND, FAIL_CONFLICTING_PREV_TERM}
-
-    /** True if the append succeeded, false otherwise */
-    protected Result  result;
-
-    /** The index of the last appended entry if success == true. If success is false, the first index for
+    /**
+     * True if the append succeeded, false otherwise
+     */
+    protected Result result;
+    /**
+     * The index of the last appended entry if success == true. If success is false, the first index for
      * non-matching term. If index == 0, this means the follower doesn't have a log and needs to run the
-     * InstallSnapshot protocol to fetch the initial snapshot */
-    protected long    index;
+     * InstallSnapshot protocol to fetch the initial snapshot
+     */
+    protected long index;
+    /**
+     * The commit_index of the follower
+     */
+    protected long commit_index;
 
-    /** The commit_index of the follower */
-    protected long    commit_index;
+    /**
+     * The index of the entry before the entries of the request this result answers.
+     *
+     * <p>
+     * Tells the leader which request a rejection answers, so it can tell a rejection of a request sent before its
+     * catch-up from one sent after the catch-up was lost.
+     * </p>
+     */
+    private long prevLogIndex;
 
-    /** Ignored if success == true. If success is false, the non-matching term. */
-    protected long    non_matching_term; // todo: needed ?
-
-    public AppendResult() {}
+    public AppendResult() { }
 
     public AppendResult(Result result, long index) {
-        this.result=result;
-        this.index=index;
+        this.result = result;
+        this.index = index;
     }
 
-    public AppendResult(Result result, long index, long non_matching_term) {
+    public AppendResult(Result result, long index, long prevLogIndex) {
         this(result, index);
-        this.non_matching_term=non_matching_term;
+        this.prevLogIndex = prevLogIndex;
     }
 
-    public boolean      success()            {return result != null && result == Result.OK;}
-    public long         index()              {return index;}
-    public long         commitIndex()        {return commit_index;}
-    public long         nonMatchingTerm()    {return non_matching_term;}
-    public AppendResult commitIndex(long ci) {this.commit_index=ci; return this;}
+    public boolean success() {
+        return result != null && result == Result.OK;
+    }
+
+    public long index() {
+        return index;
+    }
+
+    public long commitIndex() {
+        return commit_index;
+    }
+
+    public long prevLogIndex() {
+        return prevLogIndex;
+    }
+
+    public AppendResult commitIndex(long ci) {
+        this.commit_index = ci;
+        return this;
+    }
+
+    public Result result() {
+        return result;
+    }
 
     public int size() {
-        return Bits.size(result.ordinal()) + Bits.size(index) + Bits.size(commit_index) + Bits.size(non_matching_term);
+        return Bits.size(result.ordinal())
+                + Bits.size(index)
+                + Bits.size(commit_index)
+                + Bits.size(prevLogIndex);
     }
 
+    @Override
     public void writeTo(DataOutput out) throws IOException {
         Bits.writeIntCompressed(result.ordinal(), out);
         Bits.writeLongCompressed(index, out);
         Bits.writeLongCompressed(commit_index, out);
-        Bits.writeLongCompressed(non_matching_term, out);
+        Bits.writeLongCompressed(prevLogIndex, out);
     }
 
+    @Override
     public void readFrom(DataInput in) throws IOException {
-        int ordinal=Bits.readIntCompressed(in);
-        result=Result.values()[ordinal];
-        index=Bits.readLongCompressed(in);
-        commit_index=Bits.readLongCompressed(in);
-        non_matching_term=Bits.readLongCompressed(in);
+        int ordinal = Bits.readIntCompressed(in);
+        result = Result.values()[ordinal];
+        index = Bits.readLongCompressed(in);
+        commit_index = Bits.readLongCompressed(in);
+        prevLogIndex = Bits.readLongCompressed(in);
     }
 
-
+    @Override
     public String toString() {
-        return String.format("%b%s, index=%d, commit-index=%d%s",
-                             success(), success()? "" : String.format(" (%s)", result), index, commit_index,
-                             non_matching_term> 0? String.format(", non-matching-term=%d", non_matching_term) : "");
+        return String.format("%b%s, index=%d, commit-index=%d, prev-log-index=%d",
+                success(), success() ? "" : String.format(" (%s)", result), index, commit_index,
+                prevLogIndex);
     }
+
+    public enum Result {OK, FAIL_ENTRY_NOT_FOUND, FAIL_CONFLICTING_PREV_TERM}
 }

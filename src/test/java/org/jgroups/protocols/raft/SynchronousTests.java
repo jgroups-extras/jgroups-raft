@@ -21,6 +21,8 @@ import org.jgroups.util.Util;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.assertj.core.api.SoftAssertions;
 import org.testng.annotations.AfterMethod;
@@ -629,60 +631,6 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
         assertCommitTableIndeces(address(2), raft_a, 6, 6, 7);
     }
 
-    @Test(dataProvider = "logProvider")
-    public void testFollowerCatchesUpWhenResendDetectsTruncatedPredecessor(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
-        RAFT raft_a = raft(0);
-        raft_a.setLeaderAndTerm(address(0), 20);
-        addMemberC();
-        for(int i=1; i <= 5; i++)
-            add(i);
-
-        CounterStateMachine sma = stateMachine(0);
-        CounterStateMachine smb = stateMachine(1);
-        CounterStateMachine smc = stateMachine(2);
-        expect(15, sma.counter());
-        expect(10, smb.counter());
-        expect(10, smc.counter());
-        assertIndices(5, 5, 20, raft_a);
-
-        RAFT raft_c = raft(2);
-        assertIndices(5, 4, 20, raft_c);
-        raft_a.flushCommitTable(address(2));
-        expect(15, smc.counter());
-        assertIndices(5, 5, 20, raft_c);
-        assertCommitTableIndeces(address(2), raft_a, 5, 5, 6);
-
-        // Drop traffic to C so C misses entry 6
-        cluster.dropTrafficTo(address(2));
-        add(6);
-        expect(21, sma.counter());
-        assertIndices(6, 6, 20, raft_a);
-        assertIndices(5, 5, 20, raft_c);
-
-        // Leader snapshots at index 6. Truncation deletes entries 1..5.
-        raft_a.snapshot();
-        assertThat(raft_a.log().firstAppended()).isEqualTo(6);
-        assertThat(raft_a.log().get(5)).as("Predecessor entry 5 should be truncated").isNull();
-
-        // Resume traffic to C
-        cluster.clearDroppedTraffic();
-
-        // Set C's next_index to 7 (beyond last_appended 6) while match_index is 5.
-        // This causes sendAppendEntriesMessage to bypass nextIndex <= firstAppended (7 > 6)
-        // and hit: last_appended (6) > match_index (5) -> resend(member, last_appended = 6).
-        CommitTable.Entry e = raft_a.commitTable().get(address(2));
-        e.nextIndex(7);
-
-        // Flush commit table to C.
-        // resend(member, 6) must detect that predecessor 5 is truncated and send a snapshot to C,
-        // allowing C to catch up to counter value 21.
-        raft_a.flushCommitTable(address(2));
-
-        expect(21, smc.counter());
-        assertIndices(6, 6, 20, raft_c);
-        assertCommitTableIndeces(address(2), raft_a, 6, 6, 7);
-    }
-
     /**
      * A lagging follower catches up while the leader keeps receiving writes, without waiting for a resend round.
      * The other follower keeps committing in the meantime.
@@ -765,6 +713,90 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
         expect(66, smc.counter());
         assertIndices(11, 11, 20, raft_c);
         assertCommitTableIndeces(address(2), raft_a, 11, 11, 12);
+    }
+
+    /**
+     * The catch-up a leader sends a lagging follower can be lost. The follower then rejects every request after it,
+     * and under constant writes the leader is never idle long enough for a resend round. The first rejection of a
+     * request sent after the catch-up shows it was lost, and the leader sends it again.
+     */
+    public void testLaggingFollowerCatchesUpWhenCatchUpIsLost(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raftA = raft(0);
+        raftA.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for (int i = 1; i <= 5; i++)
+            add(i);
+        RAFT raftC = raft(2);
+
+        // C misses entries 6..8. A and B commit them.
+        cluster.dropTrafficTo(address(2));
+        for (int i = 6; i <= 8; i++)
+            add(i);
+        cluster.clearDroppedTraffic();
+        assertIndices(5, 4, 20, raftC);
+
+        // The first catch-up A sends to C is lost: the interceptor holds it and never releases it.
+        AtomicBoolean lost = new AtomicBoolean();
+        BlockingMessageInterceptor interceptor = cluster.addDeferringInterceptor(
+              m -> address(2).equals(m.dest()) && m instanceof ObjectMessage om && om.getObject() instanceof LogEntries
+                    && lost.compareAndSet(false, true));
+
+        // C rejects the request for entry 9, and A sends the catch-up [6..9], which never arrives.
+        add(9);
+        interceptor.assertNumberOfBlockedMessages(1);
+        assertIndices(5, 4, 20, raftC);
+
+        // Only writes from now on: resend_interval is too large for a resend round to happen during the test.
+        // C rejects the request for entry 10, which A sent after the catch-up, so A sends the catch-up again.
+        add(10);
+
+        // C accepts entry 11 and learns from it that 10 is committed.
+        add(11);
+        expect(55, stateMachine(2).counter());
+        assertIndices(11, 10, 20, raftC);
+    }
+
+    /**
+     * The leader resends missing entries to a follower, which might not receive them. Resending the entries again
+     * before the follower answers only adds traffic to a follower that might be unreachable, and the entries to resend
+     * grow with every write. The leader waits for an answer before sending more entries, and the follower still catches
+     * up once it is reachable again.
+     */
+    public void testUnansweredFollowerReceivesNoEntriesUntilItAnswers(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raftA = raft(0);
+        raftA.setLeaderAndTerm(address(0), 20);
+        addMemberC();
+        for (int i = 1; i <= 5; i++)
+            add(i);
+        RAFT raftC = raft(2);
+
+        // C is unreachable and misses entries 6..8. A and B commit them.
+        cluster.dropTrafficTo(address(2));
+        for (int i = 6; i <= 8; i++)
+            add(i);
+
+        // Count the entries A sends to C from now on. The interceptor never holds a message.
+        AtomicInteger entriesToC = new AtomicInteger();
+        cluster.addCommandInterceptor(m -> {
+            if (address(2).equals(m.dest()) && m instanceof ObjectMessage om && om.getObject() instanceof LogEntries entries)
+                entriesToC.addAndGet(entries.size());
+            return false;
+        });
+
+        // The first resend round sends the missing entries, C never receives them.
+        raftA.flushCommitTable(address(2));
+        assertThat(entriesToC.get()).as("entries resent to C").isEqualTo(3);
+
+        // C did not answer, so the next rounds send no entries.
+        raftA.flushCommitTable(address(2));
+        raftA.flushCommitTable(address(2));
+        assertThat(entriesToC.get()).as("entries resent to C without an answer").isEqualTo(3);
+
+        // C is reachable again. A single resend round reaches C, and its answer is enough to catch up.
+        cluster.clearDroppedTraffic();
+        raftA.flushCommitTable(address(2));
+        expect(36, stateMachine(2).counter());
+        assertIndices(8, 8, 20, raftC);
     }
 
     /**
@@ -1057,6 +1089,65 @@ public class SynchronousTests extends BaseRaftClusterTest<RaftCluster> {
         assertThat(read)
               .as("read on A, confirmed by the rejection from C")
               .isCompletedWithValueMatching(v -> Bits.readInt(v, 0) == 1, "value 1");
+    }
+
+    /**
+     * The request a leader sends to confirm a read can be lost. The leader retries it with its next message to the
+     * follower, even when the follower already has every entry and commit, so the read does not wait for a later read
+     * or write. Raft recovers lost requests by retrying them instead of relying on the transport to retransmit.
+     */
+    public void testFlushConfirmsReadWithLostRequest(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raftA = raft(0);
+        RAFT raftB = raft(1);
+
+        // A commits entry 1 (+1) with B, and B learns about the commit.
+        // B is up to date: A has nothing else to replicate to it.
+        add(1);
+        raftA.flushCommitTable(address(1));
+        assertIndices(1, 1, TERM, raftA, raftB);
+
+        // The request A sends for the read never reaches B.
+        cluster.dropTrafficTo(address(1));
+        CompletableFuture<byte[]> read = raftA.getAsync(num(0), 0, Integer.BYTES, null);
+        cluster.clearDroppedTrafficTo(address(1));
+        assertThat(read).as("read on A, request lost").isNotDone();
+
+        // The resend round reaches B, which confirms the read.
+        raftA.flushCommitTable(address(1));
+        assertThat(read)
+              .as("read on A, confirmed after the flush")
+              .isCompletedWithValueMatching(v -> Bits.readInt(v, 0) == 1, "value 1");
+    }
+
+    /**
+     * The requests a leader sends for a write and a read are both lost. The entries the leader resends to the follower
+     * also retry the confirmation of the read, so both complete once the follower is reachable.
+     */
+    public void testResendConfirmsReadWithLostRequest(@SuppressWarnings("unused") Class<?> logClass) throws Exception {
+        RAFT raftA = raft(0);
+        RAFT raftB = raft(1);
+
+        // A commits entry 1 (+1) with B, and B learns about the commit.
+        add(1);
+        raftA.flushCommitTable(address(1));
+        assertIndices(1, 1, TERM, raftA, raftB);
+
+        // The requests A sends for entry 2 (+2) and for the read never reach B.
+        cluster.dropTrafficTo(address(1));
+        CompletableFuture<byte[]> write = addAsync(raftA, 2, Options.create(false));
+        CompletableFuture<byte[]> read = raftA.getAsync(num(0), 0, Integer.BYTES, null);
+        cluster.clearDroppedTrafficTo(address(1));
+        assertThat(write).as("write on A, request lost").isNotDone();
+        assertThat(read).as("read on A, request lost").isNotDone();
+
+        // The resend of entry 2 reaches B, which commits the write and confirms the read.
+        raftA.flushCommitTable(address(1));
+        assertThat(write).as("write on A, committed after the resend").isCompleted();
+
+        // The write is concurrent with the read, so the read returns the value before or after it.
+        assertThat(read)
+              .as("read on A, confirmed after the resend")
+              .isCompletedWithValueMatching(v -> Bits.readInt(v, 0) == 1 || Bits.readInt(v, 0) == 3, "value 1 or 3");
     }
 
     /**

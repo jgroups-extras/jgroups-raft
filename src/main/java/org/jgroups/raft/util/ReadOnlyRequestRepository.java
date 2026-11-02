@@ -102,6 +102,22 @@ public final class ReadOnlyRequestRepository<R> {
     }
 
     /**
+     * Returns the newest round with reads still waiting, or 0 when no read is waiting.
+     *
+     * <p>
+     * The request a round was handed out for can be lost. Any later request carrying this round lets the followers
+     * confirm every pending read, since confirming a round also confirms all earlier ones.
+     * </p>
+     *
+     * @return the newest pending round, or 0 if there is none.
+     */
+    public long pendingRound() {
+        // Entries confirmed but waiting for the commit index stay here, too.
+        // Sending their round again is harmless.
+        return requests.isEmpty() ? 0 : requests.lastKey();
+    }
+
+    /**
      * Registers new reads and returns the round the request sent for them must carry.
      *
      * <p>

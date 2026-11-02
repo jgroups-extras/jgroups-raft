@@ -96,7 +96,8 @@ public abstract class RaftImpl {
             LogEntry prev = raft.log_impl.get(prev_index);
             if (prev == null) {
                 raft.num_failed_append_requests_not_found++;
-                return new AppendResult(FAIL_ENTRY_NOT_FOUND, raft.lastAppended());
+                // The leader uses prev_index to tell which of its requests this rejection answers.
+                return new AppendResult(FAIL_ENTRY_NOT_FOUND, raft.lastAppended(), prev_index);
             }
 
             if (prev.term != prev_term) {
@@ -110,7 +111,7 @@ public abstract class RaftImpl {
                 } else {
                     raft.deleteAllLogEntriesStartingFrom(conflictingIndex);
                 }
-                return new AppendResult(FAIL_CONFLICTING_PREV_TERM, conflictingIndex, prev.term)
+                return new AppendResult(FAIL_CONFLICTING_PREV_TERM, conflictingIndex, prev_index)
                         .commitIndex(raft.commitIndex());
             }
         }

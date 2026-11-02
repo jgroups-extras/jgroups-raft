@@ -104,6 +104,10 @@ public class RaftCluster extends MockRaftCluster {
     }
 
     private void sendSingle(RaftNode node, Message msg, boolean async) {
+        // The destination is not in the cluster or its traffic is dropped, see dropTrafficTo(Address).
+        // Same as sendMany() does for each target.
+        if(node == null)
+            return;
         if(this.async || async)
             deliverAsync(node, msg);
         else

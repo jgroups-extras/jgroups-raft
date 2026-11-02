@@ -40,7 +40,7 @@ public class RaftHeaderTest {
     }
 
     public void testAppendEntriesResponse() throws Exception {
-        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(FAIL_ENTRY_NOT_FOUND, 22, 5));
+        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(FAIL_ENTRY_NOT_FOUND, 22, 30));
         _testSize(rsp, AppendEntriesResponse.class);
     }
 
@@ -53,11 +53,18 @@ public class RaftHeaderTest {
     }
 
     public void testAppendEntriesResponseKeepsRound() throws Exception {
-        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(FAIL_ENTRY_NOT_FOUND, 22, 5)).round(7);
+        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(FAIL_ENTRY_NOT_FOUND, 22, 30)).round(7);
         _testSize(rsp, AppendEntriesResponse.class);
 
         AppendEntriesResponse copy=roundTrip(rsp, AppendEntriesResponse.class);
         assertThat(copy.round()).isEqualTo(7);
+    }
+
+    public void testAppendEntriesResponseKeepsPrevLogIndex() throws Exception {
+        AppendEntriesResponse rsp=new AppendEntriesResponse(22, new AppendResult(FAIL_ENTRY_NOT_FOUND, 22, 30));
+
+        AppendEntriesResponse copy=roundTrip(rsp, AppendEntriesResponse.class);
+        assertThat(copy.result.prevLogIndex()).isEqualTo(30);
     }
 
     private static <T extends RaftHeader> T roundTrip(T hdr, Class<T> clazz) throws Exception {

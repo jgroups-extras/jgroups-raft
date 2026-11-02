@@ -373,8 +373,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         AppendResult result=append(impl, 11, 7, new LogEntry(6, buf), leader, 1);
         assertThat(result)
                 .satisfies(r -> assertThat(r.success()).isFalse())
-                .satisfies(r -> assertThat(r.index()).isEqualTo(8))
-                .satisfies(r -> assertThat(r.nonMatchingTerm()).isEqualTo(6));
+                .satisfies(r -> assertThat(r.index()).isEqualTo(8));
         assertLogIndices(log, 7, 1, 5);
     }
 
@@ -394,8 +393,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         AppendResult result=append(impl, 2, 7, new LogEntry(7, buf), leader, 1);
         assertThat(result)
                 .satisfies(r -> assertThat(r.success()).isFalse())
-                .satisfies(r -> assertThat(r.index()).isEqualTo(1))
-                .satisfies(r -> assertThat(r.nonMatchingTerm()).isEqualTo(1));
+                .satisfies(r -> assertThat(r.index()).isEqualTo(1));
         assertLogIndices(log, 0, 0, 0);
     }
 
@@ -417,8 +415,7 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
         AppendResult result=append(impl, 4, 7, new LogEntry(7, buf), leader, 1);
         assertThat(result)
                 .as("Verifying: " + result)
-                .returns(3L, AppendResult::index)
-                .returns(5L, AppendResult::nonMatchingTerm);
+                .returns(3L, AppendResult::index);
         assertLogIndices(log, 2, 1, 3);
     }
 

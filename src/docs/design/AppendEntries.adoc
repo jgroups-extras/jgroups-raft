@@ -1,19 +1,52 @@
 = Handling of AppendEntries messages
-:description: The design of the ELECTION2 algorithm for leader election.
+:description: How the leader replicates its log with AppendEntries requests, and how it handles the responses.
 :homepage: https://jgroups-extras.github.io/jgroups-raft
 :sectnums:
 
 == State
 
 * The leader maintains
-    ** last_appended: index of the last entry added to the log (see Log.txt)
+    ** last-appended: index of the last entry added to the log (see Log.txt)
     ** commit-index: index of the highest committed entry
-* The leader maintains (for each member P)
-    ** next-index: the index of the next entry to be sent to P (initialized to last_appended +1)
+* The leader maintains for each member P, in the CommitTable (RAFT.commit_table)
+    ** next-index: the index of the next entry to be sent to P (initialized to last-appended +1)
     ** match-index: the index of the highest entry known to be replicated to P (initialized to 0)
     ** commit-index: the index of the highest entry known to be committed by P. This is only needed because - contrary
-                    to the RAFT paper - AppendEntries requests are only sent until P.next_index > last_appended, and not
+                    to the RAFT paper - AppendEntries requests are only sent until P.next-index > last-appended, and not
                     continually (also acting as heartbeats). Initialized to 0.
+    ** probing: set after P answers with a conflicting term, while the leader looks for the index where P's log
+                matches its own
+    ** catch-up-index: how far the last entries or snapshot sent to P bring it, 0 once P acknowledges them
+* The CommitTable alone changes this state, from P's responses. The leader asks the CommitTable what to send P and
+  only executes the answer
+
+
+== Transport of the requests
+
+* Requests carrying entries, and the requests sent to confirm reads, use the flags NO_FC and NO_RELIABILITY
+    ** Raft retries lost requests itself (paper, §5.3): P answers the next request with a failure, and the leader
+       resends. The reliable and flow controlled multicast of JGroups is not needed for them
+    ** Flow control waits for the credits of every member. A member that stops answering blocks the leader, although
+       a majority is reachable, until failure detection removes it from the view
+    ** Without reliability, the leader does not keep a copy of every request for a member that does not acknowledge it
+* Requests without entries skip flow control anyway, as their payload is empty
+* Every request carries the newest round of pending linearizable reads (dissertation, §6.4, step 3), so any request P
+  answers confirms them, also when the request first sent for them was lost. A response confirms the reads of the round
+  it echoes and of every earlier round
+
+
+== Heartbeats
+
+* A heartbeat is an AppendEntries request without entries, with prev-index and the term of the leader's entry at
+  prev-index
+* It is *not* the periodic heartbeat of the RAFT paper (§5.2): leadership and elections do not depend on it, failure
+  detection and view changes in JGroups take that role
+* The leader sends one only when it has something to tell P without sending entries:
+    ** a commit P can apply: P commits at most up to prev-index (paper, Fig. 2, AppendEntries RPC rule #5)
+    ** a round confirming pending reads
+    ** a probe to P when it did not acknowledge the last catch-up: its rejection tells the leader where P's log ends
+* The term must be the one of the entry at prev-index. With another term, P sees a conflict and deletes the entry and
+  the ones after it, which it may have acknowledged already
 
 
 == Adding an entry at the leader
@@ -27,73 +60,104 @@
 === On reception of an AppendEntries request req(prev-index,prev-term) from P
 
 * On the followers only
-* If req.term < current-term -> send an AppendEntries(false) response to P and return
+* If req.term < current-term -> drop the request
 * Set current-term to req.term and leader to req.leader
-* prev = log.get(prev-index)
-* curr-index=prev-index +1
-* If req is empty:
-    ** Apply all log entries from commit-index+1 to req.commit-index
-    ** Set commit-index to req.commit-index
-    ** Send an AppendEntries(true) response with commit-index to P
-* Else
-    ** If prev == null and prev-index > 0
-        *** Send AppendEntries(false) response with index=last-appended
+* If prev-index > commit-index:
+    ** prev = log.get(prev-index)
+    ** If prev == null:
+        *** Send an AppendEntries(false, entry not found) response with index=last-appended and prev-index=req.prev-index
         *** Return
-    ** If prev-index == 0 or prev-term == prev.term
-        *** Get the entry at index curr-index
-        *** If not empty and terms don't match: delete entry at curr-index and all following entries
-        *** Append new entry at index curr-index
-        *** Send AppendEntries(true) response with index=curr-index
-    ** Else
-        *** If prev != null -> send AppendEntries(false) response with first index of conflicting term
-        *** Else -> send AppendEntries(true) response with curr-index
+    ** If prev.term != req.prev-term:
+        *** conflicting-index = first index of the term prev.term in the log
+        *** If conflicting-index > commit-index: delete the entries from conflicting-index on
+        *** Send an AppendEntries(false, conflicting term) response with index=conflicting-index and
+            prev-index=req.prev-index
+        *** Return
+* For each entry in req, at index prev-index+1, prev-index+2, ...:
+    ** Skip it if the index is at or below commit-index, or the log has an entry with the same term at the index
+    ** If the log has an entry with another term at the index: delete it and all following entries
+    ** Append it and the entries after it
+* Commit up to min(req.commit-index, prev-index + number of entries in req)
+* Send an AppendEntries(true) response with index=prev-index + number of entries in req
+* Every response echoes the round of req
+* Responses echo req.prev-index so the leader knows which request a rejection answers
 
 
-=== On reception of an AppendEntries response rsp(index,commit-index) from P
+=== On reception of an AppendEntries response rsp(index,commit-index,prev-index) from P
 
+* Any response in the current term confirms the pending reads up to the round it echoes
 * Set P.commit-index to max(P.commit-index, rsp.commit-index)
 * Success:
-    ** Set P.match-index=rsp.index and P.next-index=rsp.index+1
+    ** Set P.match-index=max(P.match-index, rsp.index) and P.next-index=rsp.index+1
+    ** Stop probing. If rsp.index >= P.catch-up-index, P acknowledged the catch-up: set P.catch-up-index=0
     ** Add response to request-table
-        *** If majority:
+        *** If majority, and the entry is from the current term:
             **** Apply log entries in range [commit-index+1 .. rsp.index] to state machine
             **** Set commit-index to index of last successfully applied entry
-    ** [optimization]
-    *** Send AppendEntries in range [P.match-index+1 .. last_appended] to P
-      // 1 message ? otherwise we'll send all msgs in this range to P, which causes more traffic than necessary
+        *** If RAFT.send_commits_immediately and the entry is committed: send a commit notification to every member
 * Failure, entry not found (P's log is shorter than the request's prev-index, rsp.index is P's last-appended):
-    ** Set P.next-index=rsp.index+1
-    ** If last-appended >= P.next-index and no catch-up to P is in flight:
-        *** Send AppendEntries in range [P.next-index .. last-appended] to P, or a snapshot if P.next-index is at or
-            below log.first_applied
-        *** Consider the catch-up in flight until P answers with success or with a conflicting term
+    ** Set P.match-index=max(P.match-index, rsp.index), P.next-index=rsp.index+1, stop probing
+    ** If last-appended >= P.next-index and rsp.prev-index >= P.catch-up-index:
+        *** Send the catch-up, see "What a member misses" below
         // Retrying right away, instead of waiting for the periodic resend, matters under load: P rejects every new
         // entry multicast by the leader until it receives the missing ones.
-        // Rejections already on their way describe the same gap, so they do not send the range again.
+        // A rejection with rsp.prev-index < P.catch-up-index answers a request sent before the catch-up, it describes
+        // the same gap and does not send the catch-up again.
+        // A rejection with rsp.prev-index >= P.catch-up-index answers a request sent after the catch-up, which P would
+        // have accepted with it. The catch-up was lost, and it is sent again.
     ** P still verifies prev-index and prev-term of the catch-up, so a conflicting term at P's last entry turns into
        the failure below
 * Failure, conflicting term (rsp.index is the first index of the conflicting term in P's log):
     ** Set P.match-index=max(rsp.commit-index, rsp.index-1) and P.next-index=max(rsp.commit-index+1, rsp.index)
+    ** Start probing and set P.catch-up-index=0
     ** The next periodic resends send a single entry at a time, until P accepts one (probing for the match point)
     ** P deleted its entries from rsp.index on, so the next rejection of a multicast is an entry not found failure,
        which sends the whole range again
+
+
+=== What a member misses
+
+* Decided for a catch-up after an entry not found failure, and for the periodic resending:
+    ** If P.next-index <= log.first-appended and log.first-appended > 1: // e.g. my log is [15 .. 120], but P.next-index is 10
+        *** Send snapshot to P
+        // The request for the entries checks the entry before P.next-index, which the snapshot truncated
+    ** Else if last-appended >= P.next-index:
+        *** If probing: send AppendEntries request with the entry at index P.next-index
+        *** Else: send AppendEntries request with the entries in range [P.next-index .. last-appended]
+    ** Else if last-appended > P.match-index:
+        *** Send AppendEntries request with the entry at last-appended
+        // The leader sent every entry, but P did not acknowledge the last one, e.g. a new leader, or a lost response.
+        // P either accepts it, or its rejection tells where its log ends
+    ** Else if commit-index > P.commit-index:
+        *** Send a heartbeat at last-appended
+    ** Else if commit-index < last-appended:
+        *** Send AppendEntries request with the entries in range [commit-index+1 .. last-appended]
+        // P has them, but the leader misses acknowledgements to commit them (https://github.com/jgroups-extras/jgroups-raft/issues/30)
+* When the decision sends entries or a snapshot, set P.catch-up-index to the last index sent, or to the snapshot's
+  last included index (log.first-appended)
 
 
 === Periodic resending of AppendEntries requests
 
 * Performed on the *leader* only
 * Executed when no request was received for RAFT.resend_interval ms
-* For each member P in the CommitTable (RAFT.commit_table):
-    ** If P.next-index < log.first_applied: // e.g. my log is [15 .. 120], but P.next-index is 10
-        *** Send snapshot to P
-        *** continue
-    ** If last_appended >= P.next-index:
-        *** If probing for the match point (see conflicting term above): send AppendEntries request with the entry at
-            index P.next-index and commit-index
-        *** Else: send AppendEntries request with the entries in range [P.next-index .. last_appended] and commit-index
-        *** continue
-    ** If commit-index > P.commit-index:
-        *** Send AppendEntries message with empty entry and commit-index
+* For each member P in the CommitTable:
+    ** If P.catch-up-index > 0: send a heartbeat at last-appended
+        // P did not acknowledge the last catch-up, it may be unreachable. Sending the growing range of entries, or the
+        // whole snapshot, again on every round only adds traffic. The heartbeat costs a few bytes, and its rejection
+        // (prev-index = last-appended >= P.catch-up-index) sends the catch-up again as soon as P answers
+    ** Else: send what P misses, see "What a member misses" above
+    ** If nothing is sent and reads are pending: send a heartbeat at last-appended
+
+
+=== Commit notifications
+
+* Only with RAFT.send_commits_immediately, after the leader commits an entry
+* For each member P in the CommitTable:
+    ** If min(commit-index, P.match-index) > P.commit-index and P.match-index >= log.first-appended:
+        *** Send a heartbeat at P.match-index
+        // P commits up to the entries it acknowledged, without waiting for its acknowledgements still on the way.
+        // An entry truncated by a snapshot cannot be checked, the periodic resending brings P up to date
 
 
 === On reception of snapshot S from P

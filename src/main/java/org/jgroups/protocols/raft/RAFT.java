@@ -954,7 +954,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     @ManagedOperation(description="Sends all pending AppendEntriesRequests")
     public void flushCommitTable() {
         if(commit_table != null)
-            commit_table.forEach(this::sendAppendEntriesMessage);
+            commit_table.forEach((member, ignore) -> sendAppendEntriesMessage(member));
     }
 
     /**
@@ -966,9 +966,8 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      */
     public void flushCommitTable(Address member) {
         if (!isLeader()) throw new IllegalStateException("Currently not the leader, should be " + leader());
-        CommitTable.Entry e=commit_table.get(Objects.requireNonNull(member));
-        if(e != null)
-            sendAppendEntriesMessage(member, e);
+        if(commit_table.get(Objects.requireNonNull(member)) != null)
+            sendAppendEntriesMessage(member);
     }
 
 
@@ -1066,7 +1065,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 Message msg=new ObjectMessage(null, new LogEntries())
                         .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
                                 current_term, commit_index).round(round))
-                        .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+                        // don't receive my own request
+                        .setFlag(Message.TransientFlag.DONT_LOOPBACK)
+                        // Raft retries the round with the next requests.
+                        .setFlag(Message.Flag.NO_FC, Message.Flag.NO_RELIABILITY);
+
                 down_prot.down(msg);
             }
             return;
@@ -1081,10 +1084,14 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         reqtab.create(curr_index, raft_id, dr, this::majority, dr.options());
 
         // 3. Multicast an AppendEntries message (exclude self)
+        // A follower that misses it answers the next request with a failure, and the leader resends (paper, §5.3).
+        // Flow control would block the leader on a follower that stopped answering, even with a reachable majority.
         Message msg=new ObjectMessage(null, entries)
-          .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
+                .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
                                                   current_term, commit_index))
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+                // don't receive my own request
+                .setFlag(Message.TransientFlag.DONT_LOOPBACK)
+                .setFlag(Message.Flag.NO_FC, Message.Flag.NO_RELIABILITY);
         down_prot.down(msg);
 
         snapshotIfNeeded(length);
@@ -1171,7 +1178,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             first_req=processing_queue.poll(resend_interval, TimeUnit.MILLISECONDS);
             if(first_req == null) { // poll() timed out
                 if(commit_table != null)
-                    commit_table.forEach(this::sendAppendEntriesMessage);
+                    commit_table.forEach((member, ignore) -> sendAppendEntriesMessage(member));
                 return;
             }
             for(;;) {
@@ -1274,9 +1281,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         // Multicast an AppendEntries message (exclude self)
         Message msg=new ObjectMessage(null, entries)
-          .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
+                .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, prev_index, prev_term,
                                                   current_term, commit_index).round(round))
-          .setFlag(Message.TransientFlag.DONT_LOOPBACK); // don't receive my own request
+                // don't receive my own request
+                .setFlag(Message.TransientFlag.DONT_LOOPBACK)
+                // Raft retries lost requests automatically.
+                .setFlag(Message.Flag.NO_FC, Message.Flag.NO_RELIABILITY);
         down_prot.down(msg);
 
         if (entries.size() != 0) {
@@ -1311,7 +1321,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         List<Address> jg_mbrs=view != null? view.getMembers() : new ArrayList<>();
         List<Address> mbrs=new ArrayList<>(jg_mbrs);
         mbrs.remove(local_addr);
-        commit_table=new CommitTable(mbrs, last_appended +1);
+        commit_table=new CommitTable(mbrs, log_impl);
     }
 
     void createReadOnlyRequestRepository() {
@@ -1364,57 +1374,90 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     }
 
     /**
-     * Runs (on the leader) as part of the queue handling loop: checks if all members (except the leader) in the commit
-     * table have received all messages and resends AppendEntries messages to members who haven't.<br/>
-     * For each member, a next-index and match-index is maintained: next-index is the index of the next message to send to
-     * that member (initialized to last-applied) and match-index is the index of the highest message known to have
-     * been received by the member.<br/>
-     * Messages are resent to a given member as long as that member's match-index is smaller than its next-index. When
-     * match_index == next_index, message resending for that member is stopped. When a new message is sent,
-     * next-index is incremented (on reception of the AppendResult) and resending starts again.
+     * Returns the newest read round still waiting for confirmation, or 0 if none.
+     *
+     * <p>
+     * Every request to a follower carries it, since the request the round was first sent with may be lost.
+     * </p>
+     *
+     * @return the newest read round still waiting confirmation, or 0 if none.
      */
-    protected void sendAppendEntriesMessage(Address member, CommitTable.Entry e) {
-        long firstAppended = log().firstAppended();
-        if(e.nextIndex() <= firstAppended && firstAppended > 1) {
+    private long pendingReadRound() {
+        // Only a leader has the repository, and some tests drive resends on a member that never became leader.
+        ReadOnlyRequestRepository<?> rorr = readOnlyRequests;
+        return rorr != null ? rorr.pendingRound() : 0;
+    }
+
+    /**
+     * Runs a resend round for the member.
+     *
+     * <p>
+     * Raft retries what a member did not acknowledge (paper, §5.3), and the round also retries the confirmation of
+     * pending reads, as the request sent for them may have been lost.
+     * </p>
+     */
+    protected void sendAppendEntriesMessage(Address member) {
+        CommitTable.Send next = commit_table.resend(member);
+        // A pending read retries its round with every request, as the one it was sent with may have been lost.
+        if (next instanceof CommitTable.Send.Nothing && pendingReadRound() > 0)
+            next = new CommitTable.Send.Heartbeat(last_appended);
+
+        send(member, next);
+    }
+
+    /**
+     * Sends the member what the commit table decided.
+     */
+    void send(Address member, CommitTable.Send send) {
+        if (send instanceof CommitTable.Send.Entries entries) {
+            if (log.isTraceEnabled())
+                log.trace("%s: resending [%d..%d] to %s", local_addr, entries.from(), entries.to(), member);
+            resend(member, entries.from(), entries.to());
+            return;
+        }
+
+        if (send instanceof CommitTable.Send.Heartbeat heartbeat) {
+            sendHeartbeat(member, heartbeat.prevIndex());
+            return;
+        }
+
+        if (send instanceof CommitTable.Send.Snapshot) {
             try {
-                sendSnapshotTo(member); // will reset snapshot_in_progress
+                sendSnapshotTo(member);
+            } catch (Exception e) {
+                log.error("%s: failed sending snapshot to %s: first_appended=%d", local_addr, member, log().firstAppended());
             }
-            catch(Exception ex) {
-                log.error("%s: failed sending snapshot to %s: next_index=%d, first_applied=%d",
-                          local_addr, member, e.nextIndex(), log().firstAppended());
-            }
-            return;
         }
-        if(this.last_appended >= e.nextIndex()) {
-            long to=e.sendSingleMessage()? e.nextIndex() : last_appended;
-            long from=Math.max(e.nextIndex(),1);
-            if(log.isTraceEnabled())
-                log.trace("%s: resending [%d..%d] to %s", local_addr, from, to, member);
-            resend(member, from, to);
-            return;
-        }
-        if(this.last_appended > e.matchIndex()) {
-            long index=this.last_appended;
-            if(index > 0) {
-                log.trace("%s: resending %d to %s", local_addr, index, member);
-                resend(member, index);
-            }
-            return;
-        }
-        if (this.commit_index > e.commitIndex()) {
-            // Commit message: the member has all our entries (last_appended <= match_index).
-            // It verifies our last entry and commits up to it (paper, Fig. 2, AppendEntries RPC rule #5).
-            long current_term = currentTerm();
-            LogEntry last = log_impl.get(last_appended);
-            long lastTerm = last != null ? last.term() : 0;
-            Message msg=new ObjectMessage(member, null)
-              .putHeader(id, new AppendEntriesRequest(this.local_addr, current_term, last_appended, lastTerm,
-                                                      current_term, this.commit_index));
-            down_prot.down(msg);
-            return;
-        }
-        if(this.commit_index < this.last_appended) // fixes https://github.com/jgroups-extras/jgroups-raft/issues/30
-            resend(member, this.commit_index+1, this.last_appended);
+    }
+
+    /**
+     * Sends the member an AppendEntries without entries, checked against the leader's entry at the given index.
+     *
+     * <p>
+     * Not the periodic heartbeat from the Raft paper (§5.2): leadership and elections do not depend on it. JGroups failure
+     * detection and view changes take that role, see {@link ELECTION}. The leader sends it only when it has something to
+     * tell the member without sending entries:
+     * </p>
+     * <ul>
+     *     <li>a commit the member can apply (paper, Fig. 2, AppendEntries RPC rule #5);</li>
+     *     <li>a round confirming pending reads (dissertation, §6.4, step 3);</li>
+     *     <li>a probe to a member that did not answer, whose rejection tells the leader where its log ends.</li>
+     * </ul>
+     *
+     * @param member    The member to send it to.
+     * @param prevIndex The leader's entry the member checks. The member commits at most up to it, and deletes it if its
+     *                  own entry there has another term, so the message carries the term of this entry.
+     */
+    private void sendHeartbeat(Address member, long prevIndex) {
+        long currentTerm = currentTerm();
+        // The term of the entry the member checks, not of the leader's last entry.
+        // They differ after a term change, and a wrong term makes the member delete entries it acknowledged.
+        LogEntry prev = log_impl.get(prevIndex);
+        long prevTerm = prev != null ? prev.term() : 0;
+        AppendEntriesRequest hdr = new AppendEntriesRequest(this.local_addr, currentTerm, prevIndex, prevTerm, currentTerm, this.commit_index)
+                .round(pendingReadRound());
+        Message msg = new ObjectMessage(member, null).putHeader(id, hdr);
+        down_prot.down(msg);
     }
 
     protected CompletableFuture<byte[]> changeMembers(String name, InternalCommand.Type type) throws Exception {
@@ -1434,31 +1477,6 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
                 .handle((ignore, t) -> setAsync(buf, 0, buf.length, true, null))
                 // Chain the new setAsync invocation.
                 .thenCompose(Function.identity());
-    }
-
-    protected void resend(Address target, long index) {
-        LogEntry entry=log_impl.get(index);
-        if(entry == null) {
-            log.error("%s: resending of %d failed; entry not found", local_addr, index);
-            return;
-        }
-        LogEntry prev=log_impl.get(index-1);
-        if (index - 1 > 0 && prev == null) {
-            log.debug("%s: predecessor %d not found in log for resend to %s; sending snapshot", local_addr, index, target);
-            try {
-                sendSnapshotTo(target);
-            } catch (Exception e) {
-                log.error("%s: failed sending snapshot to %s", local_addr, target, e);
-            }
-            return;
-        }
-        long prev_term=prev != null? prev.term : 0;
-        LogEntries entries=new LogEntries().add(entry);
-        Message msg=new ObjectMessage(target, entries)
-          .putHeader(id, new AppendEntriesRequest(this.local_addr, currentTerm(), index - 1, prev_term,
-                                                  entry.term, commit_index));
-        down_prot.down(msg);
-        num_resends++;
     }
 
     /** Resends all entries in range [from .. to] to target */
@@ -1489,8 +1507,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         }
         long prev_term=prev != null? prev.term : 0;
         Message msg=new ObjectMessage(target, entries)
-          .putHeader(id, new AppendEntriesRequest(this.local_addr, currentTerm(), from - 1, prev_term,
-                                                  entry_term, commit_index));
+                .putHeader(id, new AppendEntriesRequest(this.local_addr, currentTerm(), from - 1, prev_term,
+                                                  entry_term, commit_index).round(pendingReadRound()))
+                // A lost resend is retried by the next resend round or the follower's next failure response.
+                .setFlag(Message.Flag.NO_FC, Message.Flag.NO_RELIABILITY);
         down_prot.down(msg);
         num_resends++;
     }
@@ -1672,7 +1692,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
         if(commit_table != null) {
             List<Address> mbrs=new ArrayList<>(view.getMembers());
             mbrs.remove(local_addr);
-            commit_table.adjust(mbrs, last_appended + 1);
+            commit_table.adjust(mbrs);
         }
 
         // if we're the leader, check if the view contains no duplicate raft-ids

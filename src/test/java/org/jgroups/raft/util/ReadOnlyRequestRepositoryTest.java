@@ -209,6 +209,51 @@ public class ReadOnlyRequestRepositoryTest {
         assertThat(cf.isDone()).isTrue();
     }
 
+    public void testPendingRoundConfirmsEveryWaitingRead() {
+        CompletableFuture<Void> first = new CompletableFuture<>();
+        CompletableFuture<Void> second = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 2);
+        assertThat(repository.pendingRound()).as("no read waiting").isZero();
+
+        // The requests sent with both rounds are lost.
+        repository.register(10, List.of(first), "leader");
+        repository.register(10, List.of(second), "leader");
+
+        // A later request retries the pending round.
+        repository.confirm(repository.pendingRound(), "follower-A", 10);
+        assertThat(first).isDone();
+        assertThat(second).isDone();
+        assertThat(repository.pendingRound()).as("every read completed").isZero();
+    }
+
+    public void testConfirmedReadWaitingForCommitKeepsRoundPending() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = repository(() -> 2);
+
+        long round = repository.register(12, List.of(cf), "leader");
+        repository.confirm(round, "follower-A", 10);
+        assertThat(cf).as("confirmed, but the commit index is behind the read index").isNotDone();
+        assertThat(repository.pendingRound()).isEqualTo(round);
+
+        repository.advance(12);
+        assertThat(cf).isDone();
+        assertThat(repository.pendingRound()).isZero();
+    }
+
+    public void testNoPendingRoundAfterDestroy() {
+        CompletableFuture<Void> cf = new CompletableFuture<>();
+        ReadOnlyRequestRepository<CompletableFuture<Void>> repository = ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(() -> 2)
+                .withDestroyer(cfs -> cfs.forEach(c -> c.completeExceptionally(new IllegalStateException("not leader"))))
+                .build();
+
+        repository.register(10, List.of(cf), "leader");
+        assertThat(repository.pendingRound()).isPositive();
+
+        // A member that steps down has no reads left to confirm.
+        repository.destroy();
+        assertThat(repository.pendingRound()).isZero();
+    }
+
     private static ReadOnlyRequestRepository<CompletableFuture<Void>> repository(Supplier<Integer> majority) {
         return ReadOnlyRequestRepository.<CompletableFuture<Void>>builder(majority)
                 .withCommitter(cfs -> cfs.forEach(c -> c.complete(null)))
