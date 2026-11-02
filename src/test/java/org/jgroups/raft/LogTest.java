@@ -17,7 +17,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -399,6 +401,86 @@ public class LogTest {
         assertThat(last).isEqualTo(6);
         assertThat(log.size()).isEqualTo(2);
         assertIndices(5,6,5,15);
+    }
+
+    public void testAppendAfterReinitializePastLastAppended(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        appendIndexed(log, 1, 5, 1);
+
+        // A follower behind the leader installs a snapshot past the end of its log.
+        log.reinitializeTo(20, new LogEntry(3, null));
+        appendIndexed(log, 21, 21, 4);
+
+        assertIndexedEntry(log.get(21), 21, 4);
+    }
+
+    public void testReinitializeStoresSnapshotEntry(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        appendIndexed(log, 1, 5, 1);
+
+        log.reinitializeTo(20, new LogEntry(3, null));
+
+        // The leader reads the term at its last index to fill prevLogTerm, even right after installing a snapshot.
+        LogEntry entry=log.get(20);
+        assertThat(entry).isNotNull();
+        assertThat(entry.term()).isEqualTo(3);
+    }
+
+    public void testTruncateAfterReinitializePastLastAppended(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        appendIndexed(log, 1, 5, 1);
+        log.reinitializeTo(20, new LogEntry(3, null));
+        appendIndexed(log, 21, 25, 4);
+        log.commitIndex(25);
+
+        log.truncate(23);
+
+        List<Long> indexes=new ArrayList<>();
+        log.forEach((entry, index) -> indexes.add(index));
+        assertThat(indexes).containsExactly(23L, 24L, 25L);
+        assertThat(log.firstAppended()).isEqualTo(23);
+    }
+
+    public void testAppendAfterReinitializeWithinLog(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        appendIndexed(log, 1, 10, 1);
+
+        // The snapshot covers part of the log, the follower discards everything after it.
+        log.reinitializeTo(5, new LogEntry(3, null));
+        appendIndexed(log, 6, 6, 4);
+
+        assertIndexedEntry(log.get(6), 6, 4);
+    }
+
+    public void testGetPastLastAppendedAfterTruncate(Log log) throws Exception {
+        this.log=log;
+        log.init(filename, null);
+        appendIndexed(log, 1, 10, 1);
+        log.commitIndex(10);
+        log.truncate(5);
+
+        assertThat(log.get(11)).isNull();
+    }
+
+    /**
+     * Appends one entry per index in {@code [from, to]}, each holding its own index as data, so a read from the wrong
+     * position is visible.
+     */
+    private static void appendIndexed(Log log, int from, int to, long term) throws Exception {
+        LogEntries le=new LogEntries();
+        for(int i=from; i <= to; i++)
+            le.add(new LogEntry(term, new byte[]{(byte)i}));
+        log.append(from, le);
+    }
+
+    private static void assertIndexedEntry(LogEntry entry, int index, long term) {
+        assertThat(entry).isNotNull();
+        assertThat(entry.term()).isEqualTo(term);
+        assertThat(entry.command()[entry.offset()]).isEqualTo((byte)index);
     }
 
 

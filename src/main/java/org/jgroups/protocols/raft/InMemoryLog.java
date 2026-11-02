@@ -23,39 +23,38 @@ import java.util.function.ObjLongConsumer;
  * <b>will be lost</b>. If data must survive restarts, use another implementation.
  *
  * @author Bela Ban
- * @since  0.2
  * @see Log
+ * @since 0.2
  */
 public class InMemoryLog implements Log {
     // keeps all logs, keyed by name
-    public static final Map<String,Log> logs=new ConcurrentHashMap<>();
-    private boolean                   fsync;
-    private long                      current_term;
-    private long                      first_appended;
-    private long                      last_appended;
-    private long                      commit_index;
+    public static final Map<String, Log> logs = new ConcurrentHashMap<>();
+    protected String name; // the name of this log
+    protected volatile Address voted_for;
+    protected volatile ByteBuffer snapshot;
+    private boolean fsync;
+    private long current_term;
+    private long first_appended;
+    private long last_appended;
+    private long commit_index;
     private ArrayRingBuffer<LogEntry> entries;
-    protected String                  name; // the name of this log
-    protected volatile Address        voted_for;
-    protected volatile ByteBuffer     snapshot;
 
     public InMemoryLog() { }
 
     @Override
-    public void init(String log_name, Map<String,String> args) throws Exception {
-        name=log_name;
-        InMemoryLog existing=(InMemoryLog)logs.put(name, this);
-        if(existing != null) {
-            voted_for=existing.voted_for;
+    public void init(String log_name, Map<String, String> args) throws Exception {
+        name = log_name;
+        InMemoryLog existing = (InMemoryLog) logs.put(name, this);
+        if (existing != null) {
+            voted_for = existing.voted_for;
             this.current_term = existing.current_term;
             this.first_appended = existing.first_appended;
             this.last_appended = existing.last_appended;
             this.commit_index = existing.commit_index;
             this.entries = existing.entries;
             this.snapshot = existing.snapshot;
-        }
-        else {
-            voted_for=null;
+        } else {
+            voted_for = null;
             this.entries = new ArrayRingBuffer<>(16, 1);
             this.current_term = 0;
             this.first_appended = 0;
@@ -74,51 +73,63 @@ public class InMemoryLog implements Log {
     }
 
     @Override
-    public void close() {}
+    public void close() {
+    }
 
     @Override
-    public long currentTerm() {return current_term;}
+    public long currentTerm() {
+        return current_term;
+    }
 
     @Override
     public Log currentTerm(long new_term) {
-        current_term=new_term;
+        current_term = new_term;
         return this;
     }
 
     @Override
-    public Address votedFor() {return voted_for;}
+    public Address votedFor() {
+        return voted_for;
+    }
 
     @Override
     public Log votedFor(Address member) {
-        voted_for=member; return this;
-    }
-
-    @Override
-    public long commitIndex() {return commit_index;}
-
-    @Override
-    public Log commitIndex(long new_index) {
-        commit_index=new_index;
+        voted_for = member;
         return this;
     }
 
     @Override
-    public long firstAppended() {return first_appended;}
+    public long commitIndex() {
+        return commit_index;
+    }
 
     @Override
-    public long lastAppended() {return last_appended;}
+    public Log commitIndex(long new_index) {
+        commit_index = new_index;
+        return this;
+    }
 
     @Override
-    public void setSnapshot(InputStream input) throws IOException {
-        this.snapshot = input != null
-                ? ByteBuffer.wrap(input.readAllBytes())
-                : null;
+    public long firstAppended() {
+        return first_appended;
+    }
+
+    @Override
+    public long lastAppended() {
+        return last_appended;
     }
 
     @Override
     public InputStream getSnapshot() {
         return snapshot != null
                 ? new ByteArrayInputStream(snapshot.array(), snapshot.position(), snapshot.remaining())
+                : null;
+    }
+
+    @Override
+    public void setSnapshot(InputStream input) throws IOException {
+        this.snapshot = input != null
+                ? ByteBuffer.wrap(input.readAllBytes())
                 : null;
     }
 
@@ -144,54 +155,53 @@ public class InMemoryLog implements Log {
         for (LogEntry entry : entries) {
             this.entries.add(entry);
         }
-        last_appended=Math.max(last_appended, candidate_last);
-        current_term=Math.max(current_term, candidate_term);
+        last_appended = Math.max(last_appended, candidate_last);
+        current_term = Math.max(current_term, candidate_term);
         return last_appended;
     }
 
 
     @Override
     public LogEntry get(long index) {
-        if (index <= 0) return null;
-
-        int real_index=(int)(index - first_appended);
-        return real_index < 0 || entries.isEmpty() || real_index > entries.size()
-                ? null
-                : entries.get(index);
+        // Ring positions match Raft indexes, so the ring's own bounds are the log's bounds.
+        // Index 0 and anything truncated or not yet appended fall outside bounds.
+        return entries.contains(index) ? entries.get(index) : null;
     }
 
     @Override
     public void truncate(long index_exclusive) {
         long actual_index = Math.min(index_exclusive, commit_index);
         entries.dropHeadUntil(actual_index);
-        first_appended=actual_index;
+        first_appended = actual_index;
         if (last_appended < actual_index) {
-            last_appended =actual_index;
+            last_appended = actual_index;
         }
     }
 
     @Override
     public void reinitializeTo(long index, LogEntry entry) {
-        current_term=entry.term();
-        entries.dropHeadUntil(index);
-        entries.dropTailToHead();
-        first_appended=commit_index=last_appended=index;
+        current_term = entry.term();
+        // Start a new ring at the snapshot index so ring positions keep matching Raft indexes, whatever it was before.
+        // The new ring should also allow the previous instance to be garbage collected.
+        entries = new ArrayRingBuffer<>(16, index);
+        entries.add(entry);
+        first_appended = commit_index = last_appended = index;
     }
 
     @Override
     public void deleteAllEntriesStartingFrom(long start_index) {
-        int idx=(int)(start_index- first_appended);
-        if(idx < 0 || idx > entries.size())
+        int idx = (int) (start_index - first_appended);
+        if (idx < 0 || idx > entries.size())
             return;
 
         assert start_index > commit_index; // the commit index cannot go back!
 
         entries.dropTailTo(start_index);
-        LogEntry last=get(start_index - 1);
-        current_term=last != null? last.term : 0;
-        last_appended=start_index-1;
-        if(commit_index > last_appended)
-            commit_index=last_appended;
+        LogEntry last = get(start_index - 1);
+        current_term = last != null ? last.term : 0;
+        last_appended = start_index - 1;
+        if (commit_index > last_appended)
+            commit_index = last_appended;
     }
 
     @Override
@@ -199,8 +209,8 @@ public class InMemoryLog implements Log {
         long start = Math.max(start_index, entries.getHeadSequence());
         long end = Math.min(end_index, entries.getTailSequence() - 1);
 
-        for(long i=start; i <= end; i++) {
-            LogEntry entry=entries.get(i);
+        for (long i = start; i <= end; i++) {
+            LogEntry entry = entries.get(i);
             function.accept(entry, i);
         }
     }
@@ -218,9 +228,9 @@ public class InMemoryLog implements Log {
 
     @Override
     public String toString() {
-        StringBuilder sb=new StringBuilder();
-        sb.append("first_appended=").append(first_appended).append(", last_appended=").append(last_appended)
-                .append(", commit_index=").append(commit_index).append(", current_term=").append(current_term);
-        return sb.toString();
+        return "first_appended=" + first_appended
+                + ", last_appended=" + last_appended
+                + ", commit_index=" + commit_index
+                + ", current_term=" + current_term;
     }
 }
