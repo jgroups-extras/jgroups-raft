@@ -71,7 +71,9 @@ public class NetworkPartitionChannelTest extends BaseRaftElectionTest.ChannelBas
         assertThat(coordIndex(leader)).isEqualTo(leader);
         LOGGER.info("before partition: {}", view(leader));
 
-        partition(stream(indexes).filter(t -> t != coord).toArray(), new int[]{coord});
+        // The singleton side first: GMS loses the suspicions that make a member coordinator when a view without that
+        // member arrives at the same time, and the loopback transport still delivers the majority's view to it.
+        partition(new int[]{coord}, stream(indexes).filter(t -> t != coord).toArray());
         assertThat(coordIndex(leader)).isEqualTo(leader);
         assertThat(coordIndex(coord)).isEqualTo(coord);
         LOGGER.info("partition1: {}", view(leader));

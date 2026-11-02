@@ -13,6 +13,7 @@ import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.raft.DummyStateMachine;
 import org.jgroups.raft.testfwk.RaftCluster;
 import org.jgroups.raft.testfwk.RaftNode;
+import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.raft.tests.harness.BaseRaftElectionTest;
 import org.jgroups.stack.Protocol;
 import org.jgroups.util.ExtendedUUID;
@@ -31,9 +32,20 @@ public class LateJoinerRetrievesLeaderTest extends BaseRaftElectionTest.ClusterB
         createManually = true;
     }
 
+    private RaftNode lateJoiner;
+
     @AfterMethod
     protected void destroy() throws Exception {
         destroyCluster();
+
+        // The cluster closes only the nodes it created.
+        // The late joiner's log is kept by name, and its term would leak into the next run, which then ignores a leader elected with a lower term.
+        if (lateJoiner != null) {
+            lateJoiner.stop();
+            lateJoiner.destroy();
+            RaftTestUtils.deleteRaftLog(lateJoiner.raft());
+            lateJoiner = null;
+        }
     }
 
     /**
@@ -200,7 +212,8 @@ public class LateJoinerRetrievesLeaderTest extends BaseRaftElectionTest.ClusterB
             election.raft(raft).setAddress(address);
         }
 
-        return new RaftNode(cluster, stack);
+        lateJoiner = new RaftNode(cluster, stack);
+        return lateJoiner;
     }
 
     /**
