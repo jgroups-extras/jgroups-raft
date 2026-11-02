@@ -240,6 +240,24 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
         LOG.warn("Unexpected header type in async install: %s", hdr);
     }
 
+    /**
+     * Checks whether a snapshot installed from the leader made an asynchronous local snapshot obsolete.
+     *
+     * <p>
+     * A local snapshot captures the state at {@code commitIndex} but completes later, outside the event loop. When the
+     * node installs the leader's snapshot in the meantime, the local snapshot holds an older state. Committing it
+     * would replace the installed state and truncate the log behind its first entry, losing the entries between both
+     * snapshots.
+     * </p>
+     *
+     * @param commitIndex the index the local snapshot was created at.
+     * @return {@code true} if the local snapshot must be discarded, {@code false} if it is safe to commit.
+     */
+    private boolean supersededByInstall(long commitIndex) {
+        // Only an install moves the log's first entry past the index of a local snapshot still in progress.
+        return log.firstAppended() > commitIndex;
+    }
+
     private void handleMetadata(SnapshotMetadataRequest smr, PostInstallAction action) throws IOException {
         if (transfer != null) {
             // Metadata is only ever received to START a transfer.
@@ -418,7 +436,8 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
                 handle.writeContentTo(out);
                 out.flush();
 
-                CompletionStage<Void> cs;
+                // Completes true if snapshot applied.
+                CompletionStage<Boolean> cs;
 
                 // After everything is written, we update the snapshot in the log.
                 // If the log supports a 2-phase snapshot write, we utilize it.
@@ -432,24 +451,31 @@ final class AsynchronousSnapshotManager implements SnapshotManager {
                     // Still on the background thread, write the data into the file.
                     // Flip to the new file in the event loop, since it writes through the Log interface.
                     cs = eventLoop.submit(() -> {
+                        // The staged file is left behind and removed by the next stage.
+                        if (supersededByInstall(commitIndex))
+                            return Boolean.FALSE;
                         capability.commit(originalOut);
                         action.onSnapshotDone(commitIndex);
-                        return null;
+                        return Boolean.TRUE;
                     });
                 } else {
                     // If the log implementation does support this 2-phase writes, we do everything in the event loop.
                     // This inevitably stalls the event loop until all the write and swap finishes.
                     cs = eventLoop.submit(() -> {
+                        if (supersededByInstall(commitIndex))
+                            return Boolean.FALSE;
                         log.setSnapshot(Channels.newInputStream(channel.position(0)));
                         action.onSnapshotDone(commitIndex);
-                        return null;
+                        return Boolean.TRUE;
                     });
                 }
-                cs.whenComplete((ignore, t) -> {
+                cs.whenComplete((applied, t) -> {
                     if (t != null) {
                         metrics.snapshotFailedCreate();
-                    } else {
+                    } else if (applied) {
                         metrics.snapshotCreated();
+                    } else {
+                        LOG.debug("Discarded async snapshot index=%d, a newer snapshot was installed meanwhile", commitIndex);
                     }
 
                     if (LOG.isDebugEnabled())

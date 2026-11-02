@@ -8,6 +8,7 @@ import org.jgroups.Address;
 import org.jgroups.Global;
 import org.jgroups.protocols.raft.FileBasedLog;
 import org.jgroups.protocols.raft.InMemoryLog;
+import org.jgroups.protocols.raft.Log;
 import org.jgroups.protocols.raft.PersistentState;
 import org.jgroups.protocols.raft.internal.RaftEventLoop;
 import org.jgroups.protocols.raft.internal.snapshot.messages.SnapshotChunkRequest;
@@ -154,6 +155,61 @@ public class AsynchronousSnapshotManagerTest {
 
         assertThat(asyncSnapshot.prepareCallCount.get()).isEqualTo(2);
         assertThat(metrics.numSnapshots()).isEqualTo(2);
+    }
+
+    public void testCreateDiscardedWhenSnapshotInstalledMeanwhile() throws Exception {
+        assertCreateDiscardedWhenSnapshotInstalledMeanwhile(log);
+    }
+
+    public void testCreateWithStagedCapabilityDiscardedWhenSnapshotInstalledMeanwhile() throws Exception {
+        try (FileBasedLog fileLog = createFileBasedLog()) {
+            assertCreateDiscardedWhenSnapshotInstalledMeanwhile(fileLog);
+        }
+    }
+
+    /**
+     * A follower creates its own snapshot at index 5 and, before it finishes, installs the leader's snapshot at
+     * index 20. The installed snapshot must survive.
+     */
+    private void assertCreateDiscardedWhenSnapshotInstalledMeanwhile(Log target) throws Exception {
+        CountDownLatch writeGate = new CountDownLatch(1);
+        TestSnapshotHandle handle = new TestSnapshotHandle(42, writeGate);
+        TestAsyncSnapshot asyncSnapshot = new TestAsyncSnapshot(0);
+        asyncSnapshot.nextHandle = handle;
+
+        AsynchronousSnapshotManager manager = new AsynchronousSnapshotManager(
+                createEventLoop(), asyncSnapshot, persistentState, target, noOpSender(), metrics,
+                tempDir, 256 * 1024, 16);
+
+        // The follower starts its own snapshot at commit index 5, which idles while writing.
+        AtomicBoolean actionCalled = new AtomicBoolean();
+        manager.create(5, idx -> actionCalled.set(true));
+        assertThat(handle.awaitWriteStarted(5, SECONDS)).isTrue();
+
+        // Meanwhile, it installs the leader's snapshot at index 20.
+        ByteBuffer snapshotData = createSnapshotBuffer(persistentState, 77);
+        byte[] raw = new byte[snapshotData.remaining()];
+        snapshotData.get(raw);
+        Address leader = Util.createRandomAddress("leader");
+        manager.install(ByteBuffer.allocate(0),
+                new SnapshotMetadataRequest(leader, 1, 2, 20, raw.length), (idx, t) -> {});
+        manager.install(ByteBuffer.wrap(raw),
+                new SnapshotChunkResponse(1, 20, 0, true), (idx, t) -> {});
+
+        // The follower's own snapshot finishes after the install.
+        writeGate.countDown();
+        assertThat(handle.awaitRelease(5, SECONDS)).isTrue();
+
+        // The older snapshot must not replace the installed one, nor truncate the log behind it.
+        assertThat(actionCalled.get()).isFalse();
+        assertThat(target.firstAppended()).isEqualTo(20);
+        try (InputStream snapshot = target.getSnapshot()) {
+            assertThat(snapshot).isNotNull();
+
+            DataInput in = new DataInputStream(new BufferedInputStream(snapshot));
+            new PersistentState().readFrom(in);
+            assertThat(in.readInt()).isEqualTo(77);
+        }
     }
 
     public void testCreatePrepareSnapshotFailure() {
