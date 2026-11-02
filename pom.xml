@@ -76,7 +76,7 @@
         <version.nexus3.plugin>1.0.13</version.nexus3.plugin>
         <version.clean.plugin>3.5.0</version.clean.plugin>
         <version.compiler.plugin>3.16.0</version.compiler.plugin>
-        <version.enforcer.plugin>3.6.3</version.enforcer.plugin>
+        <version.enforcer.plugin>3.7.0</version.enforcer.plugin>
         <version.install.plugin>3.2.0</version.install.plugin>
         <version.jar.plugin>3.5.1</version.jar.plugin>
         <version.resources.plugin>3.5.0</version.resources.plugin>
@@ -403,7 +403,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
-                <version>3.6.3</version>
+                <version>3.7.0</version>
                 <executions>
                     <execution>
                         <id>enforce-java</id>
