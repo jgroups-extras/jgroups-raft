@@ -88,7 +88,7 @@ public class ELECTION2 extends BaseElection {
                 }
                 // If we have no change in terms of majority threshold. If the view coordinator changed, we need to
                 // verify if an election is necessary.
-                if (Utils.viewCoordinatorChanged(previousView, v) && isViewCoordinator() && view.size() >= raft.majority()) {
+                if (Utils.viewCoordinatorChanged(previousView, v) && isViewCoordinator() && isMajorityAvailable()) {
                     preVotingMechanism.start();
                 }
                 break;
@@ -184,8 +184,7 @@ public class ELECTION2 extends BaseElection {
         }
 
         public void start() {
-            int majority = raft.majority();
-            if (!isRunning() && isViewCoordinator() && !isVotingThreadRunning() && view.getMembers().size() >= majority) {
+            if (!isRunning() && isViewCoordinator() && !isVotingThreadRunning() && isMajorityAvailable()) {
                 log.trace("%s: starting pre-voting mechanism", local_addr);
                 startPreVotingPhase();
             }

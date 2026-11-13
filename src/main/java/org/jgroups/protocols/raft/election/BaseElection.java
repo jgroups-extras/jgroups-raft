@@ -447,9 +447,29 @@ public abstract class BaseElection extends Protocol {
             return;
         }
 
-        View electionView = this.view;
+        // Hold the lock so a concurrent view change either sees the voting thread stopped or is still in this block.
+        // Otherwise, a voter joining between the check and the stop would leave no election running.
+        Collection<Address> electorate;
+        synchronized (lock) {
+            View electionView = this.view;
+            electorate = filterToRaftMembers(electionView.getMembersRaw());
+
+            // Without a majority in the view, no round can succeed.
+            // Stop before creating a new term.
+            // Otherwise, every attempt creates a term that will never succeed.
+            if (electorate.size() < raft.majority()) {
+                if (log.isDebugEnabled())
+                    log.debug("%s: only %d voters in view %s (majority=%d), stopping voting thread",
+                            local_addr, electorate.size(), electionView, raft.majority());
+
+                stopVotingThreadInternal();
+                result.completeExceptionally(new IllegalStateException("No majority of voters in the view"));
+                return;
+            }
+        }
+
         long new_term = raft.createNewTerm();
-        votes.reset(filterToRaftMembers(electionView.getMembersRaw()));
+        votes.reset(electorate);
         num_voting_rounds++;
 
         TimeService time = raft.timeService();
