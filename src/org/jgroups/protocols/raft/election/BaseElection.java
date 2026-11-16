@@ -1,5 +1,8 @@
 package org.jgroups.protocols.raft.election;
 
+import static org.jgroups.Message.Flag.OOB;
+import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
+
 import org.jgroups.Address;
 import org.jgroups.EmptyMessage;
 import org.jgroups.Event;
@@ -26,9 +29,6 @@ import java.util.Iterator;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
-
-import static org.jgroups.Message.Flag.OOB;
-import static org.jgroups.Message.TransientFlag.DONT_LOOPBACK;
 
 /**
  * Abstract leader election algorithm functionalities.
@@ -334,9 +334,27 @@ public abstract class BaseElection extends Protocol {
             }
         }
 
-        View electionView = this.view;
+        // Hold the intrinsic lock so a concurrent view change either sees the voting thread stopped or waits this block.
+        // Otherwise, a voter joining between check and stop would fine the thread running and no election would follow.
+        Collection<Address> electorate;
+        synchronized (this) {
+            View electionView = this.view;
+            electorate = filterToRaftMembers(electionView.getMembersRaw());
+
+            // Without a majority of voters in the view, no round can succeed.
+            // Stop before creating a new term, otherwise every attempt persists a term that never elections anyone.
+            if (electorate.size() < raft.majority()) {
+                if (log.isDebugEnabled())
+                    log.debug("%s: only %d voters in view %s (majority=%d), stopping the voting thread",
+                            local_addr, electorate.size(), electionView, raft.majority());
+
+                stopVotingThreadInternal();
+                return;
+            }
+        }
+
         long new_term=raft.createNewTerm();
-        votes.reset(filterToRaftMembers(electionView.getMembersRaw()));
+        votes.reset(electorate);
         num_voting_rounds++;
         long start=System.currentTimeMillis();
         sendVoteRequest(new_term);
@@ -402,7 +420,15 @@ public abstract class BaseElection extends Protocol {
     }
 
     private static boolean isMajorityAvailable(View view, RAFT raft) {
-        return view != null && view.size() >= raft.majority();
+        if (view == null) return false;
+
+        // Only voters count toward the majority.
+        // Learners are in the view but never vote.
+        Collection<String> members = raft.members();
+        long voting = Arrays.stream(view.getMembersRaw())
+                .filter(a -> members.contains(Utils.extractRaftId(a)))
+                .count();
+        return voting >= raft.majority();
     }
 
     public synchronized BaseElection startVotingThread() {
