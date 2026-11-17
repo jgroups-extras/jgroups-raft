@@ -51,19 +51,43 @@ To further abstract the Java execution model, we provide shell wrappers.
 The CLI communicates with the cluster using the existing **JGroups Probe** mechanism <<jgroups-probe>>.
 
 * **Transport:** UDP Multicast (default) or TCP, utilizing the standard diagnostics port (`7500`).
-* **Protocol:** The CLI acts as a Probe Client, sending strictly typed requests (e.g., `raft-status`, `raft-log`) to the cluster.
+* **Protocol:** The CLI acts as a Probe Client, sending strictly typed requests (e.g., `raft-status`, `raft-metrics`) to the cluster.
 * **Serialization:** Responses are sent as JSON strings.
 ** _Why JSON?_ It decouples the CLI version from the Server version. As long as the JSON schema is backward-compatible, a newer CLI can manage an older cluster.
+
+=== Offline Log Commands
+
+The `log` commands do not use Probe.
+They operate directly on the files in the log directory of a stopped node (see the log integrity design).
 
 == Functional Scope & Capabilities
 
 To satisfy enterprise requirements, the CLI commands are categorized into three pillars: Monitoring, Management, and Troubleshooting.
 
+=== Implemented Commands
+
+Monitoring::
+* **`status`**: High-level view of Leader, Term, and Commit Index. Provides an easy look over the Raft state.
+* **`metrics`**: Latency and throughput stats for processing and replication.
+
+Management::
+* **`member`**: `add` / `remove` / `list` voting members.
+
+Troubleshooting::
+* **`probe`**: Raw access to standard JGroups diagnostic keys.
+* **`log verify`**: Scans the log, snapshot and metadata files, validates all checksums, and reports corruption without modifying anything.
+* **`log repair`**: Fixes recoverable corruption, with operator confirmation.
+
+Other::
+* **`completion`**: Generates the shell autocompletion script.
+
+== Future Work
+
+The following commands are planned but not implemented yet.
+
 === Monitoring
 _Focus: Real-time visibility into cluster health and performance._
 
-* **`status`**: High-level view of Leader, Term, and Commit Index. Provides an easy look over the Raft state.
-* **`metrics`**: Latency and throughput stats for processing and replication.
 * **`replication status`**: Provides a detailed matrix of the Leader's view of all followers.
 ** _Why:_ Crucial for identifying which specific follower is slowing down the commit pipeline (e.g., `matchIndex` vs `nextIndex`).
 * **`leader history`**: Displays a timeline of recent leadership changes.
@@ -72,7 +96,6 @@ _Focus: Real-time visibility into cluster health and performance._
 === Management
 _Focus: Changing cluster state and configuration._
 
-* **`member`**: `add` / `remove` / `list` voting members.
 * **`leader stepdown`**: Forces the current leader to resign and trigger a new election.
 ** _Why:_ Useful for rolling restarts. Operators can step down a leader _before_ shutting it down to minimize write downtime.
 * **`leader transfer`**: Gracefully hands over leadership to a specific target node.
@@ -81,7 +104,6 @@ _Focus: Changing cluster state and configuration._
 === Troubleshooting
 _Focus: Low-level debugging and data inspection._
 
-* **`probe`**: Raw access to standard JGroups diagnostic keys.
 * **`log snapshot`**: Manually triggers log compaction/snapshotting.
 ** _Why:_ Frees up disk space and reduces startup time if the log has grown too large.
 * **`log tail` / `log get`**: inspects the actual entries in the Raft log.

@@ -1,11 +1,20 @@
 = The persistent log (org.jgroups.protocols.raft.Log)
 :author: Bela Ban
-:description: The design of the ELECTION algorithm for leader election.
+:description: The design of the persistent log storing Raft entries, election metadata and snapshots.
 :homepage: https://jgroups-extras.github.io/jgroups-raft
 :sectnums:
 
-The persistent log maintains a list of log entries, where each entry has a term and a byte[] buffer to store the command
-to be applied to the state machine.
+The log is the durable storage of a Raft node. It stores three kinds of data:
+
+* *Entries*: an ordered sequence of log entries, each with a term and a byte[] buffer holding the command to be
+  applied to the state machine. Internal entries (membership changes) are flagged as such.
+* *Metadata*: the current term, the member voted for in that term, and the commit index.
+  The term and vote must survive restarts to preserve the single-vote-per-term rule.
+* *Snapshot*: a point-in-time capture of the state machine, used to compact the log.
+
+Each node owns exactly one log. `RAFT` is its only writer, from the event loop, so implementations may assume a single
+writer. The read-only accessors (`currentTerm()`, `votedFor()`, `commitIndex()`, `firstAppended()`, `lastAppended()`)
+must be safe to call from any thread.
 
 A log starts at index 1, so the first element is always unused (marker element). Indices are monotonically increasing.
 Iteration works on elements in range [first_appended .. last_appended]
@@ -31,9 +40,7 @@ The initial log looks like this (conceptually shown as an array):
                     ^
                     |
   first_appended ---+
-                    |
   last_appended ----+
-                    |
   commit_index -----+
 ----
 
@@ -49,10 +56,8 @@ After adding A and B:
                     ^       ^
                     |       |
   first_appended ---+       |
-                    |       |
-  last_appended ----+-------+
-                    |
-  commit_index -----+
+  commit_index -----+       |
+  last_appended ------------+
 ----
 
 
@@ -67,10 +72,8 @@ Now we got acks from a majority of members for index 2:
                     ^       ^
                     |       |
   first_appended ---+       |
-                            |
-  last_appended ------------+
-                            |
   commit_index -------------+
+  last_appended ------------+
 ----
 
 After adding a few more log entries:
@@ -81,13 +84,11 @@ After adding a few more log entries:
                   -------------------------------------
                   | - | A | B | C | D | D | E | F | G |
                   -------------------------------------
-                    ^
-                    |
-  first_appended ---+                       ^       ^
-                                            |       |
-  last_appended ----------------------------+-------+
-                                            |
-  commit_index -----------------------------+
+                    ^                       ^       ^
+                    |                       |       |
+  first_appended ---+                       |       |
+  commit_index -----------------------------+       |
+  last_appended ------------------------------------+
 ----
 
 We now have 8 log entries, but thus far only committed 6.
@@ -103,14 +104,12 @@ Now the log is truncated at the last committed entry (Log.truncate(6)):
                     ^       ^
                     |       |
   first_appended ---+       |
-                    |       |
-  last_appended ----+-------+
-                    |
-  commit_index -----+
+  commit_index -----+       |
+  last_appended ------------+
 ----
 
 * All entries from [1 .. 6] were written to a snapshot
-* The array was wiped and the first entry is now the last committed entry written to the snapshot (6)
+* The entries before 6 were removed, and the first entry is now the last committed entry written to the snapshot (6)
   ** This is needed because we need that entry to compare to (prev entry) on the next log append
 * first_appended is set to 6
 
@@ -125,25 +124,69 @@ Now a log entry H with index 9 is added:
                     ^           ^
                     |           |
   first_appended ---+           |
-                    |           |
-  last_appended ----+-----------+
-                    |
-  commit_index -----+
+  commit_index -----+           |
+  last_appended ----------------+
 ----
 
 - last_appended is advanced
 - commit_index will also advance when acks from the majority have been received
 
 
+== Removing entries
+
+The log removes entries in three ways, each for a different reason:
+
+`truncate(index)`::
+Removes the entries before `index`; `first_appended` becomes `index`.
+Used after a snapshot, to drop the entries the snapshot covers (see above).
+The index is capped at the commit index, so committed entries that are not in a snapshot are never removed.
+
+`deleteAllEntriesStartingFrom(index)`::
+Removes the entries at and after `index`, and updates `last_appended` and the current term to the remaining log.
+Used by a follower whose entries conflict with the leader's (see the AppendEntries design).
+Only entries above the commit index are ever deleted this way.
+
+`reinitializeTo(index, entry)`::
+Resets the log to the single `entry` at `index`; `first_appended`, `last_appended` and `commit_index` all become `index`.
+Used after installing a snapshot received from the leader, which replaces the whole log.
 
 
+== Snapshots
+
+`RAFT` creates a snapshot when the log grows above `max_log_size` bytes, or on demand.
+The snapshot is stored in the log (`setSnapshot()`), and the log is then truncated at the commit index captured when
+the snapshot was taken.
+The snapshot can be read as a whole (`getSnapshot()`) or by region (`readSnapshotRegion()`), which the asynchronous
+transfer uses to send it in chunks.
 
 
+== Durability
+
+When fsync is enabled, every mutating operation (append, truncate, metadata update, snapshot) has reached stable
+storage when it returns.
+`RAFT.log_use_fsync` controls it, and is disabled by default.
+
+A mutating operation that fails throws an `IOException`, and the log may be left inconsistent.
+`append()` is the exception: after a partial failure, `last_appended` reflects the last entry actually written.
+`RAFT` wraps the log in a `RaftLogAdapter`, which turns the first storage failure into the degraded state
+(see the log integrity design).
 
 
+== Implementations
 
+`RAFT.log_class` selects the implementation, and `RAFT.log_args` passes it configuration.
 
+`FileBasedLog` (default)::
+Persists to the directory given by `RAFT.log_dir`, in three files: `entries.raft` (the entries), `metadata.raft`
+(commit index, term and vote) and `state_snapshot.raft` (the snapshot).
+The file formats are in the log integrity design.
 
+`InMemoryLog`::
+Keeps everything in memory and loses it on restart. Entries are freed only on truncation, so the snapshot settings
+must keep the log bounded.
 
+`RAFT` always wraps the configured log in two layers:
 
-
+* `LogCache`: keeps the last `max_log_cache_size` entries in memory, so reads of recent entries do not go to storage.
+  Writes go through to the wrapped log. Setting `max_log_cache_size` to 0 disables it.
+* `RaftLogAdapter`: absorbs storage failures, see above.

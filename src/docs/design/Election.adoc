@@ -31,11 +31,13 @@ By rewriting that part to reuse JGroups functionality, the following advantages 
 * Members that join or know no leader when the majority is reached ask the coordinator for the leader. This reveals a
   leader that stepped down in a partition the coordinator never saw, so the coordinator elects a new one
 
-Voting is started by the coordinator; it increments its term and solicits the votes of all members (including itself).
+Voting is started by the coordinator; it creates a new term and solicits the votes of all members (including itself).
+Only voting members (Raft members) take part; learners in the view are ignored, although a learner can run the
+election when it is the coordinator.
 The vote responses contain the term of the last log entry and the last log index for the responding member.
 
-The coordinator picks the member with the highest last term / last log index. If all members have the same terms and
-indices, the coordinator picks the oldest member (itself) as leader.
+The coordinator picks the member with the highest last log term / last log index. If several members have the same
+term and index, the first of them in view order wins, which is the coordinator itself when it is a voter.
 
 If no responses from a majority of members have been received after a timeout, then voting continues; otherwise
 voting is stopped and a LeaderElected message (with the new term and leader) is sent to all members
@@ -54,9 +56,14 @@ voting is stopped and a LeaderElected message (with the new term and leader) is 
 === On reception of view change
 
 - Coordinator: if the majority is reached or the leader left -> start the voting thread
+- Coordinator: the coordinator changed, the majority is still present and no leader is known -> start the voting thread.
+  This covers a coordinator that left before a leader was elected
+  (https://github.com/jgroups-extras/jgroups-raft/issues/259[#259])
 - Leader: new members joined -> send a LeaderElected msg to new members
 - Non-coordinator: majority reached and joined the view or has no leader -> send RetrieveLeaderElected to the coordinator
-- If the majority is lost -> leader=null
+- If the majority is lost -> stop the voting thread and set leader=null
+
+The majority counts only the voting members in the view.
 
 === On reception of RetrieveLeaderElected (on coordinator)
 
@@ -66,37 +73,67 @@ voting is stopped and a LeaderElected message (with the new term and leader) is 
 
 === Voting thread
 
-- Periodically: increment term and send a VoteRequest(term) to all members (+self)
-- Terminates when LeaderElected message is received, or on shutdown
+Runs on the coordinator only. Each round:
+
+- If the view has fewer voting members than a majority -> stop the voting thread, without creating a new term.
+  Otherwise every round would create a term that can never win
+- Create a new term (above the current one) and send a VoteRequest(term) to all members (+self)
+- Wait for the responses of all voting members, or for `vote_timeout` ms
+- Fewer responses than a majority -> start another round
+- Otherwise:
+    ** Determine the leader from the highest last log term / last log index (see above)
+    ** Set the leader and the new term locally *before* sending LeaderElected, so concurrent joiners already
+       see the leader (https://github.com/jgroups-extras/jgroups-raft/issues/253[#253])
+    ** Send LeaderElected(leader, term) to all members (-self)
+    ** If the majority was lost meanwhile -> set leader=null and stop the voting thread
+    ** If the leader is still in the view -> stop the voting thread
+    ** Otherwise (the leader left) -> start another round
+
+The thread also stops on shutdown, or when it was asked to stop and either the majority is lost or a leader is known.
 
 === On reception of VoteRequest(term)
 
-* If term < current_term: reject (don't send a VoteResponse)
-* Else:
-      ** If term > current_term -> voted-for=null, current_term=term
-      ** If voted-for == null or voted-for == vote requester -> set voted-for=vote requester, send VoteResponse
-* Send a VoteResponse (containing the current term and last log index and last log term) back to the sender
-  (Example current_term=26 (the number of elections held so far), last_log_index=2012, last_log_term=6)
+* If the node is in the degraded state -> drop the request
+* If term < current_term -> drop the request
+* If term > current_term -> current_term=term, voted-for=null
+* If voted-for != null and voted-for != vote requester -> drop the request (already voted in this term)
+* If the node is a learner -> drop the request
+* Otherwise: set voted-for=vote requester and send a VoteResponse(term, last log term, last log index) back
+
+Dropped requests get no response at all; the coordinator counts only the responses it receives.
 
 
 === On reception of VoteResponse
 
 (on coordinator)
 
-* If enough votes
-    ** Determine the leader based on highest last log term / index / rank
-    ** Set term to max of all received current terms
-    ** Send LeaderElected(leader,term) message to all members (+self)
-    ** Stop voting thread
-* Else
-    ** Continue
+* Add the response to the votes of the current round; the voting thread evaluates them (see above)
 
 
 === On reception of LeaderElected(leader,term) message
 
-- if(leader == self) -> become leader
-- Only on the coordinator: stop the Voting thread
-- Set term and leader
+- If the leader is not in the current view, or the majority is lost -> ignore the message.
+  The view may have changed between deciding the leader and the arrival of the message
+- Otherwise try to set the term and leader (if leader == self -> become leader).
+  This is rejected when the message carries an older term
+- Only when accepted, and only on the coordinator: stop the voting thread
+  (https://github.com/jgroups-extras/jgroups-raft/issues/306[#306])
+
+
+=== Forced election
+
+`startForcedElection(exclude)` runs an election on the coordinator that excludes one member from becoming leader,
+for example to move leadership away from the current leader.
+
+- It must be called on the view coordinator; otherwise it fails
+- If the voting thread is already running, the call joins the running election
+- The excluded member still votes and counts toward the majority, but it is skipped when determining the leader
+- If another member has the same last log term and index as the excluded one, that member is elected
+- If the excluded member is strictly ahead of every other voter, no leader is elected in this round and the voting
+  thread starts another one. Electing a less up-to-date member could lose committed entries; the followers
+  normally catch up within a few rounds
+- The returned stage completes with the new leader, or exceptionally when the election stops without one
+  (majority lost, too few voters, or cancelled by the caller)
 
 
 === Leader: on reception of any request(term)

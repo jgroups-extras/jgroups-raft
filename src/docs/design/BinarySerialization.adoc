@@ -6,6 +6,11 @@
 
 This document describes the custom binary serialization system introduced in jgroups-raft 2.0.
 
+The serialization only applies to the annotation-based user API (`JGroupsRaft`): it serializes the commands, responses
+and state machine state of applications built on that API.
+The protocol layer does not use it: Raft messages, headers and log metadata have their own encoding,
+and applications using `RaftHandle` directly serialize their own data.
+
 == Context
 
 === Why Custom Binary Serialization?
@@ -13,7 +18,7 @@ This document describes the custom binary serialization system introduced in jgr
 Prior to version 2.0, jgroups-raft did not provide any automatic serialization mechanism.
 Users were responsible for serialization.
 
-In version 2.0, we introduced a new high-level API and needed an internal serialization mechanism for Raft protocol messages and user-defined state machine data.
+In version 2.0, we introduced a new high-level API and needed a serialization mechanism for its commands, responses and state machine data.
 We evaluated https://github.com/infinispan/protostream[ProtoStream] during development, but determined that a custom binary format better suited our needs:
 
 **Performance Requirements**::
@@ -81,7 +86,7 @@ Readers can handle multiple versions of the same type.
 
 **Length (4 bytes)**::
 The byte length of the serialized data (complex types only).
-This enables forward compatibility—old code can skip unknown bytes when reading data from a newer version.
+This enables forward compatibility -- old code can skip unknown bytes when reading data from a newer version.
 
 **Data (variable length)**::
 The serialized object data.
@@ -177,32 +182,50 @@ The following diagram illustrates the serialization flow:
 
 [ditaa]
 ----
-  User Code
-      |
-      | serialize(object)
-      v
-  Serializer
-      |
-      | create context
-      v
-  SerializationContextWrite
-      |
-      | lookup type ID
-      v
-  BinarySerializationRegistry
-      |
-      | get serializer
-      v
-  SingleBinarySerializer<T>
-      |
-      | write(ctx, object)
-      v
-  CustomByteBuffer
-      |
-      v
-  byte[] result
++-----------------------------+
+|          User Code          |
++--------------+--------------+
+               |
+               | serialize(object)
+               v
++--------------+--------------+
+|         Serializer          |
++--------------+--------------+
+               |
+               | create context
+               v
++--------------+--------------+
+|  SerializationContextWrite  |
++--------------+--------------+
+               |
+               | lookup type ID
+               v
++--------------+--------------+
+| BinarySerializationRegistry |
++--------------+--------------+
+               |
+               | get serializer
+               v
++--------------+--------------+
+|   SingleBinarySerializer    |
++--------------+--------------+
+               |
+               | write(ctx, object)
+               v
++--------------+--------------+
+|      CustomByteBuffer       |
++--------------+--------------+
+               |
+               |
+               v
++--------------+--------------+
+|        byte[] result        |
++-----------------------------+
 ----
 
+The serializer takes a buffer from a thread-local pool (see Buffer Pooling) and wraps it in a `DefaultSerializationContext`.
+`writeObject` writes the type ID, looks up the `SingleBinarySerializer` for the object's class in the registry, and
+delegates the data to it; nested objects go through `writeObject` again.
 Deserialization follows a similar flow, using `SerializationContextRead` to read the type ID, version, and length, then delegating to the appropriate `SingleBinarySerializer` to read the data.
 
 == Built-in Serializers
@@ -251,7 +274,9 @@ All collection serializers preserve the original collection type and immutabilit
 
 === Raft Internal Types
 
-The following Raft protocol objects have custom serializers registered in `BinarySerializer.INTERNAL_SERIALIZERS`:
+The following Raft protocol objects have custom serializers, registered when the `BinarySerializer` is created.
+`RaftCommand` and `StateMachineStateHolder` come from `StateMachineSerializer.serializers()`; the others are listed in
+`BinarySerializer.INTERNAL_SERIALIZERS`:
 
 **RaftCommand**::
 Represents a state machine command.

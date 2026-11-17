@@ -148,6 +148,35 @@ Legacy snapshots have no header.
 Detection works the same way as the log file: if the first 4 bytes are not `SNAP`, the file is treated as a legacy snapshot and read without checksum validation.
 
 
+=== Metadata File (`metadata.raft`)
+
+The metadata file stores the persistent Raft state at fixed positions.
+It has no file header and no checksum.
+
+[cols="1,1,3", options="header"]
+|===
+| Field | Size | Description
+
+| commitIndex
+| 8 bytes
+| Index of the last committed entry
+
+| currentTerm
+| 8 bytes
+| The current term
+
+| votedFor length
+| 4 bytes
+| Length of the serialized address (only present when the node voted in the current term)
+
+| votedFor
+| variable
+| The JGroups address voted for in the current term
+|===
+
+When the node has not voted in the current term, the file ends after the term (16 bytes).
+
+
 == Checksum Algorithm
 
 CRC-32C (Castagnoli) is used for all integrity checks.

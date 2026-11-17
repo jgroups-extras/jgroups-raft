@@ -98,8 +98,6 @@ We adopt the pre-voting mechanism to solve the liveness issue.
 == Implementation
 
 The pre-vote is implemented in the `ELECTION2` class, leaving the `ELECTION` unchanged.
-This separation should not be a problem, as `ELECTION2` only covers corner cases from the `ELECTION`, which users should not find easily.
-As a rule of thumb, stick with `ELECTION`, but if deploying in an environment facing many prolonged network partitions, consider `ELECTION2`.
 
 In our implementation, only the view coordinator executes the pre-voting.
 Only a single pre-voting phase is necessary to run as many election rounds as needed.
@@ -122,6 +120,29 @@ Meeting any of these requirements, the coordinator proceeds and starts the ELECT
 
 The pre-voting phase of `ELECTION2` adds a delay before starting the leader election algorithm, which is the downside of `ELECTION2`.
 In addition to the algorithm based on view changes, `ELECTION2` should provide a robust and stable leader election algorithm, covering the issue of `ELECTION`.
+
+== Choosing between ELECTION and ELECTION2
+
+`ELECTION` is the recommended default.
+Every view change that loses the leader or reaches a majority starts an election, which increments the term.
+Since this document was written, `ELECTION` also asks the coordinator for the leader when a member joins or knows no leader,
+which reveals a leader that stepped down in a partition the coordinator never saw (see the `ELECTION` design).
+This covers part of the liveness issue described above.
+
+`ELECTION2` adds the pre-vote phase from Ongaro's dissertation (§9.6) <<ongaro-dissertation>>: before starting an
+election, the coordinator asks every member which leader it sees, and only starts one when a majority has no leader
+or sees a leader that is gone.
+This avoids elections, and term increments, while a working leader is still in place, at the cost of an extra round
+trip before every election.
+Consider `ELECTION2` in networks with frequent partial partitions, where view changes do not reliably mean the leader
+is lost.
+
+== Limitations
+
+`ELECTION2` does not support fork channels.
+The pre-vote waits for a response from every member in the view, and members without the fork stack never answer,
+so the election stalls.
+`ELECTION2` logs a warning when it runs on a fork stack; use `ELECTION` there instead.
 
 [bibliography]
 == References

@@ -22,16 +22,22 @@ license.
 This is the JGroups Raft design documents.
 It contains a collection of design documents for the various components of JGroups Raft.
 
+include::./Architecture.adoc[Architecture]
+
 include::./AppendEntries.adoc[AppendEntries design]
 
 include::./Election.adoc[ELECTION algorithm design]
 
 include::./Election2.adoc[ELECTION2 algorithm design]
 
+include::./LearnerNodes.adoc[Learner nodes]
+
 include::./Log.adoc[Persistent log design]
 
-include::./CLI.adoc[JGroups Raft CLI]
+include::./LogIntegrity.adoc[Log Integrity and Failure Handling]
+
+include::./BinarySerialization.adoc[Binary serialization]
 
 include::./SchemaValidation.adoc[Schema Validation]
 
-include::./LogIntegrity.adoc[Log Integrity and Failure Handling]
+include::./CLI.adoc[JGroups Raft CLI]

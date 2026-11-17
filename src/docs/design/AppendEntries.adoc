@@ -6,7 +6,7 @@
 == State
 
 * The leader maintains
-    ** last-appended: index of the last entry added to the log (see Log.txt)
+    ** last-appended: index of the last entry added to the log (see the persistent log design)
     ** commit-index: index of the highest committed entry
 * The leader maintains for each member P, in the CommitTable (RAFT.commit_table)
     ** next-index: the index of the next entry to be sent to P (initialized to last-appended +1)
@@ -160,8 +160,22 @@
         // An entry truncated by a snapshot cannot be checked, the periodic resending brings P up to date
 
 
-=== On reception of snapshot S from P
+=== Sending a snapshot to P
 
-- Apply S to the state machine
-- Truncate the log at S.last_included_index and S.last_included_term
-- Set last-appended
+The `SnapshotManager` sends the snapshot; which implementation is used depends on the state machine:
+
+* Synchronous: the leader sends the whole snapshot in a single `InstallSnapshotRequest`, carrying
+  last-included-index and last-included-term
+* Asynchronous (the state machine supports async snapshots): the leader sends a `SnapshotMetadataRequest` with the
+  snapshot size. P then pulls the snapshot in chunks with `SnapshotChunkRequest`, and the leader answers each with a
+  `SnapshotChunkResponse`. P drives the transfer, so it controls how much data is in flight
+
+The reasons for the asynchronous model are in the async snapshots explanation of the manual.
+
+
+=== On reception of a snapshot S from the leader (at P)
+
+- Restore the state machine from S
+- Persist S as the log's snapshot
+- Reinitialize the log at S.last-included-index and S.last-included-term, discarding the entries it covers
+- Set last-appended and commit-index to S.last-included-index

@@ -19,11 +19,11 @@ Schema validation detects backwards-incompatible changes at startup, before any 
 
 === Design Goals
 
-. **Detect breaking changes at startup** — before log replay or cluster communication.
-. **Support safe state machine evolution** — versioned commands allow gradual migration.
-. **Track schema history automatically** — the system maintains the schema file; users do not manage it manually.
-. **Provide escape hatches** — retired command annotations for when commands are intentionally removed.
-. **Zero friction for simple cases** — users who never change their state machine notice nothing.
+. **Detect breaking changes at startup** --before log replay or cluster communication.
+. **Support safe state machine evolution** --versioned commands allow gradual migration.
+. **Track schema history automatically** --the system maintains the schema file; users do not manage it manually.
+. **Provide escape hatches** --retired command annotations for when commands are intentionally removed.
+. **Zero friction for simple cases** --users who never change their state machine notice nothing.
 
 === Non-Goals
 
@@ -37,24 +37,33 @@ Schema validation detects backwards-incompatible changes at startup, before any 
 
 [ditaa]
 ----
-  JGroupsRaftImpl.start()
-      |
-      | Parse annotations
-      v
-  CommandRegistry.initialize()
-      |
-      | Compare current vs stored schema
-      v
-  SchemaValidator.validate()
-      |
-      +---> Read schema.raft
-      |     Apply validation rules
-      |     Write updated schema.raft
-      v
-  channel.connect()
-      |
-      v
-  Log replay begins
++------------------------------+
+|   JGroupsRaftImpl.start()    |
++---------------+--------------+
+                |
+                | Parse annotations
+                v
++---------------+--------------+
+| CommandRegistry.initialize() |
++---------------+--------------+
+                |
+                | Compare current vs stored schema
+                v
++---------------+--------------+      +---------------------------+
+|  SchemaValidator.validate()  +----->| Read schema.raft          |
++---------------+--------------+      | Apply validation rules    |
+                |                     | Write updated schema.raft |
+                |                     +---------------------------+
+                v
++---------------+--------------+
+|      channel.connect()       |
++---------------+--------------+
+                |
+                |
+                v
++---------------+--------------+
+|      Log replay begins       |
++------------------------------+
 ----
 
 Validation runs after the registry parses annotations and before the channel connects.
@@ -72,14 +81,14 @@ The bridge between them is the schema entry record that the registry produces an
 
 === When Validation Is Skipped
 
-Schema validation is skipped entirely when the log is not persistent (e.g., in-memory logs).
+Schema validation is skipped entirely when the log is not a `FileBasedLog` (e.g., in-memory logs).
 In-memory logs do not survive restarts, so there is no schema to compare against.
 
 == Schema File Format
 
 === Location
 
-`<log_dir>/schema.raft` — same directory as `metadata.raft` and log entries.
+`<log_dir>/schema.raft` --same directory as `metadata.raft` and log entries.
 
 === JSON Envelope
 
@@ -172,7 +181,7 @@ This catches the case where the same slot appears in both method annotations and
 
 | Same `(id, version)`, different kind (READ/WRITE)
 | Error
-| Semantic break — changes replication semantics.
+| Semantic break --changes replication semantics.
 
 | Removed `(id, version)`, higher version of same `id` exists
 | Allowed
@@ -180,7 +189,7 @@ This catches the case where the same slot appears in both method annotations and
 
 | Removed `(id, version)`, only lower versions remain
 | Error
-| Version downgrade — old log entries for the removed version would fail replay.
+| Version downgrade --old log entries for the removed version would fail replay.
 
 | Removed `(id, version)`, declared as retired
 | Allowed
@@ -271,7 +280,7 @@ Add a new annotated method with a unique `id`. No special steps needed.
 Once all log entries for `(id=X, version=N)` are behind a snapshot:
 
 . Remove the old method from the interface.
-. No annotation changes needed — the higher version covers it.
+. No annotation changes needed --the higher version covers it.
 . The validator allows removal because a higher version exists.
 
 === Removing a Command Entirely
@@ -291,8 +300,8 @@ A command's log entries are behind a snapshot when:
 
 == Future Work
 
-* **CLI commands** — `raft state-machine schema show/reset/diff` for inspecting, resetting, and comparing schemas from the command line.
-* **Serializer type IDs** — replace FQCNs in `parameterTypes` with integer type IDs to avoid false positives on package refactors. Requires bumping the schema file version to `2` with migration logic for version `1` files.
+* **CLI commands** --`raft state-machine schema show/reset/diff` for inspecting, resetting, and comparing schemas from the command line.
+* **Serializer type IDs** --replace FQCNs in `parameterTypes` with integer type IDs to avoid false positives on package refactors. Requires bumping the schema file version to `2` with migration logic for version `1` files.
 
 [bibliography]
 == References

@@ -1,0 +1,123 @@
+= Architecture
+:description: How the JGroups Raft components fit together.
+:homepage: https://jgroups-extras.github.io/jgroups-raft
+:sectnums:
+
+JGroups Raft has two layers.
+The user API (`org.jgroups.raft`) turns calls on an annotated state machine interface into commands, serializes them,
+and applies them once committed.
+The protocol layer (`org.jgroups.protocols.raft`) is a set of JGroups protocols that replicate those commands.
+
+== Protocol stack
+
+The default stack (`raft.xml`), top to bottom, with the Raft protocols only:
+
+[ditaa]
+----
++--------------------------+
+| JGroupsRaft / RaftHandle |                   application
++------------+-------------+
+             |
++------------+-------------+
+|          CLIENT          |    optional, receives requests over a socket
++------------+-------------+
+             |
++------------+-------------+
+|         REDIRECT         |    optional, forwards requests to the leader
++------------+-------------+
+             |
++------------+-------------+
+|           RAFT           |    log replication, commit and state machine
++------------+-------------+
+             |
++------------+-------------+
+|         ELECTION         |       runs leader election (or ELECTION2)
++------------+-------------+
+             |
++------------+-------------+
+|         NO_DUPES         |     rejects members whose raft-id is in use
++------------+-------------+
+             |
++------------+-------------+
+|         JGroups          |        GMS, failure detection, transport
++--------------------------+
+----
+
+* `RAFT` holds the Raft state (term, vote, log, commit index) and replicates the log.
+  It talks to the `Log` and the state machine directly.
+* `ELECTION` or `ELECTION2` elect the leader from JGroups view changes and hand the result to `RAFT`.
+  See the election chapters.
+* `JGroupsRaft` (or the lower-level `RaftHandle`) is the application's entry point.
+* `CLIENT` accepts requests from processes outside the cluster over a socket and passes them down the stack.
+* `REDIRECT` lets any member accept a request: it forwards the request to the leader and returns the result.
+  The user API sends requests to the first protocol implementing `Settable`, so with `REDIRECT` in the stack
+  requests can be submitted on any member.
+* `NO_DUPES` sits directly above `GMS` and rejects joining members whose raft-id is already in the view.
+* JGroups provides failure detection and membership.
+  There are no Raft heartbeats or election timeouts.
+
+== The event loop
+
+`RAFT` processes everything on a single thread:
+
+* Messages carrying a `RAFT` header and client requests are placed on a bounded queue
+  (`processing_queue_max_size`). A request offered to a full queue fails.
+* The thread drains the queue in batches. The writes in a batch become one log append and one
+  `AppendEntries` multicast, so batching grows with load.
+* When the queue stays empty for `resend_interval` ms, the thread resends to the members that need it
+  (see the AppendEntries chapter).
+* All Raft state is owned by this thread and is read and written without locks.
+  Work that would block it, such as serializing a snapshot, runs on a separate executor
+  (`RaftEventLoop.executor()`), and its result is submitted back to the loop.
+
+Correctness depends on this: the Raft state (term, vote, log, commit index, role) must only be read and written on
+the event loop. Code running on another thread submits its work to the loop instead of touching the state.
+
+Anything the loop waits for delays every request, including replication and commits.
+Log I/O happens on the loop by design.
+Work whose duration is outside the control of JGroups Raft, such as waiting on other threads, remote replies,
+or arbitrary application code, must not run on the loop.
+
+== Roles
+
+The role is an instance of `RaftImpl`:
+
+* `Leader`: accepts requests, replicates entries, and commits once a majority of voting members acknowledged them.
+* `Follower`: appends entries from the leader and applies committed ones.
+* `Learner`: a `Follower` that does not vote and does not count toward commits. See the learner chapter.
+
+There is no candidate role: the election protocols decide the leader and `RAFT` switches role from the result,
+or steps down when it sees a higher term.
+
+== From request to state machine
+
+. The application calls a method on its state machine interface; the user API serializes it into a command.
+. The command reaches the leader's event loop (directly, or through `REDIRECT`).
+. The leader appends it to its log and multicasts it to the members.
+. Once a majority of voting members acknowledged the entry, and it is from the leader's current term, it is committed.
+. Committed entries are applied to the state machine on the event loop, in log order, and the caller's future completes.
+
+Followers apply entries when the leader tells them the new commit index.
+Linearizable reads are not written to the log; the leader confirms its leadership with a majority before answering
+(see the AppendEntries chapter).
+
+== Membership changes
+
+Membership changes follow the single-server design from the Raft dissertation: members are added or removed one at
+a time, so any majority of the old configuration overlaps any majority of the new one and no joint consensus is needed.
+Each change is an internal command that goes through the log like any other entry.
+It takes effect when the entry is committed, and the next change waits until then
+(https://github.com/jgroups-extras/jgroups-raft/issues/175[#175]).
+This differs from the dissertation, where a server uses a new configuration as soon as it is in its log.
+A JGroups member that is not a Raft member runs as a learner.
+
+== Persistence and failures
+
+The `Log` stores the entries, the snapshot, and the term, vote and commit index.
+`FileBasedLog` is the default and persists to disk; `InMemoryLog` keeps everything in memory.
+Whether writes are synced to disk before returning is controlled by `RAFT.log_use_fsync` (disabled by default).
+See the persistent log chapter.
+
+A storage failure, or an exception while applying a committed entry, moves the node to the degraded state:
+it stops voting and rejects requests until restarted.
+See the log integrity chapter.
