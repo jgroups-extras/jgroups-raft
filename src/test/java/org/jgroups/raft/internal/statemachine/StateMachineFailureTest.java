@@ -85,6 +85,69 @@ public class StateMachineFailureTest {
                 .isFalse();
     }
 
+    public void testRedirectedWriteReceivesNonSerializableFailure() {
+        cluster = JRaftTestCluster.create(CounterImpl::new, Counter.class, 3);
+        cluster.waitUntilLeaderElected();
+
+        int leaderIndex = cluster.leaderIndex();
+        JGroupsRaft<Counter> follower = cluster.raft((leaderIndex + 1) % 3);
+        follower.write(c -> c.add(1));
+
+        // The follower forwards the write to the leader, which sends the failure back. This one cannot be serialized.
+        counter(leaderIndex).failNextWrite(new NonSerializableException("disk full"));
+
+        // Write in another thread, a response that never arrives would block the test forever.
+        CompletableFuture<Void> write = CompletableFuture.supplyAsync(() -> follower.write(c -> c.add(1)));
+        assertThatThrownBy(() -> write.get(10, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .hasRootCauseInstanceOf(JGroupsRaftException.class)
+                .hasStackTraceContaining(NonSerializableException.class.getName())
+                .hasStackTraceContaining("disk full");
+    }
+
+    public void testRedirectedWriteReceivesFailureCause() {
+        cluster = JRaftTestCluster.create(CounterImpl::new, Counter.class, 3);
+        cluster.waitUntilLeaderElected();
+
+        int leaderIndex = cluster.leaderIndex();
+        JGroupsRaft<Counter> follower = cluster.raft((leaderIndex + 1) % 3);
+        follower.write(c -> c.add(1));
+
+        // The leader wraps a checked exception, so what went wrong is only in the cause.
+        counter(leaderIndex).failNextWrite(new IOException("disk full"));
+
+        CompletableFuture<Void> write = CompletableFuture.supplyAsync(() -> follower.write(c -> c.add(1)));
+        assertThatThrownBy(() -> write.get(10, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .hasRootCauseInstanceOf(JGroupsRaftException.class)
+                .hasStackTraceContaining(IOException.class.getName() + ": disk full");
+    }
+
+    /**
+     * A failure with a message too long to send whole still reaches the caller on another member, with the message cut.
+     */
+    public void testRedirectedWriteReceivesTruncatedLongFailure() {
+        cluster = JRaftTestCluster.create(CounterImpl::new, Counter.class, 3);
+        cluster.waitUntilLeaderElected();
+
+        int leaderIndex = cluster.leaderIndex();
+        JGroupsRaft<Counter> follower = cluster.raft((leaderIndex + 1) % 3);
+        follower.write(c -> c.add(1));
+
+        // Longer than the 64 KB a string can take in the failure description.
+        String longMessage = "x".repeat(70_000);
+        counter(leaderIndex).failNextWrite(new IllegalStateException(longMessage));
+
+        CompletableFuture<Void> write = CompletableFuture.supplyAsync(() -> follower.write(c -> c.add(1)));
+        assertThatThrownBy(() -> write.get(10, TimeUnit.SECONDS))
+                .isInstanceOf(ExecutionException.class)
+                .rootCause()
+                .isInstanceOf(JGroupsRaftException.class)
+                .hasMessageStartingWith(IllegalStateException.class.getName() + ": xxx")
+                .hasMessageEndingWith("(truncated)")
+                .satisfies(t -> assertThat(t.getMessage()).hasSizeLessThan(longMessage.length()));
+    }
+
     public void testWriteFailureOnFollowerStopsApplying() {
         cluster = JRaftTestCluster.create(CounterImpl::new, Counter.class, 3);
         cluster.waitUntilLeaderElected();
@@ -221,6 +284,15 @@ public class StateMachineFailureTest {
 
     private CounterImpl counter(int index) {
         return (CounterImpl) cluster.stateMachine(index);
+    }
+
+    // Java serialization fails on the field, so the exception cannot travel to another node as is.
+    static final class NonSerializableException extends RuntimeException {
+        final Object state = new Object();
+
+        NonSerializableException(String message) {
+            super(message);
+        }
     }
 
     @JGroupsRaftStateMachine
