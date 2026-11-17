@@ -1591,6 +1591,11 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
     protected void snapshotIfNeeded(int bytes_added) {
         curr_log_size+=bytes_added;
+        // A degraded node may hold changes from the command that failed.
+        // A snapshot would save them as applied and truncate the log, so a restart would apply the command again.
+        if (!canHandleRequests)
+            return;
+
         if(curr_log_size >= max_log_size) {
             try {
                 this.log.debug("%s: current log size is %d, exceeding max_log_size of %d: creating snapshot",
@@ -1609,6 +1614,9 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
 
         if (snapshotManager == null)
             throw new IllegalStateException("Snapshot not available");
+
+        if (!canHandleRequests)
+            throw new DegradedStateException("Node " + local_addr + " with id " + raft_id + " is in degraded state, cannot snapshot");
 
         CompletableFuture<Void> cf = new CompletableFuture<>();
         boolean started = snapshotManager.create(commitIndex(), capturedIndex -> {
@@ -1632,22 +1640,22 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * @return The last index of the range of log entries that was successfuly applied (normally this is to_inclusive)
      */
     protected long applyCommits(long to_inclusive, boolean serialize_response) {
-        // A degraded node stopped at the entry that failed.
-        // Applying it again or anything after it would build on state that may have diverged.
-        // The node should follow the common procedures for recovery.
-        if (!canHandleRequests)
-            return commit_index;
-
+        // A degraded node does not apply anything.
+        // The entry that failed, or the ones after it, would build on a state that maybe have diverged.
         long last_successful_apply=commit_index;
-        for(long i=commit_index+1; i <= to_inclusive; i++) {
+        for(long i=commit_index+1; i <= to_inclusive && canHandleRequests; i++) {
             try {
                 applyCommit(i, serialize_response);
-                last_successful_apply=i;
-            }
-            catch(Throwable t) {
+            } catch(Throwable t) {
                 log.error("%s: failed moving commit_index to %d: %s", local_addr, to_inclusive, t);
                 return last_successful_apply;
             }
+
+            // Apply the commit degrades the node when the state machines fails without throwing explicitly.
+            // The failed entry was not applied, so the commit index stays before it.
+            if (!canHandleRequests)
+                break;
+            last_successful_apply = i;
         }
         return last_successful_apply;
     }
