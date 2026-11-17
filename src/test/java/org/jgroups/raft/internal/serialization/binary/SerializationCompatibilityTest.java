@@ -374,21 +374,16 @@ public class SerializationCompatibilityTest {
                         hexToBytes("00 00 00 43 00 00 00 00 09 00 00 01 C8 00 00 00 02 00"),
                         "UserCommand: write command (id=456, version=2)"},
 
-                {RaftResponse.class, RaftResponse.success("result"),
-                        // Success response with String "result"
-                        // Format: [boolean:success=true][object:"result"]
-                        hexToBytes("00 00 00 42 00 00 00 00 0D 01 00 00 00 08 00 06 72 65 73 75 6C 74"),
-                        "RaftResponse: success with 'result'"},
+                {RaftResponse.class, new RaftResponse("result"),
+                        // Response with String "result"
+                        // Format: [object:"result"]
+                        hexToBytes("00 00 00 42 00 00 00 00 0C 00 00 00 08 00 06 72 65 73 75 6C 74"),
+                        "RaftResponse: with 'result'"},
 
-                {RaftResponse.class, RaftResponse.success(null),
-                        // Success response with null
-                        hexToBytes("00 00 00 42 00 00 00 00 05 01 FF FF FF FF"),
-                        "RaftResponse: success with null"},
-
-                {RaftResponse.class, RaftResponse.failure(new Exception("error message")),
-                        // Failure response with error message
-                        hexToBytes("00 00 00 42 00 00 00 00 10 00 00 0D 65 72 72 6F 72 20 6D 65 73 73 61 67 65"),
-                        "RaftResponse: failure with error"},
+                {RaftResponse.class, new RaftResponse(null),
+                        // Response with null
+                        hexToBytes("00 00 00 42 00 00 00 00 04 FF FF FF FF"),
+                        "RaftResponse: with null"},
 
                 {JGroupsRaftReadCommandOptions.ReadImpl.class,
                         JGroupsRaftReadCommandOptions.options().linearizable(true).build(),
@@ -546,16 +541,6 @@ public class SerializationCompatibilityTest {
                 assertThat((char[]) actual).as(description).isEqualTo(expected);
             } else {
                 throw new AssertionError("Unsupported array type: " + type);
-            }
-        } else if (expected instanceof RaftResponse exp) {
-            // Special handling for RaftResponse
-            RaftResponse act = (RaftResponse) actual;
-            assertThat(act.isSuccess()).as(description + " - isSuccess").isEqualTo(exp.isSuccess());
-            if (exp.isSuccess()) {
-                assertThat(act.response()).as(description + " - response").isEqualTo(exp.response());
-            } else {
-                assertThat(act.exception().getMessage()).as(description + " - exception message")
-                        .contains(exp.exception().getMessage());
             }
         } else {
             assertThat(actual).as(description).isEqualTo(expected);

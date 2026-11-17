@@ -16,6 +16,7 @@ import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.raft.tests.harness.BaseStateMachineTest;
 import org.jgroups.stack.Protocol;
 import org.jgroups.stack.ProtocolStack;
+import org.jgroups.util.ByteArrayDataOutputStream;
 import org.jgroups.util.Util;
 
 import java.util.Arrays;
@@ -36,7 +37,7 @@ import org.testng.annotations.Test;
 @Test(groups=Global.FUNCTIONAL,singleThreaded=true,testName = "org.jgroups.raft.AppendEntriesTest")
 public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachine<Integer, Integer>> {
 
-    protected static final byte[] buf=new byte[10];
+    private static final byte[] buf = readCommand();
     protected static final int[] terms={0,1,1,1,4,4,5,5,6,6,6};
     private int term = 10;
 
@@ -741,6 +742,20 @@ public class AppendEntriesTest extends BaseStateMachineTest<ReplicatedStateMachi
                     .as(check)
                     .returns(expected_commit, RAFT::commitIndex)
                     .returns(expected_applied, RAFT::lastAppended);
+        }
+    }
+
+    /**
+     * Creates a ReplicatedStateMachine GET command, so applying it leaves the state machine unchanged.
+     */
+    private static byte[] readCommand() {
+        try {
+            ByteArrayDataOutputStream out = new ByteArrayDataOutputStream(16);
+            out.writeByte(3); // ReplicatedStateMachine.GET, not visible from this package.
+            Util.objectToStream(0, out);
+            return Arrays.copyOf(out.buffer(), out.position());
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
         }
     }
 

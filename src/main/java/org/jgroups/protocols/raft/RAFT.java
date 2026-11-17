@@ -288,7 +288,7 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
     /* ============================================================================================================ */
 
     @ManagedAttribute(description = "Whether this node can handle Raft requests. " +
-            "Set to false when degraded due to storage failures.")
+            "Set to false when degraded due to failures.")
     public boolean canHandleRequests() {
         return canHandleRequests;
     }
@@ -1559,8 +1559,10 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
             try {
                 byte[] resp = state_machine.apply(dr.buffer(), dr.offset(), dr.length(), serializeResponse);
                 dr.complete(resp);
-            } catch (Exception e) {
-                dr.failed(e);
+            } catch (Throwable t) {
+                // A read does not change the state machine, so a failure doesn't diverge the state.
+                // Only the request fails, so use a broader catch for these operations.
+                dr.failed(t);
             }
         }
     }
@@ -1630,6 +1632,12 @@ public class RAFT extends Protocol implements Settable, DynamicMembership {
      * @return The last index of the range of log entries that was successfuly applied (normally this is to_inclusive)
      */
     protected long applyCommits(long to_inclusive, boolean serialize_response) {
+        // A degraded node stopped at the entry that failed.
+        // Applying it again or anything after it would build on state that may have diverged.
+        // The node should follow the common procedures for recovery.
+        if (!canHandleRequests)
+            return commit_index;
+
         long last_successful_apply=commit_index;
         for(long i=commit_index+1; i <= to_inclusive; i++) {
             try {

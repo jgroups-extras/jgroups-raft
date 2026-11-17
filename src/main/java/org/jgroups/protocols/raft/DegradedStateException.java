@@ -4,11 +4,10 @@ package org.jgroups.protocols.raft;
  * Thrown when a node in degraded state rejects a new request.
  *
  * <p>
- * A node enters degraded state when a critical failure occurs during operation, such as a
- * {@link org.jgroups.raft.StateMachine#apply state machine apply} failure or a storage failure in the Raft log. Once degraded,
- * the node cannot safely process new requests because its local state may have diverged from the cluster. The node must
- * be restarted to recover, and follow the necessary procedures to fix any failures reported. On restart, it replays committed
- * entries from the Raft log (or loads from a snapshot) to rebuild consistent state.
+ * A node enters degraded state when a critical local failure occurs, such as a state machine that throws while applying
+ * a committed command, or a storage failure in the Raft log. Once degraded, the node stops applying commands and cannot
+ * safely process new requests, because its local state may have diverged from the cluster. The node must be restarted to
+ * recover, after fixing the cause of the failure. On restart, it rebuilds its state from the latest snapshot and the log.
  * </p>
  *
  * @since 2.0

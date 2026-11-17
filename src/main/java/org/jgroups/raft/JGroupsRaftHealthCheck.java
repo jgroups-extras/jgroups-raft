@@ -63,8 +63,9 @@ public interface JGroupsRaftHealthCheck {
      * Whether the node can serve requests.
      *
      * <p>
-     * Returns {@code true} when the channel is connected, a leader is known, and the instance is started. Use this for
-     * <b>readiness probes</b> (e.g., Kubernetes). A {@code false} value means traffic should be routed away from this node.
+     * Returns {@code true} when the channel is connected, a leader is known, and the instance is started and not degraded.
+     * Use this for <b>readiness probes</b> (e.g., Kubernetes). A {@code false} value means traffic should be routed away
+     * from this node.
      * </p>
      *
      * @return {@code true} if the node is ready to handle requests.

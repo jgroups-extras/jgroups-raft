@@ -1,68 +1,35 @@
 package org.jgroups.raft.internal.command;
 
-import org.jgroups.raft.exceptions.JGroupsRaftException;
 import org.jgroups.raft.internal.serialization.RaftTypeIds;
 import org.jgroups.raft.internal.serialization.SingleBinarySerializer;
 import org.jgroups.raft.serialization.SerializationContextRead;
 import org.jgroups.raft.serialization.SerializationContextWrite;
 
-public final class RaftResponse {
+/**
+ * The result of a state machine method, returned to the caller that submitted the command.
+ *
+ * <p>
+ * Only successful results exist. A state machine method that fails stops the node instead of producing a response,
+ * since a deterministic state machine must not fail while applying a committed command.
+ * </p>
+ *
+ * @param response The value returned by the state machine method, possibly {@code null}.
+ */
+public record RaftResponse(Object response) {
 
     public static final SingleBinarySerializer<RaftResponse> SERIALIZER = RaftResponseSerializer.INSTANCE;
-
-    private final Object response;
-    private final Throwable exception;
-
-    private RaftResponse(Object response, Throwable exception) {
-        this.response = response;
-        this.exception = exception;
-    }
-
-    public static RaftResponse success(Object response) {
-        return new RaftResponse(response, null);
-    }
-
-    public static RaftResponse failure(Throwable exception) {
-        return new RaftResponse(null, exception);
-    }
-
-    private static RaftResponse failure(String exception) {
-        return failure(JGroupsRaftException.stackless(String.format("Failed apply command, see remote for stack trace: %s", exception)));
-    }
-
-    public boolean isSuccess() {
-        return exception == null;
-    }
-
-    public Object response() {
-        return response;
-    }
-
-    public Throwable exception() {
-        return exception;
-    }
 
     private static final class RaftResponseSerializer implements SingleBinarySerializer<RaftResponse> {
         private static final RaftResponseSerializer INSTANCE = new RaftResponseSerializer();
 
         @Override
         public void write(SerializationContextWrite ctx, RaftResponse target) {
-            boolean success = target.isSuccess();
-            ctx.writeBoolean(success);
-            if (success) {
-                ctx.writeObject(target.response);
-            } else {
-                ctx.writeUTF(target.exception.getMessage());
-            }
+            ctx.writeObject(target.response);
         }
 
         @Override
         public RaftResponse read(SerializationContextRead ctx, byte version) {
-            boolean success = ctx.readBoolean();
-            if (success) {
-                return success(ctx.readObject());
-            }
-            return failure(ctx.readUTF());
+            return new RaftResponse(ctx.readObject());
         }
 
         @Override
