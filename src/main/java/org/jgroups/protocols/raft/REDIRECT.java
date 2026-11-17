@@ -358,12 +358,8 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
             }
 
             if (hdr.exception) {
-                try {
-                    Throwable t = Util.objectFromByteBuffer(msg.getArray());
-                    cf.completeExceptionally(t);
-                } catch (Exception ex) {
-                    log.error("failed serializing exception", ex);
-                }
+                Throwable t = RemoteFailure.decode(msg.getArray(), msg.getOffset(), msg.getLength());
+                cf.completeExceptionally(t);
                 return;
             }
 
@@ -405,7 +401,7 @@ public class REDIRECT extends Protocol implements Settable, DynamicMembership {
 
         private void apply(Throwable t) {
             try {
-                byte[] buf = Util.objectToByteBuffer(t);
+                byte[] buf = RemoteFailure.encode(t);
                 Message msg = new BytesMessage(dest, buf).putHeader(id, new RedirectHeader(RequestType.RSP, corr_id, true));
                 down_prot.down(msg);
             } catch (Exception ex) {

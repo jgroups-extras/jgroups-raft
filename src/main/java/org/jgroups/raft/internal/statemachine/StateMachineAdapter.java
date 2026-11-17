@@ -148,6 +148,7 @@ final class StateMachineAdapter<T> implements StateMachine {
             throw error;
 
         // Checked exception declared by the state machine method.
-        return new JGroupsRaftException("State machine method failed", t);
+        // Stringifying the original exception just so we have it more easily in the message for diagnostics, too.
+        return new JGroupsRaftException("State machine method failed: " + t, t);
     }
 }

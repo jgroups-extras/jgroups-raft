@@ -284,7 +284,8 @@ Serializes the command term, type, and polymorphic payload.
 
 **RaftResponse**::
 Encapsulates the result of applying a command.
-Serializes either a success value or a failure exception message.
+Serializes the value returned by the state machine method.
+Failures are not serialized: a failing method degrades the node instead of producing a response.
 
 **StateMachineStateHolder**::
 Holds a snapshot of the state machine state.
