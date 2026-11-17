@@ -86,8 +86,8 @@ Runs on the coordinator only. Each round:
        see the leader (https://github.com/jgroups-extras/jgroups-raft/issues/253[#253])
     ** Send LeaderElected(leader, term) to all members (-self)
     ** If the majority was lost meanwhile -> set leader=null and stop the voting thread
-    ** If the leader is still in the view -> stop the voting thread
-    ** Otherwise (the leader left) -> start another round
+    ** If the leader is still in the view and still installed locally -> stop the voting thread
+    ** Otherwise (the leader left or stepped down) -> start another round
 
 The thread also stops on shutdown, or when it was asked to stop and either the majority is lost or a leader is known.
 

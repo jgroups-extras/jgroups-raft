@@ -515,9 +515,10 @@ public abstract class BaseElection extends Protocol {
                     return;
                 }
 
-                // At this point, the majority still in place, so we confirm the elected leader is still present in the view.
-                // If the leader is not in the view anymore, we keep the voting thread running.
-                if (isLeaderInView(leader, view)) {
+                // The elected leader must still be in the view and still be installed locally.
+                // It may have stepped down while the announcement was in flight, e.g., removing itself while election runs.
+                // Check while holding the lock.
+                if (isLeaderInView(leader, view) && Objects.equals(leader, raft.leader())) {
                     stopVotingThreadInternal();
                     result.complete(leader);
                     return;
