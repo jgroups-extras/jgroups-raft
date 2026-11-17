@@ -60,8 +60,9 @@ A node also enters degraded state when a state machine method throws while apply
 The behavior differs from a storage failure in one way: the log is intact.
 
 - The node stops applying committed commands and rejects client requests.
-  Its state stays as it was before the failing command.
+  It applies nothing after the failing command.
 - It keeps receiving and storing log entries from the leader, so its log stays up to date.
+- It does not take snapshots, automatically or on request, so the log keeps every entry needed to rebuild the state on restart.
 - It does not vote in elections and steps down if it was the leader.
 
 To recover, fix the cause of the failure, for example free disk space used by the state machine, and restart the node.

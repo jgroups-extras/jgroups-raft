@@ -11,7 +11,6 @@ import org.jgroups.raft.StateMachineField;
 import org.jgroups.raft.StateMachineRead;
 import org.jgroups.raft.StateMachineWrite;
 import org.jgroups.raft.api.JRaftTestCluster;
-import org.jgroups.raft.command.JGroupsRaftReadCommandOptions;
 import org.jgroups.raft.exceptions.JGroupsRaftException;
 
 import java.io.IOException;
@@ -33,11 +32,6 @@ import org.testng.annotations.Test;
  */
 @Test(groups = Global.FUNCTIONAL, singleThreaded = true)
 public class StateMachineFailureTest {
-
-    // Reads the local state machine directly, so it works on any node, degraded or not.
-    private static final JGroupsRaftReadCommandOptions LOCAL_READ = JGroupsRaftReadCommandOptions.options()
-            .linearizable(false)
-            .build();
 
     private JRaftTestCluster<Counter> cluster;
 
@@ -188,24 +182,41 @@ public class StateMachineFailureTest {
     }
 
     /**
-     * Submits two more writes and waits until the healthy follower commits everything the leader committed.
+     * Submits two more writes and waits until the healthy follower applied everything the leader applied.
      *
      * @return The leader commit index after the writes.
      */
     private long writeAndWaitCommit(int leaderIndex, int healthyIndex) {
         JGroupsRaft<Counter> leader = cluster.raft(leaderIndex);
+        JGroupsRaft<Counter> healthy = cluster.raft(healthyIndex);
         leader.write(c -> c.add(1));
         leader.write(c -> c.add(1));
 
-        long leaderCommit = leader.state().commitIndex();
-        assertThat(eventually(() -> cluster.raft(healthyIndex).state().commitIndex() == leaderCommit, 10, TimeUnit.SECONDS))
+        // The write returns once the leader applies the command, which happens before the leader updates its commit
+        // index. Reading the commit index right after the write may return the previous one, so wait until both
+        // nodes agree on the value and on the commit index.
+        int expected = localValue(leaderIndex);
+        assertThat(eventually(() -> localValue(healthyIndex) == expected
+                && healthy.state().commitIndex() == leader.state().commitIndex(), 10, TimeUnit.SECONDS))
                 .as("Healthy follower must keep committing")
                 .isTrue();
-        return leaderCommit;
+        return leader.state().commitIndex();
     }
 
+    /**
+     * Reads the state of the state machine on the given node, degraded or not.
+     *
+     * <p>
+     * Reads the instance directly instead of going through the API, so the assertions do not depend on which reads a
+     * degraded node accepts. It also bypasses the failures armed for reads.
+     * </p>
+     */
     private int localValue(int index) {
-        return cluster.raft(index).read(Counter::get, LOCAL_READ);
+        CounterImpl counter = counter(index);
+        // Same lock the node holds while applying commands, so the read sees the latest applied value.
+        synchronized (counter) {
+            return counter.value;
+        }
     }
 
     private CounterImpl counter(int index) {

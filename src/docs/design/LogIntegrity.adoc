@@ -232,6 +232,7 @@ Differences from a storage failure:
 
 - The log stays writable. The node keeps appending and acknowledging entries, which is safe because the log is intact.
 - Applying committed entries stops at the failed entry. Retrying it could apply a partially executed command twice, and skipping it would diverge from the cluster.
+- No snapshot is taken while degraded. The failed entry may have changed the state before throwing; a snapshot would record that state as the result of the last applied entry and truncate the log, so a restart would apply the failed entry again on top of its own effects. Automatic snapshots are skipped, and explicit requests fail with `DegradedStateException`.
 - A failure while serving a read only fails that request, since reads do not change the state.
 
 
