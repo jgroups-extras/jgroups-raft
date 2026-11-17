@@ -7,11 +7,14 @@ import static org.jgroups.raft.tests.harness.RaftAssertion.waitUntilAllRaftsHave
 
 import org.jgroups.Address;
 import org.jgroups.Global;
+import org.jgroups.JChannel;
+import org.jgroups.protocols.DISCARD;
+import org.jgroups.protocols.TP;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.testfwk.RaftTestUtils;
 import org.jgroups.raft.tests.harness.BaseRaftChannelTest;
-import org.jgroups.util.Util;
+import org.jgroups.stack.ProtocolStack;
 
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -75,8 +78,8 @@ public class ForceLeaderElectionTest extends BaseRaftChannelTest {
     }
 
     /**
-     * Start a 3-node cluster, close 2 nodes so the election can never reach majority, then cancel the future.
-     * The voting thread should stop.
+     * Start a 3-node cluster and isolate the coordinator, so the election keeps running but never reaches a majority,
+     * then cancel the future. The voting thread should stop.
      */
     public void testForceElectionCancellation() throws Exception {
         withClusterSize(3);
@@ -84,26 +87,36 @@ public class ForceLeaderElectionTest extends BaseRaftChannelTest {
 
         waitUntilAllRaftsHaveLeader(channels(), this::raft);
 
-        // Close 2 channels so the election can never reach majority.
-        Util.close(channel(1));
-        Util.close(channel(2));
-        Util.waitUntilAllChannelsHaveSameView(10_000, 100, channel(0));
+        // The other members must stay in the view: without a majority of voters in the view, the voting thread stops
+        // on its own before the test can cancel it. Dropping their traffic keeps the election running without votes.
+        for (int i = 1; i < 3; i++) {
+            JChannel ch = channel(i);
+            DISCARD discard = new DISCARD().discardAll(true).setAddress(ch.getAddress());
+            ch.getProtocolStack().insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
+        }
 
-        BaseElection election = RaftTestUtils.election(channel(0));
+        try {
+            BaseElection election = RaftTestUtils.election(channel(0));
 
-        // Use a short vote_timeout so each round completes quickly, but the election still can't succeed (only 1 of 3 nodes).
-        election.voteTimeout(1);
+            // Use a short vote_timeout so each round completes quickly, but the election still can't succeed.
+            election.voteTimeout(1);
 
-        CompletableFuture<Address> future = election.startForcedElection(null)
-                .toCompletableFuture();
+            CompletableFuture<Address> future = election.startForcedElection(null)
+                    .toCompletableFuture();
 
-        // Election is looping, can't reach majority. Cancel it.
-        boolean cancelled = future.cancel(true);
+            // Election is looping, can't reach majority. Cancel it.
+            boolean cancelled = future.cancel(true);
 
-        assertThat(cancelled).isTrue();
-        assertThat(future).isCancelled();
+            assertThat(cancelled).isTrue();
+            assertThat(future).isCancelled();
 
-        // Verify the voting thread stops after cancellation is detected.
-        assertThat(eventually(() -> !election.isVotingThreadRunning(), 10, TimeUnit.SECONDS)).isTrue();
+            // Verify the voting thread stops after cancellation is detected.
+            assertThat(eventually(() -> !election.isVotingThreadRunning(), 10, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            // Without DISCARD, the members answer the leave requests, and the teardown does not wait for the GMS timeouts.
+            for (int i = 1; i < 3; i++) {
+                channel(i).getProtocolStack().removeProtocol(DISCARD.class);
+            }
+        }
     }
 }
