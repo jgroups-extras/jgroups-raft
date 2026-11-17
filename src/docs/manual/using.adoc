@@ -185,6 +185,27 @@ Non-linearizable reads are the exception; they run on the calling thread, synchr
 State machine methods must be fast and must never block.
 Commands are applied in log order, so a slow method delays every following command and can stall replication for the whole cluster.
 
+===== Failure handling
+
+State machine methods must be deterministic: every member applies the same commands in the same order and must reach the same state.
+Expected outcomes, such as a missing key or a failed validation, are part of that state and belong in the return value, so the caller can handle them.
+
+A state machine method must not throw.
+If a write method throws while applying a committed command, the member enters *degraded state*:
+
+- It stops applying committed commands, so it never builds on a state that may differ from the other members.
+- It rejects new requests and steps down if it was the leader.
+- Its readiness probe reports it as not ready.
+- The caller that submitted the command receives the exception.
+
+The other members are not affected and keep applying commands.
+The degraded member recovers through a restart, which rebuilds its state from the latest snapshot and the log.
+Fix the cause of the failure before restarting: if the method throws again for the same command, the member fails to start.
+
+A read method that throws only fails that read, since a read cannot change the state.
+
+See <<Log Integrity and Recovery>> for how to detect a degraded member.
+
 [[StateMachineSnapshotState]]
 ==== Snapshot State
 
@@ -303,7 +324,7 @@ ClusterHealth status = health.getClusterHealth();              // <4>
 ----
 <1> Access the health check interface (available even before `raft.start()`).
 <2> Liveness probe: returns `true` when the underlying JGroups channel is connected.
-<3> Readiness probe: returns `true` when the channel is connected, a leader is known, and the instance is started.
+<3> Readiness probe: returns `true` when the channel is connected, a leader is known, the instance is started, and the node has not entered degraded state.
 <4> Coarse cluster health view (`HEALTHY`, `DEGRADED`, `FAILURE`, or `NOT_RUNNING`).
 
 See <<KubernetesHealthChecksHowTo>> for exposing these probes to Kubernetes.
@@ -425,8 +446,8 @@ public interface StateMachine {
 The `apply()` method should never throw an exception under normal operation.
 Business-logic errors (e.g., a key not found, a validation failure) should be serialised as return values so the client can handle them.
 
-If `apply()` throws, the node enters *degraded state*: it stops accepting new requests and steps down as leader.
-This is because the committed entry was applied successfully but failed locally, so the node's state could diverge from the cluster if we continued to operate.
+If `apply()` throws, the node enters *degraded state*: it stops applying committed entries, stops accepting new requests and steps down as leader.
+The node's state could diverge from the cluster if it continued, since the other members applied the same entry successfully.
 The node must be restarted to recover.
 You are responsible to following any recovery mechanism needed, and then restarting the node.
 

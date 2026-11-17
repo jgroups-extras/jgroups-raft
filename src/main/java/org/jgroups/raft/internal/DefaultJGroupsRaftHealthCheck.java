@@ -33,7 +33,7 @@ final class DefaultJGroupsRaftHealthCheck implements JGroupsRaftHealthCheck {
 
     @Override
     public boolean isNodeReady() {
-        return isNodeLive() && raft != null && raft.leader() != null;
+        return isNodeLive() && raft != null &&raft.canHandleRequests() && raft.leader() != null;
     }
 
     @Override

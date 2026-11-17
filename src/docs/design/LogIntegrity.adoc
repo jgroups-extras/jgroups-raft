@@ -223,6 +223,17 @@ Automatic recovery (clearing the poisoned state after some condition) was consid
 - If the node automatically recovers and wins an election, it could replicate a corrupted log to the entire cluster.
 - Restart is a simple, well-understood recovery path that gives operators explicit control over when the node rejoins.
 
+=== State Machine Failures
+
+An exception thrown by the state machine while applying a committed entry triggers the same transition.
+With the annotation-driven API, any exception thrown by a state machine write method propagates; it is never returned to the caller as a regular result.
+
+Differences from a storage failure:
+
+- The log stays writable. The node keeps appending and acknowledging entries, which is safe because the log is intact.
+- Applying committed entries stops at the failed entry. Retrying it could apply a partially executed command twice, and skipping it would diverge from the cluster.
+- A failure while serving a read only fails that request, since reads do not change the state.
+
 
 == Version Compatibility
 

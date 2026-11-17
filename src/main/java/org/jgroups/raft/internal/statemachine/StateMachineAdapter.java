@@ -2,6 +2,7 @@ package org.jgroups.raft.internal.statemachine;
 
 import org.jgroups.raft.StateMachine;
 import org.jgroups.raft.command.JGroupsRaftCommandOptions;
+import org.jgroups.raft.exceptions.JGroupsRaftException;
 import org.jgroups.raft.internal.command.JRaftCommand;
 import org.jgroups.raft.internal.command.RaftResponse;
 import org.jgroups.raft.internal.registry.CommandRegistry;
@@ -61,6 +62,8 @@ final class StateMachineAdapter<T> implements StateMachine {
      * @param length             The length of the serialized data.
      * @param serialize_response True if the result of the method should be serialized and returned.
      * @return The serialized result of the local method execution, or null.
+     * @throws RuntimeException If the state machine method fails. The failure is never returned as a response, since
+     *                          a deterministic state machine must not fail while applying a committed command.
      */
     @Override
     public byte[] apply(byte[] data, int offset, int length, boolean serialize_response) {
@@ -71,23 +74,24 @@ final class StateMachineAdapter<T> implements StateMachine {
             throw new IllegalStateException("command cannot be null");
 
         ReplicatedMethodWrapper method = registry.getCommand(command.id(), command.version());
-        RaftResponse res = null;
 
+        Object r;
         try {
-            Object r = submit(rc, method);
-            if (r != null) {
-                res = RaftResponse.success(r);
-            }
-        }  catch (InvocationTargetException | IllegalAccessException e) {
-            res = RaftResponse.failure(e);
+            r = submit(rc, method);
+        }  catch (InvocationTargetException e) {
+            // The state machine must be deterministic, a failure is never a valid result.
+            // Propagating it lets RAFT enter degraded state instead of applying more entries and cause bigger problems.
+            throw propagate(e.getCause());
+        } catch (IllegalAccessException e) {
+            throw new JGroupsRaftException("Failed to invoke state machine method: " + method, e);
         }
 
-        if (res == null)
+        if (r == null)
             return null;
 
         JGroupsRaftCommandOptions options = rc.options();
         return options == null || !options.ignoreReturnValue()
-                ? serializer.serialize(res)
+                ? serializer.serialize(new RaftResponse(r))
                 : null;
     }
 
@@ -133,5 +137,17 @@ final class StateMachineAdapter<T> implements StateMachine {
     @Override
     public void writeContentTo(DataOutput out) {
         snapshotter.writeSnapshot(out);
+    }
+
+    private static RuntimeException propagate(Throwable t) {
+        // Unchecked failures keep their type so the client sees what the state machine threw.
+        if (t instanceof RuntimeException re)
+            return re;
+
+        if (t instanceof Error error)
+            throw error;
+
+        // Checked exception declared by the state machine method.
+        return new JGroupsRaftException("State machine method failed", t);
     }
 }

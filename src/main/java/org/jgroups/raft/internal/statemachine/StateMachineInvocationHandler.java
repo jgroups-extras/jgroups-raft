@@ -16,7 +16,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
 import java.util.function.Function;
 
 /**
@@ -139,13 +138,9 @@ final class StateMachineInvocationHandler<T> implements InvocationHandler {
             return null;
         }
 
-        if (response.isSuccess()) {
-            @SuppressWarnings("unchecked")
-            R r = (R) response.response();
-            return r;
-        }
-
-        throw new CompletionException(response.exception());
+        @SuppressWarnings("unchecked")
+        R r = (R) response.response();
+        return r;
     }
 
     private static <R> R toNull(Object ignored) {

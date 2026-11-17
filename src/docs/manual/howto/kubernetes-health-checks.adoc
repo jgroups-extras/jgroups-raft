@@ -65,12 +65,15 @@ The probes only read local state and never contact other members, so frequent po
 
 | Readiness
 | `/health/ready`
-| Passes while the member is started, connected, and knows the current leader. A failure only removes the pod from the service endpoints.
+| Passes while the member is started, connected, knows the current leader, and is not degraded. A failure only removes the pod from the service endpoints.
 |===
 
 Do not use `/health/ready` for liveness.
 Readiness fails on every member during a leader election, and on the minority side of a network partition.
 Restarting pods in those cases makes recovery slower, not faster.
+
+A member that stays live but not ready while the rest of the cluster is ready may be degraded after a local failure.
+Check its logs, fix the cause, and restart it. See <<Log Integrity and Recovery>>.
 
 ==== Configure the services and the StatefulSet
 

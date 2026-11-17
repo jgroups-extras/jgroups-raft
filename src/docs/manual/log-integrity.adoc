@@ -54,6 +54,20 @@ CLI::
 The `raft status` command shows whether each node can handle requests.
 A degraded node will report that it cannot.
 
+=== State Machine Failures
+
+A node also enters degraded state when a state machine method throws while applying a committed command.
+The behavior differs from a storage failure in one way: the log is intact.
+
+- The node stops applying committed commands and rejects client requests.
+  Its state stays as it was before the failing command.
+- It keeps receiving and storing log entries from the leader, so its log stays up to date.
+- It does not vote in elections and steps down if it was the leader.
+
+To recover, fix the cause of the failure, for example free disk space used by the state machine, and restart the node.
+On restart, the node rebuilds its state from the latest snapshot and the log, and catches up with the cluster.
+If the cause is a bug that makes the method throw for that command, the node fails again during the restart.
+
 === Common Causes
 
 The most common causes of storage failures are:

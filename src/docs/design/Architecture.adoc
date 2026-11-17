@@ -119,5 +119,5 @@ Whether writes are synced to disk before returning is controlled by `RAFT.log_us
 See the persistent log chapter.
 
 A storage failure, or an exception while applying a committed entry, moves the node to the degraded state:
-it stops voting and rejects requests until restarted.
+it stops applying committed entries, stops voting and rejects requests until restarted.
 See the log integrity chapter.
