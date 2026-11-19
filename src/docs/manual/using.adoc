@@ -225,6 +225,9 @@ The state machine writes and reads the snapshot itself, and writing happens off 
 Use it for large state, or for state that lives outside the instance, such as an embedded database or cache.
 See <<AsyncSnapshotsTutorial>> and <<AsyncSnapshotsHowTo>>.
 
+On start, a member rebuilds its state machine from the latest snapshot and the log, so the state machine must start empty.
+A state machine whose state survives restarts on its own, such as one backed by a persistent store, must clear that state on start, or the replayed commands are applied twice.
+
 [WARNING]
 ====
 A state machine that has no `@StateMachineField` and does not implement `AsyncSnapshot` produces *empty* snapshots.
