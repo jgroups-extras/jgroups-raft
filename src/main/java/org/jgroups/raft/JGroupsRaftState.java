@@ -58,7 +58,8 @@ public interface JGroupsRaftState {
      * Returns the index of the highest log entry applied to the state machine.
      *
      * <p>
-     * This value is always less than or equal to the commit index;'.
+     * Entries are applied in order as soon as they are committed, so this value is equal to the commit index. If applying
+     * an entry fails, the value stops before that entry.
      * </p>
      *
      * @return the last applied index

@@ -65,7 +65,11 @@ public class RaftHandle implements Settable {
     public RaftHandle   addRoleListener(RAFT.RoleChange listener)    {raft.addRoleListener(listener); return this;}
     public RaftHandle   removeRoleListener(RAFT.RoleChange listener) {raft.remRoleListener(listener); return this;}
     public long         currentTerm()                                {return raft.currentTerm();}
-    public long         lastApplied()                                {return raft.lastAppended();}
+
+    public long lastApplied() {
+        return raft.commitIndex();
+    }
+
     public long         commitIndex()                                {return raft.commitIndex();}
     public void         snapshot() throws Exception                  {raft.snapshot();}
     public Log          log()                                        {return raft.log();}

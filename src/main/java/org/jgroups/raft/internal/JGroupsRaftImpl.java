@@ -181,7 +181,7 @@ final class JGroupsRaftImpl<T> implements JGroupsRaft<T> {
 
             @Override
             public long lastApplied() {
-                return raft.lastAppended();
+                return raft.commitIndex();
             }
         };
         administration = JGroupsRaftAdministrationImpl.create(channel);
