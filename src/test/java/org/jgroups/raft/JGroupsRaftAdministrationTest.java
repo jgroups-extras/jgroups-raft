@@ -5,14 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.jgroups.raft.testfwk.RaftTestUtils.eventually;
 
 import org.jgroups.Global;
+import org.jgroups.JChannel;
+import org.jgroups.protocols.DISCARD;
+import org.jgroups.protocols.TP;
 import org.jgroups.protocols.raft.RAFT;
 import org.jgroups.protocols.raft.election.BaseElection;
 import org.jgroups.raft.api.JRaftTestCluster;
 import org.jgroups.raft.api.SimpleKVStateMachine;
 import org.jgroups.raft.testfwk.RaftTestUtils;
-import org.jgroups.util.Util;
+import org.jgroups.stack.ProtocolStack;
 
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -123,23 +127,34 @@ public class JGroupsRaftAdministrationTest {
         try {
             isolated.waitUntilLeaderElected();
 
-            // Close 2 channels so elections can never reach majority.
-            Util.close(isolated.channel(1));
-            Util.close(isolated.channel(2));
-            Util.waitUntilAllChannelsHaveSameView(10_000, 100, isolated.channel(0));
+            // The initial election's voting thread can still be running after the leader is elected.
+            // If it is, forceLeaderElection returns that round's future instead of starting a new one.
+            BaseElection election = RaftTestUtils.election(isolated.channel(0));
+            assertThat(eventually(() -> !election.isVotingThreadRunning(), 10, TimeUnit.SECONDS)).isTrue();
 
-            // Force election through the v2 API, election loops without majority and never complete.
-            var future = isolated.raft(0).administration().forceLeaderElection()
+            // Keep the followers in the view so the election keeps retrying without their votes.
+            // Closing them instead leaves a singleton view: the election sees no majority of voters
+            // and completes the future exceptionally, so cancel() can lose the race and return false.
+            for (int i = 1; i < 3; i++) {
+                JChannel channel = isolated.channel(i);
+                DISCARD discard = new DISCARD().discardAll(true).setAddress(channel.getAddress());
+                channel.getProtocolStack().insertProtocol(discard, ProtocolStack.Position.ABOVE, TP.class);
+            }
+
+            // Short vote timeout so the rounds advance quickly.
+            election.voteTimeout(1);
+            RAFT coordinator = isolated.raftProtocol(0);
+            long initialTerm = coordinator.currentTerm();
+            CompletableFuture<String> future = isolated.raft(0).administration().forceLeaderElection()
                     .toCompletableFuture();
 
-            // Cancel the election.
-            boolean cancelled = future.cancel(true);
-
-            assertThat(cancelled).isTrue();
+            // A term bump means a forced round is running, so cancel() cannot race its start.
+            assertThat(eventually(() -> coordinator.currentTerm() > initialTerm, 10, TimeUnit.SECONDS))
+                    .as("forced election started a new term").isTrue();
+            assertThat(future.cancel(true)).isTrue();
             assertThat(future).isCancelled();
 
-            // Verify the voting thread stops after cancellation is detected.
-            BaseElection election = RaftTestUtils.election(isolated.channel(0));
+            // Cancelling the user-facing future must reach the election and stop the voting thread.
             assertThat(eventually(() -> !election.isVotingThreadRunning(), 10, TimeUnit.SECONDS)).isTrue();
         } finally {
             isolated.close();
